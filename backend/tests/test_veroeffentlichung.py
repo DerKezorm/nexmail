@@ -22,12 +22,34 @@ WURZEL = Path(__file__).resolve().parent.parent.parent
 
 
 def _verfolgte_dateien() -> list[Path]:
+    """Alles, was bei einem ``git add -A`` mit hinausginge.
+
+    ⚠️ **``--others`` ist der wichtigste Schalter hier**, und er fehlte bis zum
+    01.09.2026. Ohne ihn zeigt ``git ls-files`` nur **schon verfolgte**
+    Dateien. Eine **neue** Datei sah der Waechter damit nicht — er meldete
+    gruen, und einen Handgriff spaeter nahm ``git add -A`` sie mit.
+
+    Genau so ist es passiert: ``app/routers/ueber.py`` trug im Modul-Kommentar
+    einen Vornamen als Quellenangabe zu einem Zitat. Der Waechter lief davor,
+    sah die Datei nicht, meldete gruen — und der Name stand danach in einem
+    gepushten Commit. Ob man vor oder nach ``git add`` prueft, darf kein
+    Unterschied sein; mit ``--others --exclude-standard`` ist es keiner mehr.
+
+    ``--exclude-standard`` haelt dabei ``.gitignore`` in Kraft: Was ohnehin
+    ignoriert wird, geht auch nicht hinaus und gehoert nicht in die Pruefung.
+    """
     ergebnis = subprocess.run(
-        ["git", "ls-files"], cwd=WURZEL, capture_output=True, text=True, check=False
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+        cwd=WURZEL,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if ergebnis.returncode != 0:
         pytest.skip("Kein Git-Verzeichnis - hier gibt es nichts zu pruefen.")
-    return [WURZEL / z for z in ergebnis.stdout.splitlines() if z.strip()]
+    # ⚠️ Eine Datei kann in beiden Listen stehen (veraendert und verfolgt).
+    # Doppelte Treffer sind nur Laerm im Fehlerbericht.
+    return [WURZEL / z for z in dict.fromkeys(ergebnis.stdout.splitlines()) if z.strip()]
 
 
 def _lesbar(datei: Path) -> str:

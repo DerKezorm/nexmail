@@ -150,13 +150,31 @@ def zustand_lesen(wert: str | None) -> dict[str, Any] | None:
     return daten
 
 
-def anlauf_erzeugen(kuerzel: str, absicht: str) -> dict[str, str]:
-    """Die drei Zufallswerte plus PKCE-Praegewert."""
+def anlauf_erzeugen(kuerzel: str, absicht: str, benutzer_id: str = "") -> dict[str, str]:
+    """Die drei Zufallswerte plus PKCE-Praegewert.
+
+    ⚠️ **Beim Verknuepfen gehoert die Benutzerkennung hier hinein**, nicht in
+    die Sitzung. Das Sitzungs-Cookie steht auf ``SameSite=strict`` und faehrt
+    bei der Rueckkehr vom Anbieter **nicht** mit — der Rueckweg ist eine
+    Navigation von fremder Seite. Wer sie beim Rueckweg aus der Sitzung holt,
+    bekommt ``None``, und das Verknuepfen scheitert jedes Mal mit
+    „the session is gone; nothing was linked".
+
+    Genau so war es bis zum 01.09.2026: Der Knopf im Profil sah aus, als taete
+    er etwas, und tat nie etwas. Aufgefallen erst, als der Pruefstand ihn zum
+    ersten Mal an einem echten Keycloak durchspielte.
+
+    ⚠️ **Das ist sicher, weil dieser Zustand signiert ist.** Er entsteht im
+    Hinweg, wo die Sitzung noch da war, und laesst sich unterwegs nicht
+    umschreiben. Das Anlauf-Cookie ist ``SameSite=lax`` — deshalb kommt es
+    zurueck, waehrend das Sitzungs-Cookie draussen bleibt.
+    """
     verifier = secrets.token_urlsafe(64)
     praege = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
     return {
         "kuerzel": kuerzel,
         "absicht": absicht,
+        "benutzer_id": benutzer_id,
         "state": secrets.token_urlsafe(24),
         "nonce": secrets.token_urlsafe(24),
         "verifier": verifier,

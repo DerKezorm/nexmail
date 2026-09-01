@@ -444,3 +444,69 @@ def test_die_letzte_verknuepfung_laesst_sich_nicht_loesen(klient, anbieter_da, m
     antwort = klient.delete(f"/api/oidc/meine/{meine[0]['id']}")
     assert antwort.status_code == 400
     assert "Kennwort" in antwort.json()["detail"]
+
+
+def test_verknuepfen_ueberlebt_den_strengen_rueckweg(klient, anbieter_da, monkeypatch, db):
+    """⚠️ **Der Test, den es bis zum 01.09.2026 nicht gab — und der Grund dafuer.**
+
+    Das Sitzungs-Cookie steht auf ``SameSite=strict``. Der Rueckweg vom
+    Anbieter ist eine Navigation von **fremder** Seite, also schickt der
+    Browser es nicht mit. Der Rueckweg holte die Person aber aus der Sitzung
+    und fand keine: ``oidc_abgemeldet — the session is gone; nothing was
+    linked``. Der Verknuepfen-Knopf im Profil sah damit aus, als taete er
+    etwas, und tat nie etwas.
+
+    ⚠️ **Kein bestehender Test konnte das sehen**, denn ``TestClient``
+    schickt seine Cookies ohne Ruecksicht auf ``SameSite``. Hier wird das
+    Cookie deshalb von Hand entfernt — genau zwischen Hinweg und Rueckweg,
+    so wie der Browser es tut.
+
+    Aufgefallen ist es erst am echten Keycloak im Pruefstand.
+    """
+    from urllib.parse import parse_qs, urlparse
+
+    from app.services.sitzung import COOKIE_NAME
+
+    attrappe = Attrappe()
+    einspannen(monkeypatch, attrappe)
+
+    hin = klient.get("/api/oidc/keycloak/start", follow_redirects=False)
+    assert hin.status_code == 303, hin.text
+    frage = parse_qs(urlparse(hin.headers["location"]).query)
+    attrappe._nonce = frage["nonce"][0]
+
+    # Der Browser laesst das strenge Cookie beim Rueckweg zu Hause.
+    sitzungswert = klient.cookies.get(COOKIE_NAME)
+    assert sitzungswert, "Ohne Sitzung prueft dieser Test nichts."
+    del klient.cookies[COOKIE_NAME]
+
+    zurueck = klient.get(
+        f"/api/oidc/keycloak/zurueck?code=abc&state={frage['state'][0]}",
+        follow_redirects=False,
+    )
+
+    assert zurueck.headers["location"].endswith("oidc=verknuepft"), zurueck.headers["location"]
+    assert db.query(OidcVerknuepfung).count() == 1
+    assert db.query(Benutzer).count() == 1, "Es ist ein zweites Konto entstanden."
+
+
+def test_ohne_anlauf_wird_nichts_verknuepft(klient, anbieter_da, monkeypatch, db):
+    """Die Gegenprobe: Die Kennung kommt aus dem **signierten** Anlauf.
+
+    Ohne ihn — oder mit einer Kennung, zu der es niemanden gibt — entsteht
+    keine Verknuepfung. Sonst haette der Umbau die Sitzungspruefung durch gar
+    keine ersetzt.
+    """
+    from app.services import oidc as oidcdienst
+
+    einspannen(monkeypatch, Attrappe())
+    echt = oidcdienst.anlauf_erzeugen
+    monkeypatch.setattr(
+        oidcdienst,
+        "anlauf_erzeugen",
+        lambda k, a, b="": echt(k, a, "gibt-es-nicht"),
+    )
+
+    antwort = _lauf(klient, Attrappe(), monkeypatch)
+    assert "oidc_fehler=oidc_abgemeldet" in antwort.headers["location"], antwort.headers["location"]
+    assert db.query(OidcVerknuepfung).count() == 0

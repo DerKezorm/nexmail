@@ -83,12 +83,13 @@ async def starten(kuerzel: str, request: Request, db: DbSession) -> Response:
     """Zum Anbieter weiterleiten und den Anlauf im Cookie merken."""
     anbieter = _anbieter(db, kuerzel)
     # Mit Sitzung heißt: verknüpfen. Ohne: anmelden.
-    absicht = "verknuepfen" if sitzungsdienst.holen(db, request) else "anmelden"
+    sitzung = sitzungsdienst.holen(db, request)
+    absicht = "verknuepfen" if sitzung else "anmelden"
 
     try:
         rueckkehr = _rueckkehr(db, kuerzel)
         beschreibung = await oidc.beschreibung_holen(anbieter.issuer)
-        anlauf = oidc.anlauf_erzeugen(kuerzel, absicht)
+        anlauf = oidc.anlauf_erzeugen(kuerzel, absicht, sitzung.benutzer_id if sitzung else "")
         ziel = oidc.weiterleitung_bauen(
             beschreibung,
             client_id=anbieter.client_id,
@@ -210,11 +211,20 @@ async def zurueck(
     wache.geschafft()
 
     if zustand.get("absicht") == "verknuepfen":
-        sitzung = sitzungsdienst.holen(db, request)
-        if sitzung is None:
+        # ⚠️ **Aus dem signierten Anlauf, nicht aus der Sitzung.** Das
+        # Sitzungs-Cookie ist ``SameSite=strict`` und faehrt beim Rueckweg
+        # vom Anbieter nicht mit — er ist eine Navigation von fremder
+        # Seite. Wer es hier liest, bekommt **immer** ``None``.
+        #
+        # Bis zum 01.09.2026 stand genau das hier: Der Verknuepfen-Knopf im
+        # Profil sah aus, als taete er etwas, und tat nie etwas. Aufgefallen
+        # erst, als der Pruefstand ihn zum ersten Mal an einem echten
+        # Keycloak durchspielte. Siehe ``oidc.anlauf_erzeugen``.
+        person = db.get(Benutzer, zustand.get("benutzer_id") or "")
+        if person is None:
             return scheitern("oidc_abgemeldet", "the session is gone; nothing was linked")
         try:
-            kontendienst.verknuepfen(db, sitzung.benutzer, ident)
+            kontendienst.verknuepfen(db, person, ident)
         except oidc.OidcFehler as fehler:
             return scheitern(fehler.code, fehler.text)
         antwort = RedirectResponse(

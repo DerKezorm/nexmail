@@ -3,7 +3,17 @@ uvicorn[standard]==0.38.0
 sqlalchemy==2.0.44
 pydantic==2.12.4
 pydantic-settings==2.13.0
-python-multipart==0.0.20
+# ⚠️ **Mindestens 0.0.30.** 0.0.20 laesst sich mit vielen oder sehr langen
+# Multipart-Kopfzeilen lahmlegen (GHSA-pp6c-gr5w-3c5g, behoben in 0.0.27), und
+# eine Anfrage mit `;` als Trenner kostet quadratisch Rechenzeit
+# (GHSA-5rvq-cxj2-64vf, behoben in 0.0.30). Beides ist hier erreichbar: Vor der
+# Ersteinrichtung nimmt `/api/sicherung/einspielen-vor-einrichtung` einen
+# Upload **ohne Anmeldung** entgegen.
+#
+# Die dritte Meldung (GHSA-wp53-j4wj-2cfg, Pfad-Ausbruch) greift hier nicht:
+# Sie verlangt UPLOAD_DIR zusammen mit UPLOAD_KEEP_FILENAME=True, und beides
+# setzt FastAPI nicht.
+python-multipart==0.0.32
 
 # Passwoerter. Argon2id statt bcrypt: nexmail haelt alle Postfaecher seines
 # Betreibers, und speicherharte Ableitung ist den Unterschied wert.
@@ -15,7 +25,12 @@ pyotp==2.9.0
 segno==1.6.6
 
 # Verschluesselung der Zugangsdaten (AES-GCM).
-cryptography==46.0.4
+# ⚠️ **Mindestens 50.0.1.** Die Wheels bringen ein statisch gebundenes OpenSSL
+# mit, und alles davor traegt Meldungen dagegen (GHSA-537c-gmf6-5ccf). Die
+# naheliegende Behebungsversion 48.0.1 reicht **nicht**: Am 01.09.2026 gegen
+# api.osv.dev geprueft, stehen fuer 48.0.1 noch sechs weitere Meldungen, fuer
+# 50.0.1 keine.
+cryptography==50.0.1
 
 # Verschluesselte Sicherungs-Archive (AES-ZIP). Bewusst ein Standardformat:
 # ein selbstgebautes koennte nur nexmail wieder oeffnen - und ausgerechnet
@@ -52,4 +67,16 @@ charset-normalizer==3.5.1
 # ⚠️ **Festgenagelt.** nexview hat gegen genau diese Fassung geprueft, dass
 # ES512 und EdDSA ueber PyJWK tragen — beides laesst Pocket ID einstellen,
 # und was hier fehlt, sperrt bei diesem Anbieter **jede** Anmeldung aus.
-pyjwt==2.11.0
+# ⚠️ **Mindestens 2.13.0.** 2.9.0 bis 2.12.1 pruefen beim Entschluesseln mit
+# einem ``PyJWK``-Schluessel zwar den ``alg``-Kopf gegen die Verfahrensliste,
+# ueberpruefen die Unterschrift danach aber mit dem Verfahren des Schluessels
+# (GHSA-jq35-7prp-9v3f, CVSS 5.4). nexmail ist betroffen, weil es
+# ``jwt.PyJWKClient`` benutzt (services/oidc.py) — anders als Nexview, wo
+# dieselbe Meldung ins Leere geht.
+#
+# ⚠️ **Der Verwechslungs-Angriff ist davon NICHT betroffen.** Die schwerere
+# Meldung GHSA-xgmm-8j9v-c9wx verlangt ausdruecklich ein symmetrisches
+# Verfahren in ``algorithms=[...]``; VERFAHREN in services/oidc.py enthaelt
+# keines. Wer diese Zeile spaeter liest, soll nicht den falschen Schluss
+# ziehen: Der Schutz stand und steht.
+pyjwt==2.13.0
