@@ -8,6 +8,11 @@
 
 [Project site](https://nexmail.nexapps.dev) · [Report an issue](https://github.com/DerKezorm/nexmail/issues/new)
 
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/mail-hell-en.webp">
+  <img src="docs/screenshots/mail-lesen-en.webp" alt="nexmail: folder column, message list and reading pane">
+</picture>
+
 </div>
 
 ---
@@ -27,6 +32,10 @@ is the third option — and if you can use Outlook, you should feel at home.
 > Treat it accordingly: try it on a mailbox you can afford to have trouble with
 > before you point it at the one that matters.
 
+The screenshots below show a throwaway instance filled with invented mail.
+Every address in them is under `example.com`, `example.org` or
+`example.net`, which RFC 2606 reserves for exactly this purpose.
+
 ## What it does
 
 **Mail.** Several mailboxes side by side, plus a merged *All inboxes* view.
@@ -42,9 +51,13 @@ you notice that at the worst possible moment.
 drafts stored in the mailbox rather than in the browser, and an outbox that
 survives a restart.
 
+![The compose window with its formatting toolbar](docs/screenshots/verfassen-en.webp)
+
 **Search.** Full-text over everything cached, plus `IMAP SEARCH` at the provider
 on request. The interface says how far it looked — a search that hides its own
 reach lets you conclude a message does not exist.
+
+![Search results, with a line saying which part was covered](docs/screenshots/suche-en.webp)
 
 **Tasks.** Turn a message into a task, tick it off, drag it into order, give it
 a due date. The task survives its message: if the mail is moved from your phone,
@@ -54,6 +67,10 @@ says so.
 **Contacts, rules, signatures.** An address book with vCard import and export
 and collection from Sent; rules that run after each sync and only on new mail;
 signatures per mailbox.
+
+| Tasks | Contacts |
+|---|---|
+| ![The task list](docs/screenshots/aufgaben-en.webp) | ![The address book](docs/screenshots/kontakte-en.webp) |
 
 **Mailbox groups.** Tag mailboxes (`personal`, `work`, `club`) and switch
 between them above the folder tree.
@@ -114,6 +131,8 @@ The full compose file with every option and the reasoning behind each one is
 nexmail asks for them **in its own interface and nowhere else**. You add
 mailboxes under *Settings → Mailboxes*. They are stored encrypted and never
 leave your server.
+
+![The mailbox list under Settings](docs/screenshots/postfaecher-en.webp)
 
 For iCloud you need an **app-specific password** from `account.apple.com`. Your
 normal Apple password is refused, and iCloud reports that with the same message
@@ -180,6 +199,8 @@ anything else that follows the spec. Add a provider under *Administration →
 OIDC*; the redirect URI to register with the provider is shown there with a copy
 button.
 
+![The sign-in tab with one registered provider](docs/screenshots/oidc-en.webp)
+
 **Two ways in, and no others:**
 
 1. **An existing link.** You create it while signed in, under *Settings →
@@ -213,6 +234,8 @@ The invitation page offers both ways: set a password, or sign in through a
 provider. Not everyone has an account with your identity provider, and not
 everyone should need a password they will never use.
 
+![Administration with users and open invitations](docs/screenshots/verwaltung-en.webp)
+
 Every user has their own mailboxes, contacts, rules and signatures. A guard test
 walks the entire route table and checks that no address answers without
 authentication and none hands out another user's data.
@@ -227,6 +250,8 @@ internet it is not, and nexmail says so where you make the choice.
 **Sessions live on the server, not in a token.** That costs one query per
 request and buys *sign out everywhere* with immediate effect. Devices are listed
 and can be revoked individually.
+
+![The security tab with two-factor and signed-in devices](docs/screenshots/sicherheit-en.webp)
 
 **Passwords use Argon2id**, sign-ins are rate-limited, and a spent recovery code
 stays spent.
