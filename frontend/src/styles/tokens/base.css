@@ -1,0 +1,23 @@
+/* ============================================================
+   nexapps — Basis. Minimaler Reset + Element-Defaults.
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--canvas);color:var(--text-2);font:var(--type-body);letter-spacing:var(--ls-body);text-wrap:pretty;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;color:var(--text-1);letter-spacing:var(--ls-heading)}
+h1{font:var(--type-h1)}
+h2{font:var(--type-h2)}
+h3{font:var(--type-h3)}
+p{margin:0 0 var(--space-3)}
+a{color:var(--text-accent);text-decoration:none;border-bottom:1px solid var(--accent-line);transition:var(--t-control)}
+a:hover{color:var(--accent-hover);border-bottom-color:var(--accent)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:none;box-shadow:var(--focus-ring);border-radius:var(--radius-sm)}
+code,kbd,pre,samp{font-family:var(--font-mono);font-size:.92em}
+hr{border:0;border-top:1px solid var(--border-subtle);margin:var(--space-6) 0}
+button{font:inherit;color:inherit}
+table{border-collapse:collapse;width:100%}
+th{text-align:left;font:var(--type-label);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-3)}
+td,th{padding:0 var(--space-4)}
+::placeholder{color:var(--text-4)}
+::selection{background:var(--accent-soft);color:var(--text-1)}
+.tnum{font-variant-numeric:tabular-nums}

@@ -1,0 +1,55 @@
+fastapi==0.121.2
+uvicorn[standard]==0.38.0
+sqlalchemy==2.0.44
+pydantic==2.12.4
+pydantic-settings==2.13.0
+python-multipart==0.0.20
+
+# Passwoerter. Argon2id statt bcrypt: nexmail haelt alle Postfaecher seines
+# Betreibers, und speicherharte Ableitung ist den Unterschied wert.
+argon2-cffi==25.1.0
+
+# Zweiter Faktor. pyotp fuer TOTP, segno fuer den QR-Code - beides klein und
+# ohne eigenes Netz.
+pyotp==2.9.0
+segno==1.6.6
+
+# Verschluesselung der Zugangsdaten (AES-GCM).
+cryptography==46.0.4
+
+# Verschluesselte Sicherungs-Archive (AES-ZIP). Bewusst ein Standardformat:
+# ein selbstgebautes koennte nur nexmail wieder oeffnen - und ausgerechnet
+# dann, wenn man die Sicherung braucht, laeuft nexmail vielleicht nicht.
+pyzipper==0.4.0
+
+# IMAP. Synchron und mit IDLE - fuer eine Handvoll Postfaecher ist asyncio
+# kein Gewinn und viel mehr Fehlersuchaufwand.
+#
+# ⚠️ **Mindestens 3.1.0.** Version 3.0.1 laesst sich unter Python 3.14 nicht
+# einmal verbinden: imaplib hat `file` zu einer Eigenschaft ohne Setter
+# gemacht, und IMAPClient weist dort noch zu - AttributeError, bevor
+# ueberhaupt eine Anmeldung stattfindet. Der Container faehrt zwar 3.13, aber
+# die Entwicklungsumgebung 3.14, und der Fehler sah dort aus wie ein Problem
+# des Mailservers. Siehe tests/test_umgebung.py.
+IMAPClient==3.1.0
+
+# Fuer die Autoconfig-Abfrage (Thunderbirds ISPDB und autoconfig.<domain>).
+httpx==0.28.1
+
+# HTML entschaerfen - beim Anzeigen fremder Mails UND beim Senden eigener.
+# ⚠️ **Fehlte hier bis zum 01.09.2026**, obwohl der Code es seit Stufe 2
+# benutzt: In der Entwicklungsumgebung war es von Hand installiert, im Abbild
+# nicht. Der Container startete deshalb gar nicht - "ModuleNotFoundError: No
+# module named 'nh3'", und zwar erst beim ersten `docker compose up`, Wochen
+# nach dem Einbau.
+nh3==0.3.7
+
+# Zeichensatz erraten, wenn eine Mail luegt oder schweigt.
+charset-normalizer==3.5.1
+
+# OIDC-Anmeldung: die Unterschrift des ID-Ausweises pruefen.
+#
+# ⚠️ **Festgenagelt.** nexview hat gegen genau diese Fassung geprueft, dass
+# ES512 und EdDSA ueber PyJWK tragen — beides laesst Pocket ID einstellen,
+# und was hier fehlt, sperrt bei diesem Anbieter **jede** Anmeldung aus.
+pyjwt==2.11.0

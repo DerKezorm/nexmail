@@ -1,0 +1,692 @@
+"""Die Tabellen von nexmail.
+
+⚠️ **Jede Tabelle mit persoenlichen Daten traegt ``benutzer_id``** - auch
+solange es nur einen Benutzer gibt. Mehrbenutzer ist zugesagt, und
+nachtraeglich waere es ein Umbau durch jede Abfrage. Siehe FALLSTRICKE.md §5.
+
+⚠️ **Zwei Sorten Primaerschluessel, mit Grund.** Was ein Geheimnis traegt
+(``benutzer``, spaeter ``konto``), bekommt eine Zeichenkette aus ``uuid4`` -
+sie steht **vor** dem Einfuegen fest und kann deshalb als Zusatzdaten in die
+Verschluesselung wandern (siehe crypto.py). Alles, wovon es spaeter
+Hunderttausende gibt (``nachricht``, ``ordner``), bekommt eine Zahl: 32
+Zeichen je Zeile waeren dort messbarer Ballast.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    TypeDecorator,
+    UniqueConstraint,
+    text,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class UtcDateTime(TypeDecorator):
+    """Zeitstempel, die auch nach dem Lesen eine Zeitzone haben.
+
+    ⚠️ **SQLite speichert keine Zeitzone** - auch nicht bei
+    ``DateTime(timezone=True)``. Beim Lesen kommt ein naiver Wert zurueck, und
+    der erste Vergleich mit ``utcnow()`` scheitert mit "can't compare
+    offset-naive and offset-aware datetimes". Genau daran ist der erste
+    Testlauf hier gescheitert.
+
+    Es an der Vergleichsstelle zu flicken waere falsch: Dann traefe es bei der
+    naechsten Spalte wieder, und man haette zwei Sorten Zeitstempel im selben
+    Programm. Der Typ nimmt alles in UTC entgegen und gibt alles in UTC
+    zurueck - eine Stelle, ein Verhalten.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, wert, dialect):  # noqa: ARG002
+        if wert is None:
+            return None
+        if wert.tzinfo is None:
+            # Ein naiver Wert von aussen ist ein Fehler, aber kein Grund
+            # abzustuerzen - er wird als UTC gelesen.
+            return wert
+        return wert.astimezone(timezone.utc).replace(tzinfo=None)
+
+    def process_result_value(self, wert, dialect):  # noqa: ARG002
+        if wert is None:
+            return None
+        return wert.replace(tzinfo=timezone.utc)
+
+
+def neue_id() -> str:
+    return uuid.uuid4().hex
+
+
+class Benutzer(Base):
+    """Ein Mensch, der sich anmeldet.
+
+    ⚠️ **``passwort_hash`` darf leer sein.** Das ist keine Nachlaessigkeit,
+    sondern die Vorbereitung auf OIDC: Passwort ist *ein* Anmeldeweg, nicht
+    *der*. Waere das Feld verpflichtend, waere reines OIDC spaeter ein Umbau
+    am Kern statt einer Ergaenzung. Siehe FALLSTRICKE.md §4.
+    """
+
+    __tablename__ = "benutzer"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzername: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    anzeigename: Mapped[str] = mapped_column(String(120), default="")
+
+    #: Argon2id. Leer heisst: Dieser Benutzer meldet sich anders an.
+    passwort_hash: Mapped[str] = mapped_column(Text, default="")
+
+    #: ⚠️ Der Haken, nicht die Rolle. Er sagt nicht, was dieser Benutzer darf,
+    #: sondern was **andere** mit ihm nicht duerfen. Er entsteht beim Anlegen
+    #: des ersten Kontos - wer nexmail aufsetzt, muss dafuer nichts wissen.
+    ist_betreiber: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    #: TOTP-Geheimnis, verschluesselt (Kontext ``benutzer:<id>:totp``).
+    totp_geheimnis: Mapped[str] = mapped_column(Text, default="")
+    totp_bestaetigt: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    #: ⚠️ Der zuletzt angenommene Zeitschritt. Ohne ihn gilt ein abgefangener
+    #: Code noch dreissig Sekunden lang ein zweites Mal.
+    totp_letzter_schritt: Mapped[int] = mapped_column(Integer, default=0)
+
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+    sitzungen: Mapped[list["Sitzung"]] = relationship(
+        back_populates="benutzer", cascade="all, delete-orphan"
+    )
+    codes: Mapped[list["Wiederherstellungscode"]] = relationship(
+        back_populates="benutzer", cascade="all, delete-orphan"
+    )
+    oidc: Mapped[list["OidcVerknuepfung"]] = relationship(
+        back_populates="benutzer", cascade="all, delete-orphan"
+    )
+
+
+class Wiederherstellungscode(Base):
+    """Der Weg zurueck, wenn das Telefon weg ist.
+
+    Nur als Hash gespeichert. SHA-256 genuegt hier und Argon2 waere falsch
+    am Platz: Diese Codes sind 128 Bit Zufall, es gibt nichts zu raten - der
+    einzige Zweck des Hashes ist, dass ein gestohlener Datenbestand sie nicht
+    verraet.
+    """
+
+    __tablename__ = "wiederherstellungscode"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(64), index=True)
+    verbraucht: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+
+    benutzer: Mapped[Benutzer] = relationship(back_populates="codes")
+
+
+class Sitzung(Base):
+    """Eine Anmeldung.
+
+    ⚠️ **Der Zustand liegt im Server, nicht im Token.** Ein JWT gilt bis zum
+    Ablauf, egal was passiert; hier kostet jede Anfrage eine Abfrage und
+    bringt dafuer, was zaehlt: "auf allen Geraeten abmelden" wirkt sofort.
+
+    ⚠️ **Im Cookie steht ein Zufallswert, in der Datenbank sein Hash.** Wer die
+    Datei liest, bekommt keine gueltigen Sitzungen in die Hand.
+    """
+
+    __tablename__ = "sitzung"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+
+    #: ⚠️ Falsch, solange nur das Passwort stimmt. Eine unbestaetigte Sitzung
+    #: darf ausschliesslich den zweiten Schritt aufrufen - sonst waere der
+    #: zweite Faktor eine Zierde.
+    bestaetigt: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    geraet: Mapped[str] = mapped_column(String(200), default="")
+    adresse: Mapped[str] = mapped_column(String(64), default="")
+
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    zuletzt_gesehen: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    gueltig_bis: Mapped[datetime] = mapped_column(UtcDateTime)
+
+    benutzer: Mapped[Benutzer] = relationship(back_populates="sitzungen")
+
+
+class OidcVerknuepfung(Base):
+    """Verbindung zwischen einem Benutzer und einer fremden Identitaet.
+
+    ⚠️ **Verknuepft wird ueber ``issuer`` + ``subject``, nie ueber die
+    E-Mail-Adresse.** Adressen wechseln den Besitzer, ``subject`` nicht. Wer
+    ueber die Adresse verknuepft, baut eine Kontouebernahme ein.
+
+    Steht ab Stufe 0 leer da. Gebaut wird OIDC spaeter - aber wenn die Tabelle
+    erst dann entsteht, entsteht mit ihr eine Wanderung der Bestandsdaten.
+    """
+
+    __tablename__ = "oidc_verknuepfung"
+    __table_args__ = (UniqueConstraint("issuer", "subject", name="uq_oidc_identitaet"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    issuer: Mapped[str] = mapped_column(String(255), index=True)
+    subject: Mapped[str] = mapped_column(String(255))
+    adresse_bestaetigt: Mapped[bool] = mapped_column(Boolean, default=False)
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+    benutzer: Mapped[Benutzer] = relationship(back_populates="oidc")
+
+
+class Konto(Base):
+    """Ein Postfach.
+
+    ⚠️ **Der Primaerschluessel ist eine uuid4-Zeichenkette**, nicht eine Zahl.
+    Er steht damit **vor** dem Einfuegen fest und kann als Zusatzdaten in die
+    Verschluesselung der beiden Passwoerter wandern (``konto:<id>:imap_passwort``).
+    Ohne das liesse sich ein verschluesseltes Passwort von einem Postfach auf
+    ein anderes kopieren, und die Entschluesselung merkte nichts.
+
+    ⚠️ **IMAP und SMTP haben getrennte Benutzernamen.** Bei den meisten
+    Anbietern sind sie gleich - bei iCloud nicht: Apple will beim Posteingang
+    nur den Namensteil und beim Postausgang die vollstaendige Adresse. Wer hier
+    ein Feld spart, kann bei iCloud lesen aber nicht senden, und die
+    Fehlermeldung ist in beiden Faellen dieselbe wie bei einem Tippfehler.
+    """
+
+    __tablename__ = "konto"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+
+    #: ⚠️ **Zwei Namen, zwei Zwecke.** ``anzeigename`` steht in der
+    #: Ordnerspalte und in den Listen - er darf „Privat" oder „Arbeit"
+    #: heissen. ``absendername`` steht im ``From`` jeder Mail, die hinausgeht,
+    #: und den liest der Empfaenger. Ein Feld fuer beides hiess: Wer sein
+    #: Postfach in der Spalte „Arbeit" nennt, verschickte Post von „Arbeit".
+    anzeigename: Mapped[str] = mapped_column(String(120))
+    #: Leer heisst: ``anzeigename`` nehmen. So bleibt es fuer alle, die vor
+    #: dieser Trennung eingerichtet haben, wie es war.
+    absendername: Mapped[str] = mapped_column(String(120), default="")
+    adresse: Mapped[str] = mapped_column(String(320))
+
+    imap_server: Mapped[str] = mapped_column(String(255))
+    imap_port: Mapped[int] = mapped_column(Integer, default=993)
+    #: "ssl" oder "starttls"
+    imap_sicherheit: Mapped[str] = mapped_column(String(16), default="ssl")
+    imap_benutzer: Mapped[str] = mapped_column(String(320))
+    imap_passwort: Mapped[str] = mapped_column(Text, default="")
+
+    smtp_server: Mapped[str] = mapped_column(String(255))
+    smtp_port: Mapped[int] = mapped_column(Integer, default=587)
+    smtp_sicherheit: Mapped[str] = mapped_column(String(16), default="starttls")
+    smtp_benutzer: Mapped[str] = mapped_column(String(320))
+    smtp_passwort: Mapped[str] = mapped_column(Text, default="")
+
+    #: 1 bis 6 - der Punkt in der Liste. Wird zugeteilt, nicht gewaehlt.
+    #: Freie Schlagworte, kommagetrennt — „privat,verein".
+    #:
+    #: ⚠️ **Bewusst eine Spalte statt einer eigenen Tabelle.** Gefiltert wird
+    #: in der Oberfläche über eine Handvoll Postfächer; es gibt keine Abfrage,
+    #: die nach einem Schlagwort sucht. Eine Nebentabelle brächte hier einen
+    #: Verbund und eine Migration und nichts sonst. Wer je nach Schlagwort
+    #: suchen will, hat den Punkt erreicht, an dem sich die Tabelle lohnt.
+    tags: Mapped[str] = mapped_column(String(255), default="")
+    farbe: Mapped[int] = mapped_column(Integer, default=1)
+    reihenfolge: Mapped[int] = mapped_column(Integer, default=0)
+    aktiv: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    zuletzt_geprueft: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    letzter_fehler: Mapped[str] = mapped_column(Text, default="")
+
+    benutzer: Mapped[Benutzer] = relationship()
+    ordner: Mapped[list["Ordner"]] = relationship(
+        back_populates="konto", cascade="all, delete-orphan"
+    )
+
+
+class Ordner(Base):
+    """Ein Ordner im Postfach.
+
+    ⚠️ **``uidvalidity`` ist keine Zierde.** Aendert der Server sie, ist die
+    gesamte lokale Zuordnung von Nummern zu Nachrichten wertlos und der Ordner
+    muss neu geholt werden. Das ist der Fall, den fast jeder Eigenbau
+    uebersieht - deshalb steht die Spalte hier, bevor die erste Nachricht
+    geholt wird.
+
+    Zahl als Primaerschluessel: Hiervon gibt es spaeter viele, und es steckt
+    kein Geheimnis darin.
+    """
+
+    __tablename__ = "ordner"
+    __table_args__ = (UniqueConstraint("konto_id", "pfad", name="uq_ordner_pfad"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    konto_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("konto.id", ondelete="CASCADE"), index=True
+    )
+
+    #: Der Pfad, wie der Server ihn nennt - "INBOX", "Sent Messages", "Haus/Rechnungen".
+    pfad: Mapped[str] = mapped_column(String(512))
+    #: Was in der Oberflaeche steht - der letzte Teil des Pfades.
+    name: Mapped[str] = mapped_column(String(255))
+    #: posteingang | gesendet | entwuerfe | archiv | junk | papierkorb | eigen
+    rolle: Mapped[str] = mapped_column(String(16), default="eigen")
+
+    abonniert: Mapped[bool] = mapped_column(Boolean, default=True)
+    #: Ob der Ordner Nachrichten aufnehmen kann. Manche Server haben reine
+    #: Zwischenknoten ("\Noselect"), die nur Unterordner tragen.
+    waehlbar: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    uidvalidity: Mapped[int] = mapped_column(Integer, default=0)
+    hoechste_uid: Mapped[int] = mapped_column(Integer, default=0)
+    anzahl: Mapped[int] = mapped_column(Integer, default=0)
+    ungelesen: Mapped[int] = mapped_column(Integer, default=0)
+
+    konto: Mapped[Konto] = relationship(back_populates="ordner")
+
+
+class Nachricht(Base):
+    """Eine Nachricht.
+
+    ⚠️ **Kopfdaten immer, Texte auf Abruf.** ``koerper_text`` und
+    ``koerper_html`` sind leer, bis jemand die Nachricht oeffnet. Wer beim
+    ersten Abgleich alles holt, wartet bei vierzigtausend Mails Stunden und
+    hat danach Gigabyte auf der Platte - gemessen sind Kopfdaten rund fuenf
+    Kilobyte je Nachricht, bereinigtes HTML von Newslettern gern das
+    Zwanzigfache.
+
+    ⚠️ **``uid`` gilt nur zusammen mit der ``uidvalidity`` des Ordners.**
+    Aendert der Server sie, ist die Zuordnung wertlos - siehe Ordner.
+    """
+
+    __tablename__ = "nachricht"
+    __table_args__ = (
+        UniqueConstraint("ordner_id", "uid", name="uq_nachricht_uid"),
+        Index("ix_nachricht_liste", "ordner_id", "datum"),
+        # ⚠️ Teilindex fuer die Ungelesen-Zaehler. Gemessen: ohne ihn 12,8 ms
+        # je Ordner, mit ihm 0,05 ms - bei 120 Ordnern der Unterschied
+        # zwischen fluessig und sekundenlang blockiert.
+        Index("ix_nachricht_ungelesen", "ordner_id", sqlite_where=text("gelesen = 0")),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+    konto_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("konto.id", ondelete="CASCADE"), index=True
+    )
+    ordner_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("ordner.id", ondelete="CASCADE"), index=True
+    )
+
+    uid: Mapped[int] = mapped_column(Integer)
+    message_id: Mapped[str] = mapped_column(String(500), default="")
+    #: Woran zwei Nachrichten als zusammengehoerig erkannt werden. Wird
+    #: mitgeschrieben, obwohl v1 flach anzeigt - spaeter waere es eine
+    #: Wanderung ueber Hunderttausende Zeilen.
+    thread_key: Mapped[str] = mapped_column(String(500), default="", index=True)
+    #: ``References`` und ``In-Reply-To``, durch Leerzeichen getrennt.
+    #: Gebraucht, um Straenge nachtraeglich neu aufbauen zu koennen — ohne die
+    #: Kopfzeilen muesste dafuer jede Mail neu vom Server geholt werden.
+    referenzen: Mapped[str] = mapped_column(Text, default="")
+    #: Der Betreff ohne „Re:", „AW:", „Fwd:" — klein geschrieben. Der Rueckfall,
+    #: wenn eine Mail keine Antwortkette mitbringt.
+    betreff_kern: Mapped[str] = mapped_column(String(500), default="", index=True)
+
+    von_name: Mapped[str] = mapped_column(String(320), default="")
+    von_adresse: Mapped[str] = mapped_column(String(320), default="", index=True)
+    an_json: Mapped[str] = mapped_column(Text, default="[]")
+    kopie_json: Mapped[str] = mapped_column(Text, default="[]")
+
+    betreff: Mapped[str] = mapped_column(Text, default="")
+    datum: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    groesse: Mapped[int] = mapped_column(Integer, default=0)
+
+    gelesen: Mapped[bool] = mapped_column(Boolean, default=False)
+    markiert: Mapped[bool] = mapped_column(Boolean, default=False)
+    beantwortet: Mapped[bool] = mapped_column(Boolean, default=False)
+    hat_anhang: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    anreisser: Mapped[str] = mapped_column(Text, default="")
+    koerper_text: Mapped[str] = mapped_column(Text, default="")
+    #: Bereits bereinigt und mit ausgeklinkten Bildern.
+    koerper_html: Mapped[str] = mapped_column(Text, default="")
+    #: Wie viele Bilder ausgeklinkt wurden - die Oberflaeche zeigt danach den
+    #: Hinweis, und ohne diese Zahl muesste sie im HTML suchen.
+    geblockte_bilder: Mapped[int] = mapped_column(Integer, default=0)
+    koerper_geholt: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+
+    ordner: Mapped["Ordner"] = relationship()
+    anhaenge: Mapped[list["Anhang"]] = relationship(
+        back_populates="nachricht", cascade="all, delete-orphan"
+    )
+
+
+class Anhang(Base):
+    """Ein Anhang.
+
+    ⚠️ **Der Inhalt liegt auf der Platte, nicht in der Datenbank** - unter
+    ``/data/blobs/<sha256>``. Nach Pruefsumme benannt: Dieselbe Datei in zehn
+    Mails liegt einmal da. Und eine SQLite-Datei, die Anhaenge traegt, ist
+    nicht mehr zu sichern.
+    """
+
+    __tablename__ = "anhang"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nachricht_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("nachricht.id", ondelete="CASCADE"), index=True
+    )
+
+    teil_id: Mapped[str] = mapped_column(String(32), default="1")
+    dateiname: Mapped[str] = mapped_column(String(400), default="")
+    mime: Mapped[str] = mapped_column(String(120), default="application/octet-stream")
+    groesse: Mapped[int] = mapped_column(Integer, default=0)
+    #: Bei Inline-Bildern der Wert aus Content-ID.
+    cid: Mapped[str] = mapped_column(String(300), default="")
+    #: Leer, solange der Inhalt noch nicht auf der Platte liegt.
+    blob_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
+
+    nachricht: Mapped[Nachricht] = relationship(back_populates="anhaenge")
+
+
+class Ausgang(Base):
+    """Eine Nachricht, die hinaus soll.
+
+    ⚠️ **Die Warteschlange ueberlebt einen Neustart.** Ohne sie waere eine
+    Mail, die beim Senden auf einen Netzwackler trifft, einfach weg - und der
+    Absender merkt es erst, wenn jemand nachfragt. Die fertigen Bytes liegen
+    unter ``/data/ausgang/<id>.eml``, nicht in der Datenbank: Ein Anhang von
+    zehn Megabyte hat in einer SQLite-Datei nichts verloren.
+    """
+
+    __tablename__ = "ausgang"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+    konto_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("konto.id", ondelete="CASCADE"), index=True
+    )
+
+    #: wartet | unterwegs | gesendet | gescheitert
+    stand: Mapped[str] = mapped_column(String(16), default="wartet", index=True)
+
+    an_json: Mapped[str] = mapped_column(Text, default="[]")
+    betreff: Mapped[str] = mapped_column(Text, default="")
+    message_id: Mapped[str] = mapped_column(String(500), default="")
+
+    versuche: Mapped[int] = mapped_column(Integer, default=0)
+    letzter_fehler: Mapped[str] = mapped_column(Text, default="")
+
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    gesendet: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+
+    konto: Mapped["Konto"] = relationship()
+
+
+class Einstellung(Base):
+    """Was der Betreiber in der Oberflaeche pflegt.
+
+    Schluessel-Wert statt Spalten: Eine neue Einstellung soll keine
+    Schemaaenderung sein. Werte sind Text; wer eine Zahl will, wandelt sie
+    beim Lesen um.
+    """
+
+    __tablename__ = "einstellung"
+
+    schluessel: Mapped[str] = mapped_column(String(64), primary_key=True)
+    wert: Mapped[str] = mapped_column(Text, default="")
+
+
+class Geheimnis(Base):
+    """Interne Schluessel - derzeit genau einer: der verpackte DEK.
+
+    Bewusst eine eigene Tabelle und nicht ``einstellung``: Was hier steht,
+    gehoert nicht dem Betreiber und darf nie in einer Einstellungsseite
+    auftauchen.
+    """
+
+    __tablename__ = "geheimnis"
+
+    schluessel: Mapped[str] = mapped_column(String(64), primary_key=True)
+    wert: Mapped[str] = mapped_column(Text)
+
+
+class Kontakt(Base):
+    """Ein Eintrag im Adressbuch.
+
+    ⚠️ **Die Adresse ist der Schluessel, nicht der Name.** Menschen heissen
+    mehrfach gleich und aendern ihren Namen; die Adresse ist das, woran eine
+    Mail haengt. Deshalb ist sie je Benutzer eindeutig - sonst sammelt das
+    Einsammeln aus Gesendet denselben Menschen zehnmal ein.
+
+    ``quelle`` unterscheidet, was von Hand gepflegt wurde und was nexmail
+    selbst aufgeschnappt hat. Ohne diese Spalte kann man Aufgeschnapptes nie
+    wieder in einem Zug loswerden - und ein Adressbuch, das man nicht
+    aufraeumen kann, benutzt niemand.
+    """
+
+    __tablename__ = "kontakt"
+    __table_args__ = (
+        UniqueConstraint("benutzer_id", "adresse", name="uq_kontakt_adresse"),
+        Index("ix_kontakt_name", "benutzer_id", "name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+
+    name: Mapped[str] = mapped_column(String(320), default="")
+    #: Immer kleingeschrieben abgelegt. Mail-Adressen sind im Domaenenteil
+    #: ohnehin gleichbedeutend, und ein Adressbuch mit "Max@" und "max@"
+    #: nebeneinander ist kaputt.
+    adresse: Mapped[str] = mapped_column(String(320))
+    firma: Mapped[str] = mapped_column(String(320), default="")
+    telefon: Mapped[str] = mapped_column(String(120), default="")
+    notiz: Mapped[str] = mapped_column(Text, default="")
+
+    #: ``hand`` oder ``gesammelt``.
+    quelle: Mapped[str] = mapped_column(String(16), default="hand")
+    #: Wie oft an diese Adresse geschrieben wurde - die Reihenfolge der
+    #: Vorschlaege beim Tippen haengt daran.
+    verwendet: Mapped[int] = mapped_column(Integer, default=0)
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Regel(Base):
+    """Eine Regel: Wenn etwas zutrifft, tu etwas.
+
+    ⚠️ **Die Reihenfolge ist Teil der Bedeutung.** Regeln laufen von oben nach
+    unten; eine Regel mit ``stopp`` beendet den Lauf. Ohne feste Reihenfolge
+    haengt das Ergebnis davon ab, wie die Datenbank die Zeilen zurueckgibt -
+    und das aendert sich, ohne dass jemand etwas anfasst.
+
+    Bedingungen und Aktionen stehen als JSON. Das ist bewusst: Eine neue
+    Bedingungsart soll keine Schemaaenderung sein, und die Zahl der Regeln
+    liegt bei einer Handvoll je Benutzer, nicht bei Tausenden.
+    """
+
+    __tablename__ = "regel"
+    __table_args__ = (Index("ix_regel_reihenfolge", "benutzer_id", "reihenfolge"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+    #: Leer heisst: gilt fuer alle Postfaecher dieses Benutzers.
+    konto_id: Mapped[str] = mapped_column(String(32), default="")
+
+    name: Mapped[str] = mapped_column(String(200), default="")
+    aktiv: Mapped[bool] = mapped_column(Boolean, default=True)
+    reihenfolge: Mapped[int] = mapped_column(Integer, default=0)
+
+    #: "und" oder "oder" - wie die Bedingungen zusammenhaengen.
+    verknuepfung: Mapped[str] = mapped_column(String(8), default="und")
+    #: [{"feld": "von", "vergleich": "enthaelt", "wert": "…"}, …]
+    bedingungen_json: Mapped[str] = mapped_column(Text, default="[]")
+    #: [{"art": "verschieben", "wert": "12"}, …]
+    aktionen_json: Mapped[str] = mapped_column(Text, default="[]")
+
+    #: ⚠️ Nach dieser Regel keine weiteren mehr. Ohne das laeuft eine
+    #: Nachricht durch alle Regeln und wird von der letzten wieder
+    #: weggeschoben - der haeufigste Grund fuer "meine Regeln tun nichts".
+    stopp: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Signatur(Base):
+    """Ein Textbaustein unter der eigenen Post.
+
+    ⚠️ **Je Postfach, nicht je Benutzer.** Wer geschaeftlich und privat aus
+    derselben Anwendung schreibt, will nicht die Firmenanschrift unter der
+    Mail an die Familie.
+    """
+
+    __tablename__ = "signatur"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+    #: Leer heisst: fuer jedes Postfach ohne eigene Signatur.
+    konto_id: Mapped[str] = mapped_column(String(32), default="", index=True)
+
+    name: Mapped[str] = mapped_column(String(200), default="")
+    #: Bereits bereinigt - dieselbe Bereinigung wie beim Senden.
+    html: Mapped[str] = mapped_column(Text, default="")
+    #: Wird bei einer neuen Nachricht von selbst eingesetzt.
+    standard: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Einladung(Base):
+    """Eine ausgesprochene Einladung, die noch niemand angenommen hat.
+
+    ⚠️ **Der Schluessel liegt nur als Hash da.** Er steht in einer Mail und
+    oeffnet ein Konto — das ist ein Passwort, kein Datensatz-Merkmal. Wer die
+    Datenbank liest, darf damit nichts anfangen koennen. Dieselbe Regel wie
+    bei den Wiederherstellungscodes.
+
+    ⚠️ **Der Benutzername wird hier schon festgelegt** und beim Einloesen noch
+    einmal geprueft: Zwischen Einladung und Annahme koennen Wochen liegen, und
+    in der Zeit kann jemand anderes ihn belegt haben.
+    """
+
+    __tablename__ = "einladung"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    schluessel_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    benutzername: Mapped[str] = mapped_column(String(64))
+    anzeigename: Mapped[str] = mapped_column(String(120), default="")
+    #: Wohin die Einladung ging. Nur zum Wiedererkennen in der Liste.
+    adresse: Mapped[str] = mapped_column(String(320), default="")
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    laeuft_ab: Mapped[datetime] = mapped_column(UtcDateTime)
+    #: Gesetzt heisst: angenommen. Die Zeile bleibt als Spur stehen.
+    eingeloest: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+
+
+class Aufgabe(Base):
+    """Eine Mail, die noch etwas von einem will.
+
+    ⚠️ **Die Aufgabe zeigt auf die Mail, sie kopiert sie nicht** — so am
+    01.09.2026 entschieden. Trotzdem stehen hier Betreff und Absender: als
+    **Abzug** fuer den Fall, dass die Mail verschwindet. Eine Aufgabe, die dann
+    nur noch „(nicht mehr da)" heisst, ist wertlos; man weiss nicht einmal
+    mehr, worum es ging.
+
+    ⚠️ **Wiedergefunden wird ueber ``message_id``, nicht ueber ``nachricht_id``.**
+    Wer eine Mail vom Telefon aus in einen anderen Ordner schiebt, bekommt beim
+    naechsten Abgleich eine **neue** Zeile mit neuer Kennung und neuer UID —
+    die alte ist weg. Ueber die Zeilennummer waere die Aufgabe damit verwaist,
+    obwohl die Mail zwei Ordner weiter liegt. Die ``Message-ID`` vergibt der
+    absendende Server, und sie bleibt.
+    """
+
+    __tablename__ = "aufgabe"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+    #: Das Postfach, aus dem die Mail stammt — fuer den farbigen Punkt.
+    konto_id: Mapped[str] = mapped_column(String(32), default="")
+
+    #: Die Zeile, wie sie beim Anlegen hiess. Kann veralten.
+    nachricht_id: Mapped[int | None] = mapped_column(Integer, default=None)
+    #: Der bestaendige Weg zurueck zur Mail.
+    message_id: Mapped[str] = mapped_column(String(500), default="", index=True)
+
+    #: Abzug fuer den Fall, dass die Mail nicht mehr da ist.
+    betreff: Mapped[str] = mapped_column(Text, default="")
+    von_name: Mapped[str] = mapped_column(String(320), default="")
+    von_adresse: Mapped[str] = mapped_column(String(320), default="")
+    mail_datum: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+
+    #: Gesetzt heisst: abgehakt. Die Zeile bleibt stehen.
+    erledigt: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    #: Faelligkeit, ohne Uhrzeit gedacht. Leer heisst: kein Datum.
+    faellig: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    #: Von Hand gezogen. Klein steht oben.
+    reihenfolge: Mapped[int] = mapped_column(Integer, default=0)
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+    __table_args__ = (
+        # ⚠️ Dieselbe Mail nicht zweimal in der Liste. Ohne das entstehen
+        # Doppel, sobald jemand den Menuepunkt zweimal trifft — und abhaken
+        # muss man dann beide.
+        UniqueConstraint("benutzer_id", "message_id", name="uq_aufgabe_mail"),
+    )
+
+
+class OidcAnbieter(Base):
+    """Ein Anmelde-Anbieter nach OpenID Connect — vom Betreiber eingerichtet.
+
+    Aus nexmails Sicht ist ein Anbieter drei Werte: Adresse, Client-ID,
+    Geheimnis. Ob dahinter Keycloak, Authentik, Authelia oder Pocket ID steht,
+    ist dem Code egal — das ist der Sinn der Norm, und deshalb gibt es hier
+    **keine** Anbieter-Sonderfaelle.
+
+    ⚠️ **Ab Werk ist diese Tabelle leer, und dann aendert sich nichts.** Keine
+    Knoepfe auf der Anmeldeseite, keine offenen Adressen — eine Installation,
+    deren Betreiber nie einen Anbieter einrichtet, weiss von OIDC nichts.
+    """
+
+    __tablename__ = "oidc_anbieter"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    #: Kurzform fuer die Adresse: ``/api/oidc/<kuerzel>/start``.
+    kuerzel: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    #: Was auf dem Knopf steht.
+    anzeigename: Mapped[str] = mapped_column(String(120))
+    #: Die Adresse des Anbieters, aus der die Selbstauskunft geholt wird.
+    issuer: Mapped[str] = mapped_column(String(300))
+    client_id: Mapped[str] = mapped_column(String(300))
+    #: Verschluesselt, Kontext ``oidc:<id>:geheimnis``.
+    client_secret: Mapped[str] = mapped_column(Text, default="")
+    #: Leerzeichengetrennt. ``openid`` haengt der Dienst selbst an.
+    scopes: Mapped[str] = mapped_column(String(300), default="openid email profile")
+    aktiv: Mapped[bool] = mapped_column(Boolean, default=True)
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)

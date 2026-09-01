@@ -1,0 +1,165 @@
+/* Eingabefelder — portiert aus nexapps-intern/design/components/forms.
+ *
+ * Input, Select und Switch mit den Eigenschaften ihrer .d.ts. Alle drei
+ * teilen sich Hoehe, Rahmen und Fokusring, damit eine Formularzeile nicht
+ * aus drei verschiedenen Welten besteht.
+ */
+import { useId } from 'react'
+import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
+
+type Groesse = 'sm' | 'md' | 'lg'
+
+const HOEHE: Record<Groesse, string> = {
+  sm: 'h-[var(--control-h-sm)]',
+  md: 'h-[var(--control-h-md)]',
+  lg: 'h-[var(--control-h-lg)]',
+}
+
+const BESCHRIFTUNG = 'text-[12px] font-semibold uppercase tracking-[0.06em] text-fg-3'
+
+/** Der Rahmen um Eingabefelder. Fokus faerbt ihn, ein Fehler uebersteuert ihn. */
+function huelle(fehler: boolean) {
+  return (
+    'fokusrahmen flex items-center gap-2 rounded-sm border bg-surface-3 px-2.5 ' +
+    'transition-[border-color,box-shadow] duration-[var(--dur-fast)] ' +
+    'focus-within:shadow-[var(--focus-ring)] ' +
+    (fehler ? 'border-danger focus-within:border-danger' : 'border-line focus-within:border-accent')
+  )
+}
+
+export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
+  label?: string
+  /** Hilfetext unter dem Feld. */
+  hint?: ReactNode
+  /** Fehlertext — ersetzt hint und faerbt den Rahmen. */
+  error?: string
+  size?: Groesse
+  iconLeft?: ReactNode
+  /** Einheit oder Kuerzel rechts im Feld, z. B. "Port". */
+  suffix?: string
+  /** Feste Laufweite fuer Adressen, Kennungen, Pfade. */
+  mono?: boolean
+}
+
+export function Input({
+  label,
+  hint,
+  error,
+  size = 'md',
+  iconLeft,
+  suffix,
+  mono = false,
+  className = '',
+  ...rest
+}: InputProps) {
+  const kaputt = Boolean(error)
+  return (
+    <label className="flex min-w-0 flex-col gap-1.5">
+      {label && <span className={BESCHRIFTUNG}>{label}</span>}
+      <span className={`${huelle(kaputt)} ${HOEHE[size]} ${rest.disabled ? 'opacity-55' : ''}`}>
+        {iconLeft && <span className="shrink-0 text-fg-4">{iconLeft}</span>}
+        <input
+          className={
+            'min-w-0 flex-1 bg-transparent text-fg-1 outline-none placeholder:text-fg-4 ' +
+            `${mono ? 'font-mono' : ''} ${size === 'sm' ? 'text-[13px]' : 'text-sm'} ${className}`
+          }
+          {...rest}
+        />
+        {suffix && <span className="shrink-0 font-mono text-[11px] text-fg-4">{suffix}</span>}
+      </span>
+      {(hint || error) && (
+        <span className={`text-[12px] ${kaputt ? 'text-danger' : 'text-fg-4'}`}>{error || hint}</span>
+      )}
+    </label>
+  )
+}
+
+export interface SelectOption {
+  value: string
+  label: string
+}
+
+export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
+  label?: string
+  hint?: ReactNode
+  size?: Groesse
+  options?: Array<string | SelectOption>
+}
+
+export function Select({ label, hint, size = 'md', options = [], className = '', children, ...rest }: SelectProps) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1.5">
+      {label && <span className={BESCHRIFTUNG}>{label}</span>}
+      <span className={`${huelle(false)} ${HOEHE[size]}`}>
+        <select
+          className={`min-w-0 flex-1 appearance-none bg-transparent text-sm text-fg-1 outline-none ${className}`}
+          {...rest}
+        >
+          {options.map((o) => {
+            const wert = typeof o === 'string' ? o : o.value
+            const text = typeof o === 'string' ? o : o.label
+            return (
+              <option key={wert} value={wert} className="bg-surface-1 text-fg-1">
+                {text}
+              </option>
+            )
+          })}
+          {children}
+        </select>
+        <ChevronAbwaerts />
+      </span>
+      {hint && <span className="text-[12px] text-fg-4">{hint}</span>}
+    </label>
+  )
+}
+
+function ChevronAbwaerts() {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" className="size-4 shrink-0 text-fg-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  )
+}
+
+export interface SwitchProps {
+  label?: string
+  description?: string
+  checked?: boolean
+  disabled?: boolean
+  onCheckedChange?: (checked: boolean) => void
+}
+
+export function Switch({ label, description, checked = false, onCheckedChange, disabled }: SwitchProps) {
+  const id = useId()
+  return (
+    <div className="flex items-start gap-3">
+      <button
+        type="button"
+        id={id}
+        role="switch"
+        aria-checked={checked}
+        disabled={disabled}
+        onClick={() => onCheckedChange?.(!checked)}
+        className={
+          'relative mt-0.5 h-5 w-9 shrink-0 rounded-pill border transition-colors duration-[var(--dur-fast)] ' +
+          'disabled:cursor-not-allowed disabled:opacity-45 ' +
+          (checked ? 'border-accent bg-accent' : 'border-line bg-surface-3')
+        }
+      >
+        <span
+          aria-hidden
+          className={
+            'absolute top-1/2 size-3.5 -translate-y-1/2 rounded-full transition-[left] duration-[var(--dur-fast)] ' +
+            (checked ? 'left-[18px] bg-[var(--text-on-accent)]' : 'left-[3px] bg-fg-3')
+          }
+        />
+      </button>
+      {(label || description) && (
+        <label htmlFor={id} className="min-w-0 cursor-pointer select-none">
+          {label && <span className="block text-sm text-fg-1">{label}</span>}
+          {description && <span className="block text-[12px] text-fg-4">{description}</span>}
+        </label>
+      )}
+    </div>
+  )
+}

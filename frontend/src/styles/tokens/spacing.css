@@ -1,0 +1,39 @@
+/* ============================================================
+   nexapps — Spacing & Maße. 4px-Raster.
+   ============================================================ */
+:root{
+  --space-0:0px;
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:16px;
+  --space-5:20px;
+  --space-6:24px;
+  --space-7:28px;
+  --space-8:32px;
+  --space-10:40px;
+  --space-12:48px;
+  --space-16:64px;
+  --space-20:80px;
+  --space-24:96px;
+
+  /* Kontrollhöhen */
+  --control-h-sm:28px;
+  --control-h-md:34px;
+  --control-h-lg:40px;
+
+  /* Tabellen-Dichte */
+  --row-h-compact:34px;
+  --row-h-default:44px;
+  --row-h-comfy:56px;
+
+  /* Layout-Gerüst */
+  --rail-w:64px;          /* Icon-Rail */
+  --sidebar-w:232px;      /* ausgeklappte Navigation */
+  --topbar-h:56px;
+  --page-pad:24px;
+  --page-max:1440px;
+  --card-pad:20px;
+  --card-pad-sm:14px;
+  --gutter:16px;
+}

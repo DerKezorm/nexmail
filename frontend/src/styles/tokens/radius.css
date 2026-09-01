@@ -1,0 +1,14 @@
+/* ============================================================
+   nexapps — Radien. Technisch, nie verspielt: max 16px an Flächen.
+   ============================================================ */
+:root{
+  --radius-xs:3px;   /* Checkbox, Mini-Chip */
+  --radius-sm:6px;   /* Input, Badge */
+  --radius-md:8px;   /* Button, Select, Menü-Item */
+  --radius-lg:12px;  /* Karte, Panel */
+  --radius-xl:16px;  /* Dialog, großer Container */
+  --radius-pill:999px; /* Status-Chip, Switch, Avatar */
+  --border-w:1px; /* @kind other */
+  --border-w-strong:1.5px; /* @kind other */
+  --focus-w:3px; /* @kind other */
+}

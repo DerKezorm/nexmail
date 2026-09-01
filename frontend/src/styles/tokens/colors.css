@@ -1,0 +1,139 @@
+/* ============================================================
+   nexapps — Farben
+   Basis-Rampen (--gray-*, --nex-*, ...) niemals direkt in
+   Komponenten benutzen. Immer die semantischen Aliase unten.
+   ============================================================ */
+:root{
+  /* Graphit-Neutrale, leicht kühl/grünlich gebrochen */
+  --gray-000:#ffffff;
+  --gray-025:#f6f8f8;
+  --gray-050:#edf1f1;
+  --gray-100:#dde3e3;
+  --gray-200:#c3cccb;
+  --gray-300:#9ba6a5;
+  --gray-400:#74807f;
+  --gray-500:#56615f;
+  --gray-600:#3c4645;
+  --gray-700:#2a3332;
+  --gray-800:#1d2524;
+  --gray-850:#171e1d;
+  --gray-900:#121817;
+  --gray-950:#0b0f0f;
+  --gray-1000:#060909;
+
+  /* nex — Signalgrün (Primärfarbe) */
+  --nex-100:#d6fbee;
+  --nex-200:#9bf2d5;
+  --nex-300:#5fe4bb;
+  --nex-400:#23d19e;
+  --nex-500:#00b884;
+  --nex-600:#009b70;
+  --nex-700:#007a58;
+  --nex-800:#02543e;
+  --nex-900:#043226;
+
+  /* Sekundäre Signalfarben */
+  --blue-300:#8cbcff;   --blue-400:#4c9bff;  --blue-500:#2e7ff0;  --blue-700:#1a4fa0;  --blue-900:#0d2445;
+  --amber-300:#ffd07a;  --amber-400:#ffb020; --amber-500:#e5951a; --amber-700:#8a5a0d; --amber-900:#3d2a08;
+  --coral-300:#ff9d92;  --coral-400:#ff6b5a; --coral-500:#e5484d; --coral-700:#8f2b2f; --coral-900:#3f1417;
+  --pink-400:#e86fa0;   --pink-500:#cf4f83;
+  --slate-400:#9aa6b2;
+
+  /* ---------- Semantik: Flächen ---------- */
+  --canvas:var(--gray-950);          /* App-Hintergrund */
+  --surface-1:var(--gray-900);       /* Karte / Panel */
+  --surface-2:var(--gray-850);       /* Karte auf Karte, Tabellenkopf */
+  --surface-3:var(--gray-800);       /* Hover-Zeile, Input */
+  --surface-inset:var(--gray-1000);  /* Code-Block, Terminal */
+  --surface-overlay:rgba(6,9,9,.72); /* Dialog-Backdrop */
+  --surface-glass:rgba(18,24,23,.72);
+
+  /* ---------- Semantik: Text ---------- */
+  --text-1:var(--gray-050);          /* Headlines, Werte */
+  --text-2:var(--gray-300);          /* Body */
+  --text-3:var(--gray-400);          /* Labels, Meta */
+  --text-4:var(--gray-500);          /* Disabled, Platzhalter */
+  --text-accent:var(--nex-400);
+  --text-on-accent:var(--gray-1000);
+  --text-inverse:var(--gray-950);
+
+  /* ---------- Semantik: Rahmen ---------- */
+  --border-subtle:#222c2b;           /* Standard-Trennlinie */
+  --border-default:#2f3a38;          /* Karte, Input */
+  --border-strong:#41504d;           /* Hover, aktiv */
+  --border-accent:var(--nex-500);
+
+  /* ---------- Semantik: Aktion ---------- */
+  --accent:var(--nex-400);
+  --accent-hover:var(--nex-300);
+  --accent-press:var(--nex-500);
+  --accent-soft:rgba(35,209,158,.14);
+  --accent-soft-hover:rgba(35,209,158,.22);
+  --accent-line:rgba(35,209,158,.32);
+
+  /* ---------- Semantik: Status ---------- */
+  --success:var(--nex-400);   --success-soft:rgba(35,209,158,.14);   --success-text:var(--nex-300);
+  --warning:var(--amber-400); --warning-soft:rgba(255,176,32,.14);   --warning-text:var(--amber-300);
+  --danger:var(--coral-400);  --danger-soft:rgba(255,107,90,.14);    --danger-text:var(--coral-300);
+  --info:var(--blue-400);     --info-soft:rgba(76,155,255,.14);      --info-text:var(--blue-300);
+  --neutral-soft:rgba(155,166,165,.12);
+
+  /* ---------- Datenvisualisierung (Reihenfolge = Priorität) ---------- */
+  --data-1:var(--nex-400);
+  --data-2:var(--blue-400);
+  --data-3:var(--amber-400);
+  --data-4:var(--coral-400);
+  --data-5:var(--pink-400);
+  --data-6:var(--slate-400);
+  --data-grid:#1e2726;               /* Chart-Gitterlinien */
+  --data-track:#202928;              /* leerer Balken / Progress-Track */
+
+  /* Fokus */
+  --focus-ring:0 0 0 3px rgba(35,209,158,.30);
+  --focus-ring-danger:0 0 0 3px rgba(255,107,90,.30);
+}
+
+/* ============================================================
+   Light-Theme — <html data-theme="light">
+   Für Tabellen-/Report-Ansichten und Druck.
+   ============================================================ */
+[data-theme="light"]{
+  --canvas:var(--gray-025);
+  --surface-1:var(--gray-000);
+  --surface-2:var(--gray-025);
+  --surface-3:var(--gray-050);
+  --surface-inset:var(--gray-900);
+  --surface-overlay:rgba(11,15,15,.40);
+  --surface-glass:rgba(255,255,255,.78);
+
+  --text-1:var(--gray-900);
+  --text-2:var(--gray-600);
+  --text-3:var(--gray-500);
+  --text-4:var(--gray-400);
+  --text-accent:var(--nex-700);
+  --text-on-accent:var(--gray-000);
+  --text-inverse:var(--gray-025);
+
+  --border-subtle:var(--gray-100);
+  --border-default:var(--gray-200);
+  --border-strong:var(--gray-300);
+
+  --accent:var(--nex-600);
+  --accent-hover:var(--nex-500);
+  --accent-press:var(--nex-700);
+  --accent-soft:rgba(0,155,112,.10);
+  --accent-soft-hover:rgba(0,155,112,.16);
+  --accent-line:rgba(0,155,112,.28);
+
+  --success:var(--nex-600);   --success-soft:rgba(0,155,112,.10);  --success-text:var(--nex-700);
+  --warning:var(--amber-500); --warning-soft:rgba(229,149,26,.12); --warning-text:var(--amber-700);
+  --danger:var(--coral-500);  --danger-soft:rgba(229,72,77,.10);   --danger-text:var(--coral-700);
+  --info:var(--blue-500);     --info-soft:rgba(46,127,240,.10);    --info-text:var(--blue-700);
+  --neutral-soft:rgba(86,97,95,.08);
+
+  --data-1:var(--nex-600); --data-2:var(--blue-500); --data-3:var(--amber-500);
+  --data-4:var(--coral-500); --data-5:var(--pink-500); --data-6:var(--gray-400);
+  --data-grid:var(--gray-100); --data-track:var(--gray-100);
+
+  --focus-ring:0 0 0 3px rgba(0,155,112,.24);
+}

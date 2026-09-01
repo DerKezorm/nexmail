@@ -1,0 +1,24 @@
+/* ============================================================
+   nexapps — Tiefe. Auf dunklem Canvas trägt der Rahmen,
+   der Schatten ist nur Beiwerk. Kein Glow außer bei Fokus.
+   ============================================================ */
+:root{
+  --shadow-0:none;
+  --shadow-1:0 1px 2px rgba(0,0,0,.40);
+  --shadow-2:0 4px 12px -2px rgba(0,0,0,.50);
+  --shadow-3:0 16px 40px -8px rgba(0,0,0,.60);
+  --shadow-4:0 32px 80px -16px rgba(0,0,0,.70);
+  --shadow-inset:inset 0 1px 0 rgba(255,255,255,.03);
+  --blur-glass:12px; /* @kind other */
+
+  /* Karten-Rezept: 1px Rahmen + Fläche + shadow-1 */
+  --card-border:var(--border-w) solid var(--border-default);
+  --card-shadow:var(--shadow-1);
+}
+[data-theme="light"]{
+  --shadow-1:0 1px 2px rgba(11,15,15,.06);
+  --shadow-2:0 4px 12px -2px rgba(11,15,15,.10);
+  --shadow-3:0 16px 40px -8px rgba(11,15,15,.14);
+  --shadow-4:0 32px 80px -16px rgba(11,15,15,.18);
+  --shadow-inset:inset 0 1px 0 rgba(255,255,255,.6);
+}

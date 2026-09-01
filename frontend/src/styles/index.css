@@ -1,0 +1,216 @@
+/* nexmail — Einstiegspunkt fuer alles Gestalterische.
+ *
+ * Reihenfolge zaehlt: erst die Schriftdateien, dann die nexapps-Tokens
+ * (sie sind die Wahrheit ueber Farbe, Schrift, Abstand, Bewegung), dann
+ * Tailwind mit einer @theme-Bruecke auf genau diese Tokens.
+ *
+ * Regel fuer alles Weitere: **nie eine Farbe erfinden.** Wer einen Ton
+ * braucht, den es hier nicht gibt, hat entweder die falsche Rolle gewaehlt
+ * oder muss das Design-System ergaenzen - nicht die Komponente.
+ */
+
+/* Schriften aus dem npm-Paket, mitgebaut, kein fremder Server. */
+@import '@fontsource/space-grotesk/400.css';
+@import '@fontsource/space-grotesk/500.css';
+@import '@fontsource/space-grotesk/600.css';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-sans/400-italic.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+
+/* Die nexapps-Tokens, wortwoertlich uebernommen. */
+@import './tokens/fonts.css';
+@import './tokens/colors.css';
+@import './tokens/typography.css';
+@import './tokens/spacing.css';
+@import './tokens/radius.css';
+@import './tokens/elevation.css';
+@import './tokens/motion.css';
+/* ⚠️ **`base.css` gehoert in eine Schicht, und das ist kein Schoenheitsfehler.**
+ *
+ * Tailwind 4 legt seine Hilfsklassen in `@layer utilities`. CSS ohne Schicht
+ * gewinnt gegen jede Schicht - unabhaengig von der Spezifitaet. Ungeschichtet
+ * importiert schlaegt deshalb jede Element-Regel aus dem Design-System jede
+ * Tailwind-Klasse:
+ *
+ *     h1 { margin: 0 }        schlaegt   class="mb-6"
+ *     p  { margin: 0 0 12px } schlaegt   class="mb-0"
+ *
+ * Gemessen, nicht vermutet: `mb-0` auf einem `<p>` lieferte vorher 12px und
+ * nachher 0px; das `mb-6` unter der Anmelde-Ueberschrift lieferte vorher 0px
+ * und nachher 24px. Das erklaert eine ganze Reihe Abstaende, die "irgendwie
+ * nicht sitzen" - und man sucht den Fehler in der Komponente.
+ *
+ * (Beim Nachmessen im Browser: Tailwind erzeugt nur Klassen, die im
+ * Quelltext stehen. Eine Probe mit einer Klasse, die nirgends benutzt wird,
+ * misst nichts - die Regel existiert dann gar nicht.)
+ */
+@import './tokens/base.css' layer(base);
+
+@import 'tailwindcss';
+
+/* Die Bruecke. "inline" ist hier wichtig: Damit schreibt Tailwind
+ * var(--surface-1) direkt in die Regel, statt eine eigene Variable
+ * dazwischenzuschieben - so wirkt der Wechsel auf [data-theme="light"]
+ * ohne jeden Sonderfall. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-inset: var(--surface-inset);
+  --color-surface-overlay: var(--surface-overlay);
+  --color-surface-glass: var(--surface-glass);
+
+  --color-fg-1: var(--text-1);
+  --color-fg-2: var(--text-2);
+  --color-fg-3: var(--text-3);
+  --color-fg-4: var(--text-4);
+  --color-on-accent: var(--text-on-accent);
+
+  --color-line-subtle: var(--border-subtle);
+  --color-line: var(--border-default);
+  --color-line-strong: var(--border-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-press: var(--accent-press);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-accent-text: var(--text-accent);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-neutral-soft: var(--neutral-soft);
+
+  /* Die Palette fuer die Postfach-Punkte. Reihenfolge = Vergabereihenfolge:
+   * das erste Postfach bekommt data-1, das zweite data-2, und so fort.
+   * Alle sechs sind im Design-System auf Kontrast und Farbfehlsichtigkeit
+   * geprueft, hell wie dunkel - deshalb waehlt nexmail sie zu und laesst
+   * niemanden selbst mischen. */
+  --color-data-1: var(--data-1);
+  --color-data-2: var(--data-2);
+  --color-data-3: var(--data-3);
+  --color-data-4: var(--data-4);
+  --color-data-5: var(--data-5);
+  --color-data-6: var(--data-6);
+
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-pill: var(--radius-pill);
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+/* --- Was der Reset nicht abdeckt ------------------------------------- */
+
+html, body, #root { height: 100%; }
+
+/* Die App scrollt nie als Ganzes; das tun nur einzelne Spalten. */
+body { overflow: hidden; }
+
+/* Schmale Rollbalken. In einer vierspaltigen Ansicht kosten die breiten
+ * Standardbalken drei Mal Platz, den die Nachrichtenliste besser braucht. */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--radius-pill);
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: content-box; }
+
+/* ⚠️ **Wo eine Huelle den Fokusring traegt, darf das Feld darin ihn nicht
+ * auch tragen.** base.css aus dem Design-System gibt jedem
+ * input:focus-visible einen box-shadow. Unsere Eingabefelder sitzen in einer
+ * Huelle, die genau denselben Ring schon zeichnet - beide zusammen ergeben
+ * zwei Rahmen ineinander, und das sieht aus wie ein Fehler. Es war einer.
+ *
+ * `outline-none` am Feld hilft nicht: Der Ring ist ein box-shadow, keine
+ * outline. */
+.fokusrahmen:focus-within :is(input, select, textarea):focus-visible {
+  box-shadow: none;
+}
+
+/* Verweise erben im Fliesstext den Rahmen aus base.css. In der Oberflaeche
+ * ist das falsch: Ein Ordnername ist kein Link ins Netz. */
+a.blank { border-bottom: none; color: inherit; }
+
+/* Der Griff zwischen zwei Spalten. Sichtbar wird er erst beim Zeigen -
+ * bis dahin soll die Trennlinie eine Trennlinie bleiben. */
+.griff {
+  width: 5px;
+  margin-inline: -2px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background-color var(--dur-fast) var(--ease-standard);
+  flex: none;
+  z-index: 5;
+}
+.griff:hover, .griff[data-aktiv='true'] { background: var(--accent-line); }
+
+/* Waehrend am Griff gezogen wird, darf nichts markiert werden. */
+body[data-zieht='true'] { cursor: col-resize; user-select: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* --- Was im Editor geschrieben wird --------------------------------- */
+/*
+ * Der Reset aus base.css nimmt Listen und Zitaten ihre Form. Im Lesebereich
+ * ist das richtig - dort kommt das Stylesheet aus dem Rahmen. Im Editor nicht:
+ * Wer eine Aufzaehlung setzt und keine Punkte sieht, glaubt, der Knopf sei
+ * kaputt.
+ */
+.prose-nexmail ul { list-style: disc; padding-left: 1.5em; margin: 0 0 12px; }
+.prose-nexmail ol { list-style: decimal; padding-left: 1.5em; margin: 0 0 12px; }
+.prose-nexmail li { margin: 0 0 4px; }
+.prose-nexmail blockquote {
+  margin: 0 0 12px 12px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border-default);
+  color: var(--text-2);
+}
+.prose-nexmail p { margin: 0 0 12px; }
+.prose-nexmail a { color: var(--text-accent); }
+.prose-nexmail img { max-width: 100%; height: auto; }
+.prose-nexmail pre {
+  background: var(--surface-2);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+}
+/* Ein leerer Editor soll nicht wie ein kaputtes Feld aussehen. */
+.prose-nexmail:focus { outline: none; }
+
+/* ⚠️ **Die aufgeklappte Liste eines `<select>` malt der Browser selbst.**
+ * Sie erbt nichts vom gestylten Feld darüber: Ohne eigene Farbe steht auf
+ * schwarzem Grund plötzlich eine weiße Liste mit blauer Markierung — genau
+ * das war am 31.08.2026 in „Regeln" und „Signaturen" zu sehen.
+ *
+ * Bis dahin färbte jede Aufrufstelle ihre `<option>` von Hand. Eine Regel,
+ * die man an jeder Stelle neu befolgen muss, wird vergessen — deshalb steht
+ * sie jetzt einmal hier und gilt überall. Bewusst ohne `@layer`: So schlägt
+ * sie jede Utility-Klasse und kann nicht versehentlich überschrieben werden.
+ */
+select option,
+select optgroup {
+  background-color: var(--surface-1);
+  color: var(--text-1);
+}

@@ -1,0 +1,15 @@
+/* nexapps Webfonts — SELBST MITGELIEFERT.
+ *
+ * Das Original im Design-System holt die drei Schriften bei Google. Fuer
+ * nexmail geht das nicht: Ein Mail-Client, der beim Oeffnen einen fremden
+ * Server anfunkt, verraet jedem Mitlesenden, wann sein Besitzer Mails liest -
+ * und ausgerechnet dieser Client blockiert Zaehlpixel in fremden Mails.
+ *
+ * Die Dateien kommen ueber @fontsource (npm) und werden mitgebaut; der
+ * Import steht in ../index.css. Hier bleiben nur die Namen.
+ */
+:root{
+  --font-display:"Space Grotesk","Helvetica Neue",Helvetica,sans-serif;
+  --font-sans:"IBM Plex Sans","Helvetica Neue",Helvetica,sans-serif;
+  --font-mono:"JetBrains Mono","SFMono-Regular",Consolas,monospace;
+}

@@ -1,0 +1,41 @@
+# Abhaengigkeiten und Bauergebnisse
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv/
+
+# Betriebsdaten - hier liegen Datenbank, Schluessel und Anhaenge.
+# ⚠️ Niemals einchecken: secret.key oeffnet jedes hinterlegte Postfach.
+data/
+data-dev/
+data-dev2/
+
+# Umgebung
+.env
+*.local
+
+# Testlaeufe
+test-results/
+playwright-report/
+frontend/tests/.sitzung.json
+
+# --- Bleibt bewusst lokal ------------------------------------------------ #
+#
+# ⚠️ CLAUDE.md ist die Arbeitsdokumentation: jede Entscheidung mit Begruendung,
+# dazu Zitate, Postfachadressen, die Adresse des Anmeldedienstes und Pfade auf
+# dem Rechner des Betreibers. Sie gehoert nicht ins Netz.
+CLAUDE.md
+
+# ⚠️ Die Tabu-Liste des Veroeffentlichungs-Waechters. Sie traegt genau die
+# Woerter, die nicht ins Netz duerfen — sie selbst also erst recht nicht.
+.veroeffentlichung-tabu
+
+# ⚠️ Die Pruefstaende starten Container mit fest eingetragenen Zugangsdaten und
+# richten fremde Dienste ein. Nuetzlich hier, missverstaendlich dort.
+pruefstand/
+
+# Planung und die Fallstricke aus dem Schwesterprojekt - beides deutsch und
+# nach innen gerichtet.
+SPAETER.md
+FALLSTRICKE.md

@@ -1,0 +1,105 @@
+# nexmail — start with:  docker compose up -d
+#
+# On first run you set a username and password in the browser. After that this
+# route is closed.
+#
+# To build from source instead of pulling the image, comment out `image:` and
+# uncomment `build: .`.
+
+services:
+  nexmail:
+    image: ghcr.io/derkezorm/nexmail:latest
+    # build: .
+    container_name: nexmail
+    restart: unless-stopped
+
+    ports:
+      # Host port on the left, container port on the right.
+      - "5174:8000"
+
+    volumes:
+      # ⚠️ **A local disk, never an SMB or NFS share.** That is the one way
+      # SQLite genuinely loses data — its locking does not work reliably over
+      # network filesystems. On a NAS use a path on the internal volume, not a
+      # mounted share.
+      - ./data:/data
+
+    environment:
+      # Who should own the files in the data directory. The container fixes the
+      # permissions itself on startup.
+      PUID: 1000
+      PGID: 1000
+
+      # ⚠️ **The key that encrypts the mailbox passwords.** Leaving it empty is
+      # fine: nexmail creates one on first start and stores it as
+      # /data/secret.key.
+      #
+      # Setting it here moves the key out of the data directory — a stolen
+      # backup alone is then worthless. That is the one effective lever against
+      # someone who gets at the files.
+      #
+      # It then belongs in a .env next to this file, not in a repository. And it
+      # must be backed up: without it the database is unreadable.
+      NEXMAIL_SECRET_KEY: ${NEXMAIL_SECRET_KEY:-}
+
+      # ⚠️ **The emergency exit.** Disables the second factor — for exactly one
+      # situation: the phone with the authenticator is gone and so are the
+      # recovery codes. Set to "1", sign in, set the second factor up again,
+      # clear it.
+      #
+      # While it is set, nexmail warns on every start in the log.
+      NEXMAIL_ZWEI_FAKTOR_AUS: ${NEXMAIL_ZWEI_FAKTOR_AUS:-}
+
+      # Sub path behind a reverse proxy, e.g. /nexmail for
+      # https://example.org/nexmail/. Empty means: at the root.
+      #
+      # When set, nexmail answers every address twice — with and without the
+      # prefix. Both are needed, because proxies are configured both ways.
+      NEXMAIL_URL_BASE: ${NEXMAIL_URL_BASE:-}
+
+      # Whether the session cookie may only travel over HTTPS.
+      #
+      #   auto   Secure when the request arrived over https (default)
+      #   on     always — for a proxy that terminates TLS and forwards plain
+      #          http internally
+      #   off    never
+      #
+      # ⚠️ Do not set "on" if nexmail should also be reachable over http://:
+      # the browser discards a Secure cookie sent over http, and then nobody
+      # gets in.
+      NEXMAIL_COOKIE_SECURE: ${NEXMAIL_COOKIE_SECURE:-auto}
+
+      # Where nexmail takes the client address from. Used by the sign-in rate
+      # limiter.
+      #
+      #   empty     count per account only (default, always safe)
+      #   direct    nexmail is exposed directly
+      #   proxy     exactly one reverse proxy in front
+      #   proxy:2   two, e.g. Cloudflare and your own behind it
+      #
+      # ⚠️ Leave empty when unsure. If this says "direct" while a proxy sits in
+      # front, every request looks like the same address — and then a single
+      # typo locks out the whole household.
+      NEXMAIL_CLIENT_IP: ${NEXMAIL_CLIENT_IP:-}
+
+      # How long a sign-in lasts without use.
+      NEXMAIL_SITZUNG_TAGE: 30
+
+      # How often nexmail checks for new mail by itself (seconds). 0 turns the
+      # background sync off — mail then arrives on click. Below 30 seconds
+      # would be impolite towards the provider.
+      NEXMAIL_TAKT_SEKUNDEN: ${NEXMAIL_TAKT_SEKUNDEN:-120}
+
+      # Display time zone, e.g. Europe/Berlin.
+      # ⚠️ **A container runs in UTC**, you do not. Without this the interface
+      # uses the browser's zone — on your phone abroad, the wrong one. It can
+      # also be set in the interface.
+      NEXMAIL_ZEITZONE: ${NEXMAIL_ZEITZONE:-}
+
+      # Log verbosity: leise | normal | ausfuehrlich | alles
+      #
+      # ⚠️ **An emergency exit.** When set it overrides the setting in the
+      # interface — needed when nexmail does not start at all and there is no
+      # interface to reach. Otherwise leave it empty: the deep levels switch
+      # themselves back off when set in the interface, but not here.
+      NEXMAIL_LOG_STUFE: ${NEXMAIL_LOG_STUFE:-}
