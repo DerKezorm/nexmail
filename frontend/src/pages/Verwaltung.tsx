@@ -23,8 +23,9 @@ import { Button, EmptyState, Input, Select, Tabs } from '../ds'
 import { Benutzerverwaltung } from './Benutzerverwaltung'
 import { OidcVerwaltung } from './OidcVerwaltung'
 import { Protokoll } from './Protokoll'
+import { Sicherungen } from './Sicherungen'
 
-export type VerwaltungsReiter = 'protokoll' | 'server' | 'benutzer' | 'oidc'
+export type VerwaltungsReiter = 'protokoll' | 'server' | 'benutzer' | 'oidc' | 'sicherungen'
 
 interface Props {
   reiter: VerwaltungsReiter
@@ -63,6 +64,7 @@ export function Verwaltung({ reiter, aufReiter, ich }: Props) {
             { id: 'server', label: t('verwaltung.server') },
             { id: 'benutzer', label: t('verwaltung.benutzer') },
             { id: 'oidc', label: t('verwaltung.oidc') },
+            { id: 'sicherungen', label: t('verwaltung.sicherungen') },
           ]}
         />
 
@@ -73,8 +75,10 @@ export function Verwaltung({ reiter, aufReiter, ich }: Props) {
             <Serverdaten />
           ) : reiter === 'benutzer' ? (
             <Benutzerverwaltung />
-          ) : (
+          ) : reiter === 'oidc' ? (
             <OidcVerwaltung />
+          ) : (
+            <Sicherungen />
           )}
         </div>
       </div>

@@ -39,3 +39,9 @@ pruefstand/
 # nach innen gerichtet.
 SPAETER.md
 FALLSTRICKE.md
+
+# Der lokale Entwicklungs-Aufsatz: baut aus dem Quelltext statt vom Abbild.
+docker-compose.override.yml
+
+# Die Zugangsdaten der Oberflaechen-Tests. Nie mitliefern.
+frontend/tests/.zugang

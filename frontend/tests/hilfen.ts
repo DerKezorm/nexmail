@@ -223,8 +223,23 @@ export async function jederKnopfHatEinenNamen(seite: Page) {
     const schlecht: string[] = []
     for (const b of Array.from(document.querySelectorAll<HTMLElement>('button'))) {
       if (b.offsetParent === null) continue // unsichtbar zählt nicht
+      // ⚠️ **`aria-labelledby` zaehlt mit** — es ist der uebliche Weg, wenn
+      // die Beschriftung ohnehin sichtbar danebensteht, und ein Wächter, der
+      // ihn nicht kennt, treibt zum Verdoppeln desselben Textes. Aufgeloest
+      // wird die Kennung wirklich: Zeigt sie ins Leere, hat der Knopf keinen
+      // Namen — und genau das soll auffallen.
+      const verweis = b.getAttribute('aria-labelledby')
+      const ausVerweis = verweis
+        ? (verweis
+            .split(/\s+/)
+            .map((k) => document.getElementById(k)?.textContent ?? '')
+            .join(' ')
+            .trim() || null)
+        : null
+
       const name =
         b.getAttribute('aria-label') ??
+        ausVerweis ??
         b.getAttribute('title') ??
         Array.from(b.childNodes)
           .filter((n) => !(n instanceof HTMLElement) || n.getAttribute('aria-hidden') === null)

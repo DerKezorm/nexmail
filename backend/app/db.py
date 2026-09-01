@@ -23,10 +23,6 @@ from .models import Base, Geheimnis
 
 logger = logging.getLogger("nexmail.db")
 
-#: Wie viele Sicherungen der Schemapflege aufgehoben werden. Sie entstehen nur
-#: bei einer tatsaechlichen Aenderung, praktisch also nur nach Updates.
-SICHERUNGEN_BEHALTEN = 5
-
 _einstellungen = get_settings()
 
 engine = create_engine(
@@ -102,9 +98,13 @@ def _sichern() -> None:
     shutil.copy2(_einstellungen.db_path, ziel)
     logger.info("Database backed up to %s before a schema change.", ziel)
 
-    alt = sorted(ordner.glob("nexmail-*.db"))[:-SICHERUNGEN_BEHALTEN]
-    for datei in alt:
-        datei.unlink(missing_ok=True)
+    # ⚠️ **Hier wird nicht aufgeraeumt.** Wie viele Ruecksetzpunkte liegen
+    # bleiben, stellt der Betreiber ein - und diese Funktion laeuft, bevor die
+    # Datenbank lesbar ist, kennt die Zahl also nicht. Zwei Aufraeumer mit
+    # verschiedenen Zahlen waeren schlimmer als einer: Die Zahl in der
+    # Oberflaeche waere dann eine Behauptung, die ein Update stillschweigend
+    # widerruft. Geraeumt wird einmal beim Start, in
+    # ``services.sicherungsliste.aufraeumen``.
 
 
 def _dek_laden(db: Session) -> None:

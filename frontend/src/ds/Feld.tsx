@@ -131,6 +131,7 @@ export interface SwitchProps {
 
 export function Switch({ label, description, checked = false, onCheckedChange, disabled }: SwitchProps) {
   const id = useId()
+  const beschriftung = `${id}-text`
   return (
     <div className="flex items-start gap-3">
       <button
@@ -138,6 +139,14 @@ export function Switch({ label, description, checked = false, onCheckedChange, d
         id={id}
         role="switch"
         aria-checked={checked}
+        /* ⚠️ **`<label for>` benennt keinen Knopf.** Es wirkt nur auf
+           Formularfelder (input, select, textarea) — ein `<button>` bleibt
+           damit fuer Vorleseprogramme stumm. Der Schalter sah richtig
+           ausgezeichnet aus und war es nicht, und zwar an **jeder** Stelle,
+           an der er benutzt wird: Darstellung, OIDC, Regeln, Signaturen,
+           Ueber. Gefunden am 01.09.2026 von `jederKnopfHatEinenNamen`. */
+        aria-labelledby={label ? beschriftung : undefined}
+        aria-label={label ? undefined : description}
         disabled={disabled}
         onClick={() => onCheckedChange?.(!checked)}
         className={
@@ -156,7 +165,11 @@ export function Switch({ label, description, checked = false, onCheckedChange, d
       </button>
       {(label || description) && (
         <label htmlFor={id} className="min-w-0 cursor-pointer select-none">
-          {label && <span className="block text-sm text-fg-1">{label}</span>}
+          {label && (
+            <span id={beschriftung} className="block text-sm text-fg-1">
+              {label}
+            </span>
+          )}
           {description && <span className="block text-[12px] text-fg-4">{description}</span>}
         </label>
       )}

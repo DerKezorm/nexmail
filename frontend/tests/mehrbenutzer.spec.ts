@@ -14,6 +14,14 @@ import { anmelden, keineRohenSchluessel } from './hilfen'
 
 const NAME = 'zz-probebenutzer'
 
+/* ⚠️ **Der Betreiber heisst nicht in jeder Installation gleich.** Bis zum
+   01.09.2026 stand hier der Name aus `data-dev` fest im Test; beim Ausmisten
+   fuer das oeffentliche Repo wurde der Benutzer umbenannt, und der Test
+   meldete danach „Der Betreiber steht nicht in der Benutzerliste" — was
+   stimmte, aber auf die falsche Ursache zeigte. Dieselbe Quelle wie die
+   Anmeldung: `NEXMAIL_TEST_USER`. */
+const BETREIBER = process.env.NEXMAIL_TEST_USER ?? 'betreiber'
+
 /* ⚠️ **Wohin die Probe-Einladung geht, steht nicht im Repo.** Eine Adresse im
    Quelltext wäre entweder erfunden (dann lehnt der Mailserver sie ab und der
    Test prüft den Fehlerweg statt des guten) oder echt (dann steht eine private
@@ -33,7 +41,7 @@ test('Die Verwaltung zeigt Benutzer und offene Einladungen', async ({ page }) =>
   await page.getByRole('tab', { name: 'Benutzer' }).click()
 
   await expect(
-    page.getByText('anna', { exact: false }).first(),
+    page.getByText(BETREIBER, { exact: false }).first(),
     'Der Betreiber steht nicht in der Benutzerliste.',
   ).toBeVisible({ timeout: 10_000 })
   await keineRohenSchluessel(page)
@@ -130,9 +138,9 @@ test('Der Betreiber hat keinen Papierkorb an sich selbst', async ({ page }) => {
      Anwendung heraus führt kein Weg zurück. */
   await zurVerwaltung(page)
   await page.getByRole('tab', { name: 'Benutzer' }).click()
-  await expect(page.getByText('anna', { exact: false }).first()).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText(BETREIBER, { exact: false }).first()).toBeVisible({ timeout: 10_000 })
 
-  const zeile = page.locator('li').filter({ hasText: 'anna' }).first()
+  const zeile = page.locator('li').filter({ hasText: BETREIBER }).first()
   expect(
     await zeile.getByRole('button', { name: 'Benutzer entfernen' }).count(),
     'Der Betreiber lässt sich in der Oberfläche entfernen.',

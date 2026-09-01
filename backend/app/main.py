@@ -42,6 +42,7 @@ from .routers import (
     sicherung,
     sitzungen,
     suche,
+    ueber as ueber_router,
     verfassen,
 )
 from .services import imap as imapdienst
@@ -108,6 +109,13 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
         "Zeitpunkt gibt es kein Konto, das sich anmelden könnte. Schließt sich "
         "selbst, sobald ein Benutzer existiert — wie /api/setup/konto."
     ),
+    "/api/sicherung/pruefen-vor-einrichtung": (
+        "Der Blick ins Archiv, bevor es eingespielt wird — auf einer frischen "
+        "Installation also ohne Konto, genau wie das Einspielen selbst. "
+        "⚠️ Er gibt nur preis, was ohnehin nur mit dem Archivpasswort zu "
+        "lesen ist: Ohne das Passwort antwortet der Weg mit 400. Schließt "
+        "sich, sobald ein Benutzer existiert."
+    ),
 }
 
 
@@ -160,6 +168,19 @@ async def lebenslauf(_: FastAPI):
         if weg:
             logger.info("Removed %s expired session(s).", weg)
 
+        # ⚠️ **Der einzige Ort, an dem Ruecksetzpunkte weggeworfen werden.**
+        # ``db._sichern`` legt beim Schemawechsel einen an, kann aber nicht
+        # aufraeumen: Es laeuft, bevor die Datenbank lesbar ist, und kennt die
+        # eingestellte Zahl nicht. Gaebe es dort einen zweiten Aufraeumer mit
+        # einer festen Zahl, waere die Zahl in der Oberflaeche eine Behauptung,
+        # die das naechste Update stillschweigend widerruft.
+        from .services import sicherungsliste
+
+        behalten = einstellung_lesen(db, sicherungsliste.SCHLUESSEL_BEHALTEN)
+        sicherungsliste.aufraeumen(
+            int(behalten) if behalten.isdigit() else sicherungsliste.BEHALTEN_VORGABE
+        )
+
         # ⚠️ **Abgebrochene Versandvorgaenge wieder aufnehmen.** Ohne das
         # bliebe eine Mail, die beim Herunterfahren mitten im Senden war,
         # stumm liegen - und der Absender merkt es erst, wenn jemand nachfragt.
@@ -179,6 +200,10 @@ async def lebenslauf(_: FastAPI):
     from .services import takt as taktdienst
 
     taktdienst.starten()
+    # ⚠️ Eigener Faden, absichtlich unabhaengig vom Abgleich-Takt: Wer den mit
+    # NEXMAIL_TAKT_SEKUNDEN=0 abschaltet, meint „nicht dauernd Post holen",
+    # nicht „keine Sicherungen mehr".
+    taktdienst.sicherungsplan_starten()
 
     logger.info("nexmail %s is ready.", __version__)
     try:
@@ -244,6 +269,7 @@ app.include_router(verfassen.router, dependencies=NUR_ANGEMELDET)
 app.include_router(suche.router, dependencies=NUR_ANGEMELDET)
 app.include_router(benutzer_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(aufgaben_router.router, dependencies=NUR_ANGEMELDET)
+app.include_router(ueber_router.router, dependencies=NUR_ANGEMELDET)
 # ⚠️ **Ohne ``NUR_ANGEMELDET``.** Hinweg und Rueckweg gehoeren zur
 # Anmeldung; die Verwaltungs-Adressen darin haengen einzeln am Betreiber.
 app.include_router(oidc_router.router)

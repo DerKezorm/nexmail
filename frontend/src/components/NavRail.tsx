@@ -15,9 +15,15 @@
  * saessen Zeichen und Wortmarke sonst zweimal innerhalb von sechzig Pixeln.
  */
 import { useTranslation } from 'react-i18next'
-import { ListChecks, Mail, Settings, Users } from 'lucide-react'
+import { HelpCircle, ListChecks, Mail, Settings, Users } from 'lucide-react'
 
-export type Ansicht = 'mail' | 'aufgaben' | 'kontakte' | 'einstellungen' | 'verwaltung'
+export type Ansicht =
+  | 'mail'
+  | 'aufgaben'
+  | 'kontakte'
+  | 'einstellungen'
+  | 'verwaltung'
+  | 'ueber'
 
 interface Props {
   ansicht: Ansicht
@@ -88,7 +94,34 @@ export function NavRail({
           Räumliche Trennung beantwortet die Frage „ändere ich das für mich
           oder für alle?", bevor sie entsteht. */}
       {istBetreiber && (
-        <div className="mt-auto">
+        <div className="mt-auto flex flex-col gap-1">
+          {/* ⚠️ **Über dem Zahnrad, nicht darunter.** Beides gehoert der
+              Anwendung; das Zahnrad bleibt der unterste Punkt, weil es der
+              haeufiger gebrauchte ist und die Ecke der verlaesslichste Ort
+              fuer einen Zeigefinger. */}
+          <button
+            type="button"
+            title={t('nav.ueber')}
+            aria-label={t('nav.ueber')}
+            aria-current={ansicht === 'ueber' ? 'page' : undefined}
+            onClick={() => aufAnsicht('ueber')}
+            className={
+              'relative flex size-10 items-center justify-center rounded-md ' +
+              'transition-colors duration-[var(--dur-fast)] [&_svg]:size-5 ' +
+              (ansicht === 'ueber'
+                ? 'bg-accent-soft text-accent-text'
+                : 'text-fg-3 hover:bg-surface-3 hover:text-fg-1')
+            }
+          >
+            {ansicht === 'ueber' && (
+              <span
+                aria-hidden
+                className="absolute top-1/2 -left-3 h-5 w-0.5 -translate-y-1/2 rounded-pill bg-accent"
+              />
+            )}
+            <HelpCircle />
+          </button>
+
           <button
             type="button"
             title={t('nav.verwaltung')}

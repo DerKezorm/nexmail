@@ -48,8 +48,35 @@ mkdir -p /data
 # Rechte nur anfassen, wenn sie wirklich nicht stimmen: Bei vielen Anhaengen
 # wuerde ein "chown -R" bei jedem Start unnoetig Zeit kosten.
 if [ "$(stat -c %u /data)" != "$PUID" ] || [ "$(stat -c %g /data)" != "$PGID" ]; then
-    echo "nexmail: Rechte am Datenverzeichnis werden auf $PUID:$PGID gesetzt."
+    echo "nexmail: adjusting ownership of the data directory to $PUID:$PGID."
     chown -R "$PUID:$PGID" /data
 fi
+
+# ⚠️ **Besitzer ist nicht dasselbe wie beschreibbar.** Die Pruefung darueber
+# fasst die Rechte nur an, wenn der *Besitzer* nicht stimmt. Gehoert das
+# Verzeichnis auf dem Wirtssystem bereits dem richtigen Benutzer, ist aber
+# ueber Zugriffslisten oder Modus-Bits dicht - auf einem NAS der Normalfall -,
+# dann wird nichts korrigiert, und nexmail laeuft eine Sekunde spaeter in ein
+# "Permission denied" mitten im Start.
+#
+# Am 01.09.2026 genau so passiert: vierzig Zeilen Python-Rueckverfolgung, aus
+# denen niemand liest, dass es um Ordnerrechte geht. Deshalb wird hier
+# wirklich geschrieben, und zwar als der Benutzer, der es spaeter tut.
+if ! gosu nexmail sh -c 'touch /data/.schreibprobe' 2>/dev/null; then
+    echo "nexmail: the data directory is not writable." >&2
+    echo "" >&2
+    echo "  nexmail runs as uid $PUID, gid $PGID and cannot write to the" >&2
+    echo "  directory mounted at /data. Nothing has been started." >&2
+    echo "" >&2
+    echo "  On the host, that directory needs to belong to that user:" >&2
+    echo "" >&2
+    echo "      sudo chown -R $PUID:$PGID /path/to/your/data" >&2
+    echo "      sudo chmod -R u+rwX /path/to/your/data" >&2
+    echo "" >&2
+    echo "  PUID and PGID are set in your compose file. To find your own," >&2
+    echo "  run 'id' on the host and use the uid and gid it reports." >&2
+    exit 1
+fi
+rm -f /data/.schreibprobe
 
 exec gosu nexmail "$@"

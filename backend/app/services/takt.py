@@ -32,6 +32,9 @@ logger = logging.getLogger("nexmail.takt")
 _faden: threading.Thread | None = None
 _halt = threading.Event()
 
+_sicherungsfaden: threading.Thread | None = None
+_sicherung_halt = threading.Event()
+
 
 def laeuft() -> bool:
     return _faden is not None and _faden.is_alive()
@@ -54,7 +57,39 @@ def starten() -> None:
     logger.info("Background sync every %s seconds.", takt)
 
 
+def _sicherungsschleife() -> None:
+    """Der Zeitplan für Rücksetzpunkte — ein eigener Faden.
+
+    ⚠️ **Bewusst nicht im Abgleich-Takt.** Der laesst sich mit
+    ``NEXMAIL_TAKT_SEKUNDEN=0`` abschalten, und wer das tut, meint „nicht
+    dauernd Post holen" — nicht „keine Sicherungen mehr". Haengte der Zeitplan
+    daran, verschwaende er lautlos, und man merkte es an dem Tag, an dem man
+    eine Sicherung braucht.
+    """
+    from . import sicherungsliste
+
+    while not _sicherung_halt.wait(sicherungsliste.NACHSEHEN_SEKUNDEN):
+        try:
+            if sicherungsliste.wenn_faellig():
+                logger.info("A scheduled restore point was created.")
+        except Exception as fehler:  # noqa: BLE001
+            logger.warning("The backup schedule failed a round: %s", fehler)
+
+
+def sicherungsplan_starten() -> None:
+    global _sicherungsfaden
+
+    if _sicherungsfaden is not None and _sicherungsfaden.is_alive():
+        return
+    _sicherung_halt.clear()
+    _sicherungsfaden = threading.Thread(
+        target=_sicherungsschleife, name="nexmail-sicherungen", daemon=True
+    )
+    _sicherungsfaden.start()
+
+
 def anhalten() -> None:
+    _sicherung_halt.set()
     _halt.set()
 
 

@@ -132,7 +132,30 @@ Everything is under `/data`:
 
 > ⚠️ **`secret.key` and the database belong together.** Without the key the
 > database is unreadable. With both, whoever holds them holds your mailboxes.
-> nexmail can write an encrypted backup for you under *Settings → Security*.
+
+### Backup and restore
+
+Under *Administration → Backup*. Two things live there, and telling them apart
+matters when it counts:
+
+**Restore points** are complete copies next to the database, made automatically
+before any schema change and by hand whenever you want, on a schedule if you
+like. They are for a failed update or a contact deleted by mistake. If the disk
+dies, they die with it.
+
+**A backup** is what you download: an encrypted ZIP, and deliberately **without
+the messages**. Those are still in the mailbox on the server, and nexmail
+fetches them back after a restore. Measured on a real database: 1890 messages
+turn 0.36 MB into 2.79 MB, and the part that cannot be fetched again does not
+grow with the mailbox. An archive that grows with your mail is one nobody
+downloads.
+
+Restoring happens in two steps. The first only looks: it reports the version,
+whether the key is included, and whether the public address in the archive
+differs from the one you are using. It has to ask about that one, because
+invitation links and the OpenID Connect redirect are built from it — and the
+redirect URI registered with your provider is something nexmail cannot change
+for you, so the report spells it out.
 
 > ⚠️ **Put `/data` on a local disk, never on an SMB or NFS share.** That is the
 > one way SQLite genuinely loses data: its locking does not work reliably over

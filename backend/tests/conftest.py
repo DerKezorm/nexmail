@@ -78,6 +78,15 @@ def frische_datenbank():
     if blobs.is_dir():
         shutil.rmtree(blobs, ignore_errors=True)
 
+    # ⚠️ **Und die Ruecksetzpunkte.** Sie liegen als Dateien neben der
+    # Datenbank, ``drop_all`` sieht sie nicht — jeder Test erbte damit die des
+    # vorigen. Ein Test, der zaehlt, wie viele angelegt wurden, zaehlt dann die
+    # der Nachbarn mit. Dieselbe Sorte Fehler wie beim Suchindex und bei den
+    # Anhaengen, und sie faellt genauso spaet auf: erst, wenn jemand zaehlt.
+    ruecksetzpunkte = _TESTORDNER / "sicherungen"
+    if ruecksetzpunkte.is_dir():
+        shutil.rmtree(ruecksetzpunkte, ignore_errors=True)
+
     init_db()
     anmeldebremse.zuruecksetzen()
     yield

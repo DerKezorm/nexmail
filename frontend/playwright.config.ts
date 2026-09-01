@@ -8,11 +8,31 @@
  *
  * Vorbedingung: Der Entwicklungsserver läuft (Port 5175) und das Backend
  * (Port 8010) zeigt auf ein eingerichtetes `data-dev`. Die Zugangsdaten
- * stehen in `NEXMAIL_TEST_USER` / `NEXMAIL_TEST_PASS` (Vorgabe:
- * `betreiber`/`betreiber`) — nicht im Repo.
+ * stehen in `NEXMAIL_TEST_USER` / `NEXMAIL_TEST_PASS` oder in
+ * `tests/.zugang` — beides **nie** im Repo.
  * `npm run test:ui` startet den Frontend-Server bei Bedarf selbst.
  */
+import { existsSync, readFileSync } from 'node:fs'
 import { defineConfig, devices } from '@playwright/test'
+
+/* ⚠️ **Die Zugangsdaten stehen in einer Datei, die nie mitgeht.**
+ * `tests/.zugang` liegt in `.gitignore`, und der Benutzername der eigenen
+ * Entwicklungsumgebung steht auf der Tabu-Liste des
+ * Veroeffentlichungs-Waechters — wanderte die Datei je in den Index, schlaegt
+ * `test_veroeffentlichung.py` an. Nachgeprueft am 01.09.2026, indem sie
+ * absichtlich einmal hineingelegt wurde.
+ *
+ * Ohne die Datei gelten die neutralen Vorgaben aus `anmeldung.setup.ts`. Auf
+ * einer fremden Installation ist das richtig; hier waere es falsch, und man
+ * merkt es an einer Anmeldung, die nicht durchgeht.
+ */
+const zugang = new URL('./tests/.zugang', import.meta.url)
+if (existsSync(zugang)) {
+  for (const zeile of readFileSync(zugang, 'utf-8').split(/\r?\n/)) {
+    const treffer = /^\s*([A-Z_]+)\s*=\s*(.*?)\s*$/.exec(zeile)
+    if (treffer && !process.env[treffer[1]]) process.env[treffer[1]] = treffer[2]
+  }
+}
 
 export default defineConfig({
   testDir: './tests',

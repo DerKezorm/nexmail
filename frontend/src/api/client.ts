@@ -83,6 +83,42 @@ export const api = {
   formular: <T>(pfad: string, daten: FormData) =>
     anfrage<T>(pfad, { method: 'POST', body: daten }),
   loeschen: <T>(pfad: string) => anfrage<T>(pfad, { method: 'DELETE' }),
+
+  /** Eine Datei holen und im Browser speichern.
+   *
+   * ⚠️ **Kein GET.** Das Archivpasswort stuende sonst in der Adresszeile und
+   * damit im Browserverlauf und in jedem Proxy-Protokoll. Deshalb POST, und
+   * deshalb geht das nicht ueber `anfrage`: Dort wird JSON erwartet.
+   */
+  async herunterladen(pfad: string, koerper: unknown, name: string): Promise<void> {
+    const antwort = await fetch(`${BASIS}${pfad}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(koerper),
+    })
+    if (!antwort.ok) {
+      let text = ''
+      try {
+        text = String(((await antwort.json()) as { detail?: string }).detail ?? '')
+      } catch {
+        // Eine Antwort ohne JSON ist bei einem Fehler normal.
+      }
+      throw new ApiFehler(antwort.status, text)
+    }
+
+    const blob = await antwort.blob()
+    const adresse = URL.createObjectURL(blob)
+    const verweis = document.createElement('a')
+    verweis.href = adresse
+    verweis.download = name
+    document.body.appendChild(verweis)
+    verweis.click()
+    verweis.remove()
+    // ⚠️ Erst nach dem Klick freigeben - sonst ist die Adresse tot, bevor der
+    // Browser sie gelesen hat. Ein kurzer Aufschub genuegt.
+    setTimeout(() => URL.revokeObjectURL(adresse), 1000)
+  },
 }
 
 // --- Die Formen, die der Server liefert --------------------------------- //

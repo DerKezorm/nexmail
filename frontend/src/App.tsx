@@ -38,6 +38,7 @@ import {
 import { Kopfbanner } from './components/Kopfbanner'
 import { NavRail } from './components/NavRail'
 import type { Ansicht } from './components/NavRail'
+import { UeberPage } from './pages/UeberPage'
 import { Kopfleiste } from './components/Kopfleiste'
 import type { Suchbereich } from './components/Kopfleiste'
 import { Kontextmenue } from './components/Kontextmenue'
@@ -1063,6 +1064,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           )}
 
           {ansicht === 'kontakte' && <KontaktePage />}
+
+          {ansicht === 'ueber' && <UeberPage />}
 
           {ansicht === 'einstellungen' && (
             <EinstellungenPage
