@@ -71,7 +71,7 @@ export function Sicherheit({
   /* Welche Anbieter es gibt und welche schon an diesem Konto hängen. */
   const [anbieter, setAnbieter] = useState<Array<{ kuerzel: string; anzeigename: string }>>([])
   const [verknuepfungen, setVerknuepfungen] = useState<
-    Array<{ id: number; issuer: string; anzeigename: string }>
+    Array<{ id: number; issuer: string; anzeigename: string; kuerzel: string }>
   >([])
   useEffect(() => {
     api
@@ -81,7 +81,9 @@ export function Sicherheit({
   }, [])
   useEffect(() => {
     api
-      .holen<Array<{ id: number; issuer: string; anzeigename: string }>>('/api/oidc/meine')
+      .holen<Array<{ id: number; issuer: string; anzeigename: string; kuerzel: string }>>(
+        '/api/oidc/meine',
+      )
       .then(setVerknuepfungen)
       .catch(() => undefined)
   }, [geraete])
@@ -202,7 +204,13 @@ export function Sicherheit({
 
           <ul className="flex list-none flex-col gap-2 p-0">
             {anbieter.map((a) => {
-              const verknuepft = verknuepfungen.find((v) => v.anzeigename === a.anzeigename)
+              /* ⚠️ **Ueber das Kuerzel, nicht ueber den Anzeigenamen.** Der
+                 ist frei waehlbar; das Kuerzel steckt in der Rueckkehr-Adresse
+                 und ist eindeutig. Am 01.09.2026 stand hier der Anzeigename,
+                 und eine bestehende Verknuepfung blieb unsichtbar, sobald der
+                 Anbieter seinen Aussteller mit abschliessendem Schraegstrich
+                 nennt — bei authentik der Normalfall. */
+              const verknuepft = verknuepfungen.find((v) => v.kuerzel === a.kuerzel)
               return (
                 <li
                   key={a.kuerzel}

@@ -392,6 +392,12 @@ class VerknuepfungZeile(BaseModel):
     id: int
     issuer: str
     anzeigename: str
+    #: Das Kuerzel des Anbieters, zu dem die Verknuepfung gehoert — leer, wenn
+    #: es ihn nicht mehr gibt.
+    #:
+    #: ⚠️ **Die Oberflaeche ordnet danach zu, nicht ueber den Anzeigenamen.**
+    #: Der ist frei waehlbar und kann zweimal vorkommen; das Kuerzel nicht.
+    kuerzel: str = ""
 
 
 @router.get("/meine", response_model=list[VerknuepfungZeile])
@@ -399,12 +405,35 @@ def meine(person: AngemeldeterBenutzer, db: DbSession) -> list[VerknuepfungZeile
     zeilen = db.execute(
         select(OidcVerknuepfung).where(OidcVerknuepfung.benutzer_id == person.id)
     ).scalars().all()
-    namen = {
-        a.issuer: a.anzeigename
-        for a in db.execute(select(OidcAnbieter)).scalars().all()
+    # ⚠️ **Ohne abschliessenden Schraegstrich vergleichen.** Der Anbieter
+    # steht so in der Datenbank, wie der Betreiber ihn eingetippt hat; die
+    # Verknuepfung traegt den Aussteller so, wie der Anbieter sich selbst
+    # nennt. authentik haengt dort ein ``/`` an, der Betreiber meist nicht.
+    #
+    # Am 01.09.2026 genau daran haengengeblieben: Das Verknuepfen hatte
+    # funktioniert („An OIDC identity was linked to an account"), aber im
+    # Profil stand weiter „Verknuepfen" — die Zuordnung fand ihren Anbieter
+    # nicht und fiel auf die rohe Adresse zurueck. Der Fehler sah damit aus
+    # wie ein misslungenes Verknuepfen, obwohl nur die Anzeige irrte.
+    def gleich(adresse: str) -> str:
+        return adresse.rstrip("/")
+
+    anbieter = {
+        gleich(a.issuer): a for a in db.execute(select(OidcAnbieter)).scalars().all()
     }
     return [
-        VerknuepfungZeile(id=v.id, issuer=v.issuer, anzeigename=namen.get(v.issuer, v.issuer))
+        VerknuepfungZeile(
+            id=v.id,
+            issuer=v.issuer,
+            anzeigename=(
+                anbieter[gleich(v.issuer)].anzeigename
+                if gleich(v.issuer) in anbieter
+                else v.issuer
+            ),
+            kuerzel=(
+                anbieter[gleich(v.issuer)].kuerzel if gleich(v.issuer) in anbieter else ""
+            ),
+        )
         for v in zeilen
     ]
 

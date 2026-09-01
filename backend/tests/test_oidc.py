@@ -510,3 +510,52 @@ def test_ohne_anlauf_wird_nichts_verknuepft(klient, anbieter_da, monkeypatch, db
     antwort = _lauf(klient, Attrappe(), monkeypatch)
     assert "oidc_fehler=oidc_abgemeldet" in antwort.headers["location"], antwort.headers["location"]
     assert db.query(OidcVerknuepfung).count() == 0
+
+
+def test_ein_schraegstrich_macht_die_verknuepfung_nicht_unsichtbar(klient, anbieter_da, monkeypatch, db):
+    """⚠️ **Der Anbieter nennt sich anders, als der Betreiber ihn eintippt.**
+
+    In der Anbieter-Zeile steht, was von Hand eingetragen wurde — meist ohne
+    abschliessenden Schraegstrich. Die Verknuepfung traegt den Aussteller so,
+    wie der Anbieter sich selbst nennt, und authentik haengt dort ein ``/`` an.
+
+    Wer woertlich vergleicht, findet den Anbieter nicht, faellt auf die rohe
+    Adresse zurueck — und im Profil steht weiter „Verknuepfen", obwohl die
+    Verknuepfung laengst da ist. Am 01.09.2026 an einem echten authentik
+    aufgefallen, nachdem das Verknuepfen selbst schon funktionierte.
+    """
+    from app.models import OidcAnbieter
+
+    _lauf(klient, Attrappe(), monkeypatch)
+    verknuepfung = db.query(OidcVerknuepfung).one()
+
+    # Der Anbieter nennt sich ab jetzt mit Schraegstrich — die Verknuepfung
+    # steht noch ohne, wie beim Anlegen.
+    anbieter = db.query(OidcAnbieter).one()
+    verknuepfung.issuer = anbieter.issuer.rstrip("/") + "/"
+    db.commit()
+
+    zeile = klient.get("/api/oidc/meine").json()[0]
+    assert zeile["anzeigename"] == "Keycloak", (
+        f"Statt des Anbieternamens steht die rohe Adresse da: {zeile['anzeigename']!r}"
+    )
+    assert zeile["kuerzel"] == "keycloak", (
+        "Ohne Kuerzel kann die Oberflaeche die Verknuepfung ihrem Anbieter nicht zuordnen."
+    )
+
+
+def test_eine_verwaiste_verknuepfung_zeigt_ihre_adresse(klient, anbieter_da, monkeypatch, db):
+    """Die Gegenprobe: Gibt es den Anbieter nicht mehr, bleibt die Adresse.
+
+    Sonst haette der Umbau aus „kenne ich nicht" ein stilles „passt schon"
+    gemacht — und man saehe im Profil einen Namen, zu dem es nichts gibt.
+    """
+    from app.models import OidcAnbieter
+
+    _lauf(klient, Attrappe(), monkeypatch)
+    db.query(OidcAnbieter).delete()
+    db.commit()
+
+    zeile = klient.get("/api/oidc/meine").json()[0]
+    assert zeile["anzeigename"].startswith("http"), zeile["anzeigename"]
+    assert zeile["kuerzel"] == ""

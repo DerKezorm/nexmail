@@ -363,7 +363,36 @@ async def ausweis_pruefen(
         )
     except jwt.InvalidTokenError as fehler:
         logger.warning("OIDC: the id_token could not be verified: %r", fehler)
-        raise OidcFehler("oidc_ausweis", "Der Ausweis des Anbieters ließ sich nicht prüfen.") from fehler
+
+        # ⚠️ **Beim Aussteller die beiden Werte nennen.** „Invalid issuer"
+        # allein laesst einen raten, und die haeufigste Ursache ist eine
+        # Kleinigkeit: authentik schreibt je nach Einstellung entweder die
+        # Adresse der Anwendung oder die des Servers in den Ausweis, und wer
+        # zwei Anwendungen hat, traegt leicht die Kennung der einen mit der
+        # Adresse der anderen ein. Am 01.09.2026 genau dort haengengeblieben.
+        if isinstance(fehler, jwt.InvalidIssuerError):
+            erwartet = str(beschreibung.get("issuer") or "")
+            try:
+                gefunden = str(
+                    jwt.decode(id_token, options={"verify_signature": False}).get("iss") or ""
+                )
+            except Exception:  # noqa: BLE001
+                gefunden = ""
+            logger.warning(
+                "OIDC: issuer mismatch - the token says %r, the discovery document says %r",
+                gefunden,
+                erwartet,
+            )
+            raise OidcFehler(
+                "oidc_ausweis",
+                f"Der Ausweis nennt als Aussteller {gefunden!r}, die Selbstauskunft "
+                f"des Anbieters aber {erwartet!r}. Beides muss gleich lauten - bei "
+                "authentik entscheidet das die Einstellung „Issuer mode“ am Provider.",
+            ) from fehler
+
+        raise OidcFehler(
+            "oidc_ausweis", "Der Ausweis des Anbieters ließ sich nicht prüfen."
+        ) from fehler
     except Exception as fehler:  # noqa: BLE001
         logger.warning("OIDC: keys at %r could not be read: %r", jwks, fehler)
         raise OidcFehler("oidc_keine_schluessel", "Die Schlüssel des Anbieters sind nicht lesbar.") from fehler
