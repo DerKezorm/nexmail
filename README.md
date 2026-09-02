@@ -26,11 +26,12 @@ Roundcube is webmail bolted onto one mailbox. Thunderbird does not run in a
 browser. Commercial clients want to pull your mail onto their servers. nexmail
 is the third option — and if you can use Outlook, you should feel at home.
 
-> **Version 0.1.0 — the first release.** It reads, writes, searches, sorts and
-> sends. It is used daily by its author against real iCloud and IMAP mailboxes,
-> and it has around 500 automated tests. It has not been run by anyone else yet.
-> Treat it accordingly: try it on a mailbox you can afford to have trouble with
-> before you point it at the one that matters.
+> **Version 0.3.0.** It reads, writes, searches, sorts, sends, schedules,
+> prints and backs itself up. It is used daily by its author against real
+> iCloud and IMAP mailboxes, and more than 600 automated tests watch over it —
+> including a suite that runs in a real browser. It is still young: try it on
+> a mailbox you can afford to have trouble with before you point it at the one
+> that matters.
 
 The screenshots below show a throwaway instance filled with invented mail.
 Every address in them is under `example.com`, `example.org` or
@@ -49,7 +50,16 @@ you notice that at the worst possible moment.
 
 **Writing.** A real formatting toolbar (Tiptap), attachments, pasted images,
 drafts stored in the mailbox rather than in the browser, and an outbox that
-survives a restart.
+survives a restart. Recipients become address bubbles as you type; nonsense
+turns red instead of hiding inside a comma list. Set importance, get a
+question when the text mentions an attachment that is not there, and forward
+a message as an untouched `.eml` when someone needs the real thing.
+
+**Send later, take it back.** Schedule a message for this evening, tomorrow
+morning or any moment; it waits in nexmail's own outbox, visibly, and
+cancelling files it as a draft. Undo send holds every outgoing message for a
+few configurable seconds first — undo brings it straight back into the
+compose window.
 
 ![The compose window with its formatting toolbar](docs/screenshots/verfassen-en.webp)
 
@@ -65,8 +75,15 @@ the task follows it by `Message-ID`; if the mail is deleted, the task stays and
 says so.
 
 **Contacts, rules, signatures.** An address book with vCard import and export
-and collection from Sent; rules that run after each sync and only on new mail;
+and collection from Sent; contact groups that expand into their members when
+picked as a recipient; rules that run after each sync and only on new mail;
 signatures per mailbox.
+
+**Housekeeping.** Trash and junk can empty themselves after a number of days —
+off by default, measured by how long a message has been in the folder, and
+never touching a folder you created yourself. Printing produces a clean
+document and goes straight to the print dialog. On a phone, swiping a row
+archives or deletes, with the same undo as everywhere else.
 
 | Tasks | Contacts |
 |---|---|
@@ -275,7 +292,7 @@ cd frontend && npm install && npm run dev
 ```
 
 ```bash
-cd backend && python -m pytest        # ~470 tests
+cd backend && python -m pytest        # ~590 tests
 cd frontend && npm run test:ui        # Playwright, two viewports
 ```
 
