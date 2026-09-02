@@ -589,3 +589,69 @@ test('Im Rahmen steht immer die Mail, die oben im Kopf steht', async ({ page }, 
   }
 })
 
+
+test('Eine Mail mit eigener Schriftfarbe wird nicht unlesbar', async ({ page }) => {
+  /* ⚠️ **Am 02.09.2026 gemessen, bevor es das gab:** Eine Mail mit
+     `color:#333` und ohne eigenen Grund stand im Dunkelmodus mit Kontrast
+     **1,53:1** da. Lesbar waere ab 4,5. Es sind ausgerechnet die schlichten
+     Geschaeftsmails, und man sieht der Anzeige den Grund nicht an.
+
+     Die Regel dahinter ist ganz oder gar nicht je Mail: Sagt die Mail
+     irgendetwas ueber Farbe, bekommt sie den hellen Grund, mit dem sie
+     rechnet. Sagt sie nichts, traegt sie die Farben der Anwendung. */
+  const FAELLE = [
+    { name: 'nur Schriftfarbe', html: '<div style="color:#333333"><p>Text</p></div>', faerbt: true },
+    { name: 'malt sich selbst', html: '<table bgcolor="#ffffff"><tr><td style="color:#222"><p>Text</p></td></tr></table>', faerbt: true },
+    { name: 'ohne eigene Farben', html: '<p>Text</p>', faerbt: false },
+    /* ⚠️ **Der Fall, den die erste Fassung des Tests nicht hatte.** Die
+       Mail setzt einen hellen Grund, aber keine Schriftfarbe — der Text
+       erbt sie dann vom Rahmen. Nimmt der Rahmen dort die helle Schrift
+       der Anwendung, steht Hellgrau auf Weiss. Die Mutationsprobe hat
+       genau das aufgedeckt. */
+    { name: 'nur Grund, keine Schrift', html: '<table bgcolor="#ffffff"><tr><td><p>Text</p></td></tr></table>', faerbt: true },
+  ]
+
+  await anmelden(page)
+  for (const fall of FAELLE) {
+    await page.unrouteAll({ behavior: 'ignoreErrors' })
+    await page.route(/\/api\/nachrichten\/\d+$/, async (route) => {
+      const a = await route.fetch()
+      const d = await a.json()
+      await route.fulfill({
+        json: { ...d, html: fall.html, geblockte_bilder: 0, faerbt_sich_selbst: fall.faerbt },
+      })
+    })
+    await page.reload()
+    const zeilen = page.locator('button[draggable="true"]')
+    await expect(zeilen.first()).toBeVisible()
+    await zeilen.first().click()
+    await expect(page.locator('article h1').first()).toBeVisible()
+
+    const kontrast = await page.evaluate(() => {
+      const leuchte = (c: string) => {
+        const [r, g, b] = c.match(/\d+/g)!.slice(0, 3).map((n) => Number(n) / 255)
+        const f = (x: number) => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+      }
+      const r = document.querySelector('iframe') as HTMLIFrameElement
+      const d = r.contentDocument!
+      const p = d.querySelector('p')!
+      // Den ersten undurchsichtigen Grund suchen; ist keiner da, gilt der
+      // Grund der Anwendung hinter dem Rahmen.
+      let el: HTMLElement | null = p
+      let grund = ''
+      while (el) {
+        const g = getComputedStyle(el).backgroundColor
+        if (g && g !== 'rgba(0, 0, 0, 0)') { grund = g; break }
+        el = el.parentElement
+      }
+      if (!grund) grund = getComputedStyle(document.body).backgroundColor
+      const a = leuchte(getComputedStyle(p).color)
+      const b = leuchte(grund)
+      const [hoch, tief] = a > b ? [a, b] : [b, a]
+      return (hoch + 0.05) / (tief + 0.05)
+    })
+
+    expect(kontrast, `„${fall.name}" ist im Dunkelmodus zu blass`).toBeGreaterThan(4.5)
+  }
+})

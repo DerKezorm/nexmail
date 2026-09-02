@@ -50,6 +50,9 @@ class Rueckweg:
     ziel_pfad: str
     message_ids: list[str] = field(default_factory=list)
     text: str = ""
+    #: Nur gesetzt, wenn der Zug ueber eine Kontogrenze ging. Leer heisst:
+    #: dasselbe Postfach, und der Rueckweg ist der einfache.
+    ziel_konto_id: str = ""
 
 
 def _kann_move(klient) -> bool:
@@ -97,7 +100,9 @@ def verschieben(
     if len(konto_ids) != 1:
         raise HandelnFehler("Nachrichten aus mehreren Postfächern lassen sich nicht zusammen verschieben.")
     if ziel.konto_id != nachrichten[0].konto_id:
-        raise HandelnFehler("Der Zielordner gehört zu einem anderen Postfach.")
+        # Über die Kontogrenze ist ein anderer Vorgang: Der Server kann nicht
+        # kopieren, was er nicht hat. Siehe ``ueber_konten``.
+        return ueber_konten(db, nachrichten, ziel, text)
 
     quelle_ids = {n.ordner_id for n in nachrichten}
     if len(quelle_ids) != 1:
@@ -168,6 +173,137 @@ def verschieben(
         ziel_pfad=ziel.pfad,
         message_ids=message_ids,
         text=text,
+    )
+
+
+def ueber_konten(
+    db: Session, nachrichten: list[Nachricht], ziel: Ordner, text: str = ""
+) -> Rueckweg:
+    """Nachrichten in ein **anderes** Postfach schieben.
+
+    ⚠️ **Zwei Server, und keiner von beiden kennt den anderen.** Ein
+    ``MOVE`` oder ``COPY`` geht nur innerhalb einer Verbindung. Über die Grenze
+    heisst: holen, beim Ziel anhaengen, nachsehen ob es ankam, dann bei der
+    Quelle loeschen.
+
+    ⚠️ **Die Reihenfolge ist die ganze Sicherheit.** Wer zuerst loescht und
+    dann anhaengt, verliert die Mail, sobald der zweite Schritt scheitert — und
+    er scheitert irgendwann, weil zwei Server beteiligt sind. Andersherum ist
+    der schlimmste Fall eine Mail, die zweimal da ist. Das sieht man und kann
+    es aufraeumen; das andere sieht man nicht.
+
+    ⚠️ **Nachgesehen wird wirklich.** Ein ``APPEND`` ohne Fehler heisst nicht,
+    dass die Mail im Ordner liegt: Quotenüberschreitung, ein Filter auf dem
+    Zielserver, ein stiller Ablagekorb — es gibt genug Wege, auf denen sie
+    unterwegs verschwindet. Gesucht wird nach der ``Message-ID``.
+
+    ⚠️ **Flags und Datum wandern mit.** Ohne sie ist jede verschobene Mail
+    plötzlich ungelesen und von heute; nach einem Umzug von tausend Mails ist
+    das Postfach unbrauchbar.
+    """
+    if not nachrichten:
+        raise HandelnFehler("Nichts ausgewählt.")
+
+    quelle = nachrichten[0].ordner
+    quell_konto = db.get(Konto, nachrichten[0].konto_id)
+    ziel_konto = db.get(Konto, ziel.konto_id)
+    if quell_konto is None or ziel_konto is None:
+        raise HandelnFehler("Das Postfach gibt es nicht mehr.")
+    if len({n.ordner_id for n in nachrichten}) != 1:
+        raise HandelnFehler("Bitte nur aus einem Ordner auf einmal verschieben.")
+
+    quell_pw, _ = kontendienst.passwoerter_lesen(quell_konto)
+    ziel_pw, _ = kontendienst.passwoerter_lesen(ziel_konto)
+    uids = [n.uid for n in nachrichten]
+    message_ids = [n.message_id for n in nachrichten if n.message_id]
+
+    # ⚠️ **Beide Schloesser, und immer in derselben Reihenfolge.** Zwei Zuege
+    # in entgegengesetzter Richtung wuerden sich sonst gegenseitig aussperren.
+    erst, dann = sorted((quell_konto.id, ziel_konto.id))
+    with abgleich.HALTER.schloss(erst), abgleich.HALTER.schloss(dann):
+        quell_klient = imapdienst.verbinden(
+            quell_konto.imap_server, quell_konto.imap_port, quell_konto.imap_sicherheit,
+            quell_konto.imap_benutzer, quell_pw,
+        )
+        ziel_klient = None
+        try:
+            quell_klient.select_folder(quelle.pfad, readonly=True)
+            geholt = quell_klient.fetch(
+                uids, [abgleich.GANZE_MAIL, "FLAGS", "INTERNALDATE"]
+            )
+
+            ziel_klient = imapdienst.verbinden(
+                ziel_konto.imap_server, ziel_konto.imap_port, ziel_konto.imap_sicherheit,
+                ziel_konto.imap_benutzer, ziel_pw,
+            )
+
+            angekommen: list[int] = []
+            for uid in uids:
+                felder = geholt.get(uid) or {}
+                roh = felder.get(abgleich.GANZE_MAIL_SCHLUESSEL)
+                if not roh:
+                    logger.warning("Message %s is gone from %s; skipped.", uid, quelle.pfad)
+                    continue
+                # ⚠️ ``\Recent`` gehoert dem Server, nicht der Nachricht — es
+                # anzuhaengen weisen manche Server mit einem Fehler ab.
+                flags = [
+                    f for f in (felder.get(b"FLAGS") or ())
+                    if f.lower() not in (b"\\recent",)
+                ]
+                ziel_klient.append(ziel.pfad, roh, flags, felder.get(b"INTERNALDATE"))
+                angekommen.append(uid)
+
+            if not angekommen:
+                raise HandelnFehler("Keine der Nachrichten liess sich holen.")
+
+            # Nachsehen, bevor geloescht wird.
+            ziel_klient.select_folder(ziel.pfad, readonly=True)
+            gefunden = 0
+            for kennung in message_ids:
+                gefunden += len(ziel_klient.search(["HEADER", "Message-ID", kennung]))
+            if message_ids and gefunden < len(message_ids):
+                raise HandelnFehler(
+                    "Beim Zielpostfach ist nicht alles angekommen. Es wurde nichts "
+                    "gelöscht — die Nachrichten liegen unverändert im Ausgangsordner."
+                )
+
+            # Erst jetzt bei der Quelle weg.
+            quell_klient.select_folder(quelle.pfad, readonly=False)
+            quell_klient.add_flags(angekommen, [rb"\Deleted"])
+            try:
+                quell_klient.uid_expunge(angekommen)
+            except Exception:  # noqa: BLE001
+                logger.info("Source server has no UID EXPUNGE; the copies stay flagged.")
+
+            abgleich.ordner_abgleichen(ziel_klient, db, ziel_konto, ziel)
+        finally:
+            for k in (ziel_klient, quell_klient):
+                if k is None:
+                    continue
+                try:
+                    k.logout()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    for nachricht in nachrichten:
+        if nachricht.uid in angekommen:
+            db.delete(nachricht)
+    db.flush()
+
+    quelle.anzahl = max(0, quelle.anzahl - len(angekommen))
+    db.commit()
+
+    logger.info(
+        "%s message(s) moved to another mailbox (%s -> %s).",
+        len(angekommen), quelle.pfad, ziel.pfad,
+    )
+    return Rueckweg(
+        konto_id=quell_konto.id,
+        quelle_pfad=quelle.pfad,
+        ziel_pfad=ziel.pfad,
+        message_ids=message_ids,
+        text=text,
+        ziel_konto_id=ziel_konto.id,
     )
 
 

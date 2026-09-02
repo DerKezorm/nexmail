@@ -123,6 +123,9 @@ class Voll(Zeile):
     #: Ob dieser Absender dauerhaft freigegeben ist — der Balken bietet dann
     #: kein zweites Mal „immer laden" an.
     absender_freigegeben: bool = False
+    #: Legt die Mail eigene Farben fest? Dann rechnet sie mit hellem Grund und
+    #: bekommt ihn auch — siehe ``bereinigen.faerbt_sich_selbst``.
+    faerbt_sich_selbst: bool = False
     anhaenge: list[AnhangZeile]
 
 
@@ -551,6 +554,7 @@ def eine(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Voll
         text=nachricht.koerper_text,
         geblockte_bilder=0 if freigegeben else nachricht.geblockte_bilder,
         absender_freigegeben=freigegeben,
+        faerbt_sich_selbst=bereinigen.faerbt_sich_selbst(nachricht.koerper_html),
         anhaenge=[
             AnhangZeile(
                 id=a.id,

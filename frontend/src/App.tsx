@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Archive,
   ChevronsDownUp,
+  Download,
   Clock,
   CornerUpLeft,
   CornerUpRight,
@@ -39,6 +40,7 @@ import {
   StarOff,
   Tag,
   Trash2,
+  Upload,
 } from 'lucide-react'
 import { Kopfbanner } from './components/Kopfbanner'
 import { NavRail } from './components/NavRail'
@@ -90,6 +92,8 @@ import {
 import type { Rueckweg, VolleNachricht, WiedervorlageEintrag } from './api/laden'
 import type { Ausgangseintrag, Konto, Nachricht, Ordner, Schlagwort } from './daten/typen'
 import { Schlagwortmarke } from './components/Schlagwortmarke'
+import { Umzugsfenster } from './components/Umzugsfenster'
+import { PUNKT_KLASSE } from './lib/farben'
 import { useGemerkt, useSchmal } from './lib/haken'
 import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from './lib/wischen'
 import type { WischAktion } from './lib/wischen'
@@ -261,6 +265,9 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const [gleichtAb, setGleichtAb] = useState(false)
 
   const [menue, setMenue] = useState<Menuelage | null>(null)
+  /* Welcher Ordner gerade ein- oder ausgespielt wird. Der Vorgang selbst
+     lebt im Server; hier steht nur, welches Fenster offen ist. */
+  const [umzug, setUmzug] = useState<{ ordner: Ordner; art: 'ein' | 'aus' } | null>(null)
   const [mehrfach, setMehrfach] = useState<string[]>([])
   // Eine Handlung, die nicht ging, und der Satz dazu. Verschwindet von
   // selbst — eine Meldung, die man wegklicken muss, wird weggeklickt.
@@ -1167,15 +1174,42 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     const ids = betroffene(n.id)
     const mehrere = ids.length > 1
 
-    // Verschieben-Ziele: nur Ordner desselben Postfachs, und nicht der, in
-    // dem die Nachricht schon liegt.
-    const ziele: MenueEintrag[] = ordner
-      .filter((o) => o.kontoId === n.kontoId && o.id !== n.ordnerId && o.rolle !== 'entwuerfe')
-      .map((o) => ({
-        id: o.id,
-        text: o.name,
-        tun: () => void handeln(() => verschieben(ids, o.id), t('rueck.verschoben')),
-      }))
+    /* Verschieben-Ziele. Zuerst die Ordner desselben Postfachs — das ist der
+       Alltagsfall und soll einen Klick kosten. Darunter je ein Untermenü für
+       die anderen Postfächer.
+
+       ⚠️ **Über die Kontogrenze ist ein anderer Vorgang.** Zwei Server, und
+       keiner kennt den anderen: holen, beim Ziel anhängen, nachsehen, dann
+       bei der Quelle löschen. Das dauert länger und kann anders scheitern —
+       deshalb steht es sichtbar getrennt und nicht in derselben Liste. */
+    const brauchbar = (o: Ordner) => o.id !== n.ordnerId && o.rolle !== 'entwuerfe'
+    const eintrag = (o: Ordner): MenueEintrag => ({
+      id: o.id,
+      text: o.name,
+      tun: () => void handeln(() => verschieben(ids, o.id), t('rueck.verschoben')),
+    })
+
+    const eigene = ordner.filter((o) => o.kontoId === n.kontoId && brauchbar(o))
+    const fremde = konten
+      .filter((k) => k.id !== n.kontoId)
+      .map((k) => ({ konto: k, ordner: ordner.filter((o) => o.kontoId === k.id && brauchbar(o)) }))
+      .filter((g) => g.ordner.length > 0)
+
+    const ziele: MenueEintrag[] = [
+      ...eigene.map(eintrag),
+      ...fremde.map(({ konto, ordner: seine }, i) => ({
+        id: `konto-${konto.id}`,
+        text: konto.adresse,
+        trennerDavor: i === 0 && eigene.length > 0,
+        symbol: (
+          <span
+            aria-hidden
+            className={`size-2 shrink-0 rounded-full ${PUNKT_KLASSE[konto.farbe]}`}
+          />
+        ),
+        unter: seine.map(eintrag),
+      })),
+    ]
 
     setMenue({
       x: e.clientX,
@@ -1432,6 +1466,23 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 return { bewegt: ergebnis.bewegt, rueckweg: null }
               }, '')
             })(),
+        },
+        /* ⚠️ **Der Umzug gehoert an den Ordner, nicht in die Einstellungen.**
+           Beides fasst genau diesen einen Ordner an — eine Seite, auf der man
+           ihn erst wieder auswaehlen muesste, waere ein Umweg. Thunderbird
+           haelt es ebenso. */
+        {
+          id: 'einspielen',
+          trennerDavor: true,
+          text: t('umzug.einspielen'),
+          symbol: <Upload />,
+          tun: () => setUmzug({ ordner: o, art: 'ein' }),
+        },
+        {
+          id: 'herunterladen',
+          text: t('umzug.herunterladen'),
+          symbol: <Download />,
+          tun: () => setUmzug({ ordner: o, art: 'aus' }),
         },
         {
           id: 'umbenennen',
@@ -1787,6 +1838,20 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           )}
         </div>
       </div>
+
+      {umzug && (
+        <Umzugsfenster
+          ordner={umzug.ordner}
+          art={umzug.art}
+          onClose={() => setUmzug(null)}
+          /* ⚠️ Nach dem Einspielen liegt die Post im Ordner, aber nicht in
+             der Liste. Eine Handlung ist erst fertig, wenn man sie sieht. */
+          onFertig={() => {
+            void stammLaden()
+            void listeLaden()
+          }}
+        />
+      )}
 
       {menue && (
         <Kontextmenue

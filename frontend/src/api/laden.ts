@@ -59,6 +59,7 @@ interface ApiVoll extends ApiZeile {
   text: string
   geblockte_bilder: number
   absender_freigegeben: boolean
+  faerbt_sich_selbst: boolean
   anhaenge: ApiAnhang[]
 }
 
@@ -255,6 +256,8 @@ export interface VolleNachricht extends Nachricht {
    *  nicht noch einmal an — und er erscheint ohnehin nicht, weil die Bilder
    *  schon drin sind. */
   absenderFreigegeben: boolean
+  /** Legt die Mail eigene Farben fest? Dann rechnet sie mit hellem Grund. */
+  faerbtSichSelbst: boolean
   echteAnhaenge: Anhang[]
 }
 
@@ -269,6 +272,7 @@ export async function nachrichtLaden(id: string): Promise<VolleNachricht> {
     text: roh.text,
     geblockteBilder: roh.geblockte_bilder,
     absenderFreigegeben: roh.absender_freigegeben,
+    faerbtSichSelbst: roh.faerbt_sich_selbst,
     hatFremdbilder: roh.geblockte_bilder > 0,
     echteAnhaenge: roh.anhaenge
       .filter((a) => !a.inline)
@@ -517,4 +521,92 @@ export async function terminAntworten(
   antwort: 'zusage' | 'vorbehalt' | 'absage',
 ): Promise<Einladung> {
   return einladung(await api.senden<ApiEinladung>(`/api/termine/${id}/antwort`, { antwort }))
+}
+
+/* --- Umzug: Post hinein und hinaus ------------------------------------- */
+
+export interface Umzugsstand {
+  id: string
+  dateiname: string
+  laeuft: boolean
+  /** Leer heißt: lief durch. Sonst der Satz, an dem er gescheitert ist. */
+  fehler: string
+  gelesen: number
+  importiert: number
+  uebersprungen: number
+  ohneKennung: number
+  fehlerJeMail: string[]
+  fehlerGesamt: number
+  abgeschnitten: boolean
+  abgebrochen: boolean
+}
+
+interface ApiUmzugsstand {
+  id: string
+  dateiname: string
+  laeuft: boolean
+  fehler: string
+  gelesen: number
+  importiert: number
+  uebersprungen: number
+  ohne_kennung: number
+  fehler_je_mail: string[]
+  fehler_gesamt: number
+  abgeschnitten: boolean
+  abgebrochen: boolean
+}
+
+function umzugsstand(s: ApiUmzugsstand): Umzugsstand {
+  return {
+    id: s.id,
+    dateiname: s.dateiname,
+    laeuft: s.laeuft,
+    fehler: s.fehler,
+    gelesen: s.gelesen,
+    importiert: s.importiert,
+    uebersprungen: s.uebersprungen,
+    ohneKennung: s.ohne_kennung,
+    fehlerJeMail: s.fehler_je_mail,
+    fehlerGesamt: s.fehler_gesamt,
+    abgeschnitten: s.abgeschnitten,
+    abgebrochen: s.abgebrochen,
+  }
+}
+
+export async function postEinspielen(ordnerId: number, datei: File): Promise<Umzugsstand> {
+  const formular = new FormData()
+  formular.append('datei', datei)
+  formular.append('ordner_id', String(ordnerId))
+  return umzugsstand(await api.formular<ApiUmzugsstand>('/api/austausch/import', formular))
+}
+
+export async function umzugStand(id: string): Promise<Umzugsstand> {
+  return umzugsstand(await api.holen<ApiUmzugsstand>(`/api/austausch/vorgang/${id}`))
+}
+
+/** Der gerade laufende Import — damit ein Neuladen der Seite ihn nicht verliert. */
+export async function laufenderUmzug(): Promise<Umzugsstand | null> {
+  const roh = await api.holen<ApiUmzugsstand | null>('/api/austausch/vorgang')
+  return roh ? umzugsstand(roh) : null
+}
+
+export async function umzugAbbrechen(id: string): Promise<Umzugsstand> {
+  return umzugsstand(
+    await api.senden<ApiUmzugsstand>(`/api/austausch/vorgang/${id}/abbrechen`, {}),
+  )
+}
+
+export interface Exportvorschau {
+  /** Wie viele Nachrichten nexmail von diesem Ordner kennt. */
+  bekannt: number
+  /** Wie viele beim Anbieter liegen. */
+  gesamt: number
+  zipGrenze: number
+}
+
+export async function exportVorschau(ordnerId: number): Promise<Exportvorschau> {
+  const roh = await api.holen<{ bekannt: number; gesamt: number; zip_grenze: number }>(
+    `/api/austausch/vorschau/${ordnerId}`,
+  )
+  return { bekannt: roh.bekannt, gesamt: roh.gesamt, zipGrenze: roh.zip_grenze }
 }

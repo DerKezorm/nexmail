@@ -146,7 +146,9 @@
     "bilder_ging_nicht": "Die Bilder ließen sich nicht laden. Der Server des Absenders hat nicht geantwortet.",
     "details_zeigen": "Kopfdaten anzeigen",
     "wichtig_hoch": "Hohe Wichtigkeit",
-    "wichtig_niedrig": "Diese Nachricht wurde mit niedriger Wichtigkeit gesendet."
+    "wichtig_niedrig": "Diese Nachricht wurde mit niedriger Wichtigkeit gesendet.",
+    "hell_zeigen": "Auf hellem Grund zeigen",
+    "dunkel_zeigen": "Auf dunklem Grund zeigen"
   },
   "verfassen": {
     "titel_neu": "Neue Nachricht",
@@ -840,5 +842,37 @@
     "absage_erledigt": "abgesagt",
     "geantwortet": "Du hast am {{wann}} {{was}}.",
     "fehler": "Die Antwort ließ sich nicht verschicken."
+  },
+  "umzug": {
+    "einspielen": "Post einspielen …",
+    "herunterladen": "Ordner herunterladen …",
+    "ein_titel": "Post in „{{ordner}}“ einspielen",
+    "ein_text": "Eine mbox-Datei aus Thunderbird oder einem anderen Programm. Was schon im Ordner liegt, wird übersprungen — ein abgebrochener Import lässt sich einfach wiederholen.",
+    "ein_datei": "mbox-Datei",
+    "ein_datei_waehlen": "Datei wählen …",
+    "ein_start": "Einspielen",
+    "ein_laeuft": "Wird eingespielt…",
+    "ein_dauer": "Das dauert bei zehntausend Mails seine Zeit. Das Fenster darf zu — nexmail spielt weiter ein, solange es läuft.",
+    "ein_fertig": "Fertig.",
+    "ein_zahlen": "{{importiert}} eingespielt · {{uebersprungen}} übersprungen (schon da)",
+    "ein_gelesen": "{{count}} aus der Datei gelesen",
+    "ein_ohne_kennung_one": "1 Nachricht ohne Message-ID — bei ihr kann nexmail nicht sagen, ob sie schon da war.",
+    "ein_ohne_kennung_other": "{{count}} Nachrichten ohne Message-ID — bei ihnen kann nexmail nicht sagen, ob sie schon da waren.",
+    "ein_fehler_one": "1 Nachricht ging nicht durch:",
+    "ein_fehler_other": "{{count}} Nachrichten gingen nicht durch:",
+    "ein_fehler_mehr": "… und {{count}} weitere.",
+    "ein_abgeschnitten": "Die Grenze von {{count}} Nachrichten je Durchgang ist erreicht. Dieselbe Datei noch einmal einspielen macht dort weiter.",
+    "ein_abgebrochen": "Abgebrochen. Was schon drin ist, bleibt drin — ein zweiter Anlauf überspringt es.",
+    "aus_titel": "„{{ordner}}“ herunterladen",
+    "aus_text": "Heruntergeladen wird, was nexmail von diesem Ordner kennt.",
+    "aus_bekannt_one": "1 Nachricht",
+    "aus_bekannt_other": "{{count}} Nachrichten",
+    "aus_luecke": "nexmail kennt erst {{bekannt}} von {{gesamt}} Nachrichten dieses Ordners. Bitte erst abgleichen — sonst fehlt der Rest in der Datei.",
+    "aus_form": "Format",
+    "aus_mbox": "mbox — eine Datei, liest Thunderbird",
+    "aus_zip": "ZIP — je Mail eine .eml-Datei",
+    "aus_zip_zu_gross": "Als ZIP gehen höchstens {{grenze}} Nachrichten. Dieser Ordner hat mehr — mbox hat keine Grenze.",
+    "aus_start": "Herunterladen",
+    "aus_leer": "In diesem Ordner ist nichts, was sich herunterladen ließe."
   }
 }

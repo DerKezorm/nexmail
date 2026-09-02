@@ -31,26 +31,45 @@ logger = logging.getLogger("nexmail.bereinigen")
 
 #: Was eine Mail an Struktur haben darf. Bewusst knapp: Alles, was hier fehlt,
 #: kann eine Mail nicht kaputt machen, und was fehlt, sieht man sofort.
+#: ⚠️ **``center`` und ``font`` sind veraltet und stehen mit Absicht hier.**
+#: Newsletter werden fuer Outlook gebaut, und Outlook rendert mit Word — die
+#: Gestaltung steht deshalb bis heute an den Elementen statt im CSS. Wer die
+#: beiden weglaesst, laesst genau die Mails zerfallen, um die es geht.
+#:
+#: ⚠️ **``style`` als ELEMENT fehlt weiterhin.** Am 02.09.2026 so entschieden:
+#: Attribute ja, Bloecke nein. Ein ``<style>``-Block braucht einen eigenen
+#: CSS-Filter (``url()``, ``@import``, ``expression``, ``behavior``) und eine
+#: Begrenzung auf den Rahmen. Fremdes CSS ist die Flaeche, auf der bisher
+#: nichts durchkam, und sie wird nicht nebenbei geoeffnet.
 ERLAUBTE_ELEMENTE = {
-    "a", "abbr", "b", "blockquote", "br", "caption", "code", "col", "colgroup",
-    "dd", "div", "dl", "dt", "em", "figcaption", "figure", "h1", "h2", "h3",
-    "h4", "h5", "h6", "hr", "i", "img", "li", "ol", "p", "pre", "q", "s",
-    "small", "span", "strike", "strong", "sub", "sup", "table", "tbody", "td",
-    "tfoot", "th", "thead", "tr", "u", "ul",
+    "a", "abbr", "b", "blockquote", "br", "caption", "center", "code", "col",
+    "colgroup", "dd", "div", "dl", "dt", "em", "figcaption", "figure", "font",
+    "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "li", "ol", "p",
+    "pre", "q", "s", "small", "span", "strike", "strong", "sub", "sup",
+    "table", "tbody", "td", "tfoot", "th", "thead", "tr", "u", "ul",
 }
 
 #: ⚠️ **Keine ``on*``-Attribute, kein ``style`` mit Ausbruch.** ``style`` bleibt
 #: erlaubt, weil Mails ohne Inline-Stile unlesbar aussehen - nh3 filtert darin
 #: nach eigener Liste und laesst ``expression()`` und ``url()`` nicht durch.
+#: ⚠️ **``background`` fehlt ueberall, und das ist kein Versehen.** Es traegt
+#: eine ADRESSE, kein Farbwort — ein Hintergrundbild waere damit ein Zaehlpixel,
+#: das an der Bilder-Ausklinkung vorbeigeht. ``bgcolor`` ist harmlos, es kann
+#: nur eine Farbe sein.
 ERLAUBTE_ATTRIBUTE: dict[str, set[str]] = {
-    "*": {"style", "title", "dir", "lang"},
+    "*": {"style", "title", "dir", "lang", "align", "bgcolor"},
     # ⚠️ Kein "rel" hier: nh3 setzt es selbst (siehe link_rel unten) und
     # lehnt es auf der Liste mit einem ValueError ab.
     "a": {"href", "name", "target"},
-    "img": {"src", "alt", "width", "height"},
-    "td": {"colspan", "rowspan", "align", "valign"},
-    "th": {"colspan", "rowspan", "align", "valign"},
-    "table": {"width", "border", "cellpadding", "cellspacing", "align"},
+    "img": {"src", "alt", "width", "height", "border", "hspace", "vspace"},
+    "td": {"colspan", "rowspan", "align", "valign", "width", "height", "nowrap"},
+    "th": {"colspan", "rowspan", "align", "valign", "width", "height", "nowrap"},
+    "tr": {"align", "valign", "height"},
+    "table": {
+        "width", "height", "border", "cellpadding", "cellspacing", "align",
+        "role",
+    },
+    "font": {"color", "face", "size"},
     "col": {"span", "width"},
     "colgroup": {"span", "width"},
     "ol": {"start", "type"},
@@ -233,6 +252,36 @@ def fuer_versand(roh_html: str) -> str:
     es nicht harmlos.
     """
     return saeubern(roh_html)
+
+
+#: Woran man erkennt, dass eine Mail ihre Farben selbst bestimmt.
+#:
+#: ⚠️ **Absichtlich grob.** Es geht nicht darum, CSS zu verstehen, sondern um
+#: eine Ja-oder-Nein-Frage: Rechnet diese Mail mit einem hellen Grund? Wer hier
+#: fein unterscheidet, faerbt am Ende halb um — und genau das war der Fehler.
+#: ⚠️ **``border-color`` und Verwandte zaehlen nicht.** Sie sagen nichts
+#: darueber, mit welchem Grund die Mail rechnet; der Blick davor haelt sie
+#: draussen.
+_FARBIG = re.compile(
+    r"\bbgcolor\s*=|\bbackground-color\s*:|(?<![-\w])color\s*:|<font\b",
+    re.IGNORECASE,
+)
+
+
+def faerbt_sich_selbst(html: str) -> bool:
+    """Legt diese Mail eigene Farben fest?
+
+    ⚠️ **Die Frage entscheidet ueber lesbar oder nicht.** Am 02.09.2026
+    gemessen: Eine Mail mit ``color:#333`` und ohne eigenen Grund stand im
+    Dunkelmodus als Dunkelgrau auf Fast-Schwarz da — Kontrast 1,53:1, ab
+    4,5 waere sie lesbar. Es sind ausgerechnet die schlichten Geschaeftsmails.
+
+    ⚠️ **Ganz oder gar nicht, je Mail.** Wer nur einfaerbt, was die Mail nicht
+    selbst festlegt, erzeugt genau diesen Fall. Sagt eine Mail irgendetwas
+    ueber Farbe, bekommt sie den hellen Grund, mit dem sie rechnet; sagt sie
+    nichts, traegt sie die Farben der Anwendung.
+    """
+    return bool(html) and _FARBIG.search(html) is not None
 
 
 def text_aus_html(html: str, laenge: int = 200) -> str:

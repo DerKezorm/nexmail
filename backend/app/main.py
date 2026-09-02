@@ -28,6 +28,7 @@ from .middleware import BasisPfadMiddleware, SicherheitskopfMiddleware, VorgangM
 from .routers import (
     abwesenheit as abwesenheit_router,
     aufgaben as aufgaben_router,
+    austausch as austausch_router,
     bilder as bilder_router,
     oidc as oidc_router,
     auth,
@@ -313,6 +314,7 @@ app.include_router(suche.router, dependencies=NUR_ANGEMELDET)
 app.include_router(benutzer_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(aufgaben_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(termine_router.router, dependencies=NUR_ANGEMELDET)
+app.include_router(austausch_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(ueber_router.router, dependencies=NUR_ANGEMELDET)
 # ⚠️ **Ohne ``NUR_ANGEMELDET``.** Hinweg und Rueckweg gehoeren zur
 # Anmeldung; die Verwaltungs-Adressen darin haengen einzeln am Betreiber.

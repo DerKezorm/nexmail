@@ -23,12 +23,14 @@ import {
   MailOpen,
   ExternalLink,
   FileDown,
+  Moon,
   MoreHorizontal,
   Paperclip,
   PenLine,
   Plus,
   Printer,
   ReplyAll,
+  Sun,
   Tag,
   Trash2,
 } from 'lucide-react'
@@ -86,6 +88,15 @@ export function Lesebereich({
      Bestätigungszeile samt „Rückgängig". `null` heißt: nichts gemerkt. */
   const [gemerkt, setGemerkt] = useState<string | null>(null)
   const [bilderFehler, setBilderFehler] = useState(false)
+  /* ⚠️ **Der Ausschalter je Mail.** Die Erkennung ist absichtlich grob; wo sie
+     danebenliegt, soll man es von Hand richten können — und zwar nur für diese
+     eine Mail, nicht als Einstellung, die man später nicht mehr findet. */
+  const [eigenerGrund, setEigenerGrund] = useState(false)
+  /* Ob die Anwendung selbst dunkel steht. Nur dann macht der Umschalter
+     überhaupt einen Unterschied. */
+  const dunkelmodus =
+    typeof document !== 'undefined' &&
+    document.documentElement.getAttribute('data-theme') !== 'light'
   /* Die Termin-Einladung dieser Nachricht, falls eine darin steckt.
      ⚠️ Nachgeladen, nicht mitgeliefert: Die allermeisten Mails tragen keine,
      und der Lesebereich soll nicht bei jeder Mail eine .ics zerlegen. */
@@ -108,6 +119,7 @@ export function Lesebereich({
     setBilderFehler(false)
     setHoehe(0)
     setEinladung(null)
+    setEigenerGrund(false)
   }, [nachricht?.id])
 
   /* ⚠️ **Mit Wache gegen die späte Antwort.** Wer weiterklickt, während die
@@ -153,7 +165,13 @@ export function Lesebereich({
   }
 
   const inhalt = freigegeben ?? nachricht?.koerper ?? ''
-  const seite = useMemo(() => (nachricht ? rahmenInhalt(inhalt) : ''), [nachricht, inhalt])
+  /* Hell wird der Rahmen, wenn die Mail eigene Farben setzt — es sei denn,
+     man hat für diese eine Mail das Gegenteil verlangt. */
+  const hell = (nachricht?.faerbtSichSelbst ?? false) !== eigenerGrund
+  const seite = useMemo(
+    () => (nachricht ? rahmenInhalt(inhalt, hell) : ''),
+    [nachricht, inhalt, hell],
+  )
 
   /* Die Höhe des Rahmens folgt der Mail.
    *
@@ -302,6 +320,20 @@ export function Lesebereich({
                 symbol: <Paperclip />,
                 tun: () => aufVerfassen('anhang', nachricht),
               },
+              /* ⚠️ **Der Umschalter steht nur da, wenn er etwas tut.** Im
+                 hellen Modus der Anwendung sieht jede Mail ohnehin hell aus;
+                 ein Eintrag, der dann nichts ändert, ist schlimmer als
+                 keiner. */
+              ...(dunkelmodus
+                ? [
+                    {
+                      id: 'grund',
+                      text: hell ? t('lesen.dunkel_zeigen') : t('lesen.hell_zeigen'),
+                      symbol: hell ? <Moon /> : <Sun />,
+                      tun: () => setEigenerGrund((v) => !v),
+                    } satisfies MenueEintrag,
+                  ]
+                : []),
               // „Wiedervorlage" — dieselben Zeitpunkte wie im Kontextmenü
               // der Liste, aus derselben Quelle gebaut.
               ...(wiedervorlageMenue
@@ -552,18 +584,29 @@ export function Lesebereich({
  * Die vier Farbwerte werden hereingereicht, weil der Rahmen keine Variablen
  * des Elternfensters sieht.
  */
-function rahmenInhalt(koerper: string): string {
+function rahmenInhalt(koerper: string, aufHell: boolean): string {
+  /* ⚠️ **Ganz oder gar nicht, je Mail.** Sagt die Mail irgendetwas über Farbe,
+     rechnet sie mit hellem Grund und bekommt ihn — sonst trägt sie die Farben
+     der Anwendung. Halb umzufärben ist der Fehler: Am 02.09.2026 gemessen
+     stand eine Mail mit `color:#333` und ohne eigenen Grund als Dunkelgrau auf
+     Fast-Schwarz da: Kontrast 1,53:1, auf hellem Grund sind es 12,63:1.
+
+     ⚠️ **`Canvas` und `CanvasText`, keine erfundene Farbe.** Unter
+     `color-scheme: light` fragt das die Systemfarben ab — genau den hellen
+     Grund, mit dem die Mail rechnet. Ein hier eingetipptes `#ffffff` wäre eine
+     Farbe, die in keinem Token steht. */
   const stil = `
-    :root { color-scheme: light dark; }
+    :root { color-scheme: ${aufHell ? 'light' : 'light dark'}; }
     body {
       margin: 0; padding: 16px 24px;
       font: 400 14px/1.6 var(--nm-sans);
-      color: var(--nm-text); background: transparent;
+      color: ${aufHell ? 'CanvasText' : 'var(--nm-text)'};
+      background: ${aufHell ? 'Canvas' : 'transparent'};
       overflow-wrap: break-word;
     }
     p { margin: 0 0 12px; }
-    a { color: var(--nm-accent); }
-    b, strong { color: var(--nm-strong); }
+    ${aufHell ? '' : 'a { color: var(--nm-accent); }'}
+    ${aufHell ? '' : 'b, strong { color: var(--nm-strong); }'}
     code, pre { font-family: var(--nm-mono); font-size: .92em; }
     pre { white-space: pre-wrap; }
     img { max-width: 100%; height: auto; }

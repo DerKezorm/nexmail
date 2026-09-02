@@ -146,7 +146,9 @@
     "bilder_ging_nicht": "The images could not be loaded. The sender's server did not answer.",
     "details_zeigen": "Show headers",
     "wichtig_hoch": "High importance",
-    "wichtig_niedrig": "This message was sent with low importance."
+    "wichtig_niedrig": "This message was sent with low importance.",
+    "hell_zeigen": "Show on a light background",
+    "dunkel_zeigen": "Show on a dark background"
   },
   "verfassen": {
     "titel_neu": "New message",
@@ -840,5 +842,37 @@
     "absage_erledigt": "declined",
     "geantwortet": "You {{was}} on {{wann}}.",
     "fehler": "The reply could not be sent."
+  },
+  "umzug": {
+    "einspielen": "Import mail …",
+    "herunterladen": "Download folder …",
+    "ein_titel": "Import mail into “{{ordner}}”",
+    "ein_text": "An mbox file from Thunderbird or another program. Anything already in the folder is skipped — an interrupted import can simply be repeated.",
+    "ein_datei": "mbox file",
+    "ein_datei_waehlen": "Choose file …",
+    "ein_start": "Import",
+    "ein_laeuft": "Importing…",
+    "ein_dauer": "With ten thousand messages this takes a while. You can close this window — nexmail keeps importing as long as it is running.",
+    "ein_fertig": "Done.",
+    "ein_zahlen": "{{importiert}} imported · {{uebersprungen}} skipped (already there)",
+    "ein_gelesen": "{{count}} read from the file",
+    "ein_ohne_kennung_one": "1 message without a Message-ID — nexmail cannot tell whether it was already there.",
+    "ein_ohne_kennung_other": "{{count}} messages without a Message-ID — nexmail cannot tell whether they were already there.",
+    "ein_fehler_one": "1 message did not go through:",
+    "ein_fehler_other": "{{count}} messages did not go through:",
+    "ein_fehler_mehr": "… and {{count}} more.",
+    "ein_abgeschnitten": "The limit of {{count}} messages per run has been reached. Importing the same file again continues from there.",
+    "ein_abgebrochen": "Cancelled. What is already in stays in — a second run skips it.",
+    "aus_titel": "Download “{{ordner}}”",
+    "aus_text": "What gets downloaded is what nexmail knows about this folder.",
+    "aus_bekannt_one": "1 message",
+    "aus_bekannt_other": "{{count}} messages",
+    "aus_luecke": "nexmail only knows {{bekannt}} of {{gesamt}} messages in this folder. Please sync first — otherwise the rest is missing from the file.",
+    "aus_form": "Format",
+    "aus_mbox": "mbox — one file, Thunderbird reads it",
+    "aus_zip": "ZIP — one .eml file per message",
+    "aus_zip_zu_gross": "A ZIP holds at most {{grenze}} messages. This folder has more — mbox has no limit.",
+    "aus_start": "Download",
+    "aus_leer": "There is nothing in this folder to download."
   }
 }

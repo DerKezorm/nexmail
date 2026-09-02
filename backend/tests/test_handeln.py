@@ -203,10 +203,19 @@ def test_zurueck_holt_die_mail_wieder(db, welt):
     assert len(server.ordner["INBOX"]["nachrichten"]) == 3
 
 
-def test_kein_verschieben_zwischen_postfaechern(db, welt, klient):
-    """⚠️ Auf einem echten Server ginge das gar nicht.
+def test_verschieben_zwischen_postfaechern_geht_einen_anderen_weg(db, welt, klient):
+    """⚠️ **Diese Regel wurde am 02.09.2026 aufgehoben, nicht vergessen.**
 
-    Eine Oberfläche, die es anbietet, sähe aus, als ginge es.
+    Hier stand bis dahin „geht gar nicht", und der Grund war richtig: Ein
+    ``MOVE`` oder ``COPY`` wirkt nur innerhalb einer Verbindung, und eine
+    Oberfläche, die es trotzdem anbietet, sähe aus, als ginge es.
+
+    Der Ausweg ist ein anderer Vorgang, kein aufgeweichter alter: holen, beim
+    Ziel anhängen, nachsehen, dann bei der Quelle löschen
+    (``handeln.ueber_konten``). Was dieser Test noch festhält, ist die
+    Weiterleitung dorthin — dass ``verschieben`` die Grenze erkennt und **nicht**
+    versucht, sie mit einem COPY zu überfahren. Der Vorgang selbst steht unter
+    Wache in ``test_ueber_konten.py``.
     """
     from app.models import Benutzer
     from app.services import konten
@@ -223,8 +232,23 @@ def test_kein_verschieben_zwischen_postfaechern(db, welt, klient):
     db.add(fremd)
     db.commit()
 
-    with pytest.raises(handeln.HandelnFehler, match="anderen Postfach"):
-        handeln.verschieben(db, [_mail(db, "Erste")], fremd)
+    gerufen: list[str] = []
+    import app.services.handeln as modul
+
+    echt = modul.ueber_konten
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(modul, "ueber_konten", lambda *a, **k: gerufen.append("ueber_konten") or echt(*a, **k))
+    try:
+        with pytest.raises(Exception):
+            # Der Doppelgaenger dieses Tests kennt kein APPEND — der Vorgang
+            # scheitert also. Wichtig ist, DASS er gewaehlt wurde.
+            handeln.verschieben(db, [_mail(db, "Erste")], fremd)
+    finally:
+        monkey.undo()
+
+    assert gerufen == ["ueber_konten"], (
+        "Der Zug ueber die Kontogrenze wurde nicht an ueber_konten weitergereicht."
+    )
 
 
 def test_nicht_in_denselben_ordner(db, welt):

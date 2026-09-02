@@ -273,3 +273,77 @@ def test_ein_unbekanntes_cid_verliert_sein_src_ganz():
     assert fertig.count("<img") == 2
     assert 'alt="Fehlt"' in fertig
 
+
+# --- Newsletter: was durchkommen muss und was nicht ----------------------- #
+
+
+def test_newsletter_gestaltung_bleibt_stehen():
+    """⚠️ Newsletter werden fuer Outlook gebaut, und Outlook rendert mit Word.
+
+    Die Gestaltung steht deshalb bis heute an den Elementen statt im CSS. Wer
+    diese Attribute wegwirft, laesst genau die Mails zerfallen, um die es geht.
+    """
+    roh = (
+        '<table bgcolor="#f5f5f5" width="600" cellpadding="0" role="presentation">'
+        '<tr height="40" valign="top"><td width="300" bgcolor="#ffffff" nowrap>'
+        '<font color="#333333" face="Arial" size="3">Angebot</font></td></tr></table>'
+        '<center>Abmelden</center>'
+    )
+    sauber = bereinigen.saeubern(roh)
+    for stueck in (
+        'bgcolor="#f5f5f5"', 'width="600"', 'role="presentation"',
+        'height="40"', 'valign="top"', 'width="300"', 'bgcolor="#ffffff"',
+        'color="#333333"', 'face="Arial"', "<center>",
+    ):
+        assert stueck in sauber, stueck
+
+
+def test_background_kommt_nicht_durch():
+    """⚠️ **Das eine Attribut, das draussen bleiben muss.**
+
+    ``background`` traegt eine ADRESSE, kein Farbwort. Ein Hintergrundbild
+    waere damit ein Zaehlpixel, das an der Bilder-Ausklinkung vorbeigeht — die
+    ganze Uebung mit ``data-nexmail-src`` waere umgangen.
+    """
+    sauber = bereinigen.saeubern(
+        '<table background="https://absender.example/zaehl.gif"><tr><td '
+        'background="https://absender.example/z2.gif">x</td></tr></table>'
+    )
+    assert "background=" not in sauber
+    assert "absender.example" not in sauber
+
+
+def test_style_bloecke_bleiben_draussen():
+    """Am 02.09.2026 so entschieden: Attribute ja, Bloecke nein."""
+    sauber = bereinigen.saeubern("<style>body{color:red}</style><p>Text</p>")
+    assert "<style" not in sauber.lower()
+    assert "<p>Text</p>" in sauber
+
+
+# --- Faerbt die Mail sich selbst? ---------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "html,erwartet",
+    [
+        ("<p>schlicht</p>", False),
+        ("", False),
+        ('<div style="color:#333">x</div>', True),
+        ('<table bgcolor="#fff"><tr><td>x</td></tr></table>', True),
+        ('<p style="background-color:#eee">x</p>', True),
+        ('<font color="red">x</font>', True),
+        # ⚠️ Randfarben sagen nichts darueber, mit welchem Grund die Mail
+        # rechnet — sonst bekaeme jede Mail mit einer Trennlinie hellen Grund.
+        ('<div style="border-color:#333">x</div>', False),
+        ('<div style="outline-color:#333">x</div>', False),
+    ],
+)
+def test_faerbt_sich_selbst(html, erwartet):
+    """⚠️ **Die Frage entscheidet ueber lesbar oder nicht.**
+
+    Am 02.09.2026 gemessen: Eine Mail mit ``color:#333`` und ohne eigenen
+    Grund stand im Dunkelmodus mit Kontrast **1,53:1** da; lesbar waere ab
+    4,5. Auf hellem Grund sind es 12,63:1.
+    """
+    assert bereinigen.faerbt_sich_selbst(html) is erwartet
+
