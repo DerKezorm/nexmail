@@ -9,7 +9,7 @@
  * `allow-scripts`. Zwei Verteidigungen, weil eine davon irgendwann eine Lücke
  * hat.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Archive,
@@ -34,7 +34,9 @@ import {
 } from 'lucide-react'
 import type { Nachricht, Schlagwort } from '../daten/typen'
 import type { VolleNachricht } from '../api/laden'
-import { absenderVergessen, bilderAnzeigen } from '../api/laden'
+import type { Einladung } from '../api/laden'
+import { absenderVergessen, bilderAnzeigen, einladungLaden } from '../api/laden'
+import { Einladungskarte } from './Einladungskarte'
 import { anzeigename, groesse, initialen, langesDatum } from '../lib/format'
 import { Schlagwortmarke } from './Schlagwortmarke'
 import { Button, EmptyState, IconButton } from '../ds'
@@ -84,6 +86,16 @@ export function Lesebereich({
      Bestätigungszeile samt „Rückgängig". `null` heißt: nichts gemerkt. */
   const [gemerkt, setGemerkt] = useState<string | null>(null)
   const [bilderFehler, setBilderFehler] = useState(false)
+  /* Die Termin-Einladung dieser Nachricht, falls eine darin steckt.
+     ⚠️ Nachgeladen, nicht mitgeliefert: Die allermeisten Mails tragen keine,
+     und der Lesebereich soll nicht bei jeder Mail eine .ics zerlegen. */
+  const [einladung, setEinladung] = useState<Einladung | null>(null)
+  const rahmen = useRef<HTMLIFrameElement>(null)
+  /** Welche Nachricht gerade offen ist — für Antworten, die zu spät kommen. */
+  const aktuelleId = useRef<string | null>(null)
+  aktuelleId.current = nachricht?.id ?? null
+  /** Die gemessene Höhe der Mail. `0` heißt „noch nicht gemessen". */
+  const [hoehe, setHoehe] = useState(0)
   // Das Menü hinter „Weitere Aktionen" — dieselbe Kontextmenü-Zutat wie beim
   // Rechtsklick in der Liste, nur unter dem Knopf aufgeklappt.
   const [mehrMenue, setMehrMenue] = useState<{ x: number; y: number } | null>(null)
@@ -94,6 +106,27 @@ export function Lesebereich({
     setFreigegeben(null)
     setGemerkt(null)
     setBilderFehler(false)
+    setHoehe(0)
+    setEinladung(null)
+  }, [nachricht?.id])
+
+  /* ⚠️ **Mit Wache gegen die späte Antwort.** Wer weiterklickt, während die
+     Einladung noch geladen wird, soll nicht die des vorigen Termins vor sich
+     haben — dieselbe Regel wie beim Nachladen der Nachricht selbst. */
+  useEffect(() => {
+    const fuer = nachricht?.id
+    if (!fuer) return
+    let abgebrochen = false
+    void einladungLaden(fuer)
+      .then((e) => {
+        if (!abgebrochen) setEinladung(e)
+      })
+      .catch(() => {
+        // Eine Einladung ist Beiwerk — die Mail steht auch ohne sie da.
+      })
+    return () => {
+      abgebrochen = true
+    }
   }, [nachricht?.id])
 
   /* ⚠️ **Der Balken bleibt stehen und sagt es, wenn es schiefgeht.** Ein
@@ -101,18 +134,66 @@ export function Lesebereich({
      genau der stand hier drei Fassungen lang. */
   const bilderZeigen = async (merken: boolean) => {
     if (!nachricht) return
+    const fuer = nachricht.id
     setBilderFehler(false)
     try {
-      const html = await bilderAnzeigen(nachricht.id, merken)
+      const html = await bilderAnzeigen(fuer, merken)
+      /* ⚠️ **Die Antwort gehört zu EINER Nachricht.** Wer während des Holens
+         weiterklickt, bekam bis zum 02.09.2026 den fremden Rumpf in den
+         Rahmen gesetzt — der Kopf zeigte die neue Mail, der Rahmen die alte.
+         Dieselbe Regel wie beim Laden der Nachricht selbst, nur fehlte sie
+         hier. */
+      if (aktuelleId.current !== fuer) return
       setFreigegeben(html)
       if (merken) setGemerkt(nachricht.von.adresse)
     } catch {
+      if (aktuelleId.current !== fuer) return
       setBilderFehler(true)
     }
   }
 
   const inhalt = freigegeben ?? nachricht?.koerper ?? ''
   const seite = useMemo(() => (nachricht ? rahmenInhalt(inhalt) : ''), [nachricht, inhalt])
+
+  /* Die Höhe des Rahmens folgt der Mail.
+   *
+   * ⚠️ **Gemessen wird der `body`, nicht das `documentElement`.** Dessen Höhe
+   * ist die des Rahmens selbst; wer die nimmt, setzt sie zurück in den Rahmen
+   * und dreht sich im Kreis. Der `body` hat `margin: 0` und trägt damit genau
+   * die Höhe seines Inhalts — am 02.09.2026 nachgemessen: setzen und noch
+   * einmal messen ergibt denselben Wert. */
+  const hoeheNachziehen = useCallback(() => {
+    const d = rahmen.current?.contentDocument
+    if (!d?.body) return
+    const gemessen = Math.max(d.body.scrollHeight, Math.ceil(d.body.getBoundingClientRect().height))
+    setHoehe((vorher) => (Math.abs(vorher - gemessen) > 1 ? gemessen : vorher))
+  }, [])
+
+  /* ⚠️ **Einmal beim Laden reicht nicht.** Die Bilder kommen nach — jedes
+   * geladene Bild macht die Mail höher, und ohne Nachmessen bliebe der Rest
+   * abgeschnitten. Dasselbe beim Ändern der Fensterbreite: Eine schmalere
+   * Spalte bricht den Text um und macht ihn höher. */
+  useEffect(() => {
+    const r = rahmen.current
+    const d = r?.contentDocument
+    if (!d?.body) return
+    hoeheNachziehen()
+
+    const beobachter = new ResizeObserver(hoeheNachziehen)
+    beobachter.observe(d.body)
+    const bilder = Array.from(d.images)
+    for (const bild of bilder) {
+      bild.addEventListener('load', hoeheNachziehen)
+      bild.addEventListener('error', hoeheNachziehen)
+    }
+    return () => {
+      beobachter.disconnect()
+      for (const bild of bilder) {
+        bild.removeEventListener('load', hoeheNachziehen)
+        bild.removeEventListener('error', hoeheNachziehen)
+      }
+    }
+  }, [seite, hoeheNachziehen])
 
   if (laedt) {
     return <div className="h-full bg-canvas" />
@@ -346,6 +427,14 @@ export function Lesebereich({
           </div>
         </header>
 
+        {einladung && (
+          <Einladungskarte
+            nachrichtId={nachricht.id}
+            einladung={einladung}
+            aufAntwort={setEinladung}
+          />
+        )}
+
         {nachricht.geblockteBilder > 0 && freigegeben === null && (
           <div className="mx-6 mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-warning/40 bg-warning-soft px-4 py-3">
             <ImageOff className="size-4 shrink-0 text-warning" />
@@ -390,13 +479,32 @@ export function Lesebereich({
           </div>
         )}
 
-        {/* sandbox ohne allow-scripts: Der Rahmen darf nichts ausführen,
-            nichts an die App weitergeben und kein Formular abschicken. */}
+        {/* ⚠️ **`allow-same-origin`, aber weiterhin ohne `allow-scripts`.**
+            Der Rahmen muss dem Elternfenster seine Höhe sagen können, sonst
+            steckt jede Mail in einem 420-px-Fenster mit eigenem Rollbalken und
+            darunter steht toter Raum — am 02.09.2026 gemeldet und gemessen:
+            Rahmen 420 px, Mail 1432 px, äußerer Bereich rollte gar nicht.
+
+            Was das kostet, ist gemessen und nicht geschätzt: Ein Rahmen mit
+            `allow-same-origin` und ohne `allow-scripts` führt **nichts** aus,
+            weder ein `<script>` noch ein `onerror`. Beides am 02.09.2026 im
+            echten Chromium nachgestellt. Wer hier je `allow-scripts` ergänzt,
+            reißt beide Verteidigungslinien auf einmal ein. */}
+        {/* ⚠️ **Der `key` ist kein Beiwerk.** Ohne ihn behält React dasselbe
+            Rahmen-Element über alle Nachrichten hinweg und tauscht nur das
+            `srcdoc`-Attribut. Am 02.09.2026 aus dem Betrieb gemeldet: Der Kopf
+            zeigte eine Mail, der Rahmen darunter eine andere — und die
+            Druckansicht bewies, dass der gespeicherte Rumpf richtig war. Ein
+            frisches Element kann kein altes Dokument mehr zeigen. */}
         <iframe
+          key={nachricht.id}
+          ref={rahmen}
           title={nachricht.betreff}
-          sandbox=""
+          sandbox="allow-same-origin"
           srcDoc={seite}
-          className="min-h-[420px] w-full border-0 bg-transparent px-2"
+          onLoad={hoeheNachziehen}
+          style={{ height: hoehe ? `${hoehe}px` : undefined }}
+          className="w-full border-0 bg-transparent px-2"
         />
 
         {anhaenge.length > 0 && (
@@ -459,7 +567,11 @@ function rahmenInhalt(koerper: string): string {
     code, pre { font-family: var(--nm-mono); font-size: .92em; }
     pre { white-space: pre-wrap; }
     img { max-width: 100%; height: auto; }
-    img:not([src]) { display: none; }
+    /* ⚠️ Auch das leere src. Ein Bild ohne Adresse ist für den Browser kein
+       fehlendes, sondern ein kaputtes — er malt das Bruchsymbol. Der Server
+       lässt das Attribut inzwischen ganz weg; die Regel hier steht daneben,
+       weil ein älterer Bestand noch leere Adressen tragen kann. */
+    img:not([src]), img[src=""] { display: none; }
     table { max-width: 100%; }
   `
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import mimetypes
 import re
 from datetime import datetime, timezone
 from html import escape
@@ -34,6 +35,7 @@ from ..services import (
     konten as kontendienst,
     mime,
     schlagworte as schlagwortdienst,
+    zeit as zeitdienst,
     wiedervorlage as wiedervorlagedienst,
 )
 from .einstellungen import SCHLUESSEL_ZEITZONE
@@ -601,6 +603,28 @@ def bilder_anzeigen(
 MAX_INLINE = 2 * 1024 * 1024
 
 
+def _bildtyp(anhang: Anhang) -> str | None:
+    """Der Medientyp, unter dem dieser Anhang als Bild taugt — oder ``None``.
+
+    ⚠️ **Streng prüfen, nicht nur ``startswith``.** Der Typ kommt aus der Mail
+    (``get_content_type()`` reicht dort auch ``image/png" onerror="…``
+    wörtlich durch) und landet in einem ``src``-Attribut — **nach** der
+    nh3-Bereinigung, die dieses Attribut also nie sieht.
+
+    ⚠️ **Und der Dateiname als Rückfall.** Geschäftsmails hängen ihr Logo gern
+    als ``application/octet-stream`` an; wer nur dem deklarierten Typ glaubt,
+    lässt es weg, und im Lesebereich klafft eine Lücke, die nach einem Fehler
+    aussieht. Am 02.09.2026 an zwei echten Mails aufgefallen. Geraten wird nur
+    aus der Endung, und auch das Ergebnis muss die strenge Prüfung bestehen.
+    """
+    if re.fullmatch(r"image/[A-Za-z0-9.+-]+", anhang.mime):
+        return anhang.mime
+    geraten, _ = mimetypes.guess_type(anhang.dateiname or "")
+    if geraten and re.fullmatch(r"image/[A-Za-z0-9.+-]+", geraten):
+        return geraten
+    return None
+
+
 def _inline_quellen(nachricht: Nachricht) -> dict[str, str]:
     """Für jedes ``cid:`` eine Adresse, die der Lesebereich anzeigen kann.
 
@@ -619,7 +643,8 @@ def _inline_quellen(nachricht: Nachricht) -> dict[str, str]:
         # ``image/png" onerror="…`` wörtlich durch) und landet unten in einem
         # ``src``-Attribut — **nach** der nh3-Bereinigung, die dieses Attribut
         # also nie sieht. Nur ein sauberer Medientyp darf da hinein.
-        if not re.fullmatch(r"image/[A-Za-z0-9.+-]+", anhang.mime):
+        typ = _bildtyp(anhang)
+        if typ is None:
             continue
         if anhang.groesse > MAX_INLINE:
             logger.info("An inline image was too large to embed (%s bytes).", anhang.groesse)
@@ -628,7 +653,7 @@ def _inline_quellen(nachricht: Nachricht) -> dict[str, str]:
         if not datei.is_file():
             continue
         roh = base64.b64encode(datei.read_bytes()).decode("ascii")
-        quellen[anhang.cid] = f"data:{anhang.mime};base64,{roh}"
+        quellen[anhang.cid] = f"data:{typ};base64,{roh}"
     return quellen
 
 
@@ -786,11 +811,9 @@ def druck(
 
     # Die Uhrzeit in der eingestellten Zeitzone — ein Ausdruck mit UTC-Zeit
     # sähe für jeden außerhalb Londons falsch aus.
-    zonen_name = einstellung_lesen(db, SCHLUESSEL_ZEITZONE) or get_settings().zeitzone
-    try:
-        zone = ZoneInfo(zonen_name) if zonen_name else timezone.utc
-    except Exception:  # noqa: BLE001 — eine kaputte Zonenangabe druckt eben UTC
-        zone = timezone.utc
+    # ⚠️ Über ``zeit.zone_der_anwendung`` — die weicht zwar auch auf UTC aus,
+    # aber nicht stumm. Siehe services/zeit.py.
+    zone = zeitdienst.zone_der_anwendung(db)
     datum = nachricht.datum
     if datum.tzinfo is None:
         datum = datum.replace(tzinfo=timezone.utc)

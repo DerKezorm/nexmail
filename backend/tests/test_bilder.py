@@ -40,6 +40,8 @@ def _mail_anlegen(
     von: str = "werbung@beispiel.example",
     cid_anhang: str = "",
     postfach: str = "leser@beispiel.example",
+    anhang_mime: str = "image/png",
+    anhang_name: str = "logo.png",
 ) -> int:
     """Eine Mail mit geholtem Körper — sonst ginge die Route ins IMAP."""
     antwort = klient.post("/api/konten", json=_eingabe(postfach))
@@ -77,8 +79,8 @@ def _mail_anlegen(
             db.add(
                 Anhang(
                     nachricht_id=nachricht.id,
-                    dateiname="logo.png",
-                    mime="image/png",
+                    dateiname=anhang_name,
+                    mime=anhang_mime,
                     groesse=4,
                     cid=cid_anhang,
                     blob_hash="abc123",
@@ -542,4 +544,41 @@ def test_die_adresse_aus_der_antwort_liefert_wirklich_ein_bild(klient, ohne_netz
     antwort = klient.get(adresse)
     assert antwort.status_code == 200, antwort.text
     assert antwort.content == b"GIF89a"
+
+
+def test_ein_schlampig_deklariertes_logo_wird_trotzdem_eingebettet(klient, ohne_netz):
+    """⚠️ **Geschaeftsmails haengen ihr Logo gern als ``application/octet-stream`` an.**
+
+    Wer nur dem deklarierten Typ glaubt, laesst es weg — und im Lesebereich
+    klafft eine Luecke, die nach einem Fehler beim Laden aussieht. Am
+    02.09.2026 an zwei echten Mails gemeldet. Geraten wird nur aus der Endung.
+    """
+    einrichten(klient)
+    kennung = _mail_anlegen(
+        klient,
+        '<img src="cid:logo1" alt="Logo">',
+        cid_anhang="logo1",
+        anhang_mime="application/octet-stream",
+        anhang_name="logo.png",
+    )
+    html = klient.get(f"/api/nachrichten/{kennung}").json()["html"]
+    assert "data:image/png;base64," in html
+    assert "cid:logo1" not in html
+
+
+def test_was_kein_bild_ist_wird_nicht_eingebettet(klient, ohne_netz):
+    """Und das Bild verliert sein ``src``, statt als Bruchsymbol dazustehen."""
+    einrichten(klient)
+    kennung = _mail_anlegen(
+        klient,
+        '<img src="cid:datei1" alt="Vertrag">',
+        cid_anhang="datei1",
+        anhang_mime="application/pdf",
+        anhang_name="vertrag.pdf",
+    )
+    html = klient.get(f"/api/nachrichten/{kennung}").json()["html"]
+    assert "data:" not in html
+    assert 'src=""' not in html
+    assert "cid:datei1" not in html
+    assert 'alt="Vertrag"' in html
 

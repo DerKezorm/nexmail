@@ -66,8 +66,10 @@ BILD_MERKMAL = "data-nexmail-src"
 _IMG_SRC = re.compile(r"(<img\b[^>]*?)\ssrc=", re.IGNORECASE)
 #: Ein Bild mit ``src="cid:…"``. Die Kennung steht je nach Anführungszeichen
 #: in Gruppe 2, 3 oder 4.
+#: ⚠️ **Gruppe 1 endet VOR dem ``src=``.** Nur so lässt sich das Attribut ganz
+#: entfernen, wenn die Kennung unbekannt ist — siehe ``cid_einsetzen``.
 _IMG_CID = re.compile(
-    r"""(<img\b[^>]*?\ssrc=)(?:"cid:([^"]*)"|'cid:([^']*)'|cid:([^\s>]*))""",
+    r"""(<img\b[^>]*?\s)src=(?:"cid:([^"]*)"|'cid:([^']*)'|cid:([^\s>]*))""",
     re.IGNORECASE,
 )
 #: Ein ausgeklinktes Bild. Die Adresse steht je nach Anführungszeichen in
@@ -148,11 +150,19 @@ def cid_einsetzen(html: str, quellen: dict[str, str]) -> str:
         kennung = treffer.group(2) or treffer.group(3) or treffer.group(4) or ""
         adresse = quellen.get(kennung.strip())
         if adresse is None:
-            return f'{treffer.group(1)}""'
+            # ⚠️ **Das Attribut ganz weg, nicht leer.** Bis zum 02.09.2026
+            # stand hier ``src=""`` — und ein leeres ``src`` ist für den
+            # Browser kein fehlendes Bild, sondern ein **kaputtes**: Er malt
+            # das Bruchsymbol samt Alt-Text. Genau so sahen am 02.09.2026 zwei
+            # echte Mails aus, und es sah aus wie ein Fehler beim Laden,
+            # obwohl das Bild schlicht nicht beilag. Ohne ``src`` greift
+            # ``img:not([src]) { display: none }`` im Lesebereich, und die
+            # Lücke bleibt still.
+            return treffer.group(1)
         sicher = (
             adresse.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
         )
-        return f'{treffer.group(1)}"{sicher}"'
+        return f'{treffer.group(1)}src="{sicher}"'
 
     return _IMG_CID.sub(tauschen, html)
 

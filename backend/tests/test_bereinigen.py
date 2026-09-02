@@ -251,3 +251,25 @@ def test_ein_zaehlpixel_bleibt_ausgeklinkt_auch_neben_einem_cid_bild():
     # Kein echtes ``src=`` mehr, das ins Netz zeigt. Das führende Leerzeichen
     # ist nötig: ``data-nexmail-src="http…`` endet selbst auf ``src="http``.
     assert ' src="http' not in aus
+
+
+def test_ein_unbekanntes_cid_verliert_sein_src_ganz():
+    """⚠️ **Nicht ``src=""``, sondern gar kein ``src``.**
+
+    Ein leeres ``src`` ist für den Browser kein fehlendes Bild, sondern ein
+    kaputtes: Er malt das Bruchsymbol samt Alt-Text. Am 02.09.2026 an zwei
+    echten Mails gemeldet, die dadurch aussahen, als sei das Laden
+    gescheitert — dabei lag das Bild schlicht nicht bei.
+    """
+    sauber, _ = bereinigen.fuer_anzeige(
+        '<img src="cid:da" alt="Logo"><img src="cid:fehlt" alt="Fehlt">'
+    )
+    fertig = bereinigen.cid_einsetzen(sauber, {"da": "data:image/png;base64,AAA"})
+
+    assert 'src="data:image/png;base64,AAA"' in fertig
+    assert 'src=""' not in fertig
+    # Das Bild selbst bleibt stehen, nur ohne Adresse — der Lesebereich blendet
+    # es dann über ``img:not([src])`` aus.
+    assert fertig.count("<img") == 2
+    assert 'alt="Fehlt"' in fertig
+

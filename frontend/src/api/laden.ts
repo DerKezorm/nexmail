@@ -437,3 +437,84 @@ export async function strangLaden(schluessel: string): Promise<Nachricht[]> {
   )
   return roh.map(zeile)
 }
+
+/* --- Termin-Einladungen -------------------------------------------------- */
+
+export interface EinladungPerson {
+  name: string
+  adresse: string
+}
+
+export interface Einladung {
+  uid: string
+  methode: string
+  titel: string
+  beschreibung: string
+  ort: string
+  /** ISO-8601 mit Zeitzone — oder `JJJJ-MM-TT` bei einem ganzen Tag. */
+  beginn: string
+  ende: string
+  ganztaegig: boolean
+  /** Gesetzt, wenn die Zeitzone der Einladung unbekannt war. Dann steht die
+   *  Zeit so da, wie sie kam, und die Karte nennt den Namen dazu. */
+  fremdeZeitzone: string
+  wiederholtSich: boolean
+  abgesagt: boolean
+  organisator: EinladungPerson
+  teilnehmer: EinladungPerson[]
+  /** `zusage` | `vorbehalt` | `absage` — leer, solange nicht geantwortet. */
+  antwort: string
+  antwortAm: string | null
+}
+
+interface ApiEinladung {
+  uid: string
+  methode: string
+  titel: string
+  beschreibung: string
+  ort: string
+  beginn: string
+  ende: string
+  ganztaegig: boolean
+  fremde_zeitzone: string
+  wiederholt_sich: boolean
+  abgesagt: boolean
+  organisator: EinladungPerson
+  teilnehmer: EinladungPerson[]
+  antwort: string
+  antwort_am: string | null
+}
+
+function einladung(roh: ApiEinladung): Einladung {
+  return {
+    uid: roh.uid,
+    methode: roh.methode,
+    titel: roh.titel,
+    beschreibung: roh.beschreibung,
+    ort: roh.ort,
+    beginn: roh.beginn,
+    ende: roh.ende,
+    ganztaegig: roh.ganztaegig,
+    fremdeZeitzone: roh.fremde_zeitzone,
+    wiederholtSich: roh.wiederholt_sich,
+    abgesagt: roh.abgesagt,
+    organisator: roh.organisator,
+    teilnehmer: roh.teilnehmer,
+    antwort: roh.antwort,
+    antwortAm: roh.antwort_am,
+  }
+}
+
+/** Die Einladung in dieser Nachricht — `null`, wenn keine darin steckt. */
+export async function einladungLaden(id: string): Promise<Einladung | null> {
+  const roh = await api.holen<ApiEinladung | null>(`/api/termine/${id}`)
+  return roh ? einladung(roh) : null
+}
+
+/** Zusagen, mit Vorbehalt zusagen oder absagen. */
+export async function terminAntworten(
+  id: string,
+  antwort: 'zusage' | 'vorbehalt' | 'absage',
+): Promise<Einladung> {
+  return einladung(await api.senden<ApiEinladung>(`/api/termine/${id}/antwort`, { antwort }))
+}

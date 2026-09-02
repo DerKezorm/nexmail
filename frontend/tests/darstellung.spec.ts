@@ -463,3 +463,129 @@ test('Schlagworte sind Rechtecke, Postfächer sind Punkte', async ({ page }) => 
     expect(parseFloat(m.radius), `„${m.name}" ist rund statt eckig`).toBeLessThan(m.hoch / 2)
   }
 })
+
+test('Der Lesebereich hat keinen toten Raum unter der Mail', async ({ page }) => {
+  /* ⚠️ **Am 02.09.2026 gemeldet und gemessen:** Der Rahmen war 420 px hoch,
+     die Mail darin brauchte 1432 px, und der Bereich aussen rollte gar nicht.
+     Jede Mail steckte damit in einem Fenster mit eigenem Rollbalken, darunter
+     standen 336 px Nichts. Ein `<iframe>` waechst nie von selbst mit seinem
+     Inhalt — die Hoehe muss gemessen und gesetzt werden.
+
+     Die Nachricht kommt gestellt, damit der Test nicht davon abhaengt, was
+     gerade im Postfach liegt. */
+  const HOCH = '<div style="height:1200px">lang</div>'
+  const KURZ = '<p>kurz</p>'
+  await page.route(/\/api\/nachrichten\/\d+$/, async (route) => {
+    const a = await route.fetch()
+    const d = await a.json()
+    await route.fulfill({ json: { ...d, html: page.url().includes('#kurz') ? KURZ : HOCH } })
+  })
+
+  await anmelden(page)
+  const zeilen = page.locator('button[draggable="true"]')
+  await expect(zeilen.first()).toBeVisible()
+  await zeilen.first().click()
+  await expect(page.locator('article h1').first()).toBeVisible()
+
+  const passt = async () =>
+    page.evaluate(() => {
+      const r = document.querySelector('iframe') as HTMLIFrameElement
+      const d = r.contentDocument
+      if (!d?.body) return null
+      return { rahmen: Math.round(r.getBoundingClientRect().height), inhalt: d.body.scrollHeight }
+    })
+
+  await expect
+    .poll(async () => {
+      const m = await passt()
+      return m ? Math.abs(m.rahmen - m.inhalt) : 9999
+    }, { message: 'Der Rahmen ist nicht so hoch wie die Mail.' })
+    .toBeLessThanOrEqual(2)
+
+  const m = await passt()
+  expect(m!.inhalt, 'Die gestellte Mail sollte lang sein').toBeGreaterThan(1000)
+})
+
+test('Im Rahmen steht immer die Mail, die oben im Kopf steht', async ({ page }, info) => {
+  /* ⚠️ **Nur breit.** In der schmalen Ansicht ersetzt die geöffnete Mail die
+     Liste — nach dem ersten Klick gibt es keine zweite Zeile mehr zum
+     Weiterklicken. Der Test prüfte dort nicht weniger, sondern lief ins
+     Leere. Am 02.09.2026 im Release-Lauf aufgefallen. */
+  test.skip(info.project.name === 'schmal', 'Wird in der breiten Ansicht geprüft.')
+  /* ⚠️ **Am 02.09.2026 aus dem Betrieb gemeldet:** Oben stand eine Mail, im
+     Rahmen darunter eine andere. Die Druckansicht — die der Server aus dem
+     gespeicherten Rumpf baut — zeigte die richtige. Die Daten stimmten also,
+     die Anzeige nicht.
+
+     Dieser Waechter war vorher gar nicht moeglich: Der Rahmen lief mit
+     `sandbox=""`, und in ein Dokument mit fremder Herkunft sieht auch ein
+     Test nicht hinein. Seit der Rahmen `allow-same-origin` traegt, geht es.
+
+     ⚠️ **Und er ist KEIN Beweis, dass der gemeldete Fehler behoben ist.**
+     Gegen beide Behebungen mutiert (Rahmen ohne `key`, spaete Bilder-Antwort
+     ohne Wache) bleibt er gruen — der Fehler liess sich hier nie ausloesen,
+     und was man nicht ausloesen kann, faengt kein Test. Er haelt die Regel
+     fest, nicht die Behebung: Im Rahmen steht die gewaehlte Mail. Wer ihn
+     spaeter gruen sieht, weiss damit nur, dass der Normalfall stimmt.
+
+     Jede Mail bekommt einen eindeutigen Rumpf, und zwischendurch wird
+     „Bilder anzeigen" gedrueckt — das war der Weg, auf dem eine zu spaet
+     eintreffende Antwort einen fremden Rumpf in den Rahmen setzen konnte. */
+  await page.route(/\/api\/nachrichten\/(\d+)$/, async (route) => {
+    const id = /\/(\d+)$/.exec(route.request().url())![1]
+    const a = await route.fetch()
+    const d = await a.json()
+    await route.fulfill({
+      json: {
+        ...d,
+        html: `<p>RUMPF-${id}</p>`,
+        geblockte_bilder: 1,
+        absender_freigegeben: false,
+      },
+    })
+  })
+  await page.route(/\/api\/nachrichten\/(\d+)\/bilder$/, async (route) => {
+    const id = /\/(\d+)\/bilder$/.exec(route.request().url())![1]
+    await route.fulfill({ json: { html: `<p>RUMPF-${id}</p>` } })
+  })
+
+  await anmelden(page)
+  const zeilen = page.locator('button[draggable="true"]')
+  await expect(zeilen.first()).toBeVisible()
+  const wieviele = Math.min(await zeilen.count(), 5)
+  expect(wieviele, 'Zu wenige Nachrichten zum Durchklicken').toBeGreaterThan(1)
+
+  const rumpf = () => page.frameLocator('iframe').first().locator('body')
+
+  for (let i = 0; i < wieviele; i++) {
+    await zeilen.nth(i).click()
+    await expect(page.locator('article h1').first()).toBeVisible()
+
+    // Welche Kennung hat der Server fuer diese Zeile geliefert? Genau die muss
+    // im Rahmen stehen.
+    await expect
+      .poll(async () => (await rumpf().innerText().catch(() => '')).trim(), {
+        message: 'Der Rahmen zeigt nicht den Rumpf der gewaehlten Mail.',
+      })
+      .toMatch(/^RUMPF-\d+$/)
+    const imRahmen = (await rumpf().innerText()).trim()
+
+    // Zwischendurch die Bilder anfordern und sofort weiterklicken — der Weg,
+    // auf dem eine spaete Antwort frueher einen fremden Rumpf gesetzt hat.
+    const knopf = page.getByRole('button', { name: 'Bilder anzeigen' })
+    if (await knopf.count()) await knopf.click()
+
+    const naechste = i + 1
+    if (naechste < wieviele) {
+      await zeilen.nth(naechste).click()
+      await expect(page.locator('article h1').first()).toBeVisible()
+      await expect
+        .poll(async () => (await rumpf().innerText().catch(() => '')).trim(), {
+          message: 'Nach dem Weiterklicken steht noch der alte Rumpf im Rahmen.',
+        })
+        .not.toBe(imRahmen)
+      await zeilen.nth(i).click()
+    }
+  }
+})
+

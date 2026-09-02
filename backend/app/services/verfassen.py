@@ -52,6 +52,16 @@ class Entwurf:
     #: Kopfzeile — so machen es alle Clients, und eine ausdrueckliche
     #: „normal"-Zeile waere nur Rauschen.
     wichtigkeit: str = "normal"
+    #: ⚠️ **Kennzeichnet die Mail als Antwort eines Automaten (RFC 3834).**
+    #: Ohne das antwortet der Automat auf der anderen Seite zurueck, und zwei
+    #: Abwesenheitsnotizen schaukeln sich auf, bis jemand es merkt. Gesetzt
+    #: wird es ausschliesslich von ``services/abwesenheit.py``.
+    auto_antwort: bool = False
+    #: Eine ``.ics`` als zusaetzlicher Teil — fuer Antworten auf
+    #: Termin-Einladungen. Der Wert ist der fertige Kalender, die Methode
+    #: steht in ``kalender_methode``.
+    kalender: str = ""
+    kalender_methode: str = "REPLY"
 
 
 def _adressen(roh: list[str]) -> list[str]:
@@ -87,6 +97,13 @@ def bauen(entwurf: Entwurf) -> tuple[bytes, str]:
         nachricht["Importance"] = "low"
         nachricht["X-Priority"] = "5"
 
+    if entwurf.auto_antwort:
+        # RFC 3834 fuer alle, die sich daran halten ...
+        nachricht["Auto-Submitted"] = "auto-replied"
+        # ... und die Outlook-Welt, die es nicht tut.
+        nachricht["X-Auto-Response-Suppress"] = "All"
+        nachricht["Precedence"] = "auto_reply"
+
     if entwurf.in_reply_to:
         nachricht["In-Reply-To"] = entwurf.in_reply_to
     if entwurf.references:
@@ -99,6 +116,18 @@ def bauen(entwurf: Entwurf) -> tuple[bytes, str]:
     # Empfänger in der Mail, und „blind" war sie nie.
 
     nachricht.set_content(text or " ")
+
+    # ⚠️ **Der Kalenderteil steht NEBEN dem Text, nicht statt seiner.** Ein
+    # Empfaenger ohne Kalenderunterstuetzung soll trotzdem lesen koennen, was
+    # geantwortet wurde. Und die ``method`` gehoert an den Medientyp: Ohne sie
+    # halten Outlook und Google die Antwort fuer eine neue Einladung.
+    if entwurf.kalender:
+        nachricht.add_alternative(
+            entwurf.kalender,
+            subtype="calendar",
+            params={"method": entwurf.kalender_methode, "charset": "utf-8"},
+        )
+
     if sauber:
         inline = [a for a in entwurf.anlagen if a.cid]
         nachricht.add_alternative(_html_seite(sauber), subtype="html")

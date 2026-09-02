@@ -282,7 +282,8 @@
     "aktiv": "Aktiv",
     "bald": "Kommt in einer späteren Stufe.",
     "protokoll": "Protokoll",
-    "schlagworte": "Schlagworte"
+    "schlagworte": "Schlagworte",
+    "abwesenheit": "Abwesenheit"
   },
   "attrappe": {
     "hinweis": "Attrappe — erfundene Nachrichten, kein Postfach angebunden"
@@ -800,5 +801,44 @@
   },
   "fenster": {
     "nicht_ladbar": "Die Nachricht ließ sich nicht laden. Sie ist nicht weg — vielleicht ist die Anmeldung in diesem Fenster abgelaufen."
+  },
+  "abwesenheit": {
+    "nur_wenn_es_laeuft": "nexmail beantwortet Post nur, solange nexmail selbst läuft — nicht dein Rechner, sondern nexmail. Ist es gestoppt, geht keine Abwesenheitsnotiz hinaus. Dein Anbieter kann Abwesenheitsnotizen meist selbst, direkt auf dem Mailserver und unabhängig von nexmail.",
+    "kein_postfach": "Noch kein Postfach eingerichtet.",
+    "einschalten": "Abwesenheitsnotiz",
+    "laeuft": "Läuft",
+    "laeuft_bis": "Aktiv bis {{datum}}",
+    "ruht": "Außerhalb des Zeitraums",
+    "von": "Von",
+    "bis": "Bis einschließlich",
+    "bis_offen": "Leer lassen heißt: läuft, bis du es abschaltest.",
+    "betreff": "Betreff",
+    "betreff_platzhalter": "Bin bis zum … nicht da",
+    "text": "Text",
+    "schleifenschutz": "Jeder Absender bekommt die Notiz höchstens einmal. An Mailinglisten, an andere Automaten und an Unzustellbarkeitsmeldungen geht nie eine.",
+    "antworten_titel": "Verschickte Antworten",
+    "antworten_hinweis": "Wer sie schon bekommen hat. Daran erkennst du eine Schleife, bevor sie peinlich wird.",
+    "antworten_leer": "Noch keine Antwort verschickt.",
+    "fehler_ohne_text": "Ohne Text keine Notiz — sonst bekommt der Absender eine leere Mail und denkt, er habe etwas kaputtgemacht.",
+    "fehler_zeitraum": "Das Ende liegt vor dem Anfang.",
+    "fehler_datum": "Das Datum ist unbrauchbar."
+  },
+  "termin": {
+    "ohne_titel": "Termin ohne Titel",
+    "kein_kalender": "nexmail sagt dem Einladenden Bescheid. Einen Kalender hat es nicht — der Termin landet nirgends.",
+    "fremde_zeitzone": "Zeitzone „{{zone}}“ ist hier unbekannt. Die Uhrzeit steht so da, wie sie in der Einladung stand.",
+    "wiederholt_sich": "Wiederholt sich. Angezeigt ist der erste Termin.",
+    "von": "Eingeladen von {{wer}}",
+    "teilnehmer_one": "1 Teilnehmer",
+    "teilnehmer_other": "{{count}} Teilnehmer",
+    "abgesagt": "Abgesagt",
+    "zusage": "Zusagen",
+    "vorbehalt": "Mit Vorbehalt",
+    "absage": "Absagen",
+    "zusage_erledigt": "zugesagt",
+    "vorbehalt_erledigt": "mit Vorbehalt zugesagt",
+    "absage_erledigt": "abgesagt",
+    "geantwortet": "Du hast am {{wann}} {{was}}.",
+    "fehler": "Die Antwort ließ sich nicht verschicken."
   }
 }

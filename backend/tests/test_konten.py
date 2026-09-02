@@ -580,3 +580,50 @@ def test_schlagworte_eines_fremden_postfachs_bleiben_fremd(klient, zweiter_klien
     )
     assert versuch.status_code >= 400
     assert klient.get("/api/konten").json()[0]["tags"] == ["privat"]
+
+
+def test_der_ordnerzaehler_wird_gezaehlt_nicht_abgelesen(klient, ohne_netz):
+    """⚠️ **Am 02.09.2026 gemeldet: der Baum zeigte 16, der Ordner 11.**
+
+    Die Zahl kam aus einer Spalte am Ordner, und die kann veralten — eine
+    veraltete Zahl im Baum ist schlimmer als gar keine, weil man ihr glaubt.
+    Gezählt wird jetzt beim Abrufen. Der Test schreibt die Spalte absichtlich
+    falsch: Steht danach die Spalte in der Antwort, ist der Wächter hohl.
+    """
+    from datetime import datetime, timezone
+
+    from app.db import SessionLocal
+    from app.models import Nachricht, Ordner
+
+    einrichten(klient)
+    konto_id = klient.post("/api/konten", json=_eingabe("zaehler@beispiel.example")).json()["id"]
+    with SessionLocal() as db:
+        posteingang = (
+            db.query(Ordner)
+            .filter(Ordner.konto_id == konto_id, Ordner.rolle == "posteingang")
+            .one()
+        )
+        for uid, gelesen in ((1, False), (2, False), (3, True)):
+            db.add(
+                Nachricht(
+                    benutzer_id=posteingang.konto.benutzer_id,
+                    konto_id=konto_id,
+                    ordner_id=posteingang.id,
+                    uid=uid,
+                    betreff=f"Nummer {uid}",
+                    von_adresse="wer@example.com",
+                    datum=datetime(2026, 9, 2, 10, uid, tzinfo=timezone.utc),
+                    gelesen=gelesen,
+                )
+            )
+        # Die veraltete Spalte, genau wie im gemeldeten Fall.
+        posteingang.ungelesen = 16
+        posteingang.anzahl = 16
+        db.commit()
+        ordner_id = posteingang.id
+
+    ordner = klient.get(f"/api/konten/{konto_id}/ordner").json()
+    eingang = next(o for o in ordner if o["id"] == ordner_id)
+    assert eingang["ungelesen"] == 2, "Die Antwort trägt die veraltete Spalte"
+    assert eingang["anzahl"] == 3
+

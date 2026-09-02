@@ -26,6 +26,7 @@ from .db import SessionLocal, init_db
 from .deps import angemeldet
 from .middleware import BasisPfadMiddleware, SicherheitskopfMiddleware, VorgangMiddleware
 from .routers import (
+    abwesenheit as abwesenheit_router,
     aufgaben as aufgaben_router,
     bilder as bilder_router,
     oidc as oidc_router,
@@ -44,6 +45,7 @@ from .routers import (
     sicherung,
     sitzungen,
     suche,
+    termine as termine_router,
     ueber as ueber_router,
     verfassen,
 )
@@ -299,6 +301,7 @@ app.include_router(setup.router)
 app.include_router(auth.router)
 app.include_router(sitzungen.router, dependencies=NUR_ANGEMELDET)
 app.include_router(einstellungen.router, dependencies=NUR_ANGEMELDET)
+app.include_router(abwesenheit_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(konten.router, dependencies=NUR_ANGEMELDET)
 app.include_router(kontakte.router, dependencies=NUR_ANGEMELDET)
 app.include_router(nachrichten.router, dependencies=NUR_ANGEMELDET)
@@ -309,6 +312,7 @@ app.include_router(verfassen.router, dependencies=NUR_ANGEMELDET)
 app.include_router(suche.router, dependencies=NUR_ANGEMELDET)
 app.include_router(benutzer_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(aufgaben_router.router, dependencies=NUR_ANGEMELDET)
+app.include_router(termine_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(ueber_router.router, dependencies=NUR_ANGEMELDET)
 # ⚠️ **Ohne ``NUR_ANGEMELDET``.** Hinweg und Rueckweg gehoeren zur
 # Anmeldung; die Verwaltungs-Adressen darin haengen einzeln am Betreiber.

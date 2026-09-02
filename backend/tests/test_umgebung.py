@@ -19,6 +19,7 @@ Bibliothek zerbrochen, bevor sie das Netzwerk erreicht hat.
 from __future__ import annotations
 
 import socket
+from datetime import timezone
 
 import pytest
 
@@ -61,3 +62,77 @@ def test_ein_fehler_im_eigenen_haus_wird_nicht_dem_server_angelastet(monkeypatch
     assert fehler.value.art == Fehlerart.INTERN
     assert "Server" not in fehler.value.text.split("nicht beim Server")[0]
     assert "nexmail selbst" in fehler.value.text
+
+
+def test_die_zeitzonen_sind_da():
+    """⚠️ **Auch dieser Test ist aus Schaden entstanden.**
+
+    Am 02.09.2026 kannte die Entwicklungsumgebung **keine einzige** Zeitzone:
+    ``available_timezones()`` gab null zurück, und jede
+    ``ZoneInfo("Europe/Berlin")`` scheiterte. Unter Windows bringt Python keine
+    Zeitzonendatenbank mit; im Container liegt sie im System.
+
+    nexmail fällt an solchen Stellen still auf UTC zurück. Die Uhrzeit im
+    Ausdruck, das Aufräumdatum, der Zeitraum der Abwesenheitsnotiz und die Zeit
+    einer Termin-Einladung waren hier damit um Stunden verschoben — und im
+    Container richtig. Wer so etwas nicht misst, sucht den Fehler beim Nutzer.
+
+    Behoben durch ``tzdata`` in den Abhängigkeiten. Dieser Test hält es fest.
+    """
+    from zoneinfo import ZoneInfo, available_timezones
+
+    assert len(available_timezones()) > 100, (
+        "Diese Umgebung kennt so gut wie keine Zeitzonen. Ohne sie rechnet "
+        "nexmail still in UTC weiter, und jede angezeigte Uhrzeit kann um "
+        "Stunden danebenliegen. Fehlt ``tzdata``?"
+    )
+    # Und die eine, an der es hier hängt, muss wirklich rechnen können.
+    from datetime import datetime, timezone
+
+    sommer = datetime(2026, 9, 10, 8, 0, tzinfo=timezone.utc)
+    assert sommer.astimezone(ZoneInfo("Europe/Berlin")).hour == 10
+
+
+def test_eine_fehlende_zeitzone_bleibt_nicht_stumm(caplog, monkeypatch):
+    """⚠️ **Ausweichen ist erlaubt, schweigen nicht.**
+
+    Am 02.09.2026 wichen drei Stellen still auf UTC aus, als die Zeitzonen
+    fehlten — Ausdruck, Abwesenheitszeitraum, Termin-Einladung. Alles um
+    Stunden verschoben, und nirgends stand etwas. Wer den Fehler später sucht,
+    soll ihn im Protokoll finden statt in der Uhrzeit.
+    """
+    import logging
+
+    from app.services import zeit
+
+    def kaputt(_name):
+        raise KeyError("keine Zeitzonendatenbank")
+
+    monkeypatch.setattr(zeit, "ZoneInfo", kaputt)
+    monkeypatch.setattr(zeit, "_gewarnt", set())
+
+    with caplog.at_level(logging.WARNING, logger="nexmail.zeit"):
+        gefallen = zeit.zone("Europe/Berlin")
+
+    assert gefallen == timezone.utc
+    assert any("Europe/Berlin" in eintrag.message for eintrag in caplog.records), (
+        "Der Ausweich auf UTC steht nicht im Protokoll."
+    )
+    assert any("tzdata" in eintrag.getMessage() for eintrag in caplog.records)
+
+
+def test_gewarnt_wird_einmal_je_zone(caplog, monkeypatch):
+    """Sonst füllt eine Ordnerspalte mit hundert Ordnern das Protokoll."""
+    import logging
+
+    from app.services import zeit
+
+    monkeypatch.setattr(zeit, "ZoneInfo", lambda _n: (_ for _ in ()).throw(KeyError()))
+    monkeypatch.setattr(zeit, "_gewarnt", set())
+
+    with caplog.at_level(logging.WARNING, logger="nexmail.zeit"):
+        for _ in range(5):
+            zeit.zone("Europe/Berlin")
+
+    assert len([e for e in caplog.records if "Europe/Berlin" in e.getMessage()]) == 1
+

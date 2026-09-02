@@ -249,6 +249,13 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
      ungelesen-Filter, siehe CLAUDE.md. */
   const [schlagwortFilter, setSchlagwortFilter] = useGemerkt('nexmail.schlagwort', '')
   const [nachrichten, setNachrichten] = useState<Nachricht[]>([])
+  /* Spiegel des Bestands für Rückrufe, die den Zustand nur LESEN wollen.
+     ⚠️ Nicht im `setNachrichten`-Rückruf nachsehen: React darf ihn zweimal
+     ausführen, und ein Zähler, der dabei zweimal springt, ist falsch. */
+  const nachrichtenRef = useRef<Nachricht[]>([])
+  useEffect(() => {
+    nachrichtenRef.current = nachrichten
+  }, [nachrichten])
   const [offene, setOffene] = useState<VolleNachricht | null>(null)
   const [offeneLaedt, setOffeneLaedt] = useState(false)
   const [gleichtAb, setGleichtAb] = useState(false)
@@ -575,25 +582,21 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   )
 
   const ordnerMitZaehlern = useMemo(() => {
-    // Gezählt wird, was geladen ist. Die volle Wahrheit liefert der Abgleich;
-    // bis dahin ist eine Zahl, die zur sichtbaren Liste passt, besser als
-    // eine aus einer anderen Quelle.
-    return ordner.map((o) => {
-      // ⚠️ **Nur der geladene Ordner wird örtlich gezählt.** Für ihn ist die
-      // eigene Zählung besser: Sie zeigt sofort, dass eine Mail gelesen wurde,
-      // ohne auf den nächsten Abgleich zu warten. Für alle anderen gilt der
-      // Server — sonst stünde dort null, weil ihre Nachrichten gar nicht
-      // geladen sind. Genau so gemeldet am 01.09.2026.
-      const geladen = ziel.typ === 'ordner' && ziel.id === o.id
-      if (!geladen) return o
-      const drin = nachrichten.filter((n) => n.ordnerId === o.id)
-      return {
-        ...o,
-        anzahl: drin.length || o.anzahl,
-        ungelesen: drin.filter((n) => !n.gelesen).length,
-      }
-    })
-  }, [ordner, nachrichten, ziel])
+    /* ⚠️ **Eine Quelle, nicht zwei.** Bis zum 02.09.2026 zählte die
+       Oberfläche für den GEÖFFNETEN Ordner selbst nach — über `nachrichten`,
+       also über die Liste, wie sie gerade gefiltert und auf eine Seite
+       begrenzt ist. Der Baum zeigte 16, ein Klick in den Ordner machte 11
+       daraus, ein Klick daneben wieder 16. Der Betreiber: „Tatsächlich sind
+       es 11." Bei einem Ordner mit mehr als einer Seite hätte dort obendrein
+       die Seitengröße gestanden.
+
+       Die Zahl kommt jetzt ausschließlich vom Server, der sie beim Abrufen
+       zählt. Damit sie trotzdem sofort reagiert, wenn man eine Mail liest,
+       wird sie um genau eins verschoben — siehe `zaehlerVerschieben`. Das ist
+       vom Filter und von der Seitengröße unabhängig, eine örtliche Zählung
+       ist es nicht. */
+    return ordner
+  }, [ordner])
 
   // Über **alle** Ordner: Der Reitertitel soll sagen, ob irgendwo Post
   // liegt — nicht, ob im gerade geöffneten Ordner welche liegt.
@@ -606,16 +609,41 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
 
   /* --- Flags: erst der Server, dann die Anzeige ------------------------ */
 
-  const flagSetzen = useCallback(async (id: string, wunsch: { gelesen?: boolean; markiert?: boolean }) => {
-    try {
-      await api.senden(`/api/nachrichten/${id}/flags`, wunsch)
-    } catch {
-      // Ging es auf dem Server nicht, bleibt es auch hier, wie es war.
-      return
-    }
-    setNachrichten((alle) => alle.map((n) => (n.id === id ? { ...n, ...wunsch } : n)))
-    setOffene((o) => (o && o.id === id ? { ...o, ...wunsch } : o))
+  /** Den Ungelesen-Zähler eines Ordners um `schritt` verschieben.
+   *
+   * ⚠️ **Verschieben, nicht neu zählen.** Die geladene Liste ist gefiltert und
+   * auf eine Seite begrenzt; wer über sie zählt, schreibt bei einem vollen
+   * Ordner die Seitengröße in den Baum. Ein Schritt um eins stimmt dagegen
+   * unabhängig davon, was gerade sichtbar ist — und der nächste Abruf holt die
+   * gezählte Wahrheit vom Server nach. */
+  const zaehlerVerschieben = useCallback((ordnerId: string, schritt: number) => {
+    setOrdner((alle) =>
+      alle.map((o) =>
+        String(o.id) === String(ordnerId)
+          ? { ...o, ungelesen: Math.max(0, o.ungelesen + schritt) }
+          : o,
+      ),
+    )
   }, [])
+
+  const flagSetzen = useCallback(
+    async (id: string, wunsch: { gelesen?: boolean; markiert?: boolean }) => {
+      const vorher = nachrichtenRef.current.find((n) => n.id === id)
+      try {
+        await api.senden(`/api/nachrichten/${id}/flags`, wunsch)
+      } catch {
+        // Ging es auf dem Server nicht, bleibt es auch hier, wie es war.
+        return
+      }
+      setNachrichten((alle) => alle.map((n) => (n.id === id ? { ...n, ...wunsch } : n)))
+      setOffene((o) => (o && o.id === id ? { ...o, ...wunsch } : o))
+      // Der Baum soll es sofort zeigen, nicht erst beim nächsten Abruf.
+      if (wunsch.gelesen !== undefined && vorher && vorher.gelesen !== wunsch.gelesen) {
+        zaehlerVerschieben(vorher.ordnerId, wunsch.gelesen ? -1 : 1)
+      }
+    },
+    [zaehlerVerschieben],
+  )
 
   /* --- Schlagworte ------------------------------------------------------ */
 

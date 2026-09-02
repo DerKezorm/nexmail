@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..models import Anhang, Konto, Nachricht, Ordner, utcnow
 from . import (
+    abwesenheit as abwesenheitsdienst,
     bereinigen,
     imap as imapdienst,
     konten as kontendienst,
@@ -276,6 +277,19 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
         schlagwortdienst.definitionen_sicherstellen(db, konto.benutzer_id, atome)
         db.commit()
         runde.neue_ids.extend(z.id for z in frische)
+
+        # ⚠️ **Die Abwesenheitsnotiz haengt hier, nicht am Takt.** Sie soll
+        # genau die Post beantworten, die GERADE hereinkam — und nur die.
+        # Ein eigener Durchlauf ueber den Bestand koennte nach einem Neustart
+        # drei Wochen Post rueckwirkend beantworten.
+        #
+        # ⚠️ **Und sie darf den Abgleich nicht mitreissen.** Post holen ist
+        # wichtiger als Post beantworten.
+        if konto.abwesenheit_aktiv:
+            try:
+                abwesenheitsdienst.erledigen(klient, db, konto, ordner, frische)
+            except Exception:  # noqa: BLE001
+                logger.exception("The out-of-office check failed for one batch.")
 
     if neue:
         ordner.hoechste_uid = max(neue)

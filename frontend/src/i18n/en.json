@@ -282,7 +282,8 @@
     "aktiv": "Active",
     "bald": "Comes in a later stage.",
     "protokoll": "Log",
-    "schlagworte": "Tags"
+    "schlagworte": "Tags",
+    "abwesenheit": "Out of office"
   },
   "attrappe": {
     "hinweis": "Mock-up — invented messages, no mailbox connected"
@@ -800,5 +801,44 @@
   },
   "fenster": {
     "nicht_ladbar": "The message could not be loaded. It is not gone — the sign-in in this window may have expired."
+  },
+  "abwesenheit": {
+    "nur_wenn_es_laeuft": "nexmail only answers while nexmail itself is running — not your computer, nexmail. While it is stopped, no out-of-office reply goes out. Your provider can usually do this on the mail server itself, independently of nexmail.",
+    "kein_postfach": "No mailbox set up yet.",
+    "einschalten": "Out-of-office reply",
+    "laeuft": "Running",
+    "laeuft_bis": "Active until {{datum}}",
+    "ruht": "Outside the period",
+    "von": "From",
+    "bis": "Until and including",
+    "bis_offen": "Leave empty to keep it running until you switch it off.",
+    "betreff": "Subject",
+    "betreff_platzhalter": "Away until …",
+    "text": "Message",
+    "schleifenschutz": "Every sender gets the note at most once. Mailing lists, other automated systems and delivery failures never get one.",
+    "antworten_titel": "Replies sent",
+    "antworten_hinweis": "Who has already received one. This is how you spot a loop before it gets embarrassing.",
+    "antworten_leer": "No reply sent yet.",
+    "fehler_ohne_text": "No message, no reply. The sender would get an empty mail and think they broke something.",
+    "fehler_zeitraum": "The end is before the start.",
+    "fehler_datum": "That date cannot be read."
+  },
+  "termin": {
+    "ohne_titel": "Untitled event",
+    "kein_kalender": "nexmail tells the organiser. It has no calendar — the event is not stored anywhere.",
+    "fremde_zeitzone": "Time zone “{{zone}}” is unknown here. The time is shown exactly as the invitation stated it.",
+    "wiederholt_sich": "Repeats. Showing the first occurrence.",
+    "von": "Invited by {{wer}}",
+    "teilnehmer_one": "1 participant",
+    "teilnehmer_other": "{{count}} participants",
+    "abgesagt": "Cancelled",
+    "zusage": "Accept",
+    "vorbehalt": "Tentative",
+    "absage": "Decline",
+    "zusage_erledigt": "accepted",
+    "vorbehalt_erledigt": "answered tentative",
+    "absage_erledigt": "declined",
+    "geantwortet": "You {{was}} on {{wann}}.",
+    "fehler": "The reply could not be sent."
   }
 }

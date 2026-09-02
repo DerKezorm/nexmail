@@ -80,3 +80,17 @@ charset-normalizer==3.5.1
 # keines. Wer diese Zeile spaeter liest, soll nicht den falschen Schluss
 # ziehen: Der Schutz stand und steht.
 pyjwt==2.13.0
+
+# Die Zeitzonendatenbank als Paket.
+#
+# ⚠️ **Ohne sie kennt Python auf Windows KEINE einzige Zeitzone.** Am
+# 02.09.2026 nachgemessen: ``available_timezones()`` gab dort **null** zurueck,
+# und jede ``ZoneInfo("Europe/Berlin")`` scheiterte. nexmail faellt an solchen
+# Stellen still auf UTC zurueck — die Uhrzeit im Ausdruck, das Aufraeumdatum,
+# der Zeitraum der Abwesenheitsnotiz und die Zeit einer Termin-Einladung waren
+# in der Entwicklungsumgebung damit um Stunden verschoben, im Container aber
+# richtig. Genau die Sorte Unterschied, die man erst beim Nutzer findet.
+#
+# Im Abbild liegt die Datenbank ohnehin im System; das Paket kostet dort
+# nichts und macht beide Umgebungen gleich.
+tzdata==2026.1

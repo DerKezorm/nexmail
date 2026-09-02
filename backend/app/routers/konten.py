@@ -17,8 +17,10 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import case, func, select
 
 from ..deps import AngemeldeterBenutzer, DbSession
+from ..models import Nachricht
 from ..services import (
     imap as imapdienst,
     konten as kontendienst,
@@ -323,6 +325,29 @@ def ordner(konto_id: str, person: AngemeldeterBenutzer, db: DbSession) -> list[O
         "papierkorb": 5,
         "eigen": 6,
     }
+    # ⚠️ **Gezaehlt wird jetzt, nicht abgelesen.** Bis zum 02.09.2026 kamen die
+    # beiden Zahlen aus der Spalte am Ordner, und die Oberflaeche zaehlte fuer
+    # den GEOEFFNETEN Ordner daneben noch einmal selbst — ueber die geladene
+    # Liste, die gefiltert und auf eine Seite begrenzt ist. Zwei Quellen fuer
+    # dieselbe Zahl: Der Baum zeigte 16, ein Klick in den Ordner machte 11
+    # daraus, ein Klick daneben wieder 16. Am 02.09.2026 gemeldet.
+    #
+    # ⚠️ **Der Preis ist gemessen und klein.** Eine Gruppenabfrage ueber alle
+    # Ordner eines Postfachs kostet 5,6 ms (CLAUDE.md, „Gemessen, nicht
+    # geschaetzt") — der Teilindex ``… where gelesen = 0`` traegt das.
+    stand = {
+        o_id: (gesamt, ungelesen)
+        for o_id, gesamt, ungelesen in db.execute(
+            select(
+                Nachricht.ordner_id,
+                func.count(Nachricht.id),
+                func.count(case((Nachricht.gelesen.is_(False), 1))),
+            )
+            .where(Nachricht.konto_id == konto.id)
+            .group_by(Nachricht.ordner_id)
+        ).all()
+    }
+
     return [
         OrdnerAntwort(
             id=o.id,
@@ -331,8 +356,8 @@ def ordner(konto_id: str, person: AngemeldeterBenutzer, db: DbSession) -> list[O
             rolle=o.rolle,
             waehlbar=o.waehlbar,
             abonniert=o.abonniert,
-            anzahl=o.anzahl,
-            ungelesen=o.ungelesen,
+            anzahl=stand.get(o.id, (0, 0))[0],
+            ungelesen=stand.get(o.id, (0, 0))[1],
         )
         for o in sorted(konto.ordner, key=lambda o: (rang.get(o.rolle, 9), o.name.lower()))
     ]

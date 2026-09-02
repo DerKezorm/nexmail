@@ -19,6 +19,7 @@ import { KontoFormular } from './KontoFormular'
 import { Schlagworte } from './Schlagworte'
 import { Sicherheit } from './Sicherheit'
 import { Regeln } from './Regeln'
+import { Abwesenheit } from './Abwesenheit'
 import { Signaturen } from './Signaturen'
 import { Textvorlagen } from './Textvorlagen'
 import { PUNKT_KLASSE } from '../lib/farben'
@@ -29,6 +30,7 @@ export type Reiter =
   | 'postfaecher'
   | 'regeln'
   | 'signaturen'
+  | 'abwesenheit'
   | 'schlagworte'
   | 'sicherheit'
   | 'darstellung'
@@ -102,6 +104,7 @@ export function EinstellungenPage({
             },
             { id: 'regeln', label: t('einstellungen.regeln') },
             { id: 'signaturen', label: t('einstellungen.signaturen') },
+            { id: 'abwesenheit', label: t('einstellungen.abwesenheit') },
             { id: 'schlagworte', label: t('einstellungen.schlagworte') },
             { id: 'sicherheit', label: t('einstellungen.sicherheit') },
             { id: 'darstellung', label: t('einstellungen.darstellung') },
@@ -147,6 +150,8 @@ export function EinstellungenPage({
             )
           ) : reiter === 'regeln' ? (
             <Regeln />
+          ) : reiter === 'abwesenheit' ? (
+            <Abwesenheit />
           ) : reiter === 'signaturen' ? (
             /* Die Textvorlagen wohnen im selben Reiter, als eigener Abschnitt
                darunter — beides sind Textbausteine für das Schreiben. */

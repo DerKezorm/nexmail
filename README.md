@@ -26,12 +26,12 @@ Roundcube is webmail bolted onto one mailbox. Thunderbird does not run in a
 browser. Commercial clients want to pull your mail onto their servers. nexmail
 is the third option — and if you can use Outlook, you should feel at home.
 
-> **Version 0.4.0.** It reads, writes, searches, sorts, labels, sends,
-> schedules, prints and backs itself up. It is used daily by its author
-> against real iCloud and IMAP mailboxes, and close to 800 automated tests
-> watch over it — including a suite that runs in a real browser. It is still
-> young: try it on a mailbox you can afford to have trouble with before you
-> point it at the one that matters.
+> **Version 0.5.0.** It reads, writes, searches, sorts, labels, sends,
+> schedules, prints, answers for you while you are away and backs itself up.
+> It is used daily by its author against real iCloud and IMAP mailboxes, and
+> more than 850 automated tests watch over it — including a suite that runs in
+> a real browser. It is still young: try it on a mailbox you can afford to have
+> trouble with before you point it at the one that matters.
 
 The screenshots below show a throwaway instance filled with invented mail.
 Every address in them is under `example.com`, `example.org` or
@@ -103,6 +103,19 @@ due — visible from every other client, not a note that only nexmail knows.
 
 **Text templates.** The paragraphs you write again and again, kept once and
 dropped into a message from the compose window.
+
+**Out of office.** Per mailbox, with a period and a plain-text note. Every
+sender gets it at most once; mailing lists, other automated systems and
+delivery failures never get one, and mail that arrived before you left is not
+answered retroactively. You can see who received one. Note that nexmail can
+only answer while nexmail itself is running — your provider can usually do this
+on the mail server, independently of it.
+
+**Meeting invitations.** An `.ics` shows up as a card rather than an
+unopenable attachment: title, time in your own time zone, place, organiser.
+Accept, tentative or decline goes back as a proper reply, and nexmail remembers
+what you answered. It has no calendar, so the event is not stored anywhere —
+that is still on the list.
 
 **HTML mail, defused.** Server-side sanitising with an allow-list, images
 unhooked until you ask for them, and an iframe sandbox without scripts. The same

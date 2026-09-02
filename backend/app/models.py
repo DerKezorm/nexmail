@@ -263,6 +263,26 @@ class Konto(Base):
     absendername: Mapped[str] = mapped_column(String(120), default="")
     adresse: Mapped[str] = mapped_column(String(320))
 
+    # --- Abwesenheitsnotiz, je Postfach ---------------------------------- #
+    #
+    # ⚠️ **Je Postfach, nicht je Benutzer.** Die Antwort geht ueber dessen
+    # Postausgang und mit dessen Adresse hinaus, und dienstlich schreibt man
+    # kaum dasselbe wie privat. Am 02.09.2026 so entschieden.
+    abwesenheit_aktiv: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: ⚠️ **Datum als Zeichenkette (``JJJJ-MM-TT``), nicht als Zeitstempel.**
+    #: „Bis einschliesslich den 14." ist eine Aussage ueber einen KALENDERTAG
+    #: in der Zeitzone des Betreibers, kein Zeitpunkt. Als UTC-Zeitstempel
+    #: gespeichert waere die Notiz je nach Zeitzone einen halben Tag zu frueh
+    #: oder zu spaet aus — genau die Sorte Fehler, die erst im Urlaub auffaellt.
+    abwesenheit_von: Mapped[str] = mapped_column(String(10), default="")
+    #: Leer heisst: laeuft, bis jemand den Schalter umlegt.
+    abwesenheit_bis: Mapped[str] = mapped_column(String(10), default="")
+    abwesenheit_betreff: Mapped[str] = mapped_column(String(300), default="")
+    #: Reiner Text, kein HTML. Eine Abwesenheitsnotiz ist kurz und sachlich,
+    #: und formatierte Post an Fremde, die niemand gegenliest, ist eine
+    #: Fehlerquelle ohne Gewinn.
+    abwesenheit_text: Mapped[str] = mapped_column(Text, default="")
+
     imap_server: Mapped[str] = mapped_column(String(255))
     imap_port: Mapped[int] = mapped_column(Integer, default=993)
     #: "ssl" oder "starttls"
@@ -939,3 +959,56 @@ class Bildfreigabe(Base):
     #: Klein geschrieben abgelegt — verglichen wird nie mit Gross/klein.
     adresse: Mapped[str] = mapped_column(String(320))
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Abwesenheitsantwort(Base):
+    """Wem die Abwesenheitsnotiz schon geschickt wurde.
+
+    ⚠️ **Diese Tabelle IST der Schleifenschutz**, nicht sein Beiwerk. „Je
+    Absender einmal" muss irgendwo stehen, und wenn es ohnehin dasteht, soll
+    der Betreiber es auch sehen duerfen: Eine Schleife erkennt man an dieser
+    Liste, bevor sie peinlich wird. Am 02.09.2026 so entschieden.
+
+    ⚠️ **Beim Einschalten wird geleert.** „Einmal" gilt je Abwesenheit, nicht
+    je Lebenszeit des Postfachs — sonst bekaeme beim naechsten Urlaub niemand
+    mehr eine Notiz, der beim vorigen schon eine hatte.
+    """
+
+    __tablename__ = "abwesenheitsantwort"
+    __table_args__ = (
+        UniqueConstraint("konto_id", "adresse", name="uq_abwesenheit_adresse"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    konto_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("konto.id", ondelete="CASCADE"), index=True
+    )
+    #: Klein geschrieben abgelegt — verglichen wird nie mit Gross/klein.
+    adresse: Mapped[str] = mapped_column(String(320))
+    gesendet: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Terminantwort(Base):
+    """Wie auf eine Termin-Einladung geantwortet wurde.
+
+    ⚠️ **Das ist kein Kalender.** Hier steht nur, was nexmail dem Einladenden
+    gesagt hat — damit die Einladung beim zweiten Oeffnen nicht aussieht wie
+    beim ersten und man nicht zweimal antwortet. Der Termin selbst liegt
+    nirgends; dafuer braucht es weiterhin ein Kalenderprogramm.
+
+    Der Schluessel ist die ``UID`` aus der Einladung, nicht die Nachricht: Eine
+    aktualisierte Einladung kommt als **neue** Mail mit derselben UID, und die
+    fruehere Antwort gehoert weiter dazu.
+    """
+
+    __tablename__ = "terminantwort"
+    __table_args__ = (UniqueConstraint("benutzer_id", "uid", name="uq_terminantwort_uid"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+    #: Die ``UID`` des Termins aus der ``.ics``.
+    uid: Mapped[str] = mapped_column(String(500))
+    #: ``zusage`` | ``vorbehalt`` | ``absage``
+    antwort: Mapped[str] = mapped_column(String(16))
+    gesendet: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
