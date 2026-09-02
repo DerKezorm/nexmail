@@ -199,6 +199,8 @@ export interface Befund {
 }
 
 export interface KontoZeile {
+  /** 'anmeldung', wenn der Mailserver die Zugangsdaten ablehnt. */
+  stoerung?: string
   id: string
   /** Wie das Postfach in der Ordnerspalte heißt. */
   anzeigename: string
@@ -217,6 +219,8 @@ export interface KontoZeile {
   smtp_benutzer: string
   zuletzt_geprueft: string | null
   letzter_fehler: string
+  /** Kennung dazu (z. B. 'anmeldung') — die Oberfläche übersetzt sie. */
+  letzter_fehler_art?: string
   anzahl_ordner: number
   /** Freie Schlagworte zum Gruppieren der Postfächer. */
   tags: string[]

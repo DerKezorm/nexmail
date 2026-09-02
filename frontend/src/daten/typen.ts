@@ -18,6 +18,8 @@ export type OrdnerRolle =
 export type Postfachfarbe = 1 | 2 | 3 | 4 | 5 | 6
 
 export interface Konto {
+  /** 'anmeldung', wenn der Mailserver die Zugangsdaten ablehnt. */
+  stoerung?: string
   id: string
   anzeigename: string
   adresse: string
@@ -69,7 +71,23 @@ export interface Nachricht {
   gelesen: boolean
   markiert: boolean
   beantwortet: boolean
+  /** Aus den Kopfzeilen Importance/X-Priority gedeutet. Fehlt in der
+   *  Attrappe — dort gilt „normal". */
+  wichtigkeit?: 'hoch' | 'normal' | 'niedrig'
   anhaenge: Anhang[]
   /** Ob die Nachricht Bilder von aussen laedt - dann wird geblockt. */
   hatFremdbilder: boolean
+}
+
+/** Ein Eintrag im Postausgang — geplant oder liegen geblieben.
+ *  Die Feldnamen sind die des Servers (`/api/verfassen/ausgang`). */
+export interface Ausgangseintrag {
+  id: string
+  stand: 'wartet' | 'unterwegs' | 'gescheitert'
+  betreff: string
+  versuche: number
+  letzter_fehler: string
+  angelegt: string
+  /** ISO-UTC. Gesetzt heißt: geplanter Versand ab diesem Zeitpunkt. */
+  senden_ab: string | null
 }

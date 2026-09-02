@@ -219,3 +219,57 @@ def test_verschiedene_betreffe_verschiedene_straenge():
     eins = mime.zerlegen(b"From: a@b.example\r\nSubject: Wochenende\r\n\r\nA\r\n")
     zwei = mime.zerlegen(b"From: a@b.example\r\nSubject: Rechnung\r\n\r\nB\r\n")
     assert mime.strang_kennung(eins) != mime.strang_kennung(zwei)
+
+
+def test_eine_angehaengte_mail_ist_ein_anhang_und_kein_text():
+    """⚠️ **message/rfc822 meldet is_multipart() und ist doch ein Anhang.**
+
+    Die Zerlege-Schleife stieg bis zum 02.09.2026 in die angehaengte Mail
+    HINEIN: Ihr Text wurde Teil des eigenen Textes, in der Anhangsleiste
+    erschien nichts — waehrend die Liste die Bueroklammer zeigte, denn die
+    kommt vom Server aus BODYSTRUCTURE. Aufgefallen beim ersten
+    „Als Anhang weiterleiten" an ein eigenes Postfach.
+    """
+    from email.message import EmailMessage
+
+    innen = EmailMessage()
+    innen["Subject"] = "Die Originalmail"
+    innen["Message-ID"] = "<original@example.com>"
+    innen.set_content("Geheimer Innentext, der NICHT im Aussentext stehen darf.")
+
+    aussen = EmailMessage()
+    aussen["Subject"] = "Fwd: Die Originalmail"
+    aussen.set_content("Mein eigener Begleittext.")
+    aussen.add_attachment(innen)  # macht daraus message/rfc822
+
+    ergebnis = mime.zerlegen(aussen.as_bytes())
+
+    assert "Mein eigener Begleittext." in ergebnis.text
+    assert "Geheimer Innentext" not in ergebnis.text, (
+        "Der Text der angehaengten Mail ist in den eigenen Text gerutscht."
+    )
+    assert len(ergebnis.anhaenge) == 1, "Die angehaengte Mail fehlt in der Anhangsleiste."
+    anhang = ergebnis.anhaenge[0]
+    assert anhang.mime == "message/rfc822"
+    assert anhang.dateiname.endswith(".eml")
+    assert b"<original@example.com>" in anhang.inhalt, (
+        "Der Anhang traegt nicht die vollstaendige Originalmail."
+    )
+
+
+def test_die_aeussere_mail_selbst_ist_kein_anhang():
+    """Die Gegenprobe: Nur ein EINGEBETTETES message/rfc822 ist ein Anhang.
+
+    Die aeusserste Ebene traegt nummer == "" — wer die Weiche auch dort
+    greifen laesst, macht aus jeder gewoehnlichen Mail einen Anhang ihrer
+    selbst und verliert saemtlichen Text.
+    """
+    from email.message import EmailMessage
+
+    schlicht = EmailMessage()
+    schlicht["Subject"] = "Ganz normale Mail"
+    schlicht.set_content("Nur Text.")
+
+    ergebnis = mime.zerlegen(schlicht.as_bytes())
+    assert "Nur Text." in ergebnis.text
+    assert ergebnis.anhaenge == []

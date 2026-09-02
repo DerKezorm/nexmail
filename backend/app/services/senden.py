@@ -24,10 +24,12 @@ from __future__ import annotations
 import json
 import logging
 import smtplib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from email import message_from_bytes
+from email.utils import getaddresses
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -41,9 +43,20 @@ logger = logging.getLogger("nexmail.senden")
 #: bleibt die Mail im Ausgang stehen und wartet auf eine Hand.
 MAX_VERSUCHE = 5
 
+#: Um wie viele Minuten ein **geplanter** Versand nach einem Fehlschlag
+#: verschoben wird — je Versuch der nächste Wert. ⚠️ Ohne die Verschiebung
+#: griffe der Versandplan (Minutentakt) denselben Eintrag jede Minute wieder
+#: und verbrennte alle fünf Versuche in fünf Minuten; ein zehnminütiger
+#: SMTP-Schluckauf zur Planzeit ließe die Mail dann dauerhaft liegen.
+GEPLANT_VERZOEGERUNG_MINUTEN = (2, 5, 15, 30)
+
 
 class SendeFehler(RuntimeError):
     pass
+
+
+class AbbruchKollision(RuntimeError):
+    """Der Eintrag ist nicht mehr abzubrechen — der Versand hat ihn schon."""
 
 
 def ausgangsordner() -> Path:
@@ -56,8 +69,13 @@ def _datei(kennung: str) -> Path:
     return ausgangsordner() / f"{kennung}.eml"
 
 
-def einreihen(db: Session, konto: Konto, entwurf: Entwurf) -> Ausgang:
-    """Bauen, ablegen, in die Warteschlange stellen — noch nichts senden."""
+def einreihen(
+    db: Session, konto: Konto, entwurf: Entwurf, senden_ab: datetime | None = None
+) -> Ausgang:
+    """Bauen, ablegen, in die Warteschlange stellen — noch nichts senden.
+
+    ``senden_ab`` haelt den Eintrag bis zu diesem Zeitpunkt (UTC) zurueck.
+    """
     roh, message_id = bauen(entwurf)
 
     kennung = neue_id()
@@ -76,11 +94,22 @@ def einreihen(db: Session, konto: Konto, entwurf: Entwurf) -> Ausgang:
         an_json=json.dumps(alle_empfaenger, ensure_ascii=False),
         betreff=entwurf.betreff,
         message_id=message_id,
+        senden_ab=senden_ab,
     )
     db.add(zeile)
     db.commit()
     logger.info("A message was queued for sending.")
     return zeile
+
+
+def faellig_bedingung():
+    """Nur was dran ist: ohne ``senden_ab``, oder mit einem in der Vergangenheit.
+
+    ⚠️ **Diese Bedingung ist der ganze Aufschub.** Jede Abfrage, die Wartendes
+    hinausschickt, muss sie tragen — ohne sie ginge eine fuer morgen geplante
+    Mail beim naechsten Neustart sofort hinaus.
+    """
+    return or_(Ausgang.senden_ab.is_(None), Ausgang.senden_ab <= utcnow())
 
 
 def _in_gesendet_ablegen(db: Session, konto: Konto, roh: bytes) -> bool:
@@ -146,15 +175,40 @@ def versenden(db: Session, zeile: Ausgang) -> None:
     empfaenger = json.loads(zeile.an_json or "[]")
     _, smtp_pw = kontendienst.passwoerter_lesen(konto)
 
-    zeile.stand = "unterwegs"
-    zeile.versuche += 1
+    # ⚠️ **Die Zeile wird beansprucht, nicht einfach beschrieben.** Ein
+    # bedingtes UPDATE, das nur greift, wenn niemand dazwischenkam: Der
+    # Abbruch (``abbrechen``) läuft in einem anderen Faden mit eigener
+    # Session — ohne diese Bedingung konnten „Rückgängig" in letzter Sekunde
+    # und der Versandplan **beide** gewinnen, und die Mail ging trotz eines
+    # gemeldeten Abbruchs hinaus. SQLite serialisiert Schreiber; von zwei
+    # bedingten UPDATEs greift damit genau eines.
+    beansprucht = db.execute(
+        update(Ausgang)
+        .where(Ausgang.id == zeile.id, Ausgang.stand.in_(["wartet", "unterwegs", "gescheitert"]))
+        .values(stand="unterwegs", versuche=Ausgang.versuche + 1)
+    )
     db.commit()
+    if not beansprucht.rowcount:
+        # Abgebrochen oder schon von anderer Hand versandt — nichts mehr tun.
+        db.expire_all()
+        raise SendeFehler("Der Eintrag wurde inzwischen zurückgenommen.")
+    db.refresh(zeile)
 
     try:
         _smtp_senden(konto, smtp_pw, empfaenger, roh)
     except Exception as fehler:  # noqa: BLE001
         zeile.stand = "gescheitert" if zeile.versuche >= MAX_VERSUCHE else "wartet"
         zeile.letzter_fehler = str(fehler)[:500]
+        # ⚠️ **Geplantes rueckt nach hinten statt sofort wieder dran zu sein.**
+        # Der Versandplan sieht jede Minute nach; ohne Verschiebung waeren
+        # alle fuenf Versuche nach fuenf Minuten verbraucht. Gewoehnliche
+        # Sendungen (ohne ``senden_ab``) bleiben unangetastet — die wiederholt
+        # ohnehin nur der Start oder ein Klick.
+        if zeile.stand == "wartet" and zeile.senden_ab is not None:
+            minuten = GEPLANT_VERZOEGERUNG_MINUTEN[
+                min(zeile.versuche, len(GEPLANT_VERZOEGERUNG_MINUTEN)) - 1
+            ]
+            zeile.senden_ab = utcnow() + timedelta(minutes=minuten)
         db.commit()
         logger.warning("Sending failed (attempt %s): %s", zeile.versuche, fehler)
         raise SendeFehler(str(fehler)) from fehler
@@ -204,8 +258,30 @@ def warteschlange_abarbeiten(db: Session) -> dict[str, int]:
     sein - deshalb zählt der Versuch mit, und nach MAX_VERSUCHE bleibt sie
     liegen, statt endlos wiederholt zu werden.
     """
+    # ⚠️ „abgebrochen" ist ein Zwischenstand von ``abbrechen`` und lebt nur
+    # Sekunden. Steht er beim Start noch da, ist der Prozess mitten im Abbruch
+    # gestorben — ob der Entwurf schon abgelegt wurde, weiss niemand. Deshalb
+    # zurueck auf „gescheitert": Der Eintrag bleibt sichtbar liegen und wartet
+    # auf eine Hand, statt entweder stumm zu verschwinden oder doch noch
+    # hinauszugehen.
+    haengen = db.execute(
+        update(Ausgang)
+        .where(Ausgang.stand == "abgebrochen")
+        .values(stand="gescheitert", letzter_fehler="Der Abbruch wurde unterbrochen.")
+    )
+    db.commit()
+    if haengen.rowcount:
+        logger.warning("Recovered %s entry(ies) from an interrupted cancellation.", haengen.rowcount)
+
     offen = (
-        db.execute(select(Ausgang).where(Ausgang.stand.in_(["wartet", "unterwegs"])))
+        db.execute(
+            select(Ausgang).where(
+                Ausgang.stand.in_(["wartet", "unterwegs"]),
+                # ⚠️ Geplantes bleibt liegen, bis es dran ist - sonst hebelte
+                # jeder Neustart „morgen 08:00" aus.
+                faellig_bedingung(),
+            )
+        )
         .scalars()
         .all()
     )
@@ -218,6 +294,131 @@ def warteschlange_abarbeiten(db: Session) -> dict[str, int]:
         except SendeFehler:
             ergebnis["liegen"] += 1
     return ergebnis
+
+
+def faellige_geplante(db: Session) -> int:
+    """Geplante Eintraege hinausschicken, deren Zeit gekommen ist.
+
+    Laeuft im Takt des Versandplans (``takt.versandplan_starten``). Bewusst
+    **nur** Eintraege mit ``senden_ab``: Ein gewoehnlicher Versand, der
+    liegen blieb, wird wie bisher beim Start und auf Klick wiederholt - ihn
+    hier alle paar Sekunden erneut zu versuchen wuerde seine fuenf Versuche
+    in Minuten verbrennen.
+    """
+    faellige = (
+        db.execute(
+            select(Ausgang).where(
+                Ausgang.stand == "wartet",
+                Ausgang.senden_ab.is_not(None),
+                Ausgang.senden_ab <= utcnow(),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    raus = 0
+    for zeile in faellige:
+        try:
+            versenden(db, zeile)
+            raus += 1
+        except SendeFehler:
+            # Steht schon in der Zeile - und der Eintrag bleibt sichtbar
+            # liegen, samt dem Satz des Servers.
+            pass
+    if raus:
+        logger.info("Sent %s scheduled message(s).", raus)
+    return raus
+
+
+def _mit_blindkopie(roh: bytes, empfaenger: list[str]) -> bytes:
+    """Blindkopien in den kuenftigen Entwurf zurueckschreiben.
+
+    ⚠️ **Die fertige Mail traegt absichtlich keine ``Bcc``-Kopfzeile** — sonst
+    waere „blind" nie blind gewesen. Beim Abbrechen kehrt sich das um: Ein
+    Entwurf soll seine Blindkopie kennen, sonst verloere der Abbruch
+    stillschweigend Empfaenger. Wer in der Empfaengerliste steht, aber in
+    keiner Kopfzeile, war Blindkopie.
+    """
+    nachricht = message_from_bytes(roh)
+    sichtbar = {
+        adresse.lower()
+        for _, adresse in getaddresses(
+            nachricht.get_all("To", []) + nachricht.get_all("Cc", [])
+        )
+        if adresse
+    }
+    blind = [a for a in empfaenger if a.lower() not in sichtbar]
+    if not blind:
+        return roh
+    # Vor die uebrigen Kopfzeilen gestellt statt neu zusammengebaut: Ein
+    # erneutes Serialisieren koennte an Kodierungen nur verlieren.
+    return b"Bcc: " + ", ".join(blind).encode("ascii", "ignore") + b"\r\n" + roh
+
+
+def abbrechen(db: Session, zeile: Ausgang) -> int:
+    """Einen wartenden Eintrag zuruecknehmen — der Inhalt wird Entwurf.
+
+    Gibt die UID des abgelegten Entwurfs zurueck (0, wenn nichts mehr
+    aufzubewahren war). ⚠️ Ohne sie hinge der wieder geoeffnete Inhalt an
+    keiner Entwurfs-UID — jedes „Rueckgaengig" hinterliesse dauerhaft eine
+    Sicherheits-Fassung im Entwurfsordner, die niemand mehr wegraeumt.
+
+    ⚠️ **Zuerst wird die Zeile beansprucht** — dasselbe bedingte UPDATE wie in
+    ``versenden``, nur in die andere Richtung. Der Versandfaden laeuft mit
+    eigener Session: Wer nur den in der Request-Session gelesenen Stand
+    prueft, kann „wartet" sehen, waehrend der Faden die Zeile schon auf
+    „unterwegs" hebt — dann gingen Versand und Abbruch **beide** durch, die
+    Mail waere draussen und der Aufrufer bekaeme trotzdem ein „zurueckgeholt".
+    Greift das UPDATE nicht, fliegt ``AbbruchKollision``.
+
+    ⚠️ **Erst der Entwurf, dann das Entfernen.** Umgekehrt kostet ein Absturz
+    dazwischen die Nachricht. So ist der schlimmste Fall ein Entwurf, dessen
+    Ausgangseintrag noch dasteht — aergerlich, aber nichts ist weg.
+
+    Scheitert das Ablegen (etwa: kein Entwurfsordner), bekommt der Eintrag
+    seinen alten Stand zurueck und der Fehler geht nach oben.
+    """
+    from . import entwuerfe as entwurfsdienst
+
+    vorher = zeile.stand
+    beansprucht = db.execute(
+        update(Ausgang)
+        .where(Ausgang.id == zeile.id, Ausgang.stand.in_(["wartet", "gescheitert"]))
+        .values(stand="abgebrochen")
+    )
+    db.commit()
+    if not beansprucht.rowcount:
+        db.expire_all()
+        raise AbbruchKollision(
+            "Die Nachricht ist schon unterwegs und lässt sich nicht mehr zurückholen."
+        )
+
+    konto = db.get(Konto, zeile.konto_id)
+    datei = _datei(zeile.id)
+    entwurf_uid = 0
+    if konto is not None and datei.is_file():
+        roh = _mit_blindkopie(datei.read_bytes(), json.loads(zeile.an_json or "[]"))
+        try:
+            entwurf_uid = entwurfsdienst.roh_ablegen(db, konto, roh)
+        except Exception:
+            # Der Eintrag bleibt liegen, mit seinem alten Stand — ihn im
+            # Beanspruchungs-Stand zu lassen hiesse, dass ihn weder der
+            # Versandplan noch ein zweiter Abbruchversuch je wieder anfasst.
+            db.execute(
+                update(Ausgang).where(Ausgang.id == zeile.id).values(stand=vorher)
+            )
+            db.commit()
+            raise
+    else:
+        # Ohne Datei oder Postfach gibt es nichts mehr aufzubewahren - dann
+        # ist Entfernen alles, was der Abbruch noch tun kann.
+        logger.warning("A queued message was cancelled without content to preserve.")
+
+    db.delete(zeile)
+    db.commit()
+    datei.unlink(missing_ok=True)
+    logger.info("A queued message was cancelled; its content was stored as a draft.")
+    return entwurf_uid
 
 
 def aufraeumen(db: Session) -> int:

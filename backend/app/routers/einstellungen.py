@@ -23,6 +23,7 @@ from ..config import get_settings
 from ..db import einstellung_lesen, einstellung_schreiben
 from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
 from ..services import systempost
+from ..services.aufraeumen import ERLAUBTE_TAGE
 
 router = APIRouter(prefix="/api/einstellungen", tags=["einstellungen"])
 
@@ -73,6 +74,51 @@ def schreiben(eingabe: Einstellungen, _: AngemeldeterBenutzer, db: DbSession) ->
     einstellung_schreiben(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE, adresse)
     einstellung_schreiben(db, SCHLUESSEL_ZEITZONE, zone)
     return Einstellungen(oeffentliche_adresse=adresse, zeitzone=zone)
+
+
+# --- Aufraeumen: Papierkorb und Junk selbst leeren ------------------------ #
+
+
+class Aufraeumen(BaseModel):
+    """Aufbewahrung in Tagen — 0 heisst: nie von selbst leeren.
+
+    ⚠️ **Je Benutzer, nicht je Installation.** Die Werte liegen als Spalten am
+    Benutzer; wer hier eine gemeinsame Einstellung baut, laesst den Betreiber
+    ueber die Postfaecher aller anderen entscheiden.
+    """
+
+    papierkorb_tage: int = 0
+    junk_tage: int = 0
+
+
+@router.get("/aufraeumen", response_model=Aufraeumen)
+def aufraeumen_lesen(ich: AngemeldeterBenutzer) -> Aufraeumen:
+    return Aufraeumen(
+        papierkorb_tage=ich.aufraeumen_papierkorb_tage,
+        junk_tage=ich.aufraeumen_junk_tage,
+    )
+
+
+@router.put("/aufraeumen", response_model=Aufraeumen)
+def aufraeumen_schreiben(
+    eingabe: Aufraeumen, ich: AngemeldeterBenutzer, db: DbSession
+) -> Aufraeumen:
+    # ⚠️ Eine Positivliste, keine Bereichspruefung: Die Oberflaeche bietet
+    # genau diese Stufen an, und ein von Hand geschicktes „1" hiesse sonst,
+    # dass morgen frueh alles von gestern endgueltig weg ist.
+    for wert in (eingabe.papierkorb_tage, eingabe.junk_tage):
+        if wert not in ERLAUBTE_TAGE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Die Aufbewahrung muss aus, 7, 14, 30 oder 90 Tage sein.",
+            )
+    ich.aufraeumen_papierkorb_tage = eingabe.papierkorb_tage
+    ich.aufraeumen_junk_tage = eingabe.junk_tage
+    db.commit()
+    return Aufraeumen(
+        papierkorb_tage=ich.aufraeumen_papierkorb_tage,
+        junk_tage=ich.aufraeumen_junk_tage,
+    )
 
 
 # --- Der Postausgang von nexmail selbst ---------------------------------- #

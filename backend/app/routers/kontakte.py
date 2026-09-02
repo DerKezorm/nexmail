@@ -70,6 +70,83 @@ def vorschlag(anfang: str, person: AngemeldeterBenutzer, db: DbSession) -> list[
     return [_zeile(k) for k in kontaktdienst.vorschlagen(db, person, anfang)]
 
 
+# --- Gruppen ---------------------------------------------------------------- #
+# Ein Verteiler ist ein Eingabehelfer beim Adressieren, kein Mailbegriff:
+# In der Mail stehen nur die Einzeladressen der Mitglieder.
+
+
+class GruppenZeile(BaseModel):
+    id: int
+    name: str
+    #: Die Zahl fuer die Liste und die Rueckfrage vor dem Loeschen.
+    mitglieder: int
+    #: Fuer die Mehrfachauswahl beim Bearbeiten.
+    mitglied_ids: list[int]
+    #: Fuer das Adressfeld beim Verfassen - dort gibt es das Adressbuch nicht.
+    adressen: list[str]
+
+
+class GruppenEingabe(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+
+class MitgliederEingabe(BaseModel):
+    kontakt_ids: list[int] = Field(max_length=10000)
+
+
+def _gruppenzeile(db, person, gruppe_id: int) -> GruppenZeile:
+    for g in kontaktdienst.gruppen(db, person):
+        if g["id"] == gruppe_id:
+            return GruppenZeile(**g)
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diese Gruppe gibt es nicht.")
+
+
+@router.get("/gruppen", response_model=list[GruppenZeile])
+def gruppen(person: AngemeldeterBenutzer, db: DbSession) -> list[GruppenZeile]:
+    return [GruppenZeile(**g) for g in kontaktdienst.gruppen(db, person)]
+
+
+@router.post("/gruppen", response_model=GruppenZeile, status_code=status.HTTP_201_CREATED)
+def gruppe_anlegen(
+    eingabe: GruppenEingabe, person: AngemeldeterBenutzer, db: DbSession
+) -> GruppenZeile:
+    try:
+        gruppe = kontaktdienst.gruppe_anlegen(db, person, eingabe.name)
+    except kontaktdienst.KontaktFehler as fehler:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+    return _gruppenzeile(db, person, gruppe.id)
+
+
+@router.patch("/gruppen/{gruppe_id}", response_model=GruppenZeile)
+def gruppe_umbenennen(
+    gruppe_id: int, eingabe: GruppenEingabe, person: AngemeldeterBenutzer, db: DbSession
+) -> GruppenZeile:
+    try:
+        kontaktdienst.gruppe_umbenennen(db, person, gruppe_id, eingabe.name)
+    except kontaktdienst.KontaktFehler as fehler:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+    return _gruppenzeile(db, person, gruppe_id)
+
+
+@router.delete("/gruppen/{gruppe_id}", status_code=status.HTTP_204_NO_CONTENT)
+def gruppe_entfernen(gruppe_id: int, person: AngemeldeterBenutzer, db: DbSession) -> None:
+    try:
+        kontaktdienst.gruppe_entfernen(db, person, gruppe_id)
+    except kontaktdienst.KontaktFehler as fehler:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+
+
+@router.put("/gruppen/{gruppe_id}/mitglieder", response_model=GruppenZeile)
+def mitglieder_setzen(
+    gruppe_id: int, eingabe: MitgliederEingabe, person: AngemeldeterBenutzer, db: DbSession
+) -> GruppenZeile:
+    try:
+        kontaktdienst.mitglieder_setzen(db, person, gruppe_id, eingabe.kontakt_ids)
+    except kontaktdienst.KontaktFehler as fehler:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+    return _gruppenzeile(db, person, gruppe_id)
+
+
 @router.post("", response_model=Zeile, status_code=status.HTTP_201_CREATED)
 def anlegen(eingabe: Eingabe, person: AngemeldeterBenutzer, db: DbSession) -> Zeile:
     try:

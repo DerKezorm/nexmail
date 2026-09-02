@@ -27,6 +27,7 @@ interface ApiZeile {
   markiert: boolean
   beantwortet: boolean
   hat_anhang: boolean
+  wichtigkeit?: string
   strang_anzahl?: number
   strang_ungelesen?: number
   thread_key?: string
@@ -68,6 +69,8 @@ function zeile(z: ApiZeile): Nachricht {
     gelesen: z.gelesen,
     markiert: z.markiert,
     beantwortet: z.beantwortet,
+    wichtigkeit:
+      z.wichtigkeit === 'hoch' || z.wichtigkeit === 'niedrig' ? z.wichtigkeit : 'normal',
     // In der Liste steht nur, **ob** etwas dranhängt. Die Anhänge selbst
     // kommen erst beim Öffnen — sie liegen bis dahin gar nicht hier.
     anhaenge: z.hat_anhang ? [{ id: 'unbekannt', dateiname: '', groesse: 0, typ: '' }] : [],
@@ -86,6 +89,7 @@ export async function kontenLaden(): Promise<Konto[]> {
     adresse: k.adresse,
     farbe: (k.farbe as Postfachfarbe) ?? 1,
     tags: k.tags ?? [],
+    stoerung: k.stoerung ?? '',
   }))
 }
 

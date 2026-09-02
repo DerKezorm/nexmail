@@ -62,8 +62,19 @@
     "fremdes_postfach": "Zwischen zwei Postfächern kann IMAP nicht verschieben. Leite die Nachricht stattdessen weiter.",
     "alles_gelesen": "Alles als gelesen markieren",
     "markierte": "Markierte",
+    "postausgang": "Postausgang",
     "gruppe_alle": "Alle",
     "gruppe_hinweis": "Zeigt Postfächer mit diesem Schlagwort."
+  },
+  "ausgang": {
+    "leer_titel": "Nichts wartet",
+    "leer_text": "Alles, was gesendet werden sollte, ist draußen.",
+    "geplant_fuer": "Geplant für {{zeit}}",
+    "stand_wartet": "Wartet auf den nächsten Versuch",
+    "stand_unterwegs": "Wird gerade gesendet …",
+    "stand_gescheitert": "Gescheitert — wird nicht mehr von selbst versucht",
+    "abbrechen": "Versand abbrechen",
+    "abbrechen_frage": "Die Nachricht wird nicht gesendet. Ihr Inhalt wird als Entwurf im Postfach abgelegt — es geht nichts verloren."
   },
   "liste": {
     "leer_titel": "Nichts hier",
@@ -74,6 +85,7 @@
     "anzahl_viele": "{{count}} Nachrichten",
     "ungelesen": "{{count}} ungelesen",
     "kein_betreff": "(kein Betreff)",
+    "wichtig_hoch": "Hohe Wichtigkeit",
     "heute": "Heute",
     "gestern": "Gestern",
     "diese_woche": "Diese Woche",
@@ -95,6 +107,7 @@
     "antworten": "Antworten",
     "allen_antworten": "Allen antworten",
     "weiterleiten": "Weiterleiten",
+    "als_anhang": "Als Anhang weiterleiten",
     "archivieren": "Archivieren",
     "loeschen": "Löschen",
     "markieren": "Markieren",
@@ -117,7 +130,8 @@
     "auswahl_aufheben": "Auswahl aufheben",
     "weiterschreiben": "Weiterschreiben",
     "herunterladen": "Als .eml herunterladen",
-    "im_fenster": "In eigenem Fenster öffnen"
+    "im_fenster": "In eigenem Fenster öffnen",
+    "drucken": "Drucken"
   },
   "lesen": {
     "an": "An",
@@ -128,7 +142,9 @@
     "bilder_geblockt": "Bilder in dieser Nachricht wurden nicht geladen. Sie würden dem Absender verraten, wann du sie geöffnet hast.",
     "bilder_anzeigen": "Bilder anzeigen",
     "bilder_immer": "Von diesem Absender immer",
-    "details_zeigen": "Kopfdaten anzeigen"
+    "details_zeigen": "Kopfdaten anzeigen",
+    "wichtig_hoch": "Hohe Wichtigkeit",
+    "wichtig_niedrig": "Diese Nachricht wurde mit niedriger Wichtigkeit gesendet."
   },
   "verfassen": {
     "titel_neu": "Neue Nachricht",
@@ -147,8 +163,19 @@
     "entwurf_gespeichert": "Entwurf gespeichert",
     "verwerfen": "Verwerfen",
     "im_ausgang": "Noch nicht draußen — die Nachricht liegt im Ausgang und wird erneut versucht. ({{grund}})",
+    "spaeter": "Später senden",
+    "spaeter_heute": "Heute 18:00",
+    "spaeter_morgen": "Morgen 08:00",
+    "spaeter_eigen": "Eigener Zeitpunkt",
+    "spaeter_planen": "Planen",
     "schliessen_bewahrt": "Schließen — der Entwurf bleibt erhalten",
-    "entwurf_fehler": "Der Entwurf ließ sich nicht aufbewahren. Das Fenster bleibt offen, damit der Text nicht verloren geht."
+    "entwurf_fehler": "Der Entwurf ließ sich nicht aufbewahren. Das Fenster bleibt offen, damit der Text nicht verloren geht.",
+    "wichtigkeit_normal": "Wichtigkeit: normal",
+    "wichtigkeit_hoch": "Wichtigkeit: hoch",
+    "wichtigkeit_niedrig": "Wichtigkeit: niedrig",
+    "anhang_frage_titel": "Ohne Anhang senden?",
+    "anhang_frage_text": "Im Text steht etwas von einem Anhang, aber es ist keiner dran. Trotzdem senden?",
+    "empfaenger_entfernen": "{{adresse}} entfernen"
   },
   "format": {
     "schriftart": "Schriftart",
@@ -227,7 +254,14 @@
     "tags_hinweis": "Gruppiert die Postfächer in der Ordnerspalte. Enter oder Komma legt eines an.",
     "tags_platzhalter": "privat, arbeit, verein …",
     "tags_entfernen": "„{{wort}}\" entfernen",
-    "tags_bekannt": "Schon vergeben:"
+    "tags_bekannt": "Schon vergeben:",
+    "fehler_anmeldung": "Anmeldung abgelehnt — Passwort prüfen",
+    "fehler_nicht_erreichbar": "Server nicht erreichbar",
+    "fehler_keine_antwort": "Server antwortet nicht",
+    "fehler_verschluesselung": "Verschlüsselung fehlgeschlagen",
+    "fehler_unerwartet": "Unerwartete Antwort des Servers",
+    "fehler_intern": "Fehler in nexmail — Protokoll ansehen",
+    "entfernen": "Postfach entfernen"
   },
   "einstellungen": {
     "titel": "Einstellungen",
@@ -255,7 +289,8 @@
     "verschoben": "Nachricht verschoben",
     "geloescht": "In den Papierkorb gelegt",
     "archiviert": "Archiviert",
-    "zurueckgeholt": "Zurückgeholt"
+    "zurueckgeholt": "Zurückgeholt",
+    "wird_gesendet": "Wird in {{n}} s gesendet"
   },
   "einrichtung": {
     "titel": "nexmail einrichten",
@@ -328,7 +363,22 @@
     "entfernen": "Entfernen",
     "eingesammelt": "Empfänger aus „Gesendet\" übernommen.",
     "aufgeraeumt": "Aufgeschnappte Einträge entfernt.",
-    "eingelesen": "{{neu}} neu, {{ergaenzt}} ergänzt."
+    "eingelesen": "{{neu}} neu, {{ergaenzt}} ergänzt.",
+    "gruppen": "Gruppen",
+    "gruppe_neu": "Neue Gruppe",
+    "gruppe_leer": "Noch keine Gruppen.",
+    "gruppe_name": "Name der Gruppe",
+    "gruppe_mitglieder": "Mitglieder",
+    "gruppe_mitglieder_filtern": "Mitglieder filtern …",
+    "gruppe_keine_kontakte": "Das Adressbuch ist leer — lege zuerst Kontakte an.",
+    "gruppe_badge_one": "Gruppe · {{count}} Mitglied",
+    "gruppe_badge_other": "Gruppe · {{count}} Mitglieder",
+    "gruppe_zahl_one": "{{count}} Mitglied",
+    "gruppe_zahl_other": "{{count}} Mitglieder",
+    "gruppe_entfernen": "Gruppe entfernen",
+    "gruppe_entfernen_text_leer": "„{{name}}\" wird entfernt. Die Gruppe hat keine Mitglieder.",
+    "gruppe_entfernen_text_one": "„{{name}}\" wird entfernt. Das eine Mitglied bleibt im Adressbuch stehen.",
+    "gruppe_entfernen_text_other": "„{{name}}\" wird entfernt. Die {{count}} Mitglieder bleiben im Adressbuch stehen."
   },
   "regeln": {
     "neu": "Neue Regel",
@@ -436,7 +486,24 @@
     "gelesen_hinweis": "Wann eine geöffnete Nachricht als gelesen gilt.",
     "gelesen_sofort": "Sofort beim Öffnen",
     "gelesen_sekunden": "Nach {{n}} Sekunden",
-    "gelesen_hand": "Nur von Hand"
+    "gelesen_hand": "Nur von Hand",
+    "rueckholen": "Senden rückholen",
+    "rueckholen_hinweis": "Nach dem Senden bleibt so lange Zeit, die Nachricht zurückzuholen.",
+    "rueckholen_aus": "Aus",
+    "rueckholen_sekunden": "{{n}} Sekunden",
+    "wisch_links": "Wischen nach links",
+    "wisch_rechts": "Wischen nach rechts",
+    "wisch_hinweis": "Gilt in der schmalen Ansicht: eine Zeile mit dem Finger zur Seite ziehen.",
+    "wisch_aus": "Aus",
+    "wisch_archivieren": "Archivieren",
+    "wisch_loeschen": "Löschen",
+    "wisch_gelesen": "Gelesen/ungelesen umschalten",
+    "aufraeumen_titel": "Aufräumen",
+    "aufraeumen_hinweis": "Ältere Nachrichten werden endgültig gelöscht, auch auf dem Server. Gilt für dich auf allen Geräten.",
+    "aufraeumen_papierkorb": "Papierkorb selbst leeren",
+    "aufraeumen_junk": "Junk selbst leeren",
+    "aufraeumen_aus": "Nie",
+    "aufraeumen_tage": "Älter als {{n}} Tage"
   },
   "protokoll": {
     "stufe": "Ausführlichkeit",
@@ -522,7 +589,11 @@
   },
   "stoerung": {
     "stamm": "Deine Postfächer ließen sich nicht laden. Sie sind nicht weg — der Server antwortet gerade nicht.",
-    "nochmal": "Noch einmal versuchen"
+    "nochmal": "Noch einmal versuchen",
+    "zugangsdaten": "Der Mailserver lehnt die Zugangsdaten ab: {{namen}}.",
+    "zugangsdaten_folge": "Neue Mails kommen dort nicht mehr an, bis das Passwort stimmt.",
+    "zugangsdaten_knopf": "Zugangsdaten öffnen",
+    "zugangsdaten_kurz": "Anmeldung abgelehnt"
   },
   "aufgaben": {
     "offen": "{{count}} offen",
@@ -649,5 +720,8 @@
     "gebaut_mit": "Gebaut mit",
     "schriften": "Schriften",
     "schriften_text": "Liegen im Abbild und werden nicht von Google geholt. Ein Mail-Client, der beim Öffnen jemanden anfunkt, wäre schwer zu erklären — er blockiert schließlich Zählpixel in fremder Post."
+  },
+  "fenster": {
+    "nicht_ladbar": "Die Nachricht ließ sich nicht laden. Sie ist nicht weg — vielleicht ist die Anmeldung in diesem Fenster abgelaufen."
   }
 }

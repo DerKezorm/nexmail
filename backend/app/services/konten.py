@@ -379,6 +379,7 @@ def ordner_uebernehmen(db: Session, konto: Konto, angaben: list[imapdienst.Ordne
 
     konto.zuletzt_geprueft = utcnow()
     konto.letzter_fehler = ""
+    konto.letzter_fehler_art = ""
     db.commit()
 
 

@@ -108,6 +108,17 @@ class Benutzer(Base):
     #: Code noch dreissig Sekunden lang ein zweites Mal.
     totp_letzter_schritt: Mapped[int] = mapped_column(Integer, default=0)
 
+    #: Aufbewahrung in Tagen fuer Papierkorb und Junk — 0 heisst: nie von
+    #: selbst leeren. ⚠️ **Die Vorgabe ist aus, mit Absicht:** Ein Mail-Client,
+    #: der ungefragt endgueltig loescht, macht genau den Schrecken, den ein
+    #: Datenverlust macht. Wer es einschaltet, hat die Folge gelesen.
+    aufraeumen_papierkorb_tage: Mapped[int] = mapped_column(Integer, default=0)
+    aufraeumen_junk_tage: Mapped[int] = mapped_column(Integer, default=0)
+    #: Wann die letzte Aufraeumrunde fuer diesen Benutzer lief — dasselbe
+    #: Muster wie ``sicherung_zuletzt`` beim Sicherungs-Zeitplan, nur je
+    #: Benutzer als Spalte statt als Einstellungs-Schluessel.
+    aufraeumen_zuletzt: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
     sitzungen: Mapped[list["Sitzung"]] = relationship(
@@ -231,6 +242,14 @@ class Konto(Base):
     #: und den liest der Empfaenger. Ein Feld fuer beides hiess: Wer sein
     #: Postfach in der Spalte „Arbeit" nennt, verschickte Post von „Arbeit".
     anzeigename: Mapped[str] = mapped_column(String(120))
+
+    #: ⚠️ **Abgewiesene Zugangsdaten duerfen nicht stumm bleiben.** Der Takt
+    #: versuchte es bis zum 02.09.2026 alle zwei Minuten neu, und niemand
+    #: erfuhr davon - aufgefallen, als ein geaendertes iCloud-Passwort einfach
+    #: keine neuen Mails mehr brachte. Hier steht 'anmeldung', sobald der
+    #: Server die Anmeldung ablehnt, und wieder '', sobald sie gelingt. Die
+    #: Oberflaeche macht daraus den roten Banner.
+    stoerung: Mapped[str] = mapped_column(String(20), default="")
     #: Leer heisst: ``anzeigename`` nehmen. So bleibt es fuer alle, die vor
     #: dieser Trennung eingerichtet haben, wie es war.
     absendername: Mapped[str] = mapped_column(String(120), default="")
@@ -265,6 +284,12 @@ class Konto(Base):
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     zuletzt_geprueft: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
     letzter_fehler: Mapped[str] = mapped_column(Text, default="")
+    #: ⚠️ **Die Kennung, nicht nur der Satz.** ``letzter_fehler`` traegt den
+    #: deutschen Satz des Servers - die Oberflaeche zeigte ihn woertlich, auf
+    #: Englisch blieb er deutsch, und das Abzeichen schnitt ihn nach 40
+    #: Zeichen ab („abgewie"). Am 02.09.2026 aufgefallen. Der Server benennt
+    #: (``Fehlerart``), die Oberflaeche uebersetzt - wie bei OIDC.
+    letzter_fehler_art: Mapped[str] = mapped_column(String(30), default="")
 
     benutzer: Mapped[Benutzer] = relationship()
     ordner: Mapped[list["Ordner"]] = relationship(
@@ -309,6 +334,13 @@ class Ordner(Base):
     hoechste_uid: Mapped[int] = mapped_column(Integer, default=0)
     anzahl: Mapped[int] = mapped_column(Integer, default=0)
     ungelesen: Mapped[int] = mapped_column(Integer, default=0)
+    #: Ob die Wichtigkeit des Bestands einmal nachgezogen wurde. Die Spalte
+    #: ``wichtigkeit`` kam nach den ersten Abgleichen dazu — alle Zeilen davor
+    #: standen auf „normal", waehrend identische neue Mails ihr „!" bekamen.
+    #: Der Abgleich holt die Kopfzeilen dafuer **einmal** fuer die juengsten
+    #: Nachrichten nach (dasselbe Fenster wie die Flags) und setzt dann diesen
+    #: Merker; aeltere heilt das Oeffnen der Mail.
+    wichtigkeit_nachgezogen: Mapped[bool] = mapped_column(Boolean, default=False)
 
     konto: Mapped[Konto] = relationship(back_populates="ordner")
 
@@ -367,12 +399,27 @@ class Nachricht(Base):
 
     betreff: Mapped[str] = mapped_column(Text, default="")
     datum: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    #: Wann diese Zeile in diesen Ordner gekommen ist — beim Abgleich gesetzt.
+    #: ⚠️ **Das ist die Verweildauer-Uhr des Aufraeumens.** ``datum`` ist das
+    #: Absendedatum aus der ``Date``-Kopfzeile; wer den Papierkorb daran
+    #: bemisst, loescht eine heute weggeworfene Januar-Mail sofort und
+    #: endgueltig. Verschieben legt beim naechsten Abgleich eine neue Zeile an
+    #: (siehe ``handeln.verschieben``) — die Uhr startet damit von selbst neu.
+    #: Zeilen von vor dieser Spalte fuellt der Start einmalig auf „jetzt"
+    #: (``main.lebenslauf``), die Rueckholfrist beginnt fuer sie also neu —
+    #: die sichere Richtung.
+    angekommen: Mapped[datetime | None] = mapped_column(UtcDateTime, default=utcnow)
     groesse: Mapped[int] = mapped_column(Integer, default=0)
 
     gelesen: Mapped[bool] = mapped_column(Boolean, default=False)
     markiert: Mapped[bool] = mapped_column(Boolean, default=False)
     beantwortet: Mapped[bool] = mapped_column(Boolean, default=False)
     hat_anhang: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: ``hoch`` | ``normal`` | ``niedrig`` — beim Abgleich aus den Kopfzeilen
+    #: ``Importance`` und ``X-Priority`` gedeutet, weil Absender mal die eine,
+    #: mal die andere schreiben. Gespeichert wird das Ergebnis, nicht die
+    #: Kopfzeile: Die Liste soll nicht bei jeder Zeile deuten muessen.
+    wichtigkeit: Mapped[str] = mapped_column(String(10), default="normal")
 
     anreisser: Mapped[str] = mapped_column(Text, default="")
     koerper_text: Mapped[str] = mapped_column(Text, default="")
@@ -444,6 +491,11 @@ class Ausgang(Base):
 
     versuche: Mapped[int] = mapped_column(Integer, default=0)
     letzter_fehler: Mapped[str] = mapped_column(Text, default="")
+
+    #: Fruehestens ab wann gesendet wird, in UTC. Leer heisst: sofort.
+    #: ⚠️ Der Zeitpunkt haelt den Eintrag nur zurueck, er stoesst nichts an -
+    #: hinausgeschoben wird er von den faelligen Laeufen der Warteschlange.
+    senden_ab: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
 
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     gesendet: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
@@ -517,6 +569,52 @@ class Kontakt(Base):
     #: Vorschlaege beim Tippen haengt daran.
     verwendet: Mapped[int] = mapped_column(Integer, default=0)
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Kontaktgruppe(Base):
+    """Ein Verteiler im Adressbuch - ein Eingabehelfer, kein Mailbegriff.
+
+    Wer eine Gruppe beim Adressieren auswaehlt, bekommt ihre Mitglieder als
+    einzelne Empfaenger eingesetzt. In der Mail selbst stehen nur die
+    Einzeladressen; der Server, der Empfaenger und jedes andere Programm
+    sehen von der Gruppe nichts.
+
+    ⚠️ **Loeschen einer Gruppe loescht keine Kontakte** - nur die
+    Zuordnungen. Die Gruppe besitzt ihre Mitglieder nicht, sie zeigt auf sie.
+    """
+
+    __tablename__ = "kontaktgruppe"
+    #: Exakt-gleiche Namen faengt schon die Datenbank; gleich bis auf
+    #: Gross/klein prueft der Dienst - dieselbe Regel wie bei den
+    #: Postfach-Schlagworten: "Privat" und "privat" waeren zwei Eintraege,
+    #: die gleich aussehen und Verschiedenes meinen.
+    __table_args__ = (UniqueConstraint("benutzer_id", "name", name="uq_kontaktgruppe_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class KontaktgruppeMitglied(Base):
+    """Die Zuordnung Kontakt zu Gruppe - ein Kontakt darf in mehreren stehen.
+
+    ⚠️ **``benutzer_id`` steht hier bewusst noch einmal**, obwohl sie ueber
+    die Gruppe herleitbar waere: ``benutzer.entfernen`` leert jede Tabelle
+    mit dieser Spalte ueber die Modelle - eine Tabelle ohne sie bliebe beim
+    Loeschen eines Benutzers liegen. Siehe den Kopf dieser Datei.
+    """
+
+    __tablename__ = "kontaktgruppe_mitglied"
+    __table_args__ = (
+        # Zweimal eintragen ist ein Verklicken, kein zweites Mitglied.
+        UniqueConstraint("gruppe_id", "kontakt_id", name="uq_gruppe_mitglied"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+    gruppe_id: Mapped[int] = mapped_column(Integer, index=True)
+    kontakt_id: Mapped[int] = mapped_column(Integer, index=True)
 
 
 class Regel(Base):

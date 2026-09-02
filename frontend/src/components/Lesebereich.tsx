@@ -24,6 +24,7 @@ import {
   MoreHorizontal,
   Paperclip,
   PenLine,
+  Printer,
   ReplyAll,
   Trash2,
 } from 'lucide-react'
@@ -32,14 +33,20 @@ import type { VolleNachricht } from '../api/laden'
 import { bilderAnzeigen } from '../api/laden'
 import { anzeigename, groesse, initialen, langesDatum } from '../lib/format'
 import { Button, EmptyState, IconButton } from '../ds'
+import { Kontextmenue } from './Kontextmenue'
 import { appPfad } from '../lib/basis'
+import { nachrichtDrucken } from '../lib/drucken'
 
 interface Props {
   nachricht: VolleNachricht | null
   laedt?: boolean
-  aufVerfassen: (art: 'antwort' | 'allen' | 'weiter' | 'entwurf', n: Nachricht) => void
+  aufVerfassen: (art: 'antwort' | 'allen' | 'weiter' | 'anhang' | 'entwurf', n: Nachricht) => void
   /** Liegt die Nachricht im Entwurfsordner? Dann ist sie zum Weiterschreiben da. */
   istEntwurf?: boolean
+  /** Dieses Lesefenster IST schon das eigene Fenster - der Knopf dafuer
+   *  entfaellt dann. Ein Fenster, das sich selbst noch einmal oeffnet,
+   *  ergibt keinen Sinn - aufgefallen am 02.09.2026. */
+  imEigenenFenster?: boolean
 }
 
 export function Lesebereich({
@@ -47,9 +54,13 @@ export function Lesebereich({
   laedt = false,
   aufVerfassen,
   istEntwurf = false,
+  imEigenenFenster = false,
 }: Props) {
   const { t, i18n } = useTranslation()
   const [freigegeben, setFreigegeben] = useState<string | null>(null)
+  // Das Menü hinter „Weitere Aktionen" — dieselbe Kontextmenü-Zutat wie beim
+  // Rechtsklick in der Liste, nur unter dem Knopf aufgeklappt.
+  const [mehrMenue, setMehrMenue] = useState<{ x: number; y: number } | null>(null)
 
   // Beim Wechsel der Nachricht sind Bilder wieder geblockt. Alles andere wäre
   // eine Erlaubnis, die man einmal gibt und danach nie wieder sieht.
@@ -118,6 +129,15 @@ export function Lesebereich({
             window.location.href = appPfad(`/api/nachrichten/${nachricht.id}/roh`)
           }}
         />
+        {/* Die Druckseite kommt vom Server: eigenständig, skriptfrei, ohne
+            die ausgeklinkten Bildadressen. Der Druckdialog wird von hier
+            angestoßen, weil das Dokument selbst nichts ausführen darf. */}
+        <IconButton
+          icon={<Printer />}
+          label={t('aktion.drucken')}
+          onClick={() => nachrichtDrucken(nachricht.id, i18n.language)}
+        />
+        {!imEigenenFenster && (
         <IconButton
           icon={<ExternalLink />}
           label={t('aktion.im_fenster')}
@@ -129,14 +149,56 @@ export function Lesebereich({
             )
           }}
         />
-        <IconButton icon={<MoreHorizontal />} label={t('aktion.mehr')} />
+        )}
+        {/* „Weitere Aktionen": klappt ein Menü unter dem Knopf auf. Bei einem
+            Entwurf gibt es den Knopf nicht — sein einziger Eintrag leitet
+            weiter, und auf einen Entwurf antwortet oder leitet man nicht. */}
+        {!istEntwurf && (
+          <IconButton
+            icon={<MoreHorizontal />}
+            label={t('aktion.mehr')}
+            aria-haspopup="menu"
+            aria-expanded={mehrMenue !== null}
+            onClick={(e) => {
+              const kasten = e.currentTarget.getBoundingClientRect()
+              setMehrMenue({ x: kasten.right, y: kasten.bottom + 4 })
+            }}
+          />
+        )}
+        {mehrMenue && (
+          <Kontextmenue
+            x={mehrMenue.x}
+            y={mehrMenue.y}
+            eintraege={[
+              {
+                id: 'anhang',
+                text: t('aktion.als_anhang'),
+                symbol: <Paperclip />,
+                tun: () => aufVerfassen('anhang', nachricht),
+              },
+            ]}
+            aufSchliessen={() => setMehrMenue(null)}
+          />
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <header className="border-b border-line-subtle px-6 py-4">
           <h1 className="mb-3 font-display text-[20px] leading-snug font-medium text-fg-1">
+            {/* ⚠️ Nicht nur Farbe: das Zeichen plus ein vorlesbarer Name. */}
+            {nachricht.wichtigkeit === 'hoch' && (
+              <span role="img" aria-label={t('lesen.wichtig_hoch')} className="mr-2 font-bold text-danger">
+                !
+              </span>
+            )}
             {nachricht.betreff || t('liste.kein_betreff')}
           </h1>
+
+          {/* Niedrig ist im Lesebereich ein Satz, kein Zeichen — wer die Mail
+              schon offen hat, braucht keinen Alarm, nur die Auskunft. */}
+          {nachricht.wichtigkeit === 'niedrig' && (
+            <p className="mb-3 text-[12px] text-fg-4">{t('lesen.wichtig_niedrig')}</p>
+          )}
 
           <div className="flex items-start gap-3">
             <span

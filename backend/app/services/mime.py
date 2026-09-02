@@ -74,6 +74,11 @@ class Zerlegt:
     text: str
     html: str
     anhaenge: list[Anhangteil] = field(default_factory=list)
+    #: ⚠️ In gewoehnlicher Post ist das immer leer — eine versandte Mail traegt
+    #: absichtlich keine ``Bcc``-Kopfzeile. Sie steht nur in Entwuerfen, die
+    #: ``senden._mit_blindkopie`` beim Abbruch eigens hineinschreibt. Ohne
+    #: dieses Feld verlor ein wieder geoeffneter Entwurf seine Blindkopie.
+    blindkopie: list[Person] = field(default_factory=list)
 
 
 def kopf_lesen(wert: str | None) -> str:
@@ -177,6 +182,35 @@ def zerlegen(roh: bytes) -> Zerlegt:
     anhaenge: list[Anhangteil] = []
 
     def durchgehen(teil: Message, nummer: str) -> None:
+        # ⚠️ **message/rfc822 VOR der multipart-Weiche.** Eine angehaengte Mail
+        # meldet is_multipart() == True, und die Schleife stieg bis zum
+        # 02.09.2026 in sie HINEIN: Ihr Text wurde Teil des eigenen Textes,
+        # und in der Anhangsleiste erschien - nichts. Die Liste zeigte das
+        # Bueroklammer-Symbol (das kommt vom Server aus BODYSTRUCTURE), die
+        # geoeffnete Mail widersprach ihr. Aufgefallen beim ersten
+        # "Als Anhang weiterleiten" an ein eigenes Postfach.
+        if nummer and (teil.get_content_type() or "").lower() == "message/rfc822":
+            innen = teil.get_payload(0) if teil.is_multipart() else None
+            try:
+                rohbytes = innen.as_bytes() if innen is not None else (teil.get_payload(decode=True) or b"")
+            except Exception:  # noqa: BLE001 - eine kaputte Anlage ist kein Absturzgrund
+                rohbytes = b""
+            name = teil.get_filename()
+            if not name:
+                innen_betreff = kopf_lesen(innen.get("Subject")) if innen is not None else ""
+                name = eml_dateiname(innen_betreff or "Nachricht")
+            anhaenge.append(
+                Anhangteil(
+                    teil_id=nummer,
+                    dateiname=kopf_lesen(name),
+                    mime="message/rfc822",
+                    groesse=len(rohbytes),
+                    cid="",
+                    inhalt=rohbytes,
+                )
+            )
+            return
+
         if teil.is_multipart():
             for i, unter in enumerate(teil.get_payload(), start=1):
                 durchgehen(unter, f"{nummer}.{i}" if nummer else str(i))
@@ -220,6 +254,7 @@ def zerlegen(roh: bytes) -> Zerlegt:
         von=(_personen(nachricht, "From") or [Person("", "")])[0],
         an=_personen(nachricht, "To"),
         kopie=_personen(nachricht, "Cc"),
+        blindkopie=_personen(nachricht, "Bcc"),
         datum=_datum(nachricht),
         message_id=(nachricht.get("Message-ID") or "").strip(),
         in_reply_to=(nachricht.get("In-Reply-To") or "").strip(),
@@ -228,6 +263,28 @@ def zerlegen(roh: bytes) -> Zerlegt:
         html="\n".join(html_teile),
         anhaenge=anhaenge,
     )
+
+
+#: Was in einem Dateinamen nichts verloren hat — die Zeichen, die Windows
+#: verbietet, plus das Anführungszeichen, das im ``content-disposition``-Kopf
+#: die Klammer wäre. Ein Betreff kommt von außen; er darf den Namen füllen,
+#: aber nicht formen.
+#:
+#: ⚠️ **Steuerzeichen gehören dazu.** Ein kodierter Betreff
+#: (``=?utf-8?B?…?=``) kann nach dem Entziffern ``\r\n`` enthalten — und der
+#: Name landet wörtlich im ``content-disposition``-Kopf der Antwort. Ein
+#: Zeilenumbruch dort ist eine eingeschleuste Kopfzeile, kein Dateiname.
+_DATEINAME_TABU = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
+
+
+def eml_dateiname(betreff: str) -> str:
+    """Ein Dateiname für die Roh-``.eml``, den jedes Betriebssystem annimmt.
+
+    Gemeinsam für den ``.eml``-Download und das Weiterleiten als Anhang —
+    der Empfänger soll dieselbe Datei sehen, die man selbst herunterlädt.
+    """
+    name = _DATEINAME_TABU.sub("_", (betreff or "nachricht").strip())[:80]
+    return f"{name or 'nachricht'}.eml"
 
 
 # --- Stränge ------------------------------------------------------------- #

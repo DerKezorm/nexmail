@@ -106,6 +106,16 @@ export function protokollzeit(roh: string, sprache: string): string {
   )
 }
 
+/** Der Zeitpunkt eines geplanten Versands — Wochentag, Tag und Uhrzeit.
+ *  In der eingestellten Zone wie jedes andere Datum; „18:00" soll hier
+ *  dasselbe heissen wie in der Liste daneben. */
+export function planzeit(iso: string, sprache: string): string {
+  return new Date(iso).toLocaleString(
+    sprache,
+    mitZone({ weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+  )
+}
+
 /** Dateigroessen. Bewusst mit einer Nachkommastelle ab Megabyte - "3 MB"
  *  fuer alles zwischen 2,5 und 3,4 MB verschleiert genau dann etwas, wenn es
  *  um das Anhang-Limit des Anbieters geht. */

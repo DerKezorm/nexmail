@@ -26,6 +26,13 @@ export async function anmelden(seite: Page) {
       'nexmail.gruppe',
       'nexmail.gruppiert',
       'nexmail.gelesen_nach',
+      // ⚠️ Ein liegen gebliebener Aufschub ließe jeden Sende-Test 30 Sekunden
+      // im Ausgang warten - und der prüft dann etwas anderes, als er glaubt.
+      'nexmail.rueckholen',
+      // Die Wisch-Tests verlassen sich auf die Vorgaben (links löschen,
+      // rechts archivieren) — ein umgestellter Wert prüfte etwas anderes.
+      'nexmail.wisch_links',
+      'nexmail.wisch_rechts',
     ]) {
       localStorage.removeItem(k)
     }

@@ -9,16 +9,19 @@ from __future__ import annotations
 
 import base64
 import json
-import re
 import logging
+import re
 from datetime import datetime, timezone
+from html import escape
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import case, func, select
 
 from ..config import get_settings
+from ..db import einstellung_lesen
 from ..deps import AngemeldeterBenutzer, DbSession
 from ..models import Anhang, Konto, Nachricht, Ordner
 from ..services import (
@@ -27,11 +30,37 @@ from ..services import (
     handeln,
     imap as imapdienst,
     konten as kontendienst,
+    mime,
 )
+from .einstellungen import SCHLUESSEL_ZEITZONE
 
 logger = logging.getLogger("nexmail.nachrichten")
 
 router = APIRouter(prefix="/api/nachrichten", tags=["nachrichten"])
+
+
+def _anhang_disposition(name: str) -> str:
+    """Einen ``content-disposition``-Kopf bauen, den jeder Name übersteht.
+
+    ⚠️ **Der Name kommt aus der Mail, der Kopf verträgt nur Latin-1.** Ein
+    Betreff oder Dateiname mit Emoji oder CJK-Zeichen ließ den Download vorher
+    mit einem 500 umfallen — ``UnicodeEncodeError`` beim Serialisieren des
+    Kopfes. Deshalb RFC 5987: ein ASCII-Rückfall in ``filename`` und der
+    echte Name prozentkodiert in ``filename*`` — den lesen alle Browser.
+
+    Steuerzeichen sind hier schon weg (``mime._DATEINAME_TABU`` bzw. die
+    Ersetzung unten) — ein ``\\r\\n`` im Kopf wäre eine eingeschleuste
+    Kopfzeile, kein Dateiname.
+    """
+    from urllib.parse import quote
+
+    sauber = "".join(z for z in name if z >= " " and z != "\x7f").replace('"', "").replace("\\", "")
+    try:
+        sauber.encode("latin-1")
+        return f'attachment; filename="{sauber}"'
+    except UnicodeEncodeError:
+        rueckfall = sauber.encode("ascii", "ignore").decode("ascii").strip() or "anhang"
+        return f"attachment; filename=\"{rueckfall}\"; filename*=UTF-8''{quote(sauber)}"
 
 
 class Person(BaseModel):
@@ -51,6 +80,9 @@ class Zeile(BaseModel):
     markiert: bool
     beantwortet: bool
     hat_anhang: bool
+    #: ``hoch`` | ``normal`` | ``niedrig`` — beim Abgleich aus den Kopfzeilen
+    #: gedeutet. Die Liste zeigt bei ``hoch`` ein Ausrufezeichen.
+    wichtigkeit: str = "normal"
     groesse: int
     #: Wie viele Nachrichten der Strang hat — ueber alle Ordner. 1 heisst:
     #: kein Strang. Nur bei ``gruppiert=true`` groesser als 1.
@@ -98,6 +130,7 @@ def _zeile(n: Nachricht) -> Zeile:
         markiert=n.markiert,
         beantwortet=n.beantwortet,
         hat_anhang=n.hat_anhang,
+        wichtigkeit=n.wichtigkeit,
         groesse=n.groesse,
         thread_key=n.thread_key,
     )
@@ -298,29 +331,34 @@ def _meine(db, person, nachricht_id: int) -> Nachricht:
     return nachricht
 
 
+def _koerper_sicherstellen(db, nachricht: Nachricht) -> None:
+    """Den Körper nachholen, falls er noch nie geholt wurde."""
+    if nachricht.koerper_geholt is not None:
+        return
+    konto = db.get(Konto, nachricht.konto_id)
+    imap_pw, _ = kontendienst.passwoerter_lesen(konto)
+    with abgleich.HALTER.schloss(konto.id):
+        klient = imapdienst.verbinden(
+            konto.imap_server,
+            konto.imap_port,
+            konto.imap_sicherheit,
+            konto.imap_benutzer,
+            imap_pw,
+        )
+        try:
+            abgleich.koerper_holen(klient, db, nachricht)
+        finally:
+            try:
+                klient.logout()
+            except Exception:  # noqa: BLE001
+                pass
+
+
 @router.get("/{nachricht_id}", response_model=Voll)
 def eine(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Voll:
     """Eine Nachricht mit Körper — der wird beim ersten Mal geholt."""
     nachricht = _meine(db, person, nachricht_id)
-
-    if nachricht.koerper_geholt is None:
-        konto = db.get(Konto, nachricht.konto_id)
-        imap_pw, _ = kontendienst.passwoerter_lesen(konto)
-        with abgleich.HALTER.schloss(konto.id):
-            klient = imapdienst.verbinden(
-                konto.imap_server,
-                konto.imap_port,
-                konto.imap_sicherheit,
-                konto.imap_benutzer,
-                imap_pw,
-            )
-            try:
-                abgleich.koerper_holen(klient, db, nachricht)
-            finally:
-                try:
-                    klient.logout()
-                except Exception:  # noqa: BLE001
-                    pass
+    _koerper_sicherstellen(db, nachricht)
 
     grund = _zeile(nachricht).model_dump()
     return Voll(
@@ -380,7 +418,12 @@ def _inline_quellen(nachricht: Nachricht) -> dict[str, str]:
     for anhang in nachricht.anhaenge:
         if not anhang.cid or not anhang.blob_hash:
             continue
-        if not anhang.mime.startswith("image/"):
+        # ⚠️ **Streng prüfen, nicht nur ``startswith``.** Der Typ kommt aus
+        # der Mail (``get_content_type()`` reicht dort auch
+        # ``image/png" onerror="…`` wörtlich durch) und landet unten in einem
+        # ``src``-Attribut — **nach** der nh3-Bereinigung, die dieses Attribut
+        # also nie sieht. Nur ein sauberer Medientyp darf da hinein.
+        if not re.fullmatch(r"image/[A-Za-z0-9.+-]+", anhang.mime):
             continue
         if anhang.groesse > MAX_INLINE:
             logger.info("An inline image was too large to embed (%s bytes).", anhang.groesse)
@@ -411,11 +454,10 @@ def anhang(nachricht_id: int, anhang_id: int, person: AngemeldeterBenutzer, db: 
     if not datei.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-    name = zeile.dateiname.replace('"', "").replace("\\", "")
     return FileResponse(
         datei,
         media_type="application/octet-stream",
-        headers={"content-disposition": f'attachment; filename="{name}"'},
+        headers={"content-disposition": _anhang_disposition(zeile.dateiname)},
     )
 
 
@@ -434,38 +476,170 @@ def roh(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession):
     """
     nachricht = _meine(db, person, nachricht_id)
     konto = db.get(Konto, nachricht.konto_id)
-    imap_pw, _ = kontendienst.passwoerter_lesen(konto)
 
-    with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
-        try:
-            klient.select_folder(nachricht.ordner.pfad, readonly=True)
-            antwort = klient.fetch([nachricht.uid], [abgleich.GANZE_MAIL])
-        finally:
-            try:
-                klient.logout()
-            except Exception:  # noqa: BLE001
-                pass
-
-    inhalt = antwort.get(nachricht.uid, {}).get(abgleich.GANZE_MAIL_SCHLUESSEL)
+    inhalt = abgleich.roh_holen(konto, nachricht)
     if not inhalt:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Der Server kennt diese Nachricht nicht mehr.",
         )
 
-    # Ein Dateiname, den jedes Betriebssystem annimmt.
-    name = re.sub(r'[\/:*?"<>|]', "_", (nachricht.betreff or "nachricht").strip())[:80]
     return Response(
         content=inhalt,
         media_type="application/octet-stream",
-        headers={"content-disposition": f'attachment; filename="{name or "nachricht"}.eml"'},
+        headers={
+            "content-disposition": _anhang_disposition(mime.eml_dateiname(nachricht.betreff))
+        },
+    )
+
+
+#: Die Beschriftungen des Druckkopfes. Zwei Sprachen, weil die Oberfläche
+#: beide spricht — das Dokument entsteht aber im Server, wo i18next nicht
+#: hinreicht. Die Oberfläche schickt ihre Sprache als ``?sprache=`` mit.
+#:
+#: ⚠️ **Das ist eine zweite Pflegestelle neben ``frontend/src/i18n/``.** Die
+#: dortige Drei-Zeilen-Regel („eine Datei daneben und ein Eintrag in SPRACHEN —
+#: sonst nichts") gilt hier nicht: Eine dritte Sprache braucht auch hier einen
+#: Eintrag, sonst fällt sie unten auf Englisch zurück. Dasselbe gilt für
+#: ``zitat_text``/``zitat_html`` in ``services/verfassen.py``.
+_DRUCK_TEXTE = {
+    "de": {
+        "von": "Von",
+        "an": "An",
+        "kopie": "Kopie",
+        "datum": "Datum",
+        "anhaenge": "Anhänge",
+        "kein_betreff": "(Kein Betreff)",
+    },
+    "en": {
+        "von": "From",
+        "an": "To",
+        "kopie": "Cc",
+        "datum": "Date",
+        "anhaenge": "Attachments",
+        "kein_betreff": "(No subject)",
+    },
+}
+
+#: Schwarz auf Weiß mit Systemschrift — ein Druckbogen, keine App-Ansicht.
+#: Bewusst ohne App-Assets und ohne fremde Quellen: Das Dokument muss für
+#: sich stehen, auch wenn es jemand als Datei ablegt.
+_DRUCK_STIL = """
+  body { margin: 0 auto; max-width: 720px; padding: 24px;
+         font: 400 14px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         color: #000; background: #fff; overflow-wrap: break-word; }
+  h1 { margin: 0 0 16px; font-size: 20px; line-height: 1.3; }
+  table.kopf { border-collapse: collapse; margin: 0 0 16px; }
+  table.kopf th { padding: 2px 16px 2px 0; text-align: left; vertical-align: top;
+                  font-weight: 600; white-space: nowrap; }
+  table.kopf td { padding: 2px 0; }
+  .inhalt { border-top: 1px solid #000; padding-top: 16px; }
+  pre { white-space: pre-wrap; font: inherit; margin: 0; }
+  img { max-width: 100%; height: auto; }
+  /* Ausgeklinkte Bilder haben kein src mehr — ein leerer Bildrahmen im
+     Ausdruck wäre nur ein Rätsel. */
+  img:not([src]) { display: none; }
+  table { max-width: 100%; }
+  @media print { @page { margin: 2cm; } body { padding: 0; } }
+"""
+
+
+def _druck_person(p: Person) -> str:
+    if p.name and p.adresse:
+        return f"{p.name} <{p.adresse}>"
+    return p.name or p.adresse
+
+
+@router.get("/{nachricht_id}/druck", response_class=HTMLResponse)
+def druck(
+    nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession, sprache: str = "de"
+) -> HTMLResponse:
+    """Die Nachricht als eigenständige Druckseite.
+
+    ⚠️ **Dieses Dokument rendert unter nexmails eigener Herkunft** — anders
+    als der Lesebereich, der in einem abgeschotteten Rahmen läuft. Deshalb
+    zwei Vorkehrungen: Der Bestand wird hier **noch einmal** durch die
+    Bereinigung geschickt, obwohl er bereinigt gespeichert ist (ein
+    vergifteter Bestand — ältere Fassung, fremde Sicherung — darf nicht zu
+    ausführbarem Code werden), und die Antwort trägt eine eigene, noch
+    engere Inhaltsregel. Kein ``<script>``, keine App-Assets, keine fremden
+    Quellen.
+
+    Bilder bleiben ausgeklinkt wie im Lesebereich; nur die ``cid:``-Bilder
+    aus der Mail selbst werden beigelegt — die funken niemanden an.
+    """
+    nachricht = _meine(db, person, nachricht_id)
+    # Auch aus dem Kontextmenü druckbar, ohne die Mail vorher zu öffnen.
+    _koerper_sicherstellen(db, nachricht)
+
+    # ⚠️ Eine Sprache, die ``_DRUCK_TEXTE`` nicht kennt, fällt auf **Englisch**
+    # zurück, nicht auf Deutsch — nach außen ist Englisch die Verkehrssprache,
+    # und ein französischer Betreiber kann mit „From/To" mehr anfangen als mit
+    # „Von/An".
+    kuerzel = sprache.lower()[:2]
+    texte = _DRUCK_TEXTE.get(kuerzel, _DRUCK_TEXTE["en"])
+
+    # ⚠️ Erst ``fuer_druck``, dann ``cid:`` einsetzen — andersherum würfe die
+    # Bereinigung die eingesetzten ``data:``-Adressen wieder hinaus, weil
+    # ``data:`` bei fremdem HTML mit Absicht kein erlaubtes Schema ist.
+    inhalt = bereinigen.cid_einsetzen(
+        bereinigen.fuer_druck(nachricht.koerper_html), _inline_quellen(nachricht)
+    )
+    if not inhalt:
+        inhalt = f"<pre>{escape(nachricht.koerper_text)}</pre>"
+
+    # Die Uhrzeit in der eingestellten Zeitzone — ein Ausdruck mit UTC-Zeit
+    # sähe für jeden außerhalb Londons falsch aus.
+    zonen_name = einstellung_lesen(db, SCHLUESSEL_ZEITZONE) or get_settings().zeitzone
+    try:
+        zone = ZoneInfo(zonen_name) if zonen_name else timezone.utc
+    except Exception:  # noqa: BLE001 — eine kaputte Zonenangabe druckt eben UTC
+        zone = timezone.utc
+    datum = nachricht.datum
+    if datum.tzinfo is None:
+        datum = datum.replace(tzinfo=timezone.utc)
+    muster = "%d.%m.%Y %H:%M" if kuerzel == "de" else "%Y-%m-%d %H:%M"
+    datum_text = datum.astimezone(zone).strftime(muster)
+
+    zeilen: list[tuple[str, str]] = [
+        (texte["von"], _druck_person(Person(name=nachricht.von_name, adresse=nachricht.von_adresse)))
+    ]
+    an = [_druck_person(p) for p in _personen(nachricht.an_json)]
+    if an:
+        zeilen.append((texte["an"], ", ".join(an)))
+    kopie = [_druck_person(p) for p in _personen(nachricht.kopie_json)]
+    if kopie:
+        zeilen.append((texte["kopie"], ", ".join(kopie)))
+    zeilen.append((texte["datum"], datum_text))
+    # Nur echte Anhänge — die Inline-Bilder stehen ohnehin im Text.
+    namen = [a.dateiname for a in nachricht.anhaenge if not a.cid and a.dateiname]
+    if namen:
+        zeilen.append((texte["anhaenge"], ", ".join(namen)))
+
+    kopf = "".join(
+        f"<tr><th>{escape(name)}</th><td>{escape(wert)}</td></tr>" for name, wert in zeilen
+    )
+    betreff = escape(nachricht.betreff) or texte["kein_betreff"]
+
+    dokument = (
+        f'<!doctype html><html lang="{kuerzel}"><head><meta charset="utf-8">'
+        f"<title>{betreff}</title><style>{_DRUCK_STIL}</style></head><body>"
+        f"<h1>{betreff}</h1>"
+        f'<table class="kopf">{kopf}</table>'
+        f'<div class="inhalt">{inhalt}</div>'
+        "</body></html>"
+    )
+    return HTMLResponse(
+        dokument,
+        # ⚠️ Zusätzlich zur Regel der Middleware — bei zwei Kopfzeilen setzt
+        # der Browser beide durch, die engere gewinnt. Diese hier hält auch
+        # dann, wenn die allgemeine Regel je gelockert wird: nichts laden,
+        # nichts ausführen, nur die eingebetteten Stile und ``data:``-Bilder.
+        headers={
+            "content-security-policy": (
+                "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
+            )
+        },
     )
 
 
@@ -709,6 +883,7 @@ def abgleichen(
             runden = abgleich.konto_abgleichen(db, konto)
         except imapdienst.Verbindungsfehler as fehler:
             konto.letzter_fehler = fehler.text
+            konto.letzter_fehler_art = fehler.art
             db.commit()
             continue
         for runde in runden.values():

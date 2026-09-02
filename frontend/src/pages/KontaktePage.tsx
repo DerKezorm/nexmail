@@ -13,7 +13,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download, Plus, Trash2, Upload, UserRoundPlus, Users } from 'lucide-react'
 import { api, ApiFehler } from '../api/client'
-import { Badge, Button, EmptyState, IconButton, Input } from '../ds'
+import { Badge, Button, Checkbox, EmptyState, IconButton, Input } from '../ds'
+import { useNachfrage } from '../components/Nachfrage'
 import { appPfad } from '../lib/basis'
 
 export interface Kontakt {
@@ -25,6 +26,16 @@ export interface Kontakt {
   notiz: string
   quelle: string
   verwendet: number
+}
+
+/* Ein Verteiler — ein Eingabehelfer beim Adressieren, kein Mailbegriff.
+ * In der Mail stehen nur die Einzeladressen der Mitglieder. */
+export interface Gruppe {
+  id: number
+  name: string
+  mitglieder: number
+  mitglied_ids: number[]
+  adressen: string[]
 }
 
 const LEER: Omit<Kontakt, 'id' | 'quelle' | 'verwendet'> = {
@@ -42,15 +53,23 @@ export function KontaktePage() {
   const [suche, setSuche] = useState('')
   const [gewaehlt, setGewaehlt] = useState<number | null>(null)
   const [entwurf, setEntwurf] = useState<typeof LEER | null>(null)
+  const [gruppen, setGruppen] = useState<Gruppe[]>([])
+  const [gruppeGewaehlt, setGruppeGewaehlt] = useState<number | null>(null)
+  const [gruppeNeu, setGruppeNeu] = useState(false)
   const [fehler, setFehler] = useState('')
   const [meldung, setMeldung] = useState('')
   const [laeuft, setLaeuft] = useState(false)
   const dateifeld = useRef<HTMLInputElement>(null)
+  const { fragen, fenster: nachfrage } = useNachfrage()
 
   const laden = useCallback(async (s: string) => {
     const roh = await api.holen<Kontakt[]>(`/api/kontakte?suche=${encodeURIComponent(s)}`)
     setListe(roh)
     return roh
+  }, [])
+
+  const gruppenLaden = useCallback(async () => {
+    setGruppen(await api.holen<Gruppe[]>('/api/kontakte/gruppen'))
   }, [])
 
   useEffect(() => {
@@ -59,7 +78,12 @@ export function KontaktePage() {
     return () => window.clearTimeout(uhr)
   }, [suche, laden])
 
+  useEffect(() => {
+    void gruppenLaden().catch(() => setGruppen([]))
+  }, [gruppenLaden])
+
   const offen = liste.find((k) => k.id === gewaehlt) ?? null
+  const gruppeOffen = gruppen.find((g) => g.id === gruppeGewaehlt) ?? null
 
   async function mit<T>(tun: () => Promise<T>, erfolg = ''): Promise<T | null> {
     setFehler('')
@@ -68,6 +92,9 @@ export function KontaktePage() {
     try {
       const ergebnis = await tun()
       await laden(suche)
+      // Die Gruppen haengen an den Kontakten (Mitgliederzahl!) — nach jeder
+      // Handlung frisch holen, sonst zaehlt die Liste Geloeschte weiter mit.
+      await gruppenLaden()
       if (erfolg) setMeldung(erfolg)
       return ergebnis
     } catch (f) {
@@ -76,6 +103,54 @@ export function KontaktePage() {
     } finally {
       setLaeuft(false)
     }
+  }
+
+  async function gruppeSpeichern(name: string, kontaktIds: number[]) {
+    if (gruppeNeu) {
+      const neu = await mit(async () => {
+        const g = await api.senden<Gruppe>('/api/kontakte/gruppen', { name })
+        if (kontaktIds.length > 0) {
+          await api.aendern<Gruppe>(`/api/kontakte/gruppen/${g.id}/mitglieder`, {
+            kontakt_ids: kontaktIds,
+          })
+        }
+        return g
+      })
+      if (neu) {
+        setGruppeNeu(false)
+        setGruppeGewaehlt(neu.id)
+      }
+      return
+    }
+    if (!gruppeOffen) return
+    await mit(async () => {
+      if (name !== gruppeOffen.name) {
+        await api.flicken<Gruppe>(`/api/kontakte/gruppen/${gruppeOffen.id}`, { name })
+      }
+      await api.aendern<Gruppe>(`/api/kontakte/gruppen/${gruppeOffen.id}/mitglieder`, {
+        kontakt_ids: kontaktIds,
+      })
+    })
+  }
+
+  async function gruppeEntfernen(g: Gruppe) {
+    // ⚠️ Die Rueckfrage nennt die Mitgliederzahl und sagt dazu, dass die
+    // Kontakte bleiben — sonst liest jemand „entfernen" und fuerchtet um
+    // sein Adressbuch.
+    const ja = await fragen({
+      titel: t('kontakte.gruppe_entfernen'),
+      text:
+        g.mitglieder === 0
+          ? t('kontakte.gruppe_entfernen_text_leer', { name: g.name })
+          : t('kontakte.gruppe_entfernen_text', { name: g.name, count: g.mitglieder }),
+      knopf: t('kontakte.gruppe_entfernen'),
+      gefaehrlich: true,
+    })
+    if (ja !== true) return
+    await mit(async () => {
+      await api.loeschen(`/api/kontakte/gruppen/${g.id}`)
+      setGruppeGewaehlt(null)
+    })
   }
 
   async function speichern(felder: typeof LEER) {
@@ -113,6 +188,8 @@ export function KontaktePage() {
             size="sm"
             onClick={() => {
               setGewaehlt(null)
+              setGruppeGewaehlt(null)
+              setGruppeNeu(false)
               setEntwurf({ ...LEER })
             }}
           />
@@ -166,6 +243,57 @@ export function KontaktePage() {
           />
         </div>
 
+        {/* --- Gruppen: Verteiler als Eingabehelfer beim Adressieren --- */}
+        <div className="shrink-0 border-b border-line-subtle">
+          <div className="flex h-9 items-center gap-1 pr-1 pl-3">
+            <span className="text-[11px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
+              {t('kontakte.gruppen')}
+            </span>
+            <span className="flex-1" />
+            <IconButton
+              icon={<Plus />}
+              label={t('kontakte.gruppe_neu')}
+              size="sm"
+              onClick={() => {
+                setGewaehlt(null)
+                setEntwurf(null)
+                setGruppeGewaehlt(null)
+                setGruppeNeu(true)
+                setFehler('')
+                setMeldung('')
+              }}
+            />
+          </div>
+          {gruppen.length === 0 ? (
+            <p className="px-3 pb-2 text-[12px] text-fg-4">{t('kontakte.gruppe_leer')}</p>
+          ) : (
+            <div className="max-h-44 overflow-y-auto pb-1">
+              {gruppen.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => {
+                    setGewaehlt(null)
+                    setEntwurf(null)
+                    setGruppeNeu(false)
+                    setGruppeGewaehlt(g.id)
+                    setFehler('')
+                    setMeldung('')
+                  }}
+                  className={
+                    'flex w-full items-center gap-2 px-3 py-1.5 text-left ' +
+                    'transition-colors duration-[var(--dur-fast)] ' +
+                    (g.id === gruppeGewaehlt && !gruppeNeu ? 'bg-accent-soft' : 'hover:bg-surface-2')
+                  }
+                >
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-fg-1">{g.name}</span>
+                  <Badge tone="neutral">{t('kontakte.gruppe_zahl', { count: g.mitglieder })}</Badge>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="min-h-0 flex-1 overflow-y-auto">
           {liste.length === 0 ? (
             <p className="px-3 py-6 text-center text-[13px] text-fg-4">{t('kontakte.leer')}</p>
@@ -177,6 +305,8 @@ export function KontaktePage() {
                 onClick={() => {
                   setGewaehlt(k.id)
                   setEntwurf(null)
+                  setGruppeGewaehlt(null)
+                  setGruppeNeu(false)
                   setFehler('')
                   setMeldung('')
                 }}
@@ -223,7 +353,17 @@ export function KontaktePage() {
 
       {/* --- Eintrag ------------------------------------------------- */}
       <div className="min-w-0 flex-1 overflow-y-auto">
-        {entwurf || offen ? (
+        {gruppeNeu || gruppeOffen ? (
+          <GruppenFormular
+            key={gruppeNeu ? 'gruppe-neu' : gruppeOffen!.id}
+            gruppe={gruppeNeu ? null : gruppeOffen}
+            laeuft={laeuft}
+            fehler={fehler}
+            meldung={meldung}
+            aufSpeichern={gruppeSpeichern}
+            aufEntfernen={gruppeOffen ? () => void gruppeEntfernen(gruppeOffen) : undefined}
+          />
+        ) : entwurf || offen ? (
           <Formular
             key={gewaehlt ?? 'neu'}
             werte={entwurf ?? {
@@ -258,7 +398,123 @@ export function KontaktePage() {
           </div>
         )}
       </div>
+
+      {nachfrage}
     </div>
+  )
+}
+
+/* Das Formular fuer eine Gruppe: Name plus Mehrfachauswahl aus dem Adressbuch.
+ *
+ * ⚠️ **Die Auswahl zeigt das ganze Adressbuch, nicht die gefilterte Liste
+ * links.** Wer links nach „anna" gesucht hat, soll rechts trotzdem Bernd
+ * ankreuzen koennen — deshalb holt das Formular seine Kontakte selbst und
+ * bringt einen eigenen Filter mit. */
+function GruppenFormular({
+  gruppe,
+  laeuft,
+  fehler,
+  meldung,
+  aufSpeichern,
+  aufEntfernen,
+}: {
+  gruppe: Gruppe | null
+  laeuft: boolean
+  fehler: string
+  meldung: string
+  aufSpeichern: (name: string, kontaktIds: number[]) => Promise<void>
+  aufEntfernen?: () => void
+}) {
+  const { t } = useTranslation()
+  const [name, setName] = useState(gruppe?.name ?? '')
+  const [gewaehlt, setGewaehlt] = useState<Set<number>>(new Set(gruppe?.mitglied_ids ?? []))
+  const [alle, setAlle] = useState<Kontakt[] | null>(null)
+  const [filter, setFilter] = useState('')
+
+  useEffect(() => {
+    api
+      .holen<Kontakt[]>('/api/kontakte')
+      .then(setAlle)
+      .catch(() => setAlle([]))
+  }, [])
+
+  const kern = filter.trim().toLowerCase()
+  const sichtbar = (alle ?? []).filter(
+    (k) =>
+      !kern ||
+      k.name.toLowerCase().includes(kern) ||
+      k.adresse.toLowerCase().includes(kern),
+  )
+
+  return (
+    <form
+      className="flex max-w-[560px] flex-col gap-4 p-6"
+      onSubmit={(e) => {
+        e.preventDefault()
+        void aufSpeichern(name.trim(), [...gewaehlt])
+      }}
+    >
+      <Input
+        label={t('kontakte.gruppe_name')}
+        value={name}
+        autoFocus={gruppe === null}
+        onChange={(e) => setName(e.target.value)}
+      />
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[11px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
+          {t('kontakte.gruppe_mitglieder')}
+        </span>
+        {alle !== null && alle.length === 0 ? (
+          <p className="text-[13px] text-fg-4">{t('kontakte.gruppe_keine_kontakte')}</p>
+        ) : (
+          <div className="flex flex-col overflow-hidden rounded-md border border-line">
+            <div className="border-b border-line-subtle p-2">
+              <Input
+                size="sm"
+                placeholder={t('kontakte.gruppe_mitglieder_filtern')}
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              />
+            </div>
+            <div className="max-h-72 overflow-y-auto p-2">
+              <div className="flex flex-col gap-1.5">
+                {sichtbar.map((k) => (
+                  <Checkbox
+                    key={k.id}
+                    label={k.name || k.adresse}
+                    description={k.name ? k.adresse : undefined}
+                    checked={gewaehlt.has(k.id)}
+                    onCheckedChange={(an) =>
+                      setGewaehlt((alt) => {
+                        const neu = new Set(alt)
+                        if (an) neu.add(k.id)
+                        else neu.delete(k.id)
+                        return neu
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {fehler && <p className="text-[13px] text-danger">{fehler}</p>}
+      {meldung && <p className="text-[13px] text-accent-text">{meldung}</p>}
+
+      <div className="flex items-center gap-2">
+        <Button type="submit" variant="primary" loading={laeuft} disabled={!name.trim()}>
+          {gruppe === null ? t('kontakte.anlegen') : t('kontakte.speichern')}
+        </Button>
+        {aufEntfernen && (
+          <Button variant="danger" iconLeft={<Trash2 className="size-4" />} onClick={aufEntfernen}>
+            {t('kontakte.gruppe_entfernen')}
+          </Button>
+        )}
+      </div>
+    </form>
   )
 }
 

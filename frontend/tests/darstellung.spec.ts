@@ -347,3 +347,31 @@ test('Nirgends steht ein roher Übersetzungsschlüssel', async ({ page }) => {
     await keineRohenSchluessel(page)
   }
 })
+
+test('Der Pfeil einer Auswahl gehört zum Klickziel', async ({ page }) => {
+  /* ⚠️ Der Chevron ist ein Geschwister des <select>. Ohne pointer-events-none
+     fing ER den Klick — die Liste klappte nur auf, wenn man den TEXT traf.
+     An jeder Auswahl der Anwendung, denn alle nutzen denselben Baustein.
+     Aufgefallen am 02.09.2026 an der Protokoll-Ausführlichkeit. */
+  await anmelden(page)
+  await zuEinstellungen(page)
+  await page.getByRole('tab', { name: 'Darstellung' }).click()
+
+  const treffer = await page.evaluate(() => {
+    const schlecht: string[] = []
+    for (const sel of Array.from(document.querySelectorAll('select'))) {
+      // Erst ins Bild holen: elementFromPoint sieht nur den sichtbaren
+      // Ausschnitt. Ohne das meldete der Test die zwei Auswahlfelder
+      // unterhalb der Falz als kaputt - mit undefined als Treffer.
+      sel.scrollIntoView({ block: 'center' })
+      const r = sel.getBoundingClientRect()
+      if (r.width === 0) continue
+      const oben = document.elementFromPoint(r.right - 10, r.top + r.height / 2)
+      if (oben !== sel) {
+        schlecht.push(`${sel.closest('label')?.textContent?.slice(0, 30) ?? '?'} → ${oben?.tagName}`)
+      }
+    }
+    return schlecht
+  })
+  expect(treffer, 'Unter dem Pfeil liegt nicht die Auswahl: ' + treffer.join(', ')).toEqual([])
+})

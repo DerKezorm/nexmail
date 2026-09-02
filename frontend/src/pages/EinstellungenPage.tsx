@@ -33,6 +33,8 @@ interface Props {
   /** Für den Reiter „Sicherheit": Zweiter Faktor und übrige Codes. */
   ich: Ich | null
   ichNeuLaden?: () => void
+  /** Nach Anlegen/AEndern/Entfernen: App-weite Kontenliste nachziehen (Banner!). */
+  aufKontenGeaendert?: () => void
 }
 
 export function EinstellungenPage({
@@ -42,6 +44,7 @@ export function EinstellungenPage({
   aufFormular,
   ich,
   ichNeuLaden,
+  aufKontenGeaendert,
 }: Props) {
   // ⚠️ Bearbeiten und Anlegen benutzen dasselbe Formular. Getrennt zu
   // pflegen hieße zwei Stellen, an denen ein Feld fehlen kann.
@@ -123,7 +126,10 @@ export function EinstellungenPage({
                   setBearbeitet(k)
                   aufFormular(true)
                 }}
-                aufNeuLaden={laden}
+                aufNeuLaden={() => {
+                  laden()
+                  aufKontenGeaendert?.()
+                }}
               />
             )
           ) : reiter === 'regeln' ? (
@@ -235,8 +241,19 @@ function Postfachliste({ konten, aufHinzufuegen, aufBearbeiten, aufNeuLaden }: L
             </div>
 
             {k.letzter_fehler ? (
-              <Badge tone="danger" dot>
-                {k.letzter_fehler.slice(0, 40)}
+              /* ⚠️ **Übersetzt über die Kennung, ganzer Satz als title.**
+                 Vorher stand hier der deutsche Server-Satz wörtlich — auf
+                 Englisch blieb er deutsch — und `slice(0, 40)` schnitt ihn
+                 mitten im Wort ab („abgewie"). Der Kennung-Weg ist derselbe
+                 wie bei OIDC: Der Server benennt, die Oberfläche formuliert. */
+              <Badge tone="danger" dot title={k.letzter_fehler}>
+                <span className="max-w-56 truncate">
+                  {k.letzter_fehler_art
+                    ? t(`konto.fehler_${k.letzter_fehler_art}`, {
+                        defaultValue: k.letzter_fehler,
+                      })
+                    : k.letzter_fehler}
+                </span>
               </Badge>
             ) : (
               <Badge tone="success" dot>

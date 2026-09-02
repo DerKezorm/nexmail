@@ -90,9 +90,15 @@ export function Select({ label, hint, size = 'md', options = [], className = '',
   return (
     <label className="flex min-w-0 flex-col gap-1.5">
       {label && <span className={BESCHRIFTUNG}>{label}</span>}
-      <span className={`${huelle(false)} ${HOEHE[size]}`}>
+      {/* ⚠️ **Der Pfeil muss zum Klickziel gehoeren.** Er ist ein Geschwister
+          des <select>; ohne pointer-events-none faengt er den Klick ab und
+          nichts klappt auf - an jeder Auswahl der Anwendung, denn alle
+          nutzen diesen Baustein. Am 02.09.2026 aufgefallen. Das select
+          liegt deshalb ueber die volle Breite, der Pfeil schwebt darueber
+          und laesst Klicks durch. */}
+      <span className={`relative ${huelle(false)} ${HOEHE[size]}`}>
         <select
-          className={`min-w-0 flex-1 appearance-none bg-transparent text-sm text-fg-1 outline-none ${className}`}
+          className={`min-w-0 flex-1 appearance-none bg-transparent pr-6 text-sm text-fg-1 outline-none ${className}`}
           {...rest}
         >
           {options.map((o) => {
@@ -115,7 +121,7 @@ export function Select({ label, hint, size = 'md', options = [], className = '',
 
 function ChevronAbwaerts() {
   return (
-    <svg aria-hidden viewBox="0 0 24 24" className="size-4 shrink-0 text-fg-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden viewBox="0 0 24 24" className="pointer-events-none absolute top-1/2 right-2.5 size-4 shrink-0 -translate-y-1/2 text-fg-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m6 9 6 6 6-6" />
     </svg>
   )
@@ -174,5 +180,61 @@ export function Switch({ label, description, checked = false, onCheckedChange, d
         </label>
       )}
     </div>
+  )
+}
+
+export interface CheckboxProps {
+  label?: string
+  /** Zweite Zeile in fg-4, fuer Konsequenzen der Option. */
+  description?: string
+  checked?: boolean
+  disabled?: boolean
+  onCheckedChange?: (checked: boolean) => void
+}
+
+/* Checkbox — portiert aus nexapps-intern/design/components/forms/Checkbox.
+ *
+ * Anders als beim Switch steckt hier ein echtes `<input type="checkbox">`
+ * im `<label>`: Ein Formularfeld bekommt seinen Namen vom umschliessenden
+ * Label von selbst — die `<label for>`-Falle des Switch gibt es hier nicht.
+ * (`indeterminate` aus der Vorlage ist weggelassen: kein Aufrufer braucht es,
+ * und ein Zustand ohne Benutzer ist toter Code.)
+ */
+export function Checkbox({ label, description, checked = false, disabled, onCheckedChange }: CheckboxProps) {
+  return (
+    <label
+      className={
+        'inline-flex gap-2.5 select-none ' +
+        (description ? 'items-start ' : 'items-center ') +
+        (disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')
+      }
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onCheckedChange?.(e.target.checked)}
+        className="peer sr-only"
+      />
+      <span
+        aria-hidden
+        className={
+          'grid size-4 shrink-0 place-items-center rounded-xs border transition-colors duration-[var(--dur-fast)] ' +
+          'peer-focus-visible:shadow-[var(--focus-ring)] ' +
+          (description ? 'mt-0.5 ' : '') +
+          (checked ? 'border-accent bg-accent' : 'border-line-strong bg-surface-3')
+        }
+      >
+        {checked && (
+          <svg viewBox="0 0 24 24" className="size-3 text-[var(--text-on-accent)]" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m5 13 4 4L19 7" />
+          </svg>
+        )}
+      </span>
+      <span className="flex min-w-0 flex-col gap-0.5">
+        {label && <span className="truncate text-[13px] text-fg-1">{label}</span>}
+        {description && <span className="text-[12px] text-fg-4">{description}</span>}
+      </span>
+    </label>
   )
 }

@@ -128,6 +128,12 @@ def cid_einsetzen(html: str, quellen: dict[str, str]) -> str:
     ``quellen`` bildet die Kennung (ohne ``cid:``) auf die fertige Adresse ab.
     Was nicht darin steht, wird entfernt statt stehengelassen: Ein ``cid:``,
     das im Browser ankommt, ist ein kaputtes Bildsymbol.
+
+    ⚠️ **Die Adresse wird maskiert, obwohl sie aus dem eigenen Haus kommt.**
+    Dieser Tausch läuft **nach** der nh3-Bereinigung — was hier ins Attribut
+    gelangt, prüft niemand mehr. Ein ``"`` in der Adresse bräche sonst aus dem
+    ``src`` aus, und die zweite Verteidigungslinie wäre genau an der Stelle
+    umgangen, für die sie gedacht ist.
     """
 
     def tauschen(treffer: re.Match[str]) -> str:
@@ -135,7 +141,10 @@ def cid_einsetzen(html: str, quellen: dict[str, str]) -> str:
         adresse = quellen.get(kennung.strip())
         if adresse is None:
             return f'{treffer.group(1)}""'
-        return f'{treffer.group(1)}"{adresse}"'
+        sicher = (
+            adresse.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
+        )
+        return f'{treffer.group(1)}"{sicher}"'
 
     return _IMG_CID.sub(tauschen, html)
 
@@ -149,6 +158,26 @@ def fuer_anzeige(roh_html: str) -> tuple[str, int]:
     """Der ganze Weg für den Lesebereich: säubern, dann Bilder ausklinken."""
     sauber = saeubern(roh_html)
     return bilder_ausklinken(sauber)
+
+
+def fuer_druck(roh_html: str) -> str:
+    """Für die Druckseite: säubern, Bilder ausklinken — und die ausgeklinkten
+    Adressen ganz entfernen.
+
+    ⚠️ **Anders als im Lesebereich gibt es hier kein „Bilder anzeigen".** Die
+    ausgeklinkte Adresse hätte im Dokument keinen Zweck mehr, würde aber mit
+    jeder abgelegten oder weitergereichten Kopie mitwandern. ``cid:``-Bilder
+    bleiben — sie zeigen auf Teile derselben Mail und funken niemanden an.
+
+    ⚠️ **Und es wird gesäubert, obwohl der Bestand bereinigt gespeichert
+    ist.** Die Druckseite rendert unter nexmails eigener Herkunft, nicht im
+    abgeschotteten Rahmen: Ein vergifteter Bestand — ältere Fassung, fremde
+    Sicherung — darf hier nicht zu ausführbarem Code werden.
+    """
+    sauber, _ = fuer_anzeige(roh_html)
+    # nh3 setzt Attribute stets in doppelte Anführungszeichen — der Rohfall
+    # ohne Anführungszeichen kann nach dem Säubern nicht mehr vorkommen.
+    return re.sub(rf'\s{BILD_MERKMAL}="[^"]*"', "", sauber)
 
 
 def fuer_versand(roh_html: str) -> str:

@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..models import Konto, Nachricht, Ordner, utcnow
@@ -309,3 +310,99 @@ def ordner_leeren(db: Session, ordner: Ordner) -> int:
     db.commit()
     logger.warning("Folder %s was emptied (%s messages).", ordner.pfad, anzahl)
     return anzahl
+
+
+def alte_entfernen(db: Session, ordner: Ordner, stichtag) -> int:
+    """Nachrichten, die aelter als der Stichtag sind, endgueltig loeschen.
+
+    Derselbe Weg wie ``ordner_leeren`` — erst der Server, dann die eigene
+    Datenbank —, nur mit Datumsgrenze statt Kahlschlag. Benutzt vom
+    Aufraeumdienst (``services/aufraeumen.py``), der Papierkorb und Junk nach
+    der eingestellten Aufbewahrung leert.
+
+    ⚠️ **Der Rollenfilter sitzt beim Aufrufer, und zwar genau einmal.** Diese
+    Funktion loescht in jedem Ordner, den man ihr gibt — sie haengt an keiner
+    Route, und ein zweiter Filter hier wuerde die Mutationsprobe des Aufrufers
+    hohl machen: Wer dort den Filter entfernt, muss rot sehen, nicht gruen.
+
+    ⚠️ **Erst abgleichen, dann messen.** Der Takt holt nur den Posteingang;
+    was ein Telefon in den Papierkorb gelegt hat, kennt die Datenbank sonst
+    nicht — und bliebe beim Aufraeumen ewig liegen. Der Abgleich laeuft auf
+    derselben Verbindung und unter demselben Schloss, wie bei ``verschieben``.
+
+    ⚠️ **Der Papierkorb misst die Verweildauer, nicht das Absendedatum.**
+    ``datum`` ist die ``Date``-Kopfzeile des Absenders — daran gemessen waere
+    eine heute geloeschte Januar-Mail sofort und endgueltig weg, mit null
+    Rueckholfrist. Gemessen wird deshalb an ``angekommen``: Verschieben legt
+    beim naechsten Abgleich eine neue Zeile an, die Uhr beginnt also mit dem
+    Eintreffen im Papierkorb. So misst es jeder andere Client auch. Fuer Junk
+    bleibt das Absendedatum: Dort trifft die Post direkt ein, und „aelter
+    als n Tage" meint genau das.
+    """
+    konto = db.get(Konto, ordner.konto_id)
+    imap_pw, _ = kontendienst.passwoerter_lesen(konto)
+
+    with abgleich.HALTER.schloss(konto.id):
+        klient = imapdienst.verbinden(
+            konto.imap_server,
+            konto.imap_port,
+            konto.imap_sicherheit,
+            konto.imap_benutzer,
+            imap_pw,
+        )
+        try:
+            klient.select_folder(ordner.pfad, readonly=False)
+            abgleich.ordner_abgleichen(klient, db, konto, ordner)
+
+            # ``coalesce``: Zeilen von vor der ``angekommen``-Spalte fuellt
+            # der Start auf „jetzt" (main.lebenslauf) — der Rueckfall auf
+            # ``datum`` faengt nur den Lauf ab, der genau dazwischen kommt.
+            alter = (
+                func.coalesce(Nachricht.angekommen, Nachricht.datum)
+                if ordner.rolle == "papierkorb"
+                else Nachricht.datum
+            )
+            alte = (
+                db.query(Nachricht)
+                .filter(Nachricht.ordner_id == ordner.id, alter < stichtag)
+                .all()
+            )
+            if not alte:
+                return 0
+
+            uids = [n.uid for n in alte]
+            # In Bloecken, wie bei ``ordner_als_gelesen``: Ein Befehl mit
+            # zehntausend Nummern sprengt bei manchen Servern die Zeilenlaenge.
+            for i in range(0, len(uids), 500):
+                block = uids[i : i + 500]
+                klient.add_flags(block, [rb"\Deleted"])
+                try:
+                    klient.uid_expunge(block)
+                except Exception:  # noqa: BLE001
+                    # Kein UIDPLUS. Das blanke EXPUNGE ist hier vertretbar:
+                    # Der Ordner ist Papierkorb oder Junk, und alles darin,
+                    # was als geloescht markiert ist, soll ohnehin weg.
+                    klient.expunge()
+        finally:
+            try:
+                klient.logout()
+            except Exception:  # noqa: BLE001
+                pass
+
+    for nachricht in alte:
+        db.delete(nachricht)
+    # ⚠️ Ausspuelen, bevor gezaehlt wird — dieselbe autoflush-Falle wie bei
+    # ``verschieben``: Ohne flush zaehlt die Abfrage die geloeschten Zeilen mit.
+    db.flush()
+
+    ordner.anzahl = db.query(Nachricht).filter(Nachricht.ordner_id == ordner.id).count()
+    ordner.ungelesen = (
+        db.query(Nachricht)
+        .filter(Nachricht.ordner_id == ordner.id, Nachricht.gelesen.is_(False))
+        .count()
+    )
+    db.commit()
+    logger.info(
+        "%s message(s) past the retention limit were removed from %s.", len(alte), ordner.pfad
+    )
+    return len(alte)

@@ -164,6 +164,23 @@ async def lebenslauf(_: FastAPI):
                 straengedienst.neu_aufbauen(db, person.id)
             einstellung_schreiben(db, "straenge_aufgebaut", "1")
 
+        # ⚠️ **``angekommen`` fuer den Bestand einmal auf „jetzt" setzen.**
+        # Die Spalte kam nach den ersten Abgleichen dazu; Zeilen davor stehen
+        # auf NULL. Das Papierkorb-Aufraeumen misst daran die Verweildauer —
+        # NULL hiesse Rueckfall aufs Absendedatum, und eine gestern geloeschte
+        # Januar-Mail waere beim naechsten Lauf endgueltig weg. „Jetzt" gibt
+        # dem Bestand eine frische Frist: die sichere Richtung.
+        from sqlalchemy import update as _update
+
+        from .models import Nachricht, utcnow
+
+        db.execute(
+            _update(Nachricht)
+            .where(Nachricht.angekommen.is_(None))
+            .values(angekommen=utcnow())
+        )
+        db.commit()
+
         weg = sitzungsdienst.aufraeumen(db)
         if weg:
             logger.info("Removed %s expired session(s).", weg)
@@ -204,6 +221,13 @@ async def lebenslauf(_: FastAPI):
     # NEXMAIL_TAKT_SEKUNDEN=0 abschaltet, meint „nicht dauernd Post holen",
     # nicht „keine Sicherungen mehr".
     taktdienst.sicherungsplan_starten()
+    # ⚠️ Ebenfalls eigener Faden, aus demselben Grund: Wer den Abgleich-Takt
+    # abschaltet, meint nicht „geplante Mails gehen nie hinaus".
+    taktdienst.versandplan_starten()
+    # ⚠️ Und noch einer: Papierkorb und Junk nach der eingestellten
+    # Aufbewahrung leeren — abgeschalteter Abgleich-Takt heisst nicht
+    # „der Papierkorb waechst wieder ewig".
+    taktdienst.aufraeumplan_starten()
 
     logger.info("nexmail %s is ready.", __version__)
     try:

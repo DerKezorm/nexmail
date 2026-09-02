@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from ..models import Benutzer, Kontakt, Nachricht, Ordner
+from ..models import Benutzer, Kontakt, Kontaktgruppe, KontaktgruppeMitglied, Nachricht, Ordner
 
 logger = logging.getLogger("nexmail.kontakte")
 
@@ -145,12 +145,29 @@ def aendern(db: Session, person: Benutzer, kontakt_id: int, **felder) -> Kontakt
 
 
 def entfernen(db: Session, person: Benutzer, kontakt_id: int) -> None:
-    db.delete(_meiner(db, person, kontakt_id))
+    eintrag = _meiner(db, person, kontakt_id)
+    # ⚠️ Die Mitgliedschaften gehen mit. Eine Zuordnung auf einen geloeschten
+    # Kontakt waere eine Leiche: unsichtbar in der Oberflaeche, aber die
+    # Mitgliederzahl der Gruppe zaehlte sie weiter mit.
+    db.query(KontaktgruppeMitglied).filter(
+        KontaktgruppeMitglied.benutzer_id == person.id,
+        KontaktgruppeMitglied.kontakt_id == eintrag.id,
+    ).delete()
+    db.delete(eintrag)
     db.commit()
 
 
 def gesammelte_entfernen(db: Session, person: Benutzer) -> int:
     """Alles Aufgeschnappte in einem Zug loswerden."""
+    # Auch hier: erst die Mitgliedschaften der betroffenen Kontakte, sonst
+    # bleiben sie als Leichen in den Gruppen stehen.
+    betroffene = select(Kontakt.id).where(
+        Kontakt.benutzer_id == person.id, Kontakt.quelle == "gesammelt"
+    )
+    db.query(KontaktgruppeMitglied).filter(
+        KontaktgruppeMitglied.benutzer_id == person.id,
+        KontaktgruppeMitglied.kontakt_id.in_(betroffene),
+    ).delete(synchronize_session=False)
     anzahl = (
         db.query(Kontakt)
         .filter(Kontakt.benutzer_id == person.id, Kontakt.quelle == "gesammelt")
@@ -258,6 +275,141 @@ def _personen(roh: str) -> list[tuple[str, str]]:
         if _ADRESSE.match(adresse):
             ergebnis.append((str(e.get("n", "")).strip(), adresse))
     return ergebnis
+
+
+# --- Gruppen ---------------------------------------------------------------- #
+#
+# Ein Verteiler ist ein Eingabehelfer beim Adressieren, kein Mailbegriff:
+# In der Mail stehen nur die Einzeladressen. Deshalb gibt es hier auch keine
+# "Gruppenadresse" - nur Name und Mitglieder.
+
+
+def gruppen(db: Session, person: Benutzer) -> list[dict]:
+    """Alle Gruppen des Benutzers, mit Mitgliedern.
+
+    Die Mitgliederzahl, die Kennungen und die Adressen kommen in einem Zug
+    mit: Die Oberflaeche braucht alle drei (Zahl in der Liste, Kennungen im
+    Bearbeiten, Adressen beim Adressieren), und es geht um eine Handvoll
+    Gruppen je Benutzer - drei Abfragen dafuer waeren Zeremonie.
+    """
+    zeilen = db.execute(
+        select(Kontaktgruppe)
+        .where(Kontaktgruppe.benutzer_id == person.id)
+        .order_by(func.lower(Kontaktgruppe.name))
+    ).scalars().all()
+
+    mitglieder: dict[int, list[tuple[int, str]]] = {}
+    for gruppe_id, kontakt_id, adresse in db.execute(
+        select(KontaktgruppeMitglied.gruppe_id, Kontakt.id, Kontakt.adresse)
+        .join(Kontakt, Kontakt.id == KontaktgruppeMitglied.kontakt_id)
+        .where(KontaktgruppeMitglied.benutzer_id == person.id)
+        .order_by(Kontakt.name, Kontakt.adresse)
+    ).all():
+        mitglieder.setdefault(gruppe_id, []).append((kontakt_id, adresse))
+
+    return [
+        {
+            "id": g.id,
+            "name": g.name,
+            "mitglieder": len(mitglieder.get(g.id, [])),
+            "mitglied_ids": [k for k, _ in mitglieder.get(g.id, [])],
+            "adressen": [a for _, a in mitglieder.get(g.id, [])],
+        }
+        for g in zeilen
+    ]
+
+
+def _gruppenname_pruefen(
+    db: Session, person: Benutzer, name: str, ausser_id: int | None = None
+) -> str:
+    sauber = name.strip()
+    if not sauber:
+        raise KontaktFehler("Die Gruppe braucht einen Namen.")
+    # Gross/klein trennt keine Gruppen - dieselbe Regel wie bei den
+    # Postfach-Schlagworten. Verglichen wird klein, behalten die Schreibweise.
+    frage = select(Kontaktgruppe).where(
+        Kontaktgruppe.benutzer_id == person.id,
+        func.lower(Kontaktgruppe.name) == sauber.lower(),
+    )
+    if ausser_id is not None:
+        frage = frage.where(Kontaktgruppe.id != ausser_id)
+    if db.execute(frage).scalar_one_or_none() is not None:
+        raise KontaktFehler(f"„{sauber}“ gibt es schon als Gruppe.")
+    return sauber
+
+
+def gruppe_anlegen(db: Session, person: Benutzer, name: str) -> Kontaktgruppe:
+    gruppe = Kontaktgruppe(
+        benutzer_id=person.id, name=_gruppenname_pruefen(db, person, name)
+    )
+    db.add(gruppe)
+    db.commit()
+    return gruppe
+
+
+def gruppe_umbenennen(
+    db: Session, person: Benutzer, gruppe_id: int, name: str
+) -> Kontaktgruppe:
+    gruppe = _meine_gruppe(db, person, gruppe_id)
+    gruppe.name = _gruppenname_pruefen(db, person, name, ausser_id=gruppe.id)
+    db.commit()
+    return gruppe
+
+
+def gruppe_entfernen(db: Session, person: Benutzer, gruppe_id: int) -> None:
+    """⚠️ Loescht die Gruppe und ihre Zuordnungen - **keinen** Kontakt."""
+    gruppe = _meine_gruppe(db, person, gruppe_id)
+    db.query(KontaktgruppeMitglied).filter(
+        KontaktgruppeMitglied.benutzer_id == person.id,
+        KontaktgruppeMitglied.gruppe_id == gruppe.id,
+    ).delete()
+    db.delete(gruppe)
+    db.commit()
+
+
+def mitglieder_setzen(
+    db: Session, person: Benutzer, gruppe_id: int, kontakt_ids: list[int]
+) -> None:
+    """Den Mitgliederbestand einer Gruppe ersetzen.
+
+    Setzen statt einzeln hinzufuegen/entfernen: Die Oberflaeche zeigt eine
+    Mehrfachauswahl, und deren Ergebnis ist der neue Bestand - zwei Wege fuer
+    dieselbe Sache waeren nur mehr Adressen.
+    """
+    gruppe = _meine_gruppe(db, person, gruppe_id)
+
+    gewuenscht = list(dict.fromkeys(kontakt_ids))  # Reihenfolge egal, Doppel weg
+    # ⚠️ Nur eigene Kontakte. Eine fremde Kennung ist kein Versehen, das man
+    # still wegfiltert - sie ist ein Fehler, der ankommen soll.
+    meine_ids = set(
+        db.execute(
+            select(Kontakt.id).where(
+                Kontakt.benutzer_id == person.id, Kontakt.id.in_(gewuenscht)
+            )
+        ).scalars()
+    )
+    fremde = [k for k in gewuenscht if k not in meine_ids]
+    if fremde:
+        raise KontaktFehler("Mindestens ein gewählter Eintrag steht nicht in deinem Adressbuch.")
+
+    db.query(KontaktgruppeMitglied).filter(
+        KontaktgruppeMitglied.benutzer_id == person.id,
+        KontaktgruppeMitglied.gruppe_id == gruppe.id,
+    ).delete()
+    for kontakt_id in gewuenscht:
+        db.add(
+            KontaktgruppeMitglied(
+                benutzer_id=person.id, gruppe_id=gruppe.id, kontakt_id=kontakt_id
+            )
+        )
+    db.commit()
+
+
+def _meine_gruppe(db: Session, person: Benutzer, gruppe_id: int) -> Kontaktgruppe:
+    gruppe = db.get(Kontaktgruppe, gruppe_id)
+    if gruppe is None or gruppe.benutzer_id != person.id:
+        raise KontaktFehler("Diese Gruppe gibt es nicht.")
+    return gruppe
 
 
 # --- vCard ----------------------------------------------------------------- #
@@ -436,6 +588,11 @@ __all__ = [
     "einsammeln",
     "entfernen",
     "gesammelte_entfernen",
+    "gruppe_anlegen",
+    "gruppe_entfernen",
+    "gruppe_umbenennen",
+    "gruppen",
     "meine",
+    "mitglieder_setzen",
     "vorschlagen",
 ]

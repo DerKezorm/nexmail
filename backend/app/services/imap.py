@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import imaplib
 import logging
+import re
 import smtplib
 import socket
 import ssl
@@ -127,9 +128,22 @@ def verbinden(
 ) -> IMAPClient:
     """Anmelden und die offene Verbindung zurueckgeben. Der Aufrufer schliesst."""
     try:
+        # ⚠️ **normalise_times=False, sonst stimmt jede Uhrzeit nur in UTC.**
+        # Ab Werk rechnet IMAPClient jedes Datum in die Systemzeit um und
+        # wirft dabei die Zeitzone weg — zurueck kommt ein *naives* Datum.
+        # Der Abgleich stempelte darauf UTC, die Oberflaeche rechnete wieder
+        # in Ortszeit um: Auf einem Rechner mit +02:00 stand an jeder Mail
+        # 09:52 statt 07:52. Im Container (UTC) hob sich der Fehler zufaellig
+        # auf — deshalb fiel er erst am 02.09.2026 im Entwicklungsbetrieb auf,
+        # und deshalb traefe er jeden, der seinem Container eine TZ gibt.
         klient = IMAPClient(
             host=server, port=port, ssl=(sicherheit == "ssl"), timeout=ZEITGRENZE
         )
+        # ⚠️ **Als Attribut, nicht als Konstruktor-Argument.** Der Konstruktor
+        # kennt den Namen nicht - als Schluesselwort uebergeben hiess
+        # TypeError bei JEDEM Verbindungsaufbau, und der Umgebungs-Waechter
+        # (test_umgebung) hat genau das gefangen, bevor es hinausging.
+        klient.normalise_times = False
         if sicherheit == "starttls":
             klient.starttls()
     except Exception as fehler:  # noqa: BLE001 - hier wird bewusst alles gedeutet
@@ -215,7 +229,20 @@ def _rolle_bestimmen(pfad: str, kennzeichen: list[bytes]) -> str:
         if kennung in kennzeichen:
             return rolle
 
-    letzter = pfad.split("/")[-1].split(".")[-1].strip().lower()
+    # ⚠️ **Die Namensheuristik gilt nur auf oberster Ebene** (ein einzelnes
+    # Segment, ein INBOX-Vorbau zählt nicht mit). Ein selbst angelegter
+    # „Archiv/Spam" ist ein Ablageordner, kein zweiter Junk-Ordner — mit der
+    # Rolle würde er zum Ziel von „Junk melden" und zum stillen Löschziel des
+    # Aufräumens (``services/aufraeumen.py`` leert **alle** Ordner der Rolle,
+    # mit endgültigem EXPUNGE). Die SPECIAL-USE-Kennzeichen oben gelten
+    # weiterhin in jeder Tiefe: Sie sagt der Server, nicht ein Namensraten.
+    segmente = [s for s in re.split(r"[/.]", pfad) if s.strip()]
+    if segmente and segmente[0].upper() == "INBOX":
+        segmente = segmente[1:]
+    if len(segmente) != 1:
+        return "eigen"
+
+    letzter = segmente[0].strip().lower()
     for rolle, namen in NAMEN.items():
         if letzter in namen:
             return rolle

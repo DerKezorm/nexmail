@@ -73,7 +73,13 @@ class SicherheitskopfMiddleware:
                 "default-src 'self'",
                 "base-uri 'self'",
                 "object-src 'none'",
-                "frame-ancestors 'none'",
+                # ⚠️ **'self', nicht 'none'.** Die Druckseite laeuft in einem
+                # unsichtbaren Rahmen der App selbst - mit 'none' blockierte
+                # der Browser genau diesen Rahmen, und gedruckt wurde eine
+                # leere Seite (02.09.2026). Gegen Clickjacking zaehlt, dass
+                # FREMDE Seiten nexmail nicht einbetten koennen - und das
+                # verhindert 'self' genauso.
+                "frame-ancestors 'self'",
                 "form-action 'self'",
                 # Vite baut die Stile in eine Datei; 'unsafe-inline' braucht es
                 # nur fuer die wenigen gesetzten style-Attribute der Oberflaeche.

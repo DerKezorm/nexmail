@@ -5,15 +5,17 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from email import message_from_bytes
+from email.message import EmailMessage
 
 import pytest
 
 from sqlalchemy import select
 
 from app.models import Ausgang, Nachricht, Ordner
-from app.services import mime, senden, verfassen
+from app.services import abgleich, mime, senden, verfassen
 from test_abgleich import FalscherServer, konto  # noqa: F401 - Fixture
 
 
@@ -120,6 +122,33 @@ def test_inline_bild_bekommt_eine_cid():
     m = _gelesen(roh)
     kennungen = [t.get("Content-ID") for t in m.walk() if t.get("Content-ID")]
     assert "<bild1>" in kennungen
+
+
+def test_hohe_wichtigkeit_traegt_beide_kopfzeilen():
+    """⚠️ Outlook liest ``Importance``, Thunderbird ``X-Priority`` — nur eine
+    zu schreiben hiesse, fuer die Haelfte der Empfaenger normal zu sein."""
+    roh, _ = verfassen.bauen(_entwurf(wichtigkeit="hoch"))
+    m = _gelesen(roh)
+
+    assert m["Importance"] == "high"
+    assert m["X-Priority"] == "1"
+
+
+def test_niedrige_wichtigkeit_traegt_beide_kopfzeilen():
+    roh, _ = verfassen.bauen(_entwurf(wichtigkeit="niedrig"))
+    m = _gelesen(roh)
+
+    assert m["Importance"] == "low"
+    assert m["X-Priority"] == "5"
+
+
+def test_ohne_umschalter_keine_wichtigkeits_kopfzeilen():
+    """Vorgabe normal heisst: gar keine Kopfzeile — wie in jedem Client."""
+    roh, _ = verfassen.bauen(_entwurf())
+    m = _gelesen(roh)
+
+    assert m["Importance"] is None
+    assert m["X-Priority"] is None
 
 
 # --- Antworten ----------------------------------------------------------- #
@@ -443,3 +472,229 @@ def test_gesendetes_steht_sofort_in_gesendet(db, postausgang):
         "nur von dort - „Gesendet“ bliebe leer."
     )
     assert liegen[0].betreff == "AW: TEST"
+
+
+# --- Weiterleiten als Anhang --------------------------------------------- #
+
+
+def _original_mail() -> bytes:
+    """Eine Mail, wie sie im Postfach liegt — mit der Message-ID, an der die
+    Tests sie wiedererkennen."""
+    m = EmailMessage()
+    m["From"] = "Anja Kessler <anja@example.org>"
+    m["To"] = "anna@icloud.example"
+    m["Subject"] = "Rechnung Mai"
+    m["Message-ID"] = "<original-42@x.example>"
+    m["Date"] = "Mon, 31 Aug 2026 09:14:00 +0200"
+    m.set_content("Anbei die Rechnung.")
+    return m.as_bytes()
+
+
+@pytest.fixture
+def original_im_posteingang(db, postausgang):
+    """Die Originalmail liegt beim Doppelgänger und ist abgeglichen — so wie
+    eine echte Mail, auf der jemand „Als Anhang weiterleiten" wählt."""
+    konto, smtp, server = postausgang  # noqa: F811 - Fixture-Name
+    server.einwerfen("INBOX", 1, "Rechnung Mai", roh=_original_mail())
+    posteingang = next(o for o in konto.ordner if o.pfad == "INBOX")
+    abgleich.ordner_abgleichen(server, db, konto, posteingang)
+    nachricht = (
+        db.execute(select(Nachricht).where(Nachricht.ordner_id == posteingang.id))
+        .scalars()
+        .one()
+    )
+    return konto, smtp, nachricht
+
+
+def test_anhang_vorlage_traegt_die_rohe_mail(klient, original_im_posteingang):
+    """Die Vorlage für „Als Anhang weiterleiten": Fwd-Betreff, leerer Text,
+    keine Empfänger — und die Originalmail **byte-genau** als Anlage."""
+    _, _, nachricht = original_im_posteingang
+
+    antwort = klient.get(f"/api/verfassen/vorlage/{nachricht.id}?art=anhang")
+    assert antwort.status_code == 200
+    vorlage = antwort.json()
+
+    assert vorlage["betreff"] == "Fwd: Rechnung Mai"
+    assert vorlage["html"] == ""
+    assert vorlage["an"] == []
+    assert vorlage["in_reply_to"] == ""
+
+    assert len(vorlage["anlagen"]) == 1
+    anlage = vorlage["anlagen"][0]
+    assert anlage["mime_typ"] == "message/rfc822"
+    # Derselbe Name wie beim .eml-Download.
+    assert anlage["dateiname"] == "Rechnung Mai.eml"
+    # ⚠️ Unverändert heißt byte-genau — nichts bereinigt, nichts umkodiert.
+    assert base64.b64decode(anlage["inhalt_b64"]) == _original_mail()
+
+
+def test_als_anhang_gesendet_traegt_genau_einen_rfc822_teil(klient, original_im_posteingang):
+    """⚠️ Der Kern des Features, an der versendeten MIME gemessen: genau ein
+    ``message/rfc822``-Teil, darin die Message-ID des Originals — und der
+    Betreff trägt ``Fwd:``."""
+    konto, smtp, nachricht = original_im_posteingang  # noqa: F811 - Fixture-Name
+
+    vorlage = klient.get(f"/api/verfassen/vorlage/{nachricht.id}?art=anhang").json()
+    antwort = klient.post(
+        "/api/verfassen/senden",
+        json={
+            "konto_id": konto.id,
+            "an": ["empfaenger@example.org"],
+            "betreff": vorlage["betreff"],
+            "html": "<p>Bitte einmal ansehen.</p>",
+            "anlagen": vorlage["anlagen"],
+        },
+    )
+    assert antwort.status_code == 200
+    assert antwort.json()["stand"] == "gesendet"
+
+    _, _, roh = smtp.gesendet[0]
+    m = _gelesen(roh)
+    assert m["Subject"].startswith("Fwd:")
+
+    teile = [t for t in m.walk() if t.get_content_type() == "message/rfc822"]
+    assert len(teile) == 1, "Es muss genau einen message/rfc822-Teil geben."
+    assert teile[0].get_filename() == "Rechnung Mai.eml"
+
+    # ⚠️ Der Teil muss sich als Mail **öffnen** lassen — deshalb hängt `bauen`
+    # ihn als Nachricht an, nicht als Base64-Bytes. Ein Base64-kodierter
+    # message/rfc822-Teil sähe im Baum gleich aus und wäre für jeden Parser
+    # unlesbar; dieser Zugriff hier schlüge dann fehl.
+    innen = teile[0].get_payload(0)
+    assert innen["Message-ID"] == "<original-42@x.example>"
+    assert innen["Subject"] == "Rechnung Mai"
+
+
+@pytest.mark.parametrize(
+    "betreff,erwartet",
+    [
+        ("Rechnung Mai", "Fwd: Rechnung Mai"),
+        # ⚠️ Bewusst KEIN Kürzen auf den Kern: Die Mail im Anhang trägt genau
+        # diesen Betreff, der Empfänger soll dieselbe Zeile lesen.
+        ("AW: Rechnung Mai", "Fwd: AW: Rechnung Mai"),
+        ("", "Fwd:"),
+    ],
+)
+def test_anhang_betreff_behaelt_das_original(betreff, erwartet):
+    assert verfassen.weiterleitung_anhang_betreff(betreff) == erwartet
+
+
+# --- Entwurf weiterschreiben ---------------------------------------------- #
+
+
+def _entwurfs_mail() -> bytes:
+    """Ein Entwurf, wie ihn der Abbruch ablegt: mit ``Bcc``-Zeile, einem
+    Anhang und einem Bild im Text."""
+    m = EmailMessage()
+    m["From"] = "Anna Beispiel <anna@icloud.example>"
+    m["To"] = "anja@example.org"
+    m["Bcc"] = "heimlich@example.org"
+    m["Subject"] = "Halb fertig"
+    m["Message-ID"] = "<entwurf-7@x.example>"
+    m["Date"] = "Mon, 31 Aug 2026 09:14:00 +0200"
+    m.set_content("Siehe Bild.")
+    m.add_alternative('<p>Siehe <img src="cid:bild1"></p>', subtype="html")
+    m.add_attachment(
+        b"\x89PNG", maintype="image", subtype="png", filename="bild.png", cid="<bild1>"
+    )
+    m.add_attachment(
+        b"%PDF-1.4 test", maintype="application", subtype="pdf", filename="Rechnung.pdf"
+    )
+    return m.as_bytes()
+
+
+def test_entwurfs_vorlage_behaelt_blindkopie_und_anhaenge(klient, db, postausgang):
+    """⚠️ **Der wieder geöffnete Entwurf ist die ganze Nachricht.**
+
+    Die ``Bcc``-Zeile schreibt ``senden._mit_blindkopie`` beim Abbruch eigens
+    in die Roh-Bytes; die Anhänge liegen im Entwurf. Fällt hier eines weg,
+    verliert das Weiterschreiben stillschweigend Empfänger oder Dateien — und
+    weil die ``entwurf_uid`` mitkommt, räumt das Senden der verstümmelten
+    Fassung die vollständige auch noch weg.
+    """
+    konto, _, server = postausgang
+
+    db.add(Ordner(konto_id=konto.id, pfad="Drafts", name="Drafts", rolle="entwuerfe"))
+    db.commit()
+    db.refresh(konto)
+    server.anlegen("Drafts")
+    server.einwerfen("Drafts", 7, "Halb fertig", gelesen=True, roh=_entwurfs_mail())
+    entwuerfe_ordner = next(o for o in konto.ordner if o.rolle == "entwuerfe")
+    abgleich.ordner_abgleichen(server, db, konto, entwuerfe_ordner)
+    nachricht = (
+        db.execute(select(Nachricht).where(Nachricht.ordner_id == entwuerfe_ordner.id))
+        .scalars()
+        .one()
+    )
+
+    antwort = klient.get(f"/api/verfassen/vorlage/{nachricht.id}?art=entwurf")
+    assert antwort.status_code == 200
+    vorlage = antwort.json()
+
+    assert vorlage["an"] == ["anja@example.org"]
+    assert vorlage["blindkopie"] == ["heimlich@example.org"], (
+        "Die Blindkopie des Entwurfs ist beim Wieder-Öffnen verloren gegangen."
+    )
+    assert vorlage["entwurf_uid"] == nachricht.uid
+
+    namen = {a["dateiname"]: a for a in vorlage["anlagen"]}
+    assert "Rechnung.pdf" in namen, "Der Anhang des Entwurfs fehlt in der Vorlage."
+    assert base64.b64decode(namen["Rechnung.pdf"]["inhalt_b64"]) == b"%PDF-1.4 test"
+    # Das Bild im Text trägt seine cid — daraus baut die Oberfläche wieder
+    # eine anzeigbare Adresse.
+    assert namen["bild.png"]["cid"] == "bild1"
+
+
+def test_eml_dateiname_ist_dateinamensicher():
+    """Der Betreff kommt von außen — Pfadzeichen formen den Namen nicht mit."""
+    assert mime.eml_dateiname("Re: was/geht?") == "Re_ was_geht_.eml"
+    assert mime.eml_dateiname('a\\b"c') == "a_b_c.eml"
+    assert mime.eml_dateiname("") == "nachricht.eml"
+    assert mime.eml_dateiname("   ") == "nachricht.eml"
+
+
+def test_eml_dateiname_laesst_keine_steuerzeichen_durch():
+    r"""⚠️ Ein kodierter Betreff (``=?utf-8?B?…?=``) kann nach dem Entziffern
+    ``\r\n`` enthalten — und der Name landet wörtlich im
+    ``content-disposition``-Kopf. Ein Zeilenumbruch dort ist eine
+    eingeschleuste Kopfzeile, kein Dateiname."""
+    name = mime.eml_dateiname("Vor\r\nSet-Cookie: boese")
+    assert "\r" not in name and "\n" not in name
+    assert mime.eml_dateiname("a\x00b\x1fc\x7fd") == "a_b_c_d.eml"
+
+
+def test_die_disposition_uebersteht_emoji_und_cjk():
+    """⚠️ Der Kopf verträgt nur Latin-1. Ein Betreff mit Emoji ließ den
+    ``.eml``-Download vorher mit einem 500 umfallen (``UnicodeEncodeError``
+    beim Serialisieren). RFC 5987: ASCII-Rückfall plus ``filename*``."""
+    from app.routers.nachrichten import _anhang_disposition
+
+    wert = _anhang_disposition("Grüße 🎉.eml")
+    wert.encode("latin-1")  # darf nicht werfen — genau das war der 500
+    assert "filename*=UTF-8''" in wert
+
+    # Der gewöhnliche Fall bleibt schlicht.
+    assert _anhang_disposition("Rechnung Mai.eml") == 'attachment; filename="Rechnung Mai.eml"'
+
+    # Und Steuerzeichen kommen auch hier nicht durch.
+    boese = _anhang_disposition("a\r\nSet-Cookie: x")
+    assert "\r" not in boese and "\n" not in boese
+
+
+def test_die_trennzeile_ist_ein_vertrag_mit_der_oberflaeche():
+    """⚠️ ``frontend/src/lib/anhang.ts`` (``ZITAT_MARKEN``) schneidet den
+    eigenen Text an genau dieser Zeichenkette ab, bevor die Anhang-Erinnerung
+    prüft. Wer eine Seite umformuliert oder übersetzt, ohne die andere
+    nachzuziehen, macht die Erinnerung bei jeder Weiterleitung zur
+    Falschnachfrage — dieser Test hält beide Seiten wörtlich aneinander."""
+    from pathlib import Path
+
+    marke = "---------- Weitergeleitete Nachricht ----------"
+    assert marke in verfassen.weiterleitung_html(_eingehend())
+
+    anhang_ts = Path(__file__).resolve().parents[2] / "frontend" / "src" / "lib" / "anhang.ts"
+    assert marke in anhang_ts.read_text(encoding="utf-8"), (
+        "Die Marke in anhang.ts weicht vom Server ab — die Anhang-Erinnerung "
+        "sähe den weitergeleiteten Text als eigenen."
+    )

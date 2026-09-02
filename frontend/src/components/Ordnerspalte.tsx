@@ -23,6 +23,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Archive,
+  Clock,
   Flag,
   ChevronDown,
   ChevronRight,
@@ -43,8 +44,15 @@ import { PUNKT_KLASSE } from '../lib/farben'
  *
  * Es liegt in keinem Postfach, sondern quer über allen: Was man sich vormerkt,
  * merkt man sich als Mensch, nicht je Konto. Ein Filter über der Liste hätte
- * das nicht geleistet — der wirkt immer nur auf den gerade offenen Ordner. */
-export type Ziel = { typ: 'alle' } | { typ: 'markiert' } | { typ: 'ordner'; id: string }
+ * das nicht geleistet — der wirkt immer nur auf den gerade offenen Ordner.
+ *
+ * „Ausgang" genauso: Die Warteschlange liegt in nexmail, nicht beim Anbieter —
+ * ein geplanter Versand gehört zu keinem IMAP-Ordner. */
+export type Ziel =
+  | { typ: 'alle' }
+  | { typ: 'markiert' }
+  | { typ: 'ausgang' }
+  | { typ: 'ordner'; id: string }
 
 const SYMBOL: Record<OrdnerRolle, ReactNode> = {
   posteingang: <Inbox />,
@@ -104,6 +112,10 @@ interface Props {
      Der Baum zeigt „privat", die Liste zeigt alles. */
   gruppe: string
   aufGruppe: (wort: string) => void
+  /** Wie viele Nachrichten im Postausgang warten — geplant oder liegen
+   *  geblieben. 0 blendet die Zeile aus: Ein Ausgang, der fast immer leer
+   *  ist, waere sonst eine Zeile, die fast immer nichts sagt. */
+  ausgangZahl: number
 }
 
 export function Ordnerspalte({
@@ -121,6 +133,7 @@ export function Ordnerspalte({
   aufAbweisung,
   gruppe,
   aufGruppe,
+  ausgangZahl,
 }: Props) {
   // Über welchem Ordner der Zeiger gerade schwebt. ⚠️ Ohne sichtbares Ziel
   // ist Ziehen ein Ratespiel: Man lässt los und weiß erst hinterher, wo es
@@ -237,6 +250,19 @@ export function Ordnerspalte({
           aktiv={ziel.typ === 'markiert'}
           onClick={() => aufZiel({ typ: 'markiert' })}
         />
+
+        {/* Der Postausgang — nur sichtbar, wenn etwas wartet. Die Zahl sagt
+            wie viel; das Schlagwort filtert hier nicht, denn die Warteschlange
+            gehört zu keinem Postfachbaum. */}
+        {ausgangZahl > 0 && (
+          <Zeile
+            symbol={<Clock />}
+            name={t('ordner.postausgang')}
+            ungelesen={ausgangZahl}
+            aktiv={ziel.typ === 'ausgang'}
+            onClick={() => aufZiel({ typ: 'ausgang' })}
+          />
+        )}
 
         {angeheftet.length > 0 && (
           <section className="mt-4">

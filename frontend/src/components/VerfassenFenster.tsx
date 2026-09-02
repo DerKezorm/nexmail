@@ -15,17 +15,39 @@
  * ist. Die Mail liegt dann im Ausgang — geschlossen zu werden, während man
  * nicht weiß, ob sie draußen ist, ist der schlechteste aller Zustände.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Paperclip, PenLine, Send, Trash2, X } from 'lucide-react'
+import { ChevronsDown, ChevronsUp, Clock, Minus, Paperclip, PenLine, Send, Trash2, X } from 'lucide-react'
 import { Button, IconButton } from '../ds'
 import { Adressfeld } from './Adressfeld'
 import { Editor } from './Editor'
+import { useNachfrage } from './Nachfrage'
 import { api, ApiFehler } from '../api/client'
 import type { Konto, Nachricht } from '../daten/typen'
+import { eigenerText, erwaehntAnhang } from '../lib/anhang'
 import { groesse } from '../lib/format'
+import { useGemerkt } from '../lib/haken'
 
-export type Verfassart = 'neu' | 'antwort' | 'allen' | 'weiter' | 'entwurf'
+export type Verfassart = 'neu' | 'antwort' | 'allen' | 'weiter' | 'anhang' | 'entwurf'
+
+/** Was beim Senden zum Server geht — und was „Senden rückholen" braucht, um
+ *  das Fenster mit demselben Inhalt wieder zu öffnen. Der Inhalt bleibt dafür
+ *  im Speicher des Browsers; er wird NICHT aus dem Entwurf zurückgeladen, den
+ *  der Abbruch anlegt — der Umweg über MIME und Bereinigung könnte nur
+ *  verlieren, nie gewinnen. */
+export interface Sendedaten {
+  konto_id: string
+  an: string[]
+  kopie: string[]
+  blindkopie: string[]
+  betreff: string
+  html: string
+  anlagen: Array<{ dateiname: string; mime_typ: string; inhalt_b64: string; cid: string }>
+  in_reply_to: string
+  references: string[]
+  entwurf_uid: number
+  wichtigkeit: 'hoch' | 'normal' | 'niedrig'
+}
 
 interface Anlage {
   dateiname: string
@@ -39,12 +61,18 @@ interface Vorlage {
   konto_id: string
   an: string[]
   kopie: string[]
+  /** Nur beim Weiterschreiben eines Entwurfs gefüllt — die Bcc-Zeile schreibt
+   *  der Abbruch eigens hinein, gewöhnliche Post trägt keine. */
+  blindkopie?: string[]
   betreff: string
   html: string
   in_reply_to: string
   references: string[]
   entwurf_uid?: number
   signatur?: string
+  /** Beim Weiterleiten als Anhang die Roh-.eml, beim Weiterschreiben eines
+   *  Entwurfs dessen Anhänge — Bilder im Text tragen ihre cid. */
+  anlagen?: Array<{ dateiname: string; mime_typ: string; inhalt_b64: string; cid?: string }>
 }
 
 interface Props {
@@ -52,11 +80,34 @@ interface Props {
   art: Verfassart
   bezug: Nachricht | null
   konten: Konto[]
+  /** Gesetzt beim Wieder-Öffnen nach „Rückgängig": Der Inhalt kommt aus dem
+   *  Speicher, nicht vom Server — Vorlage und Signatur werden nicht geholt. */
+  wiederauf?: Sendedaten | null
   aufSchliessen: () => void
   aufGesendet?: () => void
+  /** Die Nachricht ist mit Aufschub eingereiht — bis `bis` (ms-Zeitstempel)
+   *  lässt sie sich über den Ausgangseintrag `ausgangId` zurückholen. */
+  aufRueckholbar?: (ausgangId: string, bis: number, daten: Sendedaten) => void
 }
 
-export function VerfassenFenster({ offen, art, bezug, konten, aufSchliessen, aufGesendet }: Props) {
+/** Base64 zurück in Bytes — für die Anzeige wieder eingefügter Bilder. */
+function b64ZuBlob(b64: string, typ: string): Blob {
+  const roh = atob(b64)
+  const bytes = new Uint8Array(roh.length)
+  for (let i = 0; i < roh.length; i++) bytes[i] = roh.charCodeAt(i)
+  return new Blob([bytes], { type: typ || 'application/octet-stream' })
+}
+
+export function VerfassenFenster({
+  offen,
+  art,
+  bezug,
+  konten,
+  wiederauf,
+  aufSchliessen,
+  aufGesendet,
+  aufRueckholbar,
+}: Props) {
   const { t } = useTranslation()
 
   const [kontoId, setKontoId] = useState('')
@@ -81,8 +132,46 @@ export function VerfassenFenster({ offen, art, bezug, konten, aufSchliessen, auf
   // das gab ein kaputtes Bildsymbol.
   const [bildquellen, setBildquellen] = useState<Record<string, string>>({})
   const [entwurfUid, setEntwurfUid] = useState(0)
+  /* Die eingesetzte Signatur, wie sie hereinkam — für die Anhang-Erinnerung.
+     Die schneidet sie vor der Prüfung ab: „Anlagen: siehe unten" in einer
+     Signatur ist keine Ankündigung dieser einen Mail. Beim Weiterschreiben
+     eines Entwurfs bleibt sie leer; die Signatur steckt dort schon im Text
+     und lässt sich nicht mehr sicher vom eigenen unterscheiden. */
+  const [signaturHtml, setSignaturHtml] = useState('')
+  /* Die Wichtigkeit der Nachricht. Ein Knopf, drei Stufen im Kreis —
+     Vorgabe normal, und normal erzeugt beim Senden keine Kopfzeile. */
+  const [wichtigkeit, setWichtigkeit] = useState<'hoch' | 'normal' | 'niedrig'>('normal')
   const [speichert, setSpeichert] = useState(false)
   const [laedt, setLaedt] = useState(false)
+
+  /* „Später senden": das kleine Aufklappmenü neben dem Senden-Knopf. Der
+     eigene Zeitpunkt kommt aus einem datetime-local-Feld - der Browser liest
+     ihn als Ortszeit, hinausgeschickt wird ISO in UTC. */
+  const [planOffen, setPlanOffen] = useState(false)
+  const [eigenerZeitpunkt, setEigenerZeitpunkt] = useState('')
+  const planRef = useRef<HTMLDivElement | null>(null)
+
+  /* „Senden rückholen" aus Einstellungen → Darstellung, in Sekunden. 0 heißt
+     aus — dann verhält sich Senden exakt wie bisher. Eingestellt geht die
+     Nachricht als kurzer Plan hinaus (senden_ab = jetzt + Aufschub), und die
+     Leiste unten bietet so lange „Rückgängig" an. */
+  const [rueckholen] = useGemerkt<number>('nexmail.rueckholen', 0)
+
+  /* Die Anhang-Erinnerung fragt über useNachfrage — nie über window.confirm.
+     ⚠️ Solange sie offen steht, darf Escape nicht nebenbei das ganze
+     Verfassen-Fenster schließen: Beide Zuhörer hängen am Dokument, und ohne
+     die Sperre täte ein „Abbrechen" per Taste zwei Dinge auf einmal. */
+  const { fragen, fenster: nachfrage } = useNachfrage()
+  const frageOffen = useRef(false)
+
+  useEffect(() => {
+    if (!planOffen) return
+    function beiKlick(e: MouseEvent) {
+      if (planRef.current && !planRef.current.contains(e.target as Node)) setPlanOffen(false)
+    }
+    document.addEventListener('mousedown', beiKlick)
+    return () => document.removeEventListener('mousedown', beiKlick)
+  }, [planOffen])
 
   /* --- Öffnen: Vorlage holen ------------------------------------------- */
 
@@ -92,8 +181,53 @@ export function VerfassenFenster({ offen, art, bezug, konten, aufSchliessen, auf
     setAnlagen([])
     setBlindkopie('')
     setBlindZeigen(false)
+    setPlanOffen(false)
+    setEigenerZeitpunkt('')
 
     setEntwurfUid(0)
+    setWichtigkeit('normal')
+    setSignaturHtml('')
+
+    if (wiederauf) {
+      /* Wieder-Öffnen nach „Rückgängig": alles kommt aus dem Speicher.
+       * ⚠️ **Die Entwurfs-UID ist die vom Abbruch angelegte Fassung.** Der
+       * Abbruch legt den Inhalt als Sicherheitsnetz in den Entwurfsordner
+       * und meldet die UID zurück — daran hängt dieses Fenster: Senden oder
+       * Speichern ersetzt sie, statt sie für immer liegen zu lassen.
+       * ⚠️ **Bilder brauchen wieder eine `blob:`-Adresse.** Im gemerkten HTML
+       * steht `cid:` (so ging es zum Server), und die alten `blob:`-Adressen
+       * sind beim Schließen freigegeben worden — sie zu behalten hieße
+       * kaputte Bildsymbole. */
+      setEntwurfUid(wiederauf.entwurf_uid || 0)
+      setKontoId(wiederauf.konto_id)
+      setAn(wiederauf.an.length ? wiederauf.an.join(', ') + ', ' : '')
+      setKopie(wiederauf.kopie.length ? wiederauf.kopie.join(', ') + ', ' : '')
+      setKopieZeigen(wiederauf.kopie.length > 0)
+      setBlindkopie(wiederauf.blindkopie.length ? wiederauf.blindkopie.join(', ') + ', ' : '')
+      setBlindZeigen(wiederauf.blindkopie.length > 0)
+      setBetreff(wiederauf.betreff)
+      let inhalt = wiederauf.html
+      const quellen: Record<string, string> = {}
+      for (const a of wiederauf.anlagen) {
+        if (!a.cid) continue
+        const anzeige = URL.createObjectURL(b64ZuBlob(a.inhalt_b64, a.mime_typ))
+        inhalt = inhalt.split(`cid:${a.cid}`).join(anzeige)
+        quellen[anzeige] = a.cid
+      }
+      setBildquellen(quellen)
+      setHtml(inhalt || '<p></p>')
+      setAnlagen(
+        wiederauf.anlagen.map((a) => ({
+          ...a,
+          // Die Größe fährt in den Sendedaten nicht mit - aus Base64 lässt
+          // sie sich fürs Anzeigen genau genug zurückrechnen.
+          groesse: Math.floor((a.inhalt_b64.length * 3) / 4),
+        })),
+      )
+      setWichtigkeit(wiederauf.wichtigkeit)
+      setKette({ in_reply_to: wiederauf.in_reply_to, references: wiederauf.references })
+      return
+    }
 
     if (art === 'neu' || !bezug) {
       const konto = konten[0]?.id ?? ''
@@ -108,7 +242,10 @@ export function VerfassenFenster({ offen, art, bezug, konten, aufSchliessen, auf
       if (konto) {
         void api
           .holen<{ html: string }>(`/api/verfassen/signatur/${konto}`)
-          .then((s) => setHtml(s.html ? `<p></p>${s.html}` : '<p></p>'))
+          .then((s) => {
+            setSignaturHtml(s.html ?? '')
+            setHtml(s.html ? `<p></p>${s.html}` : '<p></p>')
+          })
           .catch(() => undefined)
       }
       return
@@ -123,21 +260,49 @@ export function VerfassenFenster({ offen, art, bezug, konten, aufSchliessen, auf
       .holen<Vorlage>(`/api/verfassen/vorlage/${bezug.id}?art=${art}`)
       .then((v) => {
         setKontoId(v.konto_id)
-        setAn(v.an.join(', '))
-        setKopie(v.kopie.join(', '))
+        setAn(v.an.length ? v.an.join(', ') + ', ' : '')
+        setKopie(v.kopie.length ? v.kopie.join(', ') + ', ' : '')
         setKopieZeigen(v.kopie.length > 0)
+        // ⚠️ Ein wieder geöffneter Entwurf bringt seine Blindkopie mit — sie
+        // stillschweigend fallen zu lassen verlöre Empfänger, und das Senden
+        // der verstümmelten Fassung räumte über die UID auch noch die
+        // vollständige weg.
+        setBlindkopie((v.blindkopie ?? []).join(', '))
+        setBlindZeigen((v.blindkopie ?? []).length > 0)
         setBetreff(v.betreff)
         // ⚠️ Beim Weiterschreiben **keine** Leerzeilen davor: Der Text ist
         // der eigene, nicht ein Zitat, unter das man schreibt.
         // ⚠️ Beim Weiterschreiben **keine** Signatur nachlegen: Sie steht im
         // Entwurf schon drin, und ein zweites Mal wäre sie doppelt.
-        setHtml(
+        let inhalt =
           art === 'entwurf'
             ? v.html || '<p></p>'
-            : `<p></p>${v.signatur ?? ''}<p></p>${v.html}`,
-        )
+            : `<p></p>${v.signatur ?? ''}<p></p>${v.html}`
+        // Anhänge aus der Vorlage: die Roh-.eml beim Weiterleiten als Anhang,
+        // die Anhänge des Entwurfs beim Weiterschreiben - beim Senden gehen
+        // sie denselben Weg wie jeder von Hand angehängte Anhang. Bilder im
+        // Text brauchen dazu eine `blob:`-Adresse, wie im wiederauf-Zweig:
+        // `cid:` kann der Browser nicht anzeigen.
+        const mitgebracht = (v.anlagen ?? []).map((a) => ({
+          ...a,
+          cid: a.cid ?? '',
+          // Die Größe fährt in der Vorlage nicht mit - aus Base64 lässt
+          // sie sich fürs Anzeigen genau genug zurückrechnen.
+          groesse: Math.floor((a.inhalt_b64.length * 3) / 4),
+        }))
+        const quellen: Record<string, string> = {}
+        for (const a of mitgebracht) {
+          if (!a.cid) continue
+          const anzeige = URL.createObjectURL(b64ZuBlob(a.inhalt_b64, a.mime_typ))
+          inhalt = inhalt.split(`cid:${a.cid}`).join(anzeige)
+          quellen[anzeige] = a.cid
+        }
+        setBildquellen(quellen)
+        setHtml(inhalt)
         setEntwurfUid(v.entwurf_uid ?? 0)
+        setSignaturHtml(art === 'entwurf' ? '' : (v.signatur ?? ''))
         setKette({ in_reply_to: v.in_reply_to, references: v.references })
+        setAnlagen(mitgebracht)
       })
       .catch(() => setFehler(t('anmeldung.fehler_allgemein')))
       .finally(() => setLaedt(false))
@@ -162,7 +327,8 @@ export function VerfassenFenster({ offen, art, bezug, konten, aufSchliessen, auf
   useEffect(() => {
     if (!offen) return
     function beiTaste(e: KeyboardEvent) {
-      if (e.key === 'Escape') void schliessenUndBewahren()
+      // Steht die Anhang-Nachfrage offen, gehört Escape ihr allein.
+      if (e.key === 'Escape' && !frageOffen.current) void schliessenUndBewahren()
     }
     document.addEventListener('keydown', beiTaste)
     return () => document.removeEventListener('keydown', beiTaste)
@@ -278,6 +444,7 @@ export function VerfassenFenster({ offen, art, bezug, konten, aufSchliessen, auf
       in_reply_to: kette.in_reply_to,
       references: kette.references,
       entwurf_uid: entwurfUid,
+      wichtigkeit,
     }
   }
 
@@ -328,12 +495,66 @@ export function VerfassenFenster({ offen, art, bezug, konten, aufSchliessen, auf
   }
 
   async function senden() {
+    /* Die Anhang-Erinnerung: Steht im eigenen Text etwas von einem Anhang und
+       hängt keiner dran, wird einmal nachgefragt. Abbrechen lässt das Fenster
+       unverändert offen; mit Anhang oder ohne Treffer ändert sich nichts am
+       bisherigen Weg. ⚠️ Gezählt werden **alle** Anlagen, auch eingefügte
+       Bilder: Wer „anbei das Foto" schreibt und es in den Text setzt, hat es
+       dran — eine Nachfrage wäre da schlicht falsch. */
+    if (anlagen.length === 0 && erwaehntAnhang(eigenerText(html, signaturHtml))) {
+      frageOffen.current = true
+      const trotzdem = await fragen({
+        titel: t('verfassen.anhang_frage_titel'),
+        text: t('verfassen.anhang_frage_text'),
+        knopf: t('aktion.senden'),
+      })
+      frageOffen.current = false
+      if (trotzdem !== true) return
+    }
+
     setFehler('')
     setSendet(true)
     try {
+      const daten = nutzdaten()
+
+      if (rueckholen > 0) {
+        /* „Senden rückholen": derselbe Endpunkt wie „Später senden", nur mit
+           dem Aufschub als **Dauer**. Der Server rechnet sie auf seine eigene
+           Uhr um und hält die Nachricht so lange im Ausgang — genau dort holt
+           „Rückgängig" sie wieder heraus.
+           ⚠️ Ein Zeitpunkt von hier hinge an der Client-Uhr: Ginge sie nach,
+           wäre er beim Server schon vorbei, die Mail ginge sofort hinaus, und
+           das Rückholen wäre bei jedem Senden still wirkungslos. `bis` dient
+           nur der ablaufenden Leiste — ein reiner Countdown, keine Uhrzeit. */
+        const bis = Date.now() + rueckholen * 1000
+        const ergebnis = await api.senden<{
+          id: string
+          stand: string
+          fehler: string
+          senden_ab: string | null
+        }>('/api/verfassen/senden', { ...daten, rueckhol_sekunden: rueckholen })
+
+        if (ergebnis.senden_ab) {
+          aufGesendet?.()
+          aufRueckholbar?.(ergebnis.id, bis, daten)
+          aufSchliessen()
+          return
+        }
+        // ⚠️ War der Zeitpunkt beim Eintreffen schon vorbei (träges Netz),
+        // sendet der Server sofort - dann gibt es nichts zurückzuholen, und
+        // eine Leiste, die es trotzdem verspräche, wäre eine Lüge.
+        if (ergebnis.stand === 'gesendet') {
+          aufGesendet?.()
+          aufSchliessen()
+          return
+        }
+        setFehler(t('verfassen.im_ausgang', { grund: ergebnis.fehler }))
+        return
+      }
+
       const ergebnis = await api.senden<{ stand: string; fehler: string }>(
         '/api/verfassen/senden',
-        nutzdaten(),
+        daten,
       )
 
       if (ergebnis.stand === 'gesendet') {
@@ -342,6 +563,45 @@ export function VerfassenFenster({ offen, art, bezug, konten, aufSchliessen, auf
         return
       }
       // Nicht draußen, aber auch nicht weg: Sie liegt im Ausgang.
+      setFehler(t('verfassen.im_ausgang', { grund: ergebnis.fehler }))
+    } catch (f) {
+      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+    } finally {
+      setSendet(false)
+    }
+  }
+
+  /* --- Später senden ----------------------------------------------------- */
+
+  function heute18(): Date {
+    const d = new Date()
+    d.setHours(18, 0, 0, 0)
+    return d
+  }
+
+  function morgen8(): Date {
+    const d = new Date()
+    d.setDate(d.getDate() + 1)
+    d.setHours(8, 0, 0, 0)
+    return d
+  }
+
+  async function planen(zeitpunkt: Date) {
+    setPlanOffen(false)
+    setFehler('')
+    setSendet(true)
+    try {
+      const ergebnis = await api.senden<{ stand: string; fehler: string; senden_ab: string | null }>(
+        '/api/verfassen/senden',
+        { ...nutzdaten(), senden_ab: zeitpunkt.toISOString() },
+      )
+      // ⚠️ Ein schon abgelaufener Zeitpunkt geht sofort hinaus - dann meldet
+      // der Server „gesendet" statt eines Plans. Beides ist ein Erfolg.
+      if (ergebnis.stand === 'gesendet' || ergebnis.senden_ab) {
+        aufGesendet?.()
+        aufSchliessen()
+        return
+      }
       setFehler(t('verfassen.im_ausgang', { grund: ergebnis.fehler }))
     } catch (f) {
       setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
@@ -489,6 +749,70 @@ export function VerfassenFenster({ offen, art, bezug, konten, aufSchliessen, auf
             {t('aktion.senden')}
           </Button>
 
+          {/* „Später senden" — dieselben Voraussetzungen wie Senden: Ohne
+              Empfänger gibt es auch nichts zu planen. */}
+          <div ref={planRef} className="relative">
+            <Button
+              iconLeft={<Clock className="size-4" />}
+              disabled={!bereit || !kontoId || sendet}
+              aria-expanded={planOffen}
+              aria-haspopup="menu"
+              onClick={() => setPlanOffen((o) => !o)}
+            >
+              {t('verfassen.spaeter')}
+            </Button>
+
+            {planOffen && (
+              <div
+                role="menu"
+                aria-label={t('verfassen.spaeter')}
+                className="absolute bottom-full left-0 z-10 mb-1 w-64 rounded-lg border border-line bg-surface-1 p-1 shadow-[var(--shadow-3)]"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  // Nach 18 Uhr wäre „heute 18:00" ein Zeitpunkt in der
+                  // Vergangenheit - der Eintrag sagt es, statt sofort zu senden.
+                  disabled={heute18().getTime() <= Date.now()}
+                  onClick={() => void planen(heute18())}
+                  className="block w-full rounded-md px-2.5 py-1.5 text-left text-[13px] text-fg-1 transition-colors duration-[var(--dur-fast)] hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {t('verfassen.spaeter_heute')}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void planen(morgen8())}
+                  className="block w-full rounded-md px-2.5 py-1.5 text-left text-[13px] text-fg-1 transition-colors duration-[var(--dur-fast)] hover:bg-surface-3"
+                >
+                  {t('verfassen.spaeter_morgen')}
+                </button>
+                <div className="mt-1 border-t border-line-subtle px-2.5 pt-2 pb-1.5">
+                  <label className="block text-[12px] text-fg-3">
+                    {t('verfassen.spaeter_eigen')}
+                    <input
+                      type="datetime-local"
+                      value={eigenerZeitpunkt}
+                      onChange={(e) => setEigenerZeitpunkt(e.target.value)}
+                      className="mt-1 w-full rounded-md border border-line bg-surface-2 px-2 py-1 text-[13px] text-fg-1 outline-none focus:border-accent"
+                    />
+                  </label>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    className="mt-2"
+                    disabled={
+                      !eigenerZeitpunkt || new Date(eigenerZeitpunkt).getTime() <= Date.now()
+                    }
+                    onClick={() => void planen(new Date(eigenerZeitpunkt))}
+                  >
+                    {t('verfassen.spaeter_planen')}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <label className="cursor-pointer">
             <input
               type="file"
@@ -502,6 +826,26 @@ export function VerfassenFenster({ offen, art, bezug, konten, aufSchliessen, auf
             </span>
           </label>
 
+          {/* Wichtigkeit: ein Knopf, drei Stufen im Kreis — Vorgabe normal.
+              ⚠️ Der Name trägt die aktuelle Stufe. Ein Symbol, das nur die
+              Farbe wechselt, wäre für Vorleseprogramme kein Umschalter. */}
+          <IconButton
+            icon={
+              wichtigkeit === 'hoch' ? (
+                <ChevronsUp className="text-danger" />
+              ) : wichtigkeit === 'niedrig' ? (
+                <ChevronsDown />
+              ) : (
+                <Minus />
+              )
+            }
+            label={t(`verfassen.wichtigkeit_${wichtigkeit}`)}
+            active={wichtigkeit !== 'normal'}
+            onClick={() =>
+              setWichtigkeit((w) => (w === 'normal' ? 'hoch' : w === 'hoch' ? 'niedrig' : 'normal'))
+            }
+          />
+
           <span className="flex-1" />
           <Button
             variant="danger"
@@ -512,6 +856,10 @@ export function VerfassenFenster({ offen, art, bezug, konten, aufSchliessen, auf
           </Button>
         </div>
       </div>
+
+      {/* Die Anhang-Nachfrage legt sich über das Fenster; ihr eigener Schleier
+          fängt jeden Klick ab, bevor er das Verfassen-Fenster schlösse. */}
+      {nachfrage}
     </div>
   )
 }

@@ -8,13 +8,15 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, X } from 'lucide-react'
+import { AusgangListe } from '../components/AusgangListe'
 import { Griff } from '../components/Griff'
 import { Lesebereich } from '../components/Lesebereich'
 import { Nachrichtenliste } from '../components/Nachrichtenliste'
+import type { Wischen } from '../components/Nachrichtenliste'
 import { Ordnerspalte } from '../components/Ordnerspalte'
 import type { Ziel } from '../components/Ordnerspalte'
 import { IconButton } from '../ds'
-import type { Konto, Nachricht, Ordner } from '../daten/typen'
+import type { Ausgangseintrag, Konto, Nachricht, Ordner } from '../daten/typen'
 import type { VolleNachricht } from '../api/laden'
 import type { Verfassart } from '../components/VerfassenFenster'
 
@@ -59,6 +61,8 @@ interface Props {
   gruppiert?: boolean
   aufGruppiert?: (an: boolean) => void
   aufStrang?: (schluessel: string) => Promise<Nachricht[]>
+  /** Wisch-Aktionen — `App` reicht sie nur in der schmalen Ansicht herein. */
+  wischen?: Wischen
   filter?: 'alle' | 'ungelesen' | 'markiert'
   aufFilter?: (f: 'alle' | 'ungelesen') => void
   /** Fallengelassen über einem Ordner. */
@@ -74,6 +78,9 @@ interface Props {
   favoriten: string[]
   eingeklappt: string[]
   aufEinklappen: (kontoId: string) => void
+  /** Der Postausgang — geplante und liegen gebliebene Sendungen. */
+  ausgaenge: Ausgangseintrag[]
+  aufAusgangAbbrechen: (eintrag: Ausgangseintrag) => void
 }
 
 export function MailPage(p: Props) {
@@ -95,6 +102,9 @@ export function MailPage(p: Props) {
     // würde genau das wieder wegwerfen.
     if (ziel.typ === 'markiert') return p.nachrichten
 
+    // Beim Ausgang zeigt die Spalte keine Nachrichten - siehe `listenspalte`.
+    if (ziel.typ === 'ausgang') return []
+
     return ziel.typ === 'alle'
       ? p.nachrichten.filter((n) => {
           const o = p.ordner.find((x) => x.id === n.ordnerId)
@@ -109,7 +119,9 @@ export function MailPage(p: Props) {
       ? t('ordner.alle_posteingaenge')
       : ziel.typ === 'markiert'
         ? t('ordner.markierte')
-        : (p.ordner.find((o) => o.id === ziel.id)?.name ?? '')
+        : ziel.typ === 'ausgang'
+          ? t('ordner.postausgang')
+          : (p.ordner.find((o) => o.id === ziel.id)?.name ?? '')
 
   /* ⚠️ **Der Hinweis ist Pflicht, nicht Zierde.** nexmail hält alle Kopfdaten,
      aber Texte nur von dem, was schon einmal geöffnet wurde. Eine Suche, die
@@ -132,10 +144,42 @@ export function MailPage(p: Props) {
 
   const offene = p.offene
 
+  /* Die mittlere Spalte. Beim Ziel „ausgang" zeigt sie die Warteschlange
+     statt eines Ordners — einmal gebaut, damit schmal und breit nicht
+     auseinanderlaufen. */
+  const listenspalte =
+    ziel.typ === 'ausgang' ? (
+      <AusgangListe eintraege={p.ausgaenge} aufAbbrechen={p.aufAusgangAbbrechen} />
+    ) : (
+      <Nachrichtenliste
+        nachrichten={sichtbar}
+        konten={p.konten}
+        gewaehlt={p.gewaehlt}
+        aufWahl={p.aufWahl}
+        mehrfach={p.mehrfach}
+        postfachZeigen={ziel.typ !== 'ordner' && p.punkteZeigen !== false}
+        titel={titel}
+        aufKontext={p.aufNachrichtKontext}
+        aufZiehen={p.aufZiehen}
+        kompakt={p.kompakt}
+        anreisserZeigen={p.anreisserZeigen}
+        filter={ziel.typ === 'markiert' ? 'markiert' : p.filter}
+        aufFilter={p.aufFilter}
+        aufMehr={p.aufMehr}
+        mehrLaedt={p.mehrLaedt}
+        amEnde={p.amEnde}
+        gruppiert={p.gruppiert}
+        aufGruppiert={p.aufGruppiert}
+        aufStrang={p.aufStrang}
+        wischen={p.wischen}
+      />
+    )
+
   const ordnerspalte = (
     <Ordnerspalte
       gruppe={p.gruppe}
       aufGruppe={p.aufGruppe}
+      ausgangZahl={p.ausgaenge.length}
       konten={p.konten}
       ordner={p.ordner}
       ziel={ziel}
@@ -177,27 +221,7 @@ export function MailPage(p: Props) {
         ) : (
           <div className="flex h-full flex-col">
             {hinweis}
-            <Nachrichtenliste
-              nachrichten={sichtbar}
-              konten={p.konten}
-              gewaehlt={p.gewaehlt}
-              aufWahl={p.aufWahl}
-              mehrfach={p.mehrfach}
-              postfachZeigen={ziel.typ !== 'ordner' && p.punkteZeigen !== false}
-              titel={titel}
-              aufKontext={p.aufNachrichtKontext}
-              aufZiehen={p.aufZiehen}
-              kompakt={p.kompakt}
-              anreisserZeigen={p.anreisserZeigen}
-              filter={ziel.typ === 'markiert' ? 'markiert' : p.filter}
-              aufFilter={p.aufFilter}
-              aufMehr={p.aufMehr}
-              mehrLaedt={p.mehrLaedt}
-              amEnde={p.amEnde}
-              gruppiert={p.gruppiert}
-              aufGruppiert={p.aufGruppiert}
-              aufStrang={p.aufStrang}
-            />
+            {listenspalte}
           </div>
         )}
 
@@ -251,27 +275,7 @@ export function MailPage(p: Props) {
 
       <div style={{ width: p.listeBreite }} className="flex shrink-0 flex-col">
         {hinweis}
-        <Nachrichtenliste
-          nachrichten={sichtbar}
-          konten={p.konten}
-          gewaehlt={p.gewaehlt}
-          aufWahl={p.aufWahl}
-          mehrfach={p.mehrfach}
-          postfachZeigen={ziel.typ !== 'ordner' && p.punkteZeigen !== false}
-          titel={titel}
-          aufKontext={p.aufNachrichtKontext}
-          aufZiehen={p.aufZiehen}
-          kompakt={p.kompakt}
-          anreisserZeigen={p.anreisserZeigen}
-          filter={ziel.typ === 'markiert' ? 'markiert' : p.filter}
-          aufFilter={p.aufFilter}
-          aufMehr={p.aufMehr}
-          mehrLaedt={p.mehrLaedt}
-          amEnde={p.amEnde}
-          gruppiert={p.gruppiert}
-          aufGruppiert={p.aufGruppiert}
-          aufStrang={p.aufStrang}
-        />
+        {listenspalte}
       </div>
       <Griff
         breite={p.listeBreite}

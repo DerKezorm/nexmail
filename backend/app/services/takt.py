@@ -35,6 +35,17 @@ _halt = threading.Event()
 _sicherungsfaden: threading.Thread | None = None
 _sicherung_halt = threading.Event()
 
+_versandfaden: threading.Thread | None = None
+_versand_halt = threading.Event()
+
+_aufraeumfaden: threading.Thread | None = None
+_aufraeumen_halt = threading.Event()
+
+#: Wie oft nach faelligen geplanten Sendungen gesehen wird. Eine Minute:
+#: Der Zeitpunkt wird auf die Minute eingestellt - viel spaeter als eine
+#: Minute darf „18:00" nicht hinausgehen.
+VERSANDPLAN_NACHSEHEN_SEKUNDEN = 60
+
 
 def laeuft() -> bool:
     return _faden is not None and _faden.is_alive()
@@ -88,7 +99,74 @@ def sicherungsplan_starten() -> None:
     _sicherungsfaden.start()
 
 
+def _versandschleife() -> None:
+    """Der Versandplan — schickt Geplantes hinaus, sobald es faellig ist.
+
+    ⚠️ **Ein eigener Faden, bewusst nicht im Abgleich-Takt.** Derselbe Grund
+    wie beim Sicherungsplan: ``NEXMAIL_TAKT_SEKUNDEN=0`` heisst „nicht dauernd
+    Post holen" - nicht „geplante Mails gehen nie hinaus". Hinge der Plan am
+    Takt, laege eine fuer 18:00 geplante Mail am naechsten Morgen noch da.
+    """
+    from ..db import SessionLocal
+    from . import senden as sendedienst
+
+    while not _versand_halt.wait(VERSANDPLAN_NACHSEHEN_SEKUNDEN):
+        try:
+            with SessionLocal() as db:
+                sendedienst.faellige_geplante(db)
+        except Exception as fehler:  # noqa: BLE001
+            # Der Faden darf nie sterben - sonst bleibt Geplantes still
+            # liegen, und niemand merkt es vor dem Nachfragen des Empfaengers.
+            logger.warning("The scheduled-send check failed a round: %s", fehler)
+
+
+def versandplan_starten() -> None:
+    global _versandfaden
+
+    if _versandfaden is not None and _versandfaden.is_alive():
+        return
+    _versand_halt.clear()
+    _versandfaden = threading.Thread(
+        target=_versandschleife, name="nexmail-versandplan", daemon=True
+    )
+    _versandfaden.start()
+
+
+def _aufraeumschleife() -> None:
+    """Papierkorb und Junk nach der eingestellten Aufbewahrung leeren.
+
+    ⚠️ **Ein eigener Faden, bewusst nicht im Abgleich-Takt** — derselbe Grund
+    wie beim Sicherungs- und Versandplan: ``NEXMAIL_TAKT_SEKUNDEN=0`` heisst
+    „nicht dauernd Post holen", nicht „der Papierkorb waechst wieder ewig".
+    Ob und wie oft je Benutzer geraeumt wird, entscheidet der Dienst selbst
+    (hoechstens einmal am Tag, Merker ``aufraeumen_zuletzt``).
+    """
+    from . import aufraeumen
+
+    while not _aufraeumen_halt.wait(aufraeumen.NACHSEHEN_SEKUNDEN):
+        try:
+            aufraeumen.runde()
+        except Exception as fehler:  # noqa: BLE001
+            # Der Faden darf nie sterben - sonst hoert das Aufraeumen still
+            # auf, und der Papierkorb waechst, obwohl eine Zahl eingestellt ist.
+            logger.warning("The auto-clean check failed a round: %s", fehler)
+
+
+def aufraeumplan_starten() -> None:
+    global _aufraeumfaden
+
+    if _aufraeumfaden is not None and _aufraeumfaden.is_alive():
+        return
+    _aufraeumen_halt.clear()
+    _aufraeumfaden = threading.Thread(
+        target=_aufraeumschleife, name="nexmail-aufraeumen", daemon=True
+    )
+    _aufraeumfaden.start()
+
+
 def anhalten() -> None:
+    _aufraeumen_halt.set()
+    _versand_halt.set()
     _sicherung_halt.set()
     _halt.set()
 
@@ -135,4 +213,11 @@ def einmal() -> dict[str, int]:
     return stand
 
 
-__all__ = ["anhalten", "einmal", "laeuft", "starten"]
+__all__ = [
+    "anhalten",
+    "aufraeumplan_starten",
+    "einmal",
+    "laeuft",
+    "starten",
+    "versandplan_starten",
+]

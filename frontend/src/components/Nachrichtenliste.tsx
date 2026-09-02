@@ -11,15 +11,35 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Flag, MessagesSquare, Paperclip } from 'lucide-react'
+import {
+  Archive,
+  ChevronDown,
+  ChevronRight,
+  Flag,
+  Mail,
+  MailOpen,
+  MessagesSquare,
+  Paperclip,
+  Trash2,
+} from 'lucide-react'
 import type { Datumsgruppe } from '../lib/format'
 import { anzeigename, gruppeVon, kurzesDatum } from '../lib/format'
 import { PUNKT_KLASSE } from '../lib/farben'
+import type { WischAktion } from '../lib/wischen'
+import { wischSchwelle } from '../lib/wischen'
 import type { Konto, Nachricht } from '../daten/typen'
 import { EmptyState } from '../ds'
 import { Inbox } from 'lucide-react'
 
 const GRUPPEN: Datumsgruppe[] = ['heute', 'gestern', 'diese_woche', 'aelter']
+
+/** Wisch-Aktionen der schmalen Ansicht — was ein Zug nach links bzw. rechts
+ *  tut. Fehlt das Ganze (breite Ansicht), wischt nichts. */
+export interface Wischen {
+  links: WischAktion
+  rechts: WischAktion
+  ausfuehren: (n: Nachricht, aktion: WischAktion) => void
+}
 
 interface Props {
   nachrichten: Nachricht[]
@@ -52,6 +72,8 @@ interface Props {
   aufGruppiert?: (an: boolean) => void
   /** Einen Strang aufklappen; gibt seine Nachrichten zurück. */
   aufStrang?: (schluessel: string) => Promise<Nachricht[]>
+  /** Wischen am Finger — kommt nur in der schmalen Ansicht mit. */
+  wischen?: Wischen
 }
 
 export function Nachrichtenliste({
@@ -74,6 +96,7 @@ export function Nachrichtenliste({
   gruppiert,
   aufGruppiert,
   aufStrang,
+  wischen,
 }: Props) {
   /* Welche Stränge offen sind, samt ihrer Nachrichten.
      ⚠️ **Aufgeklappt bleibt aufgeklappt, bis man wieder klickt.** Ein Strang,
@@ -175,6 +198,7 @@ export function Nachrichtenliste({
                         anreisserZeigen={anreisserZeigen}
                         sprache={i18n.language}
                         keinBetreff={t('liste.kein_betreff')}
+                        wichtigHoch={t('liste.wichtig_hoch')}
                         strangAnzahl={istStrang ? n.strangAnzahl : undefined}
                         strangOffen={offen}
                         aufStrangKlappen={
@@ -196,6 +220,7 @@ export function Nachrichtenliste({
                         strangText={
                           offen ? t('liste.strang_zuklappen') : t('liste.strang_aufklappen')
                         }
+                        wisch={wischen}
                       />
 
                       {/* ⚠️ **Die Kopfzeile bleibt stehen.** Sie ist die
@@ -220,6 +245,8 @@ export function Nachrichtenliste({
                                 anreisserZeigen={false}
                                 sprache={i18n.language}
                                 keinBetreff={t('liste.kein_betreff')}
+                                wichtigHoch={t('liste.wichtig_hoch')}
+                                wisch={wischen}
                               />
                             </div>
                           ))}
@@ -318,11 +345,32 @@ interface ZeileProps {
   anreisserZeigen?: boolean
   sprache: string
   keinBetreff: string
+  /** Vorlesbarer Name des Ausrufezeichens bei hoher Wichtigkeit. */
+  wichtigHoch: string
   /** Gesetzt heißt: Diese Zeile ist der Kopf eines Gesprächs. */
   strangAnzahl?: number
   strangOffen?: boolean
   aufStrangKlappen?: () => void
   strangText?: string
+  /** Wischen am Finger — nur in der schmalen Ansicht gesetzt. */
+  wisch?: Wischen
+}
+
+/** Farbe und Symbol, die hinter der Zeile erscheinen, wenn man sie zieht.
+ *  ⚠️ Nur Tokens: danger fuer Loeschen, accent fuer Archivieren, info fuer
+ *  den Gelesen-Umschalter — dieselben Farben, die die Aktionen auch sonst
+ *  tragen. */
+function wischBild(aktion: WischAktion, gelesen: boolean) {
+  switch (aktion) {
+    case 'loeschen':
+      return { Symbol: Trash2, klasse: 'bg-danger' }
+    case 'archivieren':
+      return { Symbol: Archive, klasse: 'bg-accent' }
+    case 'gelesen':
+      return { Symbol: gelesen ? Mail : MailOpen, klasse: 'bg-info' }
+    default:
+      return null
+  }
 }
 
 function Zeile({
@@ -342,8 +390,113 @@ function Zeile({
   anreisserZeigen = true,
   sprache,
   keinBetreff,
+  wichtigHoch,
+  wisch,
 }: ZeileProps) {
+  /* --- Wischen: die Zeile mit dem Finger zur Seite ziehen --------------- */
+  const [zugX, setZugX] = useState(0)
+  /* Nur beim Zurueckschnappen laeuft eine Transition. Waehrend des Ziehens
+     muss die Zeile am Finger kleben — eine Transition dort macht sie zaeh. */
+  const [schnappt, setSchnappt] = useState(false)
+  /* Die Lage des laufenden Zugs. `modus` entscheidet sich frueh und dann nie
+     wieder: 'waagerecht' gehoert die Geste der Zeile, bei 'aus' dem Rollen
+     des Browsers (`touch-action: pan-y` laesst ihm genau das). */
+  const lage = useRef<{
+    id: number
+    x0: number
+    y0: number
+    breite: number
+    modus: 'offen' | 'waagerecht' | 'aus'
+  } | null>(null)
+  /* ⚠️ Nach dem Loslassen feuert der Browser noch ein `click` auf die Zeile.
+     Ohne diese Merke oeffnete jeder Wisch zusaetzlich die Nachricht. */
+  const gewischt = useRef(false)
+
+  function wischBeginn(e: React.PointerEvent<HTMLButtonElement>) {
+    // ⚠️ **Nur der Finger wischt.** Die Maus zieht Zeilen in den Ordnerbaum
+    // (HTML-Drag); dieselbe Bewegung auch als Wisch zu deuten hiesse, dass
+    // ein angefangenes Verschieben eine Mail loescht.
+    if (!wisch || e.pointerType !== 'touch') return
+    gewischt.current = false
+    setSchnappt(false)
+    lage.current = {
+      id: e.pointerId,
+      x0: e.clientX,
+      y0: e.clientY,
+      breite: e.currentTarget.clientWidth,
+      modus: 'offen',
+    }
+  }
+
+  function wischZug(e: React.PointerEvent<HTMLButtonElement>) {
+    const z = lage.current
+    if (!wisch || !z || e.pointerId !== z.id) return
+    const dx = e.clientX - z.x0
+    const dy = e.clientY - z.y0
+    if (z.modus === 'offen') {
+      // Erst entscheiden, wem die Geste gehoert — und dabei bleiben. Eine
+      // Geste, die mitten im Zug die Deutung wechselt, rollt und wischt
+      // gleichzeitig.
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+        z.modus = 'waagerecht'
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId)
+        } catch {
+          // Synthetische Zeiger (Tests) haben keinen fangbaren Zeiger — egal.
+        }
+      } else if (Math.abs(dy) > 8) {
+        z.modus = 'aus'
+      } else {
+        return
+      }
+    }
+    if (z.modus !== 'waagerecht') return
+    // Eine ausgeschaltete Richtung gibt nicht nach. Gaebe die Zeile trotzdem
+    // etwas Weg, saehe es aus, als kaeme gleich eine Aktion — und beim
+    // Loslassen passierte nichts.
+    const aktion = dx < 0 ? wisch.links : wisch.rechts
+    setZugX(aktion === 'aus' ? 0 : dx)
+  }
+
+  function wischEnde(e: React.PointerEvent<HTMLButtonElement>) {
+    const z = lage.current
+    if (!wisch || !z || e.pointerId !== z.id) return
+    lage.current = null
+    if (z.modus === 'waagerecht') {
+      gewischt.current = true
+      const dx = e.clientX - z.x0
+      const aktion = dx < 0 ? wisch.links : wisch.rechts
+      // `pointercancel` heisst: Der Browser hat die Geste an sich gerissen.
+      // Dann darf hier nichts mehr passieren, egal wie weit gezogen war.
+      if (e.type === 'pointerup' && aktion !== 'aus' && Math.abs(dx) >= wischSchwelle(z.breite)) {
+        wisch.ausfuehren(n, aktion)
+      }
+    }
+    setSchnappt(true)
+    setZugX(0)
+  }
+
+  const wischAktion = wisch && zugX !== 0 ? (zugX < 0 ? wisch.links : wisch.rechts) : null
+  const bild = wischAktion ? wischBild(wischAktion, n.gelesen) : null
+  const ueberSchwelle = Math.abs(zugX) >= wischSchwelle(lage.current?.breite ?? 0)
+
   return (
+    <div className="relative overflow-hidden">
+      {/* Farbe und Symbol hinter der Zeile sagen VOR dem Loslassen, was
+          passieren wird. Volle Deckung erst ab der Schwelle — das ist die
+          Rueckmeldung „jetzt gilt es", ohne ein Wort. */}
+      {bild && (
+        <div
+          aria-hidden
+          className={
+            `absolute inset-0 flex items-center px-5 ${bild.klasse} ` +
+            (zugX < 0 ? 'justify-end' : 'justify-start')
+          }
+          style={{ opacity: ueberSchwelle ? 1 : 0.55 }}
+        >
+          <bild.Symbol className="size-5 text-on-accent" />
+        </div>
+      )}
     <button
       type="button"
       // ⚠️ **Ziehen statt Menü — der Weg, den Outlook-Leute zuerst probieren.**
@@ -359,7 +512,30 @@ function Zeile({
         e.dataTransfer.setData('text/plain', String(ids.length))
         e.dataTransfer.effectAllowed = 'move'
       }}
-      onClick={(e) => onClick(e.ctrlKey || e.metaKey, e.shiftKey)}
+      onClick={(e) => {
+        // ⚠️ Nach einem Wisch kommt noch ein Klick hinterher — der darf die
+        // Nachricht nicht oeffnen: Man wollte wegwischen, nicht lesen.
+        if (gewischt.current) {
+          gewischt.current = false
+          return
+        }
+        onClick(e.ctrlKey || e.metaKey, e.shiftKey)
+      }}
+      onPointerDown={wisch ? wischBeginn : undefined}
+      onPointerMove={wisch ? wischZug : undefined}
+      onPointerUp={wisch ? wischEnde : undefined}
+      onPointerCancel={wisch ? wischEnde : undefined}
+      /* `touch-action: pan-y`: Senkrecht rollt der Browser wie immer, nur
+         waagerechte Zuege kommen ueberhaupt als Pointer-Events hier an. */
+      style={
+        wisch
+          ? {
+              touchAction: 'pan-y',
+              transform: `translateX(${zugX}px)`,
+              transition: schnappt ? 'transform var(--dur-fast) ease-out' : 'none',
+            }
+          : undefined
+      }
       onContextMenu={(e) => {
         // Rechtsklick waehlt die Zeile mit aus - aber nur, wenn sie nicht
         // ohnehin schon zur Mehrfachauswahl gehoert. Sonst wirkt das Menue
@@ -434,6 +610,18 @@ function Zeile({
           >
             {anzeigename(n.von)}
           </span>
+          {/* ⚠️ Nicht nur Farbe: Das Zeichen selbst plus ein vorlesbarer Name.
+              Niedrig erscheint in der Liste bewusst gar nicht — ein Zeichen
+              für „unwichtig" wäre lauter als die Post, die es meint. */}
+          {n.wichtigkeit === 'hoch' && (
+            <span
+              role="img"
+              aria-label={wichtigHoch}
+              className="shrink-0 text-[13px] leading-none font-bold text-danger"
+            >
+              !
+            </span>
+          )}
           {n.markiert && <Flag className="size-3 shrink-0 fill-current text-warning" />}
           {n.anhaenge.length > 0 && <Paperclip className="size-3 shrink-0 text-fg-4" />}
           <span className="shrink-0 text-[11px] tabular-nums text-fg-4">
@@ -450,5 +638,6 @@ function Zeile({
         )}
       </div>
     </button>
+    </div>
   )
 }

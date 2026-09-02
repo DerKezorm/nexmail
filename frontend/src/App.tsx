@@ -25,7 +25,9 @@ import {
   FolderInput,
   FolderPlus,
   FolderX,
+  Paperclip,
   PenLine,
+  Printer,
   Mail,
   MailOpen,
   ReplyAll,
@@ -45,8 +47,9 @@ import { Kontextmenue } from './components/Kontextmenue'
 import { useNachfrage } from './components/Nachfrage'
 import type { MenueEintrag } from './components/Kontextmenue'
 import { VerfassenFenster } from './components/VerfassenFenster'
-import type { Verfassart } from './components/VerfassenFenster'
+import type { Sendedaten, Verfassart } from './components/VerfassenFenster'
 import type { Ziel } from './components/Ordnerspalte'
+import { Lesebereich } from './components/Lesebereich'
 import { MailPage } from './pages/MailPage'
 import { AufgabenPage } from './pages/AufgabenPage'
 import { KontaktePage } from './pages/KontaktePage'
@@ -62,8 +65,8 @@ import {
   SEITE,
   merkpunkt,
   kontenLaden,
-  strangLaden,
   nachrichtLaden,
+  strangLaden,
   nachrichtenLaden,
   ordnerLaden,
   ordnerAnlegen,
@@ -77,8 +80,11 @@ import {
   zurueckholen,
 } from './api/laden'
 import type { Rueckweg, VolleNachricht } from './api/laden'
-import type { Konto, Nachricht, Ordner } from './daten/typen'
+import type { Ausgangseintrag, Konto, Nachricht, Ordner } from './daten/typen'
 import { useGemerkt, useSchmal } from './lib/haken'
+import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from './lib/wischen'
+import type { WischAktion } from './lib/wischen'
+import { nachrichtDrucken } from './lib/drucken'
 import type { Listenfilter } from './api/laden'
 import { zeitzoneSetzen } from './lib/format'
 
@@ -106,7 +112,7 @@ interface Menuelage {
 }
 
 export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: AppProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const schmal = useSchmal()
 
   const [ansicht, setAnsicht] = useState<Ansicht>('mail')
@@ -147,6 +153,23 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   useEffect(() => {
     void aufgabenZaehlen()
   }, [aufgabenZaehlen])
+
+  /* Der Postausgang — geplante und liegen gebliebene Sendungen. Die Zeile in
+     der Ordnerspalte erscheint nur, wenn hier etwas liegt. */
+  const [ausgaenge, setAusgaenge] = useState<Ausgangseintrag[]>([])
+  const ausgangLaden = useCallback(async () => {
+    try {
+      setAusgaenge(await api.holen<Ausgangseintrag[]>('/api/verfassen/ausgang'))
+    } catch {
+      // ⚠️ Der alte Bestand bleibt stehen, wie bei den Postfächern: Eine
+      // misslungene Auffrischung darf nicht wie ein geleerter Ausgang
+      // aussehen — dann glaubte man, die geplante Mail sei draußen.
+    }
+  }, [])
+
+  useEffect(() => {
+    void ausgangLaden()
+  }, [ausgangLaden])
 
   const [mehrLaedt, setMehrLaedt] = useState(false)
   const [amEnde, setAmEnde] = useState(false)
@@ -190,9 +213,25 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const [rueckgaengig, setRueckgaengig] = useState<{ text: string; weg: Rueckweg } | null>(null)
   const rueckUhr = useRef<number | undefined>(undefined)
 
+  /* „Senden rückholen": solange der Aufschub läuft, liegt die Nachricht im
+     Ausgang und die Leiste unten bietet „Rückgängig" an. `daten` ist der
+     Inhalt aus dem Verfassen-Fenster — er bleibt hier im Speicher, damit das
+     Fenster nach dem Rückholen sofort wieder gefüllt aufgeht, statt den
+     Umweg über den vom Abbruch angelegten Entwurf zu nehmen. */
+  const [sendeRueck, setSendeRueck] = useState<{
+    ausgangId: string
+    bis: number
+    daten: Sendedaten
+  } | null>(null)
+  const [sendeRest, setSendeRest] = useState(0)
+
   // Aus dem Reiter „Darstellung". Sie liegen im Browser, weil sie zum Gerät
   // gehören — siehe Darstellung.tsx.
   const [dichte] = useGemerkt<'kompakt' | 'normal'>('nexmail.dichte', 'normal')
+  /* Wischen in der schmalen Ansicht — die Vorgabe folgt den Tasten:
+     links = Loeschen (Entf), rechts = Archivieren (E). */
+  const [wischLinks] = useGemerkt<WischAktion>('nexmail.wisch_links', WISCH_LINKS_VORGABE)
+  const [wischRechts] = useGemerkt<WischAktion>('nexmail.wisch_rechts', WISCH_RECHTS_VORGABE)
   const [anreisserZeigen] = useGemerkt<boolean>('nexmail.anreisser', true)
   const [punkteZeigen] = useGemerkt<boolean>('nexmail.punkte', true)
   const [ordnerOffen, setOrdnerOffen] = useGemerkt('nexmail.ordnerOffen', true)
@@ -203,9 +242,14 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const [favoriten, setFavoriten] = useGemerkt<string[]>('nexmail.favoriten', [])
   const [eingeklappt, setEingeklappt] = useGemerkt<string[]>('nexmail.eingeklappt', [])
 
-  const [verfassen, setVerfassen] = useState<{ offen: boolean; art: Verfassart; bezug: Nachricht | null }>(
-    { offen: false, art: 'neu', bezug: null },
-  )
+  const [verfassen, setVerfassen] = useState<{
+    offen: boolean
+    art: Verfassart
+    bezug: Nachricht | null
+    /** Gesetzt nach „Rückgängig" beim Senden: Das Fenster öffnet mit diesem
+     *  Inhalt aus dem Speicher, statt eine Vorlage zu holen. */
+    wiederauf?: Sendedaten | null
+  }>({ offen: false, art: 'neu', bezug: null })
 
   const [reiter, setReiter] = useState<Reiter>('postfaecher')
   const [formularOffen, setFormularOffen] = useState(false)
@@ -256,6 +300,9 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     : []
 
   const listeLaden = useCallback(async () => {
+    // Der Ausgang ist keine Nachrichtenliste - er kommt aus der eigenen
+    // Warteschlange, nicht aus einem Ordner. Hier gibt es nichts zu holen.
+    if (ziel.typ === 'ausgang') return
     const id = ziel.typ === 'ordner' ? Number(ziel.id) : null
     // ⚠️ Nur die Sammelansichten werden eingeschränkt. Wer einen bestimmten
     // Ordner anklickt, hat sein Postfach schon gewählt — dort noch einmal zu
@@ -538,11 +585,21 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   /* --- Handeln --------------------------------------------------------- */
 
   const merkeRueckweg = useCallback((text: string, weg: Rueckweg | null) => {
-    window.clearTimeout(rueckUhr.current)
     if (!weg) return
     setRueckgaengig({ text, weg })
-    rueckUhr.current = window.setTimeout(() => setRueckgaengig(null), 8000)
   }, [])
+
+  /* Die 8 Sekunden der Rückgängig-Leiste. ⚠️ **Die Uhr läuft nur, solange
+     die Leiste zu sehen ist.** Steht gerade die Sende-Leiste da, wird die
+     Rückgängig-Leiste zurückgestellt — liefe ihre Uhr währenddessen weiter,
+     verfiele der einzige Rückweg eines nachfragefreien Löschens unsichtbar
+     hinter der Sende-Leiste. Erst wenn die verschwindet, beginnen die
+     8 Sekunden. */
+  useEffect(() => {
+    if (!rueckgaengig || sendeRueck) return
+    rueckUhr.current = window.setTimeout(() => setRueckgaengig(null), 8000)
+    return () => window.clearTimeout(rueckUhr.current)
+  }, [rueckgaengig, sendeRueck])
 
   const handeln = useCallback(
     async (
@@ -571,6 +628,22 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     [merkeRueckweg, listeLaden, stammLaden, t],
   )
 
+  /* Was ein Wisch tut — dieselben Wege wie die Tasten Entf und E bzw. das
+     Kontextmenue, samt der Rueckgaengig-Leiste. Der Wisch ist nur eine
+     weitere Hand am selben Hebel, kein eigener. */
+  const wischAusfuehren = useCallback(
+    (n: Nachricht, aktion: WischAktion) => {
+      if (aktion === 'loeschen') {
+        void handeln(() => zug('loeschen', [n.id]), t('rueck.geloescht'))
+      } else if (aktion === 'archivieren') {
+        void handeln(() => zug('archivieren', [n.id]), t('rueck.archiviert'))
+      } else if (aktion === 'gelesen') {
+        void flagSetzen(n.id, { gelesen: !n.gelesen })
+      }
+    },
+    [handeln, flagSetzen, t],
+  )
+
   async function zurueck() {
     if (!rueckgaengig) return
     const weg = rueckgaengig.weg
@@ -582,6 +655,82 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       await listeLaden()
       await stammLaden()
     }
+  }
+
+  /* --- Senden rückholen ------------------------------------------------- */
+
+  /* Die ablaufende Zeit der Leiste. Läuft sie aus, ist die Nachricht fällig
+     und der Versandplan schickt sie — die Leiste verschwindet, und der
+     Ausgang zeigt den Rest der Wahrheit (bis zum Versand steht sie dort). */
+  useEffect(() => {
+    if (!sendeRueck) return
+    const bis = sendeRueck.bis
+    setSendeRest(Math.max(1, Math.ceil((bis - Date.now()) / 1000)))
+    const takt = window.setInterval(() => {
+      const rest = Math.ceil((bis - Date.now()) / 1000)
+      if (rest <= 0) {
+        setSendeRueck(null)
+        void ausgangLaden()
+        void listeLaden()
+        void stammLaden()
+      } else {
+        setSendeRest(rest)
+      }
+    }, 250)
+    return () => window.clearInterval(takt)
+  }, [sendeRueck, ausgangLaden, listeLaden, stammLaden])
+
+  /* ⚠️ Wenn der Versandplan eine geplante Mail hinausschickt, klickt niemand.
+     Ohne dieses Nachsehen zeigte die offene Anwendung nach 18:00 weiter
+     „Postausgang 1", und erst „Versand abbrechen" lieferte per 409 die
+     Wahrheit. Deshalb: Liegt Geplantes, wird kurz nach der Planzeit neu
+     geladen — und solange der Eintrag danach noch dasteht (der Versandplan
+     greift im Minutentakt), alle 15 Sekunden wieder. Ohne geplante Einträge
+     läuft hier gar nichts. */
+  useEffect(() => {
+    const geplant = ausgaenge.filter((a) => a.stand === 'wartet' && a.senden_ab)
+    if (geplant.length === 0) return
+    const naechste = Math.min(...geplant.map((a) => new Date(a.senden_ab as string).getTime()))
+    const wartezeit = naechste <= Date.now() ? 15_000 : naechste - Date.now() + 5_000
+    const uhr = window.setTimeout(() => {
+      void ausgangLaden()
+      // Die Mail kann jetzt draußen sein — dann gehören auch „Gesendet"
+      // und die Zähler nachgezogen, ohne dass jemand von Hand abgleicht.
+      void listeLaden()
+      void stammLaden()
+    }, wartezeit)
+    return () => window.clearTimeout(uhr)
+  }, [ausgaenge, ausgangLaden, listeLaden, stammLaden])
+
+  async function sendenZurueckholen() {
+    if (!sendeRueck) return
+    const s = sendeRueck
+    setSendeRueck(null)
+    try {
+      const ergebnis = await api.senden<{ entwurf_uid: number }>(
+        `/api/verfassen/ausgang/${s.ausgangId}/abbrechen`,
+        {},
+      )
+      // Das Fenster geht mit dem Inhalt aus dem Speicher wieder auf — nicht
+      // mit dem Entwurf, den der Abbruch als Sicherheitsnetz abgelegt hat.
+      // ⚠️ Aber es hängt an dessen UID: Senden oder Speichern räumt diese
+      // Fassung dann auf. Ohne die UID bliebe nach jedem „Rückgängig" ein
+      // Entwurf für immer im Ordner liegen — auf allen Geräten.
+      setVerfassen({
+        offen: true,
+        art: 'neu',
+        bezug: null,
+        wiederauf: { ...s.daten, entwurf_uid: ergebnis.entwurf_uid ?? 0 },
+      })
+    } catch (f) {
+      // ⚠️ Auch „schon unterwegs" (409) soll dastehen — der Satz des Servers,
+      // nicht ein stilles Nichts. Das Fenster bleibt dann zu: Was draußen
+      // ist, ist draußen.
+      setStoerung(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+    }
+    void ausgangLaden()
+    void stammLaden()
+    void listeLaden()
   }
 
   /* --- Tastatur -------------------------------------------------------- */
@@ -635,10 +784,38 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       await abgleichen()
       await stammLaden()
       await listeLaden()
+      // Eine geplante Mail kann inzwischen hinausgegangen sein - dann soll
+      // der Postausgang das zeigen, statt weiter „wartet" zu behaupten.
+      await ausgangLaden()
     } finally {
       window.clearInterval(puls)
       setGleichtAb(false)
     }
+  }
+
+  /* --- Postausgang: geplanten Versand abbrechen ------------------------- */
+
+  async function ausgangAbbrechen(eintrag: Ausgangseintrag) {
+    // ⚠️ Erst die Folgen, dann die Frage: Die Nachricht geht nicht hinaus,
+    // aber ihr Inhalt landet als Entwurf im Postfach - nichts ist weg.
+    const ja = await fragen({
+      titel: t('ausgang.abbrechen'),
+      text: t('ausgang.abbrechen_frage'),
+      knopf: t('ausgang.abbrechen'),
+    })
+    if (ja !== true) return
+    try {
+      await api.senden(`/api/verfassen/ausgang/${eintrag.id}/abbrechen`, {})
+    } catch (f) {
+      // Auch ein 409 („schon unterwegs") soll dastehen - danach wird trotzdem
+      // neu geladen, denn genau dann stimmt die Liste nicht mehr.
+      setStoerung(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+    }
+    await ausgangLaden()
+    // Der Entwurf liegt jetzt im Entwurfsordner - Baum und Liste sollen das
+    // zeigen, ohne dass jemand von Hand abgleicht.
+    await stammLaden()
+    await listeLaden()
   }
 
   /* --- Kontextmenü ----------------------------------------------------- */
@@ -682,6 +859,24 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           symbol: <CornerUpRight />,
           deaktiviert: mehrere,
           tun: () => setVerfassen({ offen: true, art: 'weiter', bezug: n }),
+        },
+        {
+          // Weiterleiten als Anhang: Die Originalmail fährt unverändert als
+          // Roh-.eml mit — für den Empfänger, der sie prüfen soll.
+          id: 'anhang',
+          text: t('aktion.als_anhang'),
+          symbol: <Paperclip />,
+          deaktiviert: mehrere,
+          tun: () => setVerfassen({ offen: true, art: 'anhang', bezug: n }),
+        },
+        {
+          // Druckt genau eine Nachricht — die Druckseite kommt vom Server,
+          // den Druckdialog stößt `nachrichtDrucken` an.
+          id: 'drucken',
+          text: t('aktion.drucken'),
+          symbol: <Printer />,
+          deaktiviert: mehrere,
+          tun: () => nachrichtDrucken(n.id, i18n.language),
         },
         {
           id: 'gelesen',
@@ -937,12 +1132,43 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     })
   }
 
+  /* ⚠️ **„In eigenem Fenster öffnen" hatte nie eine Empfängerseite.** Der
+     Knopf öffnete `?nachricht=<id>` — und niemand las den Parameter: Das neue
+     Fenster zeigte die Startseite. Seit 0.1.0 so, aufgefallen erst am
+     02.09.2026 beim Durchtesten. Hier ist die Empfängerseite: Steht der
+     Parameter in der Adresse, zeigt dieses Fenster NUR die eine Nachricht —
+     samt Antworten/Weiterleiten über dasselbe Verfassen-Fenster wie überall. */
+  const soloId = useMemo(
+    () => new URLSearchParams(window.location.search).get('nachricht'),
+    [],
+  )
+  const [soloNachricht, setSoloNachricht] = useState<VolleNachricht | null>(null)
+  const [soloStand, setSoloStand] = useState<'laedt' | 'da' | 'fehlt'>('laedt')
+  useEffect(() => {
+    if (!soloId) return
+    nachrichtLaden(soloId)
+      .then((n) => {
+        setSoloNachricht(n)
+        setSoloStand('da')
+        document.title = `${n.betreff || t('liste.kein_betreff')} — nexmail`
+      })
+      .catch(() => setSoloStand('fehlt'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soloId])
   async function abmelden() {
     try {
       await api.senden('/api/auth/abmelden', {})
     } finally {
       aufAbmelden()
     }
+  }
+
+  function zuDenZugangsdaten() {
+    // Zum Reiter Postfaecher - die betroffene Zeile traegt dort denselben
+    // roten Hinweis, der Stift daneben oeffnet das Formular.
+    setAnsicht('einstellungen')
+    setReiter('postfaecher')
+    setSchubladeOffen(false)
   }
 
   function postfachHinzufuegen() {
@@ -952,6 +1178,54 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     setSchubladeOffen(false)
   }
 
+  /* Nach saemtlichen Hooks, damit deren Reihenfolge in beiden Zweigen gleich
+     bleibt. Das Fenster traegt bewusst weder NavRail noch Spalten: Es ist die
+     eine Nachricht, sonst nichts — geschlossen wird es wie ein Fenster. */
+  if (soloId) {
+    return (
+      <div className="flex h-full flex-col bg-canvas">
+        {soloStand === 'fehlt' ? (
+          <div className="flex flex-1 items-center justify-center p-6 text-sm text-fg-3">
+            {t('fenster.nicht_ladbar')}
+          </div>
+        ) : (
+          <Lesebereich
+            nachricht={soloNachricht}
+            laedt={soloStand === 'laedt'}
+            imEigenenFenster
+            aufVerfassen={(art, n) => setVerfassen({ offen: true, art, bezug: n })}
+          />
+        )}
+
+        <VerfassenFenster
+          offen={verfassen.offen}
+          art={verfassen.art}
+          bezug={verfassen.bezug}
+          konten={konten}
+          wiederauf={verfassen.wiederauf ?? null}
+          aufRueckholbar={(ausgangId, bis, daten) => setSendeRueck({ ausgangId, bis, daten })}
+          aufSchliessen={() => setVerfassen((v) => ({ ...v, offen: false }))}
+        />
+        {sendeRueck && (
+          <div
+            role="status"
+            className="fixed bottom-5 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line bg-surface-1 py-2 pr-2 pl-4 shadow-[var(--shadow-3)]"
+          >
+            <span className="text-[13px] tabular-nums text-fg-1">
+              {t('rueck.wird_gesendet', { n: sendeRest })}
+            </span>
+            <button
+              type="button"
+              onClick={() => void sendenZurueckholen()}
+              className="rounded-md px-2.5 py-1 text-[13px] font-medium text-accent-text transition-colors duration-[var(--dur-fast)] hover:bg-accent-soft"
+            >
+              {t('aktion.rueckgaengig')}
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
   return (
     <div className="flex h-full flex-col">
       <Kopfbanner
@@ -964,6 +1238,35 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         modus={modus}
         aufModus={aufModus}
       />
+
+      {/* ⚠️ **Abgewiesene Zugangsdaten muessen ins Gesicht.** Der Takt
+          versuchte es bis zum 02.09.2026 alle zwei Minuten stumm neu; wer das
+          Passwort beim Anbieter aendert, merkte nur, dass keine Post mehr
+          kommt. Der Banner bleibt, bis eine Anmeldung wieder GELINGT - ein
+          voruebergehend toter Server loest ihn absichtlich nicht aus. */}
+      {konten.some((k) => k.stoerung === 'anmeldung') && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-danger/40 bg-danger/15 px-4 py-2 text-[13px] text-fg-1"
+        >
+          <span className="font-medium">
+            {t('stoerung.zugangsdaten', {
+              namen: konten
+                .filter((k) => k.stoerung === 'anmeldung')
+                .map((k) => k.anzeigename)
+                .join(', '),
+            })}
+          </span>
+          <span className="text-fg-3">{t('stoerung.zugangsdaten_folge')}</span>
+          <button
+            type="button"
+            onClick={zuDenZugangsdaten}
+            className="ml-auto rounded-md px-2.5 py-1 font-medium text-danger transition-colors duration-[var(--dur-fast)] hover:bg-danger/20"
+          >
+            {t('stoerung.zugangsdaten_knopf')}
+          </button>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <NavRail
@@ -1028,6 +1331,13 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 gruppiert={gruppiert}
                 aufGruppiert={setGruppiert}
                 aufStrang={strangLaden}
+                /* ⚠️ Nur schmal: Am Schreibtisch zieht die Maus Zeilen in
+                   den Ordnerbaum — dort gibt es keinen Wisch. */
+                wischen={
+                  schmal
+                    ? { links: wischLinks, rechts: wischRechts, ausfuehren: wischAusfuehren }
+                    : undefined
+                }
                 ziehtAusKonto={ziehtAus}
                 aufAbweisung={setStoerung}
                 aufZiehen={(n) => {
@@ -1046,6 +1356,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 favoriten={favoriten}
                 eingeklappt={eingeklappt}
                 aufEinklappen={einklappenUmschalten}
+                ausgaenge={ausgaenge}
+                aufAusgangAbbrechen={(e) => void ausgangAbbrechen(e)}
               />
             </>
           )}
@@ -1078,6 +1390,12 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 setFormularOffen(offen)
                 if (!offen) void stammLaden()
               }}
+              /* ⚠️ Der rote Zugangsdaten-Banner haengt an Apps eigener
+                 Kontenliste. Ohne diese Leitung blieb er nach dem
+                 Entfernen des Postfachs stehen (02.09.2026) - dieselbe
+                 Falle wie beim zweiten Faktor: Was ich aendere, muss
+                 ich auch sehen. */
+              aufKontenGeaendert={() => void stammLaden()}
             />
           )}
 
@@ -1146,10 +1464,32 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         </div>
       )}
 
+      {/* „Senden rückholen" — dieselbe Stelle und dasselbe Muster wie der
+          Rückweg beim Verschieben/Löschen, nur mit ablaufender Zeit. Solange
+          sie läuft, liegt die Nachricht noch im Ausgang und kommt zurück. */}
+      {sendeRueck && (
+        <div
+          role="status"
+          className="fixed bottom-5 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line bg-surface-1 py-2 pr-2 pl-4 shadow-[var(--shadow-3)]"
+        >
+          <span className="text-[13px] tabular-nums text-fg-1">
+            {t('rueck.wird_gesendet', { n: sendeRest })}
+          </span>
+          <button
+            type="button"
+            onClick={() => void sendenZurueckholen()}
+            className="rounded-md px-2.5 py-1 text-[13px] font-medium text-accent-text transition-colors duration-[var(--dur-fast)] hover:bg-accent-soft"
+          >
+            {t('aktion.rueckgaengig')}
+          </button>
+        </div>
+      )}
+
       {/* Der Rückweg. Er ist der Grund, warum Löschen ohne Nachfrage
           auskommt: Nachfragen bei jeder Nachricht erzieht dazu, sie
-          wegzuklicken - dann schützen sie nicht mehr. */}
-      {rueckgaengig && (
+          wegzuklicken - dann schützen sie nicht mehr. Steht gerade die
+          Sende-Leiste da, wartet er - zwei Leisten übereinander liest niemand. */}
+      {!sendeRueck && rueckgaengig && (
         <div
           role="status"
           className="fixed bottom-5 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line bg-surface-1 py-2 pr-2 pl-4 shadow-[var(--shadow-3)]"
@@ -1189,12 +1529,16 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         art={verfassen.art}
         bezug={verfassen.bezug}
         konten={konten}
+        wiederauf={verfassen.wiederauf ?? null}
+        aufRueckholbar={(ausgangId, bis, daten) => setSendeRueck({ ausgangId, bis, daten })}
         aufSchliessen={() => setVerfassen((v) => ({ ...v, offen: false }))}
         aufGesendet={() => {
           // Die gesendete Mail liegt jetzt in „Gesendet" - der Ordner soll
-          // das auch zeigen, ohne dass man von Hand abgleicht.
+          // das auch zeigen, ohne dass man von Hand abgleicht. Und war es
+          // ein geplanter Versand, steht er ab jetzt im Postausgang.
           void listeLaden()
           void stammLaden()
+          void ausgangLaden()
         }}
       />
     </div>

@@ -329,3 +329,138 @@ def test_vcard_ausfuehren_ist_erreichbar(klient):
 
     assert antwort.status_code == 200
     assert antwort.headers["content-type"].startswith("text/vcard")
+
+
+# --- Gruppen ---------------------------------------------------------------- #
+
+
+def _gruppe_mit_mitgliedern(db, person, name="Verein"):
+    a = kontakte.anlegen(db, person, "anna@example.org", "Anna")
+    b = kontakte.anlegen(db, person, "bernd@example.org", "Bernd")
+    gruppe = kontakte.gruppe_anlegen(db, person, name)
+    kontakte.mitglieder_setzen(db, person, gruppe.id, [a.id, b.id])
+    return gruppe, a, b
+
+
+def test_gruppe_anlegen_umbenennen_entfernen(db, person):
+    gruppe, _, _ = _gruppe_mit_mitgliedern(db, person)
+
+    stand = kontakte.gruppen(db, person)
+    assert [g["name"] for g in stand] == ["Verein"]
+    assert stand[0]["mitglieder"] == 2
+    assert stand[0]["adressen"] == ["anna@example.org", "bernd@example.org"]
+
+    kontakte.gruppe_umbenennen(db, person, gruppe.id, "Vorstand")
+    assert kontakte.gruppen(db, person)[0]["name"] == "Vorstand"
+
+    kontakte.gruppe_entfernen(db, person, gruppe.id)
+    assert kontakte.gruppen(db, person) == []
+    # Auch die Zuordnungen sind weg, nicht nur die Gruppe davor.
+    assert _mitgliedszeilen(db, person) == 0
+
+
+def test_gruppe_loeschen_loescht_keine_kontakte(db, person):
+    """⚠️ Die Gruppe zeigt auf ihre Mitglieder, sie besitzt sie nicht."""
+    gruppe, _, _ = _gruppe_mit_mitgliedern(db, person)
+
+    kontakte.gruppe_entfernen(db, person, gruppe.id)
+
+    assert len(kontakte.meine(db, person)) == 2
+
+
+def test_derselbe_gruppenname_kommt_nicht_zweimal_hinein(db, person):
+    """Groß/klein trennt keine Gruppen — dieselbe Regel wie bei den Schlagworten."""
+    kontakte.gruppe_anlegen(db, person, "Verein")
+    with pytest.raises(kontakte.KontaktFehler):
+        kontakte.gruppe_anlegen(db, person, "verein")
+    with pytest.raises(kontakte.KontaktFehler):
+        kontakte.gruppe_anlegen(db, person, "   ")
+
+
+def test_mitglieder_setzen_ersetzt_den_bestand(db, person):
+    gruppe, a, b = _gruppe_mit_mitgliedern(db, person)
+    c = kontakte.anlegen(db, person, "clara@example.org", "Clara")
+
+    kontakte.mitglieder_setzen(db, person, gruppe.id, [c.id, b.id, b.id])
+
+    stand = kontakte.gruppen(db, person)[0]
+    # b und c, ohne Doppel — a ist draußen, obwohl er vorher drin war.
+    assert stand["mitglieder"] == 2
+    assert sorted(stand["mitglied_ids"]) == sorted([b.id, c.id])
+    assert a.id not in stand["mitglied_ids"]
+
+
+def test_ein_fremder_kontakt_wird_kein_mitglied(db, person):
+    """Eine fremde Kennung ist ein Fehler, kein Versehen zum Wegfiltern."""
+    gruppe = kontakte.gruppe_anlegen(db, person, "Verein")
+    anderer, _ = zweiten_benutzer_anlegen(db)
+    fremder = kontakte.anlegen(db, anderer, "fremd@example.org", "Fremd")
+
+    with pytest.raises(kontakte.KontaktFehler):
+        kontakte.mitglieder_setzen(db, person, gruppe.id, [fremder.id])
+
+    assert kontakte.gruppen(db, person)[0]["mitglieder"] == 0
+
+
+def test_ein_anderer_sieht_meine_gruppen_nicht(db, person):
+    """Die Trennung — Gruppen sind so persönlich wie das Adressbuch selbst."""
+    gruppe, _, _ = _gruppe_mit_mitgliedern(db, person)
+    anderer, _ = zweiten_benutzer_anlegen(db)
+
+    assert kontakte.gruppen(db, anderer) == []
+    # Und auch nicht anfassen: weder umbenennen noch löschen noch füllen.
+    with pytest.raises(kontakte.KontaktFehler):
+        kontakte.gruppe_umbenennen(db, anderer, gruppe.id, "meins jetzt")
+    with pytest.raises(kontakte.KontaktFehler):
+        kontakte.gruppe_entfernen(db, anderer, gruppe.id)
+    with pytest.raises(kontakte.KontaktFehler):
+        kontakte.mitglieder_setzen(db, anderer, gruppe.id, [])
+
+
+def _mitgliedszeilen(db, person) -> int:
+    """⚠️ In die Tabelle sehen, nicht in ``gruppen()``.
+
+    ``gruppen()`` verknüpft mit ``kontakt`` — eine Zuordnung auf einen
+    gelöschten Kontakt fällt dort aus dem Join und ist unsichtbar. Genau so
+    bestand die erste Fassung dieses Tests **hohl**: Die Mutationsprobe
+    (Aufräumen entfernt) blieb grün, weil der Join die Leiche versteckte.
+    """
+    from sqlalchemy import func, select
+
+    from app.models import KontaktgruppeMitglied
+
+    return (
+        db.execute(
+            select(func.count())
+            .select_from(KontaktgruppeMitglied)
+            .where(KontaktgruppeMitglied.benutzer_id == person.id)
+        ).scalar()
+        or 0
+    )
+
+
+def test_kontakt_loeschen_raeumt_die_mitgliedschaft(db, person):
+    """⚠️ Sonst bleibt die Zuordnung als Leiche in der Tabelle stehen."""
+    gruppe, a, _ = _gruppe_mit_mitgliedern(db, person)
+
+    kontakte.entfernen(db, person, a.id)
+
+    stand = kontakte.gruppen(db, person)[0]
+    assert stand["mitglieder"] == 1
+    assert a.id not in stand["mitglied_ids"]
+    assert _mitgliedszeilen(db, person) == 1
+
+
+def test_gesammelte_wegwerfen_raeumt_die_mitgliedschaften(db, person):
+    """Derselbe Fall über den Sammel-Weg: Aufgeräumtes bleibt nicht in Gruppen."""
+    konto, ordner = _postfach(db, person)
+    _mail(db, person, konto, ordner, 1, '[{"n": "Einmal", "a": "einmal@example.org"}]')
+    kontakte.einsammeln(db, person)
+    aufgeschnappt = kontakte.meine(db, person)[0]
+    gruppe = kontakte.gruppe_anlegen(db, person, "Verein")
+    kontakte.mitglieder_setzen(db, person, gruppe.id, [aufgeschnappt.id])
+
+    kontakte.gesammelte_entfernen(db, person)
+
+    assert kontakte.gruppen(db, person)[0]["mitglieder"] == 0
+    assert _mitgliedszeilen(db, person) == 0

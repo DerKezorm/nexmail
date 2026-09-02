@@ -62,8 +62,19 @@
     "fremdes_postfach": "IMAP cannot move messages between mailboxes. Forward the message instead.",
     "alles_gelesen": "Mark all as read",
     "markierte": "Flagged",
+    "postausgang": "Outbox",
     "gruppe_alle": "All",
     "gruppe_hinweis": "Shows mailboxes carrying this tag."
+  },
+  "ausgang": {
+    "leer_titel": "Nothing waiting",
+    "leer_text": "Everything that was due to go out has been sent.",
+    "geplant_fuer": "Scheduled for {{zeit}}",
+    "stand_wartet": "Waiting for the next attempt",
+    "stand_unterwegs": "Sending …",
+    "stand_gescheitert": "Failed — no further automatic attempts",
+    "abbrechen": "Cancel sending",
+    "abbrechen_frage": "The message will not be sent. Its content will be kept as a draft in the mailbox — nothing is lost."
   },
   "liste": {
     "leer_titel": "Nothing here",
@@ -74,6 +85,7 @@
     "anzahl_viele": "{{count}} messages",
     "ungelesen": "{{count}} unread",
     "kein_betreff": "(no subject)",
+    "wichtig_hoch": "High importance",
     "heute": "Today",
     "gestern": "Yesterday",
     "diese_woche": "This week",
@@ -95,6 +107,7 @@
     "antworten": "Reply",
     "allen_antworten": "Reply all",
     "weiterleiten": "Forward",
+    "als_anhang": "Forward as attachment",
     "archivieren": "Archive",
     "loeschen": "Delete",
     "markieren": "Flag",
@@ -117,7 +130,8 @@
     "auswahl_aufheben": "Clear selection",
     "weiterschreiben": "Continue writing",
     "herunterladen": "Download as .eml",
-    "im_fenster": "Open in its own window"
+    "im_fenster": "Open in its own window",
+    "drucken": "Print"
   },
   "lesen": {
     "an": "To",
@@ -128,7 +142,9 @@
     "bilder_geblockt": "Images in this message were not loaded. They would tell the sender when you opened it.",
     "bilder_anzeigen": "Show images",
     "bilder_immer": "Always from this sender",
-    "details_zeigen": "Show headers"
+    "details_zeigen": "Show headers",
+    "wichtig_hoch": "High importance",
+    "wichtig_niedrig": "This message was sent with low importance."
   },
   "verfassen": {
     "titel_neu": "New message",
@@ -147,8 +163,19 @@
     "entwurf_gespeichert": "Draft saved",
     "verwerfen": "Discard",
     "im_ausgang": "Not sent yet — the message is in the outbox and will be retried. ({{grund}})",
+    "spaeter": "Send later",
+    "spaeter_heute": "Today 6:00 PM",
+    "spaeter_morgen": "Tomorrow 8:00 AM",
+    "spaeter_eigen": "Pick a time",
+    "spaeter_planen": "Schedule",
     "schliessen_bewahrt": "Close — the draft is kept",
-    "entwurf_fehler": "The draft could not be stored. This window stays open so the text is not lost."
+    "entwurf_fehler": "The draft could not be stored. This window stays open so the text is not lost.",
+    "wichtigkeit_normal": "Importance: normal",
+    "wichtigkeit_hoch": "Importance: high",
+    "wichtigkeit_niedrig": "Importance: low",
+    "anhang_frage_titel": "Send without an attachment?",
+    "anhang_frage_text": "The text mentions an attachment, but nothing is attached. Send anyway?",
+    "empfaenger_entfernen": "Remove {{adresse}}"
   },
   "format": {
     "schriftart": "Font",
@@ -227,7 +254,14 @@
     "tags_hinweis": "Groups the mailboxes in the folder column. Enter or comma adds one.",
     "tags_platzhalter": "personal, work, club …",
     "tags_entfernen": "Remove “{{wort}}”",
-    "tags_bekannt": "Already in use:"
+    "tags_bekannt": "Already in use:",
+    "fehler_anmeldung": "Sign-in rejected — check the password",
+    "fehler_nicht_erreichbar": "Server unreachable",
+    "fehler_keine_antwort": "Server not responding",
+    "fehler_verschluesselung": "Encryption failed",
+    "fehler_unerwartet": "Unexpected server response",
+    "fehler_intern": "Error inside nexmail — see the log",
+    "entfernen": "Remove mailbox"
   },
   "einstellungen": {
     "titel": "Settings",
@@ -255,7 +289,8 @@
     "verschoben": "Message moved",
     "geloescht": "Moved to trash",
     "archiviert": "Archived",
-    "zurueckgeholt": "Moved back"
+    "zurueckgeholt": "Moved back",
+    "wird_gesendet": "Sending in {{n}} s"
   },
   "einrichtung": {
     "titel": "Set up nexmail",
@@ -328,7 +363,22 @@
     "entfernen": "Remove",
     "eingesammelt": "Recipients from Sent were added.",
     "aufgeraeumt": "Collected entries removed.",
-    "eingelesen": "{{neu}} new, {{ergaenzt}} updated."
+    "eingelesen": "{{neu}} new, {{ergaenzt}} updated.",
+    "gruppen": "Groups",
+    "gruppe_neu": "New group",
+    "gruppe_leer": "No groups yet.",
+    "gruppe_name": "Group name",
+    "gruppe_mitglieder": "Members",
+    "gruppe_mitglieder_filtern": "Filter members …",
+    "gruppe_keine_kontakte": "The address book is empty — add contacts first.",
+    "gruppe_badge_one": "Group · {{count}} member",
+    "gruppe_badge_other": "Group · {{count}} members",
+    "gruppe_zahl_one": "{{count}} member",
+    "gruppe_zahl_other": "{{count}} members",
+    "gruppe_entfernen": "Remove group",
+    "gruppe_entfernen_text_leer": "\"{{name}}\" will be removed. The group has no members.",
+    "gruppe_entfernen_text_one": "\"{{name}}\" will be removed. Its one member stays in the address book.",
+    "gruppe_entfernen_text_other": "\"{{name}}\" will be removed. Its {{count}} members stay in the address book."
   },
   "regeln": {
     "neu": "New rule",
@@ -436,7 +486,24 @@
     "gelesen_hinweis": "When an opened message counts as read.",
     "gelesen_sofort": "Immediately on opening",
     "gelesen_sekunden": "After {{n}} seconds",
-    "gelesen_hand": "Only by hand"
+    "gelesen_hand": "Only by hand",
+    "rueckholen": "Undo send",
+    "rueckholen_hinweis": "After sending, you have this long to take the message back.",
+    "rueckholen_aus": "Off",
+    "rueckholen_sekunden": "{{n}} seconds",
+    "wisch_links": "Swipe left",
+    "wisch_rechts": "Swipe right",
+    "wisch_hinweis": "Applies in the narrow view: drag a row sideways with your finger.",
+    "wisch_aus": "Off",
+    "wisch_archivieren": "Archive",
+    "wisch_loeschen": "Delete",
+    "wisch_gelesen": "Toggle read/unread",
+    "aufraeumen_titel": "Clean-up",
+    "aufraeumen_hinweis": "Older messages are deleted for good, on the server as well. Applies to you on every device.",
+    "aufraeumen_papierkorb": "Empty trash automatically",
+    "aufraeumen_junk": "Empty junk automatically",
+    "aufraeumen_aus": "Never",
+    "aufraeumen_tage": "Older than {{n}} days"
   },
   "protokoll": {
     "stufe": "Detail",
@@ -522,7 +589,11 @@
   },
   "stoerung": {
     "stamm": "Your mailboxes could not be loaded. They are not gone — the server is not answering right now.",
-    "nochmal": "Try again"
+    "nochmal": "Try again",
+    "zugangsdaten": "The mail server rejects the credentials: {{namen}}.",
+    "zugangsdaten_folge": "No new mail arrives there until the password is right.",
+    "zugangsdaten_knopf": "Open credentials",
+    "zugangsdaten_kurz": "Sign-in rejected"
   },
   "aufgaben": {
     "offen": "{{count}} open",
@@ -649,5 +720,8 @@
     "gebaut_mit": "Built with",
     "schriften": "Fonts",
     "schriften_text": "They ship inside the image rather than being fetched from Google. A mail client that phones home the moment you open it would be hard to justify — it blocks tracking pixels in other people's mail, after all."
+  },
+  "fenster": {
+    "nicht_ladbar": "The message could not be loaded. It is not gone — the sign-in in this window may have expired."
   }
 }

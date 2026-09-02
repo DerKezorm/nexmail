@@ -115,6 +115,48 @@ def _alte_fassung_wegwerfen(klient, ordner: Ordner, uid: int) -> None:
         logger.warning("The previous draft version could not be removed: %s", fehler)
 
 
+def roh_ablegen(db: Session, konto: Konto, roh: bytes) -> int:
+    """Eine fertig gebaute Mail als Entwurf ablegen.
+
+    Der Weg fuer den abgebrochenen geplanten Versand: Die Bytes liegen schon
+    fertig im Ausgang. Sie zu zerlegen und neu zu bauen koennte nur verlieren
+    (Anhaenge, Kodierungen, Kette) — nie gewinnen.
+
+    Gibt wie ``ablegen`` die UID der abgelegten Fassung zurueck — der Abbruch
+    reicht sie an die Oberflaeche weiter, damit das wieder geoeffnete Fenster
+    an dieser Fassung haengt und sie beim Senden oder Speichern ersetzt wird,
+    statt fuer immer liegen zu bleiben.
+    """
+    ordner = _ordner(konto)
+    imap_pw, _ = kontendienst.passwoerter_lesen(konto)
+    with abgleich.HALTER.schloss(konto.id):
+        klient = imapdienst.verbinden(
+            konto.imap_server,
+            konto.imap_port,
+            konto.imap_sicherheit,
+            konto.imap_benutzer,
+            imap_pw,
+        )
+        try:
+            # ⚠️ ``\Draft`` wie beim gewoehnlichen Ablegen - siehe oben: Ohne
+            # die Kennzeichnung bietet kein anderer Client Weiterschreiben an.
+            klient.append(ordner.pfad, roh, [rb"\Draft", rb"\Seen"], datetime.now(timezone.utc))
+            abgleich.ordner_abgleichen(klient, db, konto, ordner)
+            db.commit()
+        finally:
+            try:
+                klient.logout()
+            except Exception:  # noqa: BLE001
+                pass
+    # Wie in ``ablegen``: Die UID steht nach dem Abgleich in der Datenbank —
+    # die APPEND-Antwort traegt sie nur bei Servern mit UIDPLUS.
+    neue = db.execute(
+        select(func.max(Nachricht.uid)).where(Nachricht.ordner_id == ordner.id)
+    ).scalar()
+    logger.info("A cancelled outgoing message was stored as a draft.")
+    return int(neue or 0)
+
+
 def wegwerfen(db: Session, konto: Konto, uid: int) -> None:
     """Einen Entwurf endgültig entfernen — beim Senden oder beim Verwerfen.
 
@@ -143,4 +185,4 @@ def wegwerfen(db: Session, konto: Konto, uid: int) -> None:
                 pass
 
 
-__all__ = ["EntwurfFehler", "ablegen", "wegwerfen"]
+__all__ = ["EntwurfFehler", "ablegen", "roh_ablegen", "wegwerfen"]

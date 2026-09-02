@@ -124,6 +124,9 @@ class BefundAntwort(BaseModel):
 
 class KontoAntwort(BaseModel):
     id: str
+    #: 'anmeldung', wenn der Mailserver die Zugangsdaten ablehnt - die
+    #: Oberflaeche macht daraus den roten Banner. Leer = alles in Ordnung.
+    stoerung: str = ""
     #: Wie das Postfach in der Ordnerspalte heißt.
     anzeigename: str
     #: Wie der Empfänger den Absender sieht. Leer = wie ``anzeigename``.
@@ -144,6 +147,10 @@ class KontoAntwort(BaseModel):
     smtp_benutzer: str
     zuletzt_geprueft: datetime | None
     letzter_fehler: str
+    #: Die Kennung dazu (Fehlerart.*) - daraus macht die Oberflaeche den Satz
+    #: in der eingestellten Sprache. Leer bei Altbestand: dann bleibt der
+    #: gespeicherte Satz die Rueckfallebene.
+    letzter_fehler_art: str = ""
     anzahl_ordner: int
     tags: list[str]
 
@@ -152,6 +159,7 @@ def _antwort(konto) -> KontoAntwort:
     return KontoAntwort(
         id=konto.id,
         anzeigename=konto.anzeigename,
+        stoerung=konto.stoerung or "",
         absendername=konto.absendername,
         adresse=konto.adresse,
         farbe=konto.farbe,
@@ -166,6 +174,7 @@ def _antwort(konto) -> KontoAntwort:
         smtp_benutzer=konto.smtp_benutzer,
         zuletzt_geprueft=konto.zuletzt_geprueft,
         letzter_fehler=konto.letzter_fehler,
+        letzter_fehler_art=konto.letzter_fehler_art or "",
         anzahl_ordner=len(konto.ordner),
         tags=kontendienst.tags_lesen(konto),
     )
@@ -286,6 +295,15 @@ def aendern(
         konto = kontendienst.aendern(db, person, konto_id, eingabe.als_zugangsdaten())
     except kontendienst.KontoFehler as fehler:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+
+    # ⚠️ **Neue Zugangsdaten heissen: die Stoerung ist erst mal erledigt.**
+    # Sonst stuende der rote Banner nach dem Korrigieren noch bis zu zwei
+    # Minuten da (naechster Takt) und saehe aus, als haette das Speichern
+    # nichts genuetzt. Stimmt es wieder nicht, setzt der naechste Abgleich
+    # die Marke erneut - nichts geht verloren.
+    if konto.stoerung:
+        konto.stoerung = ""
+        db.commit()
     return _antwort(konto)
 
 

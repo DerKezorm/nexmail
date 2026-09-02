@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from email import message_from_bytes
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
 
@@ -47,6 +48,10 @@ class Entwurf:
     anlagen: list[Anlage] = field(default_factory=list)
     in_reply_to: str = ""
     references: list[str] = field(default_factory=list)
+    #: ``hoch`` | ``normal`` | ``niedrig``. Bei ``normal`` entsteht **keine**
+    #: Kopfzeile — so machen es alle Clients, und eine ausdrueckliche
+    #: „normal"-Zeile waere nur Rauschen.
+    wichtigkeit: str = "normal"
 
 
 def _adressen(roh: list[str]) -> list[str]:
@@ -71,6 +76,16 @@ def bauen(entwurf: Entwurf) -> tuple[bytes, str]:
 
     kennung = make_msgid(domain=entwurf.von_adresse.split("@")[-1] or None)
     nachricht["Message-ID"] = kennung
+
+    # ⚠️ **Immer beide Kopfzeilen, nicht eine.** Outlook liest ``Importance``,
+    # Thunderbird ``X-Priority`` — wer nur eine schreibt, ist fuer die Haelfte
+    # der Empfaenger eine gewoehnliche Mail.
+    if entwurf.wichtigkeit == "hoch":
+        nachricht["Importance"] = "high"
+        nachricht["X-Priority"] = "1"
+    elif entwurf.wichtigkeit == "niedrig":
+        nachricht["Importance"] = "low"
+        nachricht["X-Priority"] = "5"
 
     if entwurf.in_reply_to:
         nachricht["In-Reply-To"] = entwurf.in_reply_to
@@ -102,6 +117,18 @@ def bauen(entwurf: Entwurf) -> tuple[bytes, str]:
         if anlage.cid:
             continue
         haupt, _, unter = anlage.mime_typ.partition("/")
+        if haupt == "message" and unter.lower() == "rfc822":
+            # ⚠️ **Als Nachricht anhängen, nicht als Bytes.** Rohe Bytes würde
+            # der Inhaltsverwalter mit Base64 kodieren — und einen Base64-
+            # kodierten ``message/rfc822``-Teil kann kaum ein Empfänger
+            # öffnen, Pythons eigener Parser eingeschlossen (RFC 2046 erlaubt
+            # dort nur 7bit/8bit/binary). Das Zerlegen mit ``compat32`` lässt
+            # Kopfzeilen und Körper, wie sie sind; nur die Zeilenenden werden
+            # auf die der umgebenden Mail vereinheitlicht.
+            nachricht.add_attachment(
+                message_from_bytes(anlage.inhalt), filename=anlage.dateiname
+            )
+            continue
         nachricht.add_attachment(
             anlage.inhalt,
             maintype=haupt or "application",
@@ -159,8 +186,24 @@ def weiterleitung_betreff(betreff: str) -> str:
     return f"WG: {kern}" if kern else "WG:"
 
 
+def weiterleitung_anhang_betreff(betreff: str) -> str:
+    """Der Betreff beim Weiterleiten **als Anhang**: ``Fwd:`` vor dem Original.
+
+    ⚠️ Bewusst der ganze Originalbetreff, nicht der Kern: Im Anhang steckt die
+    Mail mit genau diesem Betreff — wer „AW: …" weiterreicht, will, dass der
+    Empfänger dieselbe Zeile liest, die er selbst vor sich hat.
+    """
+    kern = (betreff or "").strip()
+    return f"Fwd: {kern}" if kern else "Fwd:"
+
+
 def zitat_text(zerlegt: mime.Zerlegt, sprache: str = "de") -> str:
-    """Das eingerückte Zitat für die Textfassung."""
+    """Das eingerückte Zitat für die Textfassung.
+
+    ⚠️ **Zweite Pflegestelle neben ``frontend/src/i18n/``** — wie
+    ``_DRUCK_TEXTE`` in ``routers/nachrichten.py``: Eine dritte Sprache
+    braucht hier einen eigenen Zweig, sonst bekommt sie den englischen Kopf.
+    """
     kopf = (
         f"Am {zerlegt.datum:%d.%m.%Y um %H:%M} schrieb "
         f"{zerlegt.von.name or zerlegt.von.adresse}:"
@@ -196,7 +239,15 @@ def zitat_html(zerlegt: mime.Zerlegt, sprache: str = "de") -> str:
 
 
 def weiterleitung_html(zerlegt: mime.Zerlegt) -> str:
-    """Der Kopfblock, den weitergeleitete Mails tragen."""
+    """Der Kopfblock, den weitergeleitete Mails tragen.
+
+    ⚠️ **Die Trennzeile unten ist ein Vertrag mit der Oberfläche.**
+    ``frontend/src/lib/anhang.ts`` (``ZITAT_MARKEN``) schneidet den eigenen
+    Text genau an dieser Zeichenkette ab, bevor die Anhang-Erinnerung prüft.
+    Wer sie umformuliert oder übersetzt, macht die Erinnerung bei jeder
+    Weiterleitung zur Falschnachfrage — ``test_verfassen`` hält die beiden
+    Seiten deshalb wörtlich aneinander.
+    """
     zeilen = [
         ("Von", zerlegt.von.name and f"{zerlegt.von.name} <{zerlegt.von.adresse}>" or zerlegt.von.adresse),
         ("Datum", f"{zerlegt.datum:%d.%m.%Y %H:%M}"),

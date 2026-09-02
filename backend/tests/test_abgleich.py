@@ -54,12 +54,23 @@ class FalscherServer:
     def anlegen(self, pfad: str, uidvalidity: int = 100):
         self.ordner[pfad] = {"uidvalidity": uidvalidity, "nachrichten": {}}
 
-    def einwerfen(self, pfad: str, uid: int, betreff: str, gelesen=False, roh: bytes | None = None):
+    def einwerfen(
+        self,
+        pfad: str,
+        uid: int,
+        betreff: str,
+        gelesen=False,
+        roh: bytes | None = None,
+        kopfzeilen: dict[str, str] | None = None,
+    ):
         self.ordner[pfad]["nachrichten"][uid] = {
             "betreff": betreff,
             "gelesen": gelesen,
             "markiert": False,
             "roh": roh,
+            # Kopfzeilen, die ein HEADER.FIELDS-Abruf liefern soll — z. B.
+            # References, Importance oder X-Priority. Namen wie in der Mail.
+            "kopfzeilen": kopfzeilen or {},
         }
 
     # --- die Muschelschalen von IMAPClient ---------------------------- #
@@ -100,6 +111,23 @@ class FalscherServer:
             # Bei iCloud blieb jede geöffnete Mail leer, bei All-Inkl nicht.
             if any("BODY.PEEK[]" == str(f) for f in felder):
                 zeile[b"BODY[]"] = eintrag["roh"] or b""
+            # Ein HEADER.FIELDS-Abruf bekommt genau die verlangten Kopfzeilen —
+            # so wie ein echter Server, samt Schluessel ohne ``.PEEK``. Der
+            # Abgleich holt darueber References und die Wichtigkeit.
+            for feld in felder:
+                name = feld.decode() if isinstance(feld, bytes) else str(feld)
+                if not name.startswith("BODY.PEEK[HEADER.FIELDS"):
+                    continue
+                verlangt = {
+                    w.upper() for w in name[name.index("(") + 1 : name.index(")")].split()
+                }
+                zeilen = [
+                    f"{k}: {w}"
+                    for k, w in eintrag.get("kopfzeilen", {}).items()
+                    if k.upper() in verlangt
+                ]
+                schluessel = name.replace("BODY.PEEK[", "BODY[", 1).encode()
+                zeile[schluessel] = ("\r\n".join(zeilen) + "\r\n\r\n").encode() if zeilen else b""
             return_ = zeile
             antwort[uid] = return_
         return antwort
@@ -384,6 +412,76 @@ def test_ein_kaputter_ordner_stoppt_nicht_alles(db, konto, monkeypatch):
     assert db.query(Nachricht).count() == 1
 
 
+# --- Wichtigkeit ----------------------------------------------------------- #
+
+
+def test_wichtigkeit_wird_aus_beiden_kopfzeilen_gedeutet(db, konto):
+    """Outlook schreibt ``Importance``, Thunderbird ``X-Priority`` — beide
+    Wege muessen bei derselben Stufe ankommen."""
+    server = FalscherServer()
+    server.anlegen("INBOX")
+    server.einwerfen("INBOX", 1, "Outlook hoch", kopfzeilen={"Importance": "high"})
+    server.einwerfen("INBOX", 2, "Thunderbird hoch", kopfzeilen={"X-Priority": "1 (Highest)"})
+    server.einwerfen("INBOX", 3, "Rundschreiben", kopfzeilen={"X-Priority": "5 (Lowest)"})
+    server.einwerfen("INBOX", 4, "Outlook niedrig", kopfzeilen={"Importance": "low"})
+    server.einwerfen("INBOX", 5, "Gewoehnlich")
+
+    abgleich.ordner_abgleichen(server, db, konto, _posteingang(db, konto))
+
+    stand = {n.betreff: n.wichtigkeit for n in db.query(Nachricht).all()}
+    assert stand == {
+        "Outlook hoch": "hoch",
+        "Thunderbird hoch": "hoch",
+        "Rundschreiben": "niedrig",
+        "Outlook niedrig": "niedrig",
+        "Gewoehnlich": "normal",
+    }
+
+
+def test_der_bestand_wird_einmal_nachgezogen(db, konto):
+    """⚠️ ``wichtigkeit`` kam nach den ersten Abgleichen dazu. Ohne den
+    einmaligen Nachzug blieben alle Zeilen von davor auf „normal", waehrend
+    identische neue Mails ihr „!" bekamen — fuer immer."""
+    server = FalscherServer()
+    server.anlegen("INBOX")
+    server.einwerfen("INBOX", 1, "Alt und dringend", kopfzeilen={"Importance": "high"})
+    ordner = _posteingang(db, konto)
+    abgleich.ordner_abgleichen(server, db, konto, ordner)
+
+    # So sieht der Bestand von vor dem Update aus: Spalten-Vorgabe „normal",
+    # Merker noch nicht gesetzt.
+    db.query(Nachricht).one().wichtigkeit = "normal"
+    ordner.wichtigkeit_nachgezogen = False
+    db.commit()
+
+    abgleich.ordner_abgleichen(server, db, konto, ordner)
+    db.expire_all()
+
+    assert db.query(Nachricht).one().wichtigkeit == "hoch", (
+        "Die Bestandszeile blieb auf normal — der Nachzug fehlt."
+    )
+    assert _posteingang(db, konto).wichtigkeit_nachgezogen is True
+
+
+def test_normale_prioritaet_und_unsinn_bleiben_normal():
+    """⚠️ Eine kaputte Kopfzeile darf keine Mail rot anmalen."""
+    from app.services.abgleich import _wichtigkeit_deuten
+
+    assert _wichtigkeit_deuten(b"X-Priority: 3 (Normal)\r\n\r\n") == "normal"
+    assert _wichtigkeit_deuten(b"X-Priority: sehr wichtig\r\n\r\n") == "normal"
+    assert _wichtigkeit_deuten(b"Importance: dringend\r\n\r\n") == "normal"
+    assert _wichtigkeit_deuten(b"") == "normal"
+    assert _wichtigkeit_deuten(None) == "normal"
+
+
+def test_importance_gewinnt_bei_widerspruch():
+    """Es sagt woertlich, was gemeint ist — die Zahl braucht eine Deutung."""
+    from app.services.abgleich import _wichtigkeit_deuten
+
+    roh = b"Importance: low\r\nX-Priority: 1\r\n\r\n"
+    assert _wichtigkeit_deuten(roh) == "niedrig"
+
+
 # --- Vorschau -------------------------------------------------------------- #
 
 
@@ -443,3 +541,188 @@ def test_ein_schon_gesetzter_anriss_wird_beim_oeffnen_verbessert(db, konto):  # 
     abgleich.koerper_holen(server, db, nachricht)
 
     assert "=C3=" not in nachricht.anreisser, "Die kaputte Vorschau steht immer noch da."
+
+
+def test_das_umschlag_datum_behaelt_seine_zeitzone():
+    """⚠️ **Der Doppel-Versatz: +02:00 wurde als UTC gestempelt.**
+
+    IMAPClient rechnete ab Werk jedes Datum in die Systemzeit um und gab es
+    NAIV zurueck; der Abgleich stempelte UTC darauf, die Oberflaeche rechnete
+    wieder in Ortszeit — auf einem +02:00-Rechner stand an jeder Mail 09:52
+    statt 07:52. Im UTC-Container hob sich der Fehler zufaellig auf, weshalb
+    er erst am 02.09.2026 im Entwicklungsbetrieb auffiel. Seit
+    ``normalise_times=False`` kommt das Datum samt Zeitzone; hier steht fest,
+    dass es korrekt nach UTC umgerechnet wird.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.services.abgleich import _datum_aus_umschlag
+
+    plus_zwei = timezone(timedelta(hours=2))
+    wert = _datum_aus_umschlag(datetime(2026, 9, 2, 7, 52, 47, tzinfo=plus_zwei))
+    assert wert == datetime(2026, 9, 2, 5, 52, 47, tzinfo=timezone.utc), (
+        f"07:52+02:00 muss 05:52Z werden, wurde {wert.isoformat()}"
+    )
+
+    # Naiv heisst UTC — nie die Zeitzone des nexmail-Rechners raten.
+    naiv = _datum_aus_umschlag(datetime(2026, 9, 2, 5, 52, 47))
+    assert naiv == datetime(2026, 9, 2, 5, 52, 47, tzinfo=timezone.utc)
+
+    # Ohne Datum: jetzt, damit die Mail oben auffaellt statt zu verschwinden.
+    assert _datum_aus_umschlag(None).tzinfo is not None
+
+
+def test_die_verbindung_laesst_die_zeitzone_am_datum(monkeypatch):
+    """Die Verdrahtung zur Umrechnung: ``normalise_times=False`` beim Verbinden.
+
+    ⚠️ Ohne diesen Schalter kommt das Datum bereits NAIV aus der Bibliothek —
+    dann rechnet die beste Umrechnung nichts mehr richtig, denn die Zeitzone
+    ist zu dem Zeitpunkt schon weggeworfen. Der Test darueber prueft die
+    Mathematik, dieser hier, dass sie ueberhaupt etwas zu rechnen bekommt.
+    """
+    from app.services import imap as imapdienst
+
+    # ⚠️ **Die Attrappe nimmt KEIN **kwargs.** Eine, die alles schluckt,
+    # verdeckt genau den Fehler, der hier schon passiert ist: normalise_times
+    # als Konstruktor-Argument uebergeben, das der echte Konstruktor nicht
+    # kennt - TypeError bei jedem Verbindungsaufbau, und diese Attrappe blieb
+    # gruen. Die Signatur hier ist deshalb die der echten Bibliothek.
+    class Attrappe:
+        def __init__(self, host, port=None, ssl=True, timeout=None):
+            self.normalise_times = True  # Werkseinstellung der Bibliothek
+
+        def login(self, *a):
+            pass
+
+    monkeypatch.setattr(imapdienst, "IMAPClient", Attrappe)
+    klient = imapdienst.verbinden("imap.example.com", 993, "ssl", "wer", "geheim")
+
+    assert klient.normalise_times is False, (
+        "Ohne normalise_times=False liefert die Bibliothek naive Ortszeit — "
+        "der Doppel-Versatz von +2 Stunden kaeme zurueck."
+    )
+
+
+def test_abgewiesene_zugangsdaten_setzen_die_stoerungsmarke(klient, db, monkeypatch):
+    """⚠️ **Ein geaendertes Passwort heilt nie von selbst.**
+
+    Der Takt versuchte es bis zum 02.09.2026 alle zwei Minuten stumm neu —
+    wer sein Passwort beim Anbieter aenderte, merkte nur, dass keine Post
+    mehr kam. Aufgefallen an einem echten iCloud-Postfach. Die Marke am
+    Konto macht daraus den roten Banner.
+    """
+    import pytest as _pytest
+
+    from app.services import abgleich, anbieter, imap as imapdienst, konten as kontendienst
+    from conftest import einrichten
+    from test_konten import _eingabe, _guter_befund
+
+    monkeypatch.setattr(anbieter, "_holen", lambda url: None)
+    monkeypatch.setattr(kontendienst, "pruefen", lambda daten, wo="": _guter_befund())
+    einrichten(klient)
+    konto_id = klient.post("/api/konten", json=_eingabe()).json()["id"]
+
+    from app.models import Konto
+
+    konto = db.get(Konto, konto_id)
+
+    def abgewiesen(*a, **k):
+        raise imapdienst.Verbindungsfehler(
+            art=imapdienst.Fehlerart.ANMELDUNG, text="Anmeldung fehlgeschlagen.", roh="AUTHENTICATIONFAILED"
+        )
+
+    monkeypatch.setattr(imapdienst, "verbinden", abgewiesen)
+    with _pytest.raises(imapdienst.Verbindungsfehler):
+        abgleich.konto_abgleichen(db, konto, nur_posteingang=True)
+
+    db.refresh(konto)
+    assert konto.stoerung == "anmeldung"
+
+    # Und die Oberflaeche bekommt es zu sehen.
+    zeile = next(k for k in klient.get("/api/konten").json() if k["id"] == konto_id)
+    assert zeile["stoerung"] == "anmeldung"
+
+
+def test_eine_gelingende_anmeldung_raeumt_die_marke_weg(klient, db, monkeypatch):
+    from app.services import abgleich, anbieter, imap as imapdienst, konten as kontendienst
+    from conftest import einrichten
+    from test_konten import _eingabe, _guter_befund
+
+    monkeypatch.setattr(anbieter, "_holen", lambda url: None)
+    monkeypatch.setattr(kontendienst, "pruefen", lambda daten, wo="": _guter_befund())
+    einrichten(klient)
+    konto_id = klient.post("/api/konten", json=_eingabe()).json()["id"]
+
+    from app.models import Konto, Ordner
+
+    konto = db.get(Konto, konto_id)
+    konto.stoerung = "anmeldung"
+    # Keine abonnierten Ordner: Der Abgleich verbindet nur und legt auf.
+    for o in db.query(Ordner).filter(Ordner.konto_id == konto_id):
+        o.abonniert = False
+    db.commit()
+
+    class Attrappe:
+        def logout(self):
+            pass
+
+    monkeypatch.setattr(imapdienst, "verbinden", lambda *a, **k: Attrappe())
+    abgleich.konto_abgleichen(db, konto, nur_posteingang=True)
+
+    db.refresh(konto)
+    assert konto.stoerung == ""
+
+
+def test_ein_toter_server_loescht_die_marke_nicht(klient, db, monkeypatch):
+    """⚠️ Sonst raeumt ein kurzer Netzausfall genau die Meldung weg, die den
+    Betreiber zum neuen Passwort fuehren soll."""
+    import pytest as _pytest
+
+    from app.services import abgleich, anbieter, imap as imapdienst, konten as kontendienst
+    from conftest import einrichten
+    from test_konten import _eingabe, _guter_befund
+
+    monkeypatch.setattr(anbieter, "_holen", lambda url: None)
+    monkeypatch.setattr(kontendienst, "pruefen", lambda daten, wo="": _guter_befund())
+    einrichten(klient)
+    konto_id = klient.post("/api/konten", json=_eingabe()).json()["id"]
+
+    from app.models import Konto
+
+    konto = db.get(Konto, konto_id)
+    konto.stoerung = "anmeldung"
+    db.commit()
+
+    def unerreichbar(*a, **k):
+        raise imapdienst.Verbindungsfehler(
+            art=imapdienst.Fehlerart.NICHT_ERREICHBAR, text="Der Server antwortet nicht.", roh=""
+        )
+
+    monkeypatch.setattr(imapdienst, "verbinden", unerreichbar)
+    with _pytest.raises(imapdienst.Verbindungsfehler):
+        abgleich.konto_abgleichen(db, konto, nur_posteingang=True)
+
+    db.refresh(konto)
+    assert konto.stoerung == "anmeldung", "Ein Netzausfall hat die Anmelde-Stoerung geloescht."
+
+
+def test_neue_zugangsdaten_raeumen_die_marke_sofort(klient, db, monkeypatch):
+    """Der Banner darf nach dem Korrigieren nicht noch zwei Minuten stehen."""
+    from app.services import anbieter, konten as kontendienst
+    from conftest import einrichten
+    from test_konten import _eingabe, _guter_befund
+
+    monkeypatch.setattr(anbieter, "_holen", lambda url: None)
+    monkeypatch.setattr(kontendienst, "pruefen", lambda daten, wo="": _guter_befund())
+    einrichten(klient)
+    eingabe = _eingabe()
+    konto_id = klient.post("/api/konten", json=eingabe).json()["id"]
+
+    from app.models import Konto
+
+    db.get(Konto, konto_id).stoerung = "anmeldung"
+    db.commit()
+
+    antwort = klient.put(f"/api/konten/{konto_id}", json=eingabe)
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json()["stoerung"] == ""

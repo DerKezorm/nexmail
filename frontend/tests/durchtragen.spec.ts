@@ -147,6 +147,49 @@ test('Kontakt anlegen, wiederfinden, entfernen', async ({ page }) => {
   await expect(page.getByText(adresse)).toHaveCount(0, { timeout: 10_000 })
 })
 
+test('Kontaktgruppe anlegen, Mitglied ankreuzen, wieder entfernen', async ({ page }) => {
+  const roh = keineRohenMeldungen(page)
+  const adresse = 'zz-gruppen-probe@example.org'
+  const gruppenname = 'ZZ-Probe-Gruppe'
+
+  await page.getByRole('button', { name: 'Kontakte', exact: true }).click()
+
+  // Erst ein Kontakt — ohne Adressbuch gibt es nichts anzukreuzen.
+  await page.getByRole('button', { name: 'Neuer Kontakt' }).click()
+  await page.getByRole('textbox', { name: 'E-Mail-Adresse' }).fill(adresse)
+  await page.getByRole('button', { name: 'Anlegen' }).click()
+  await expect(page.getByText(adresse).first()).toBeVisible({ timeout: 10_000 })
+
+  await page.getByRole('button', { name: 'Neue Gruppe' }).click()
+  await page.getByRole('textbox', { name: 'Name der Gruppe' }).fill(gruppenname)
+  // ⚠️ Das Kaestchen selbst ist unsichtbar (sr-only) — geklickt wird das
+  // Label, genau wie ein Mensch es tut. Gemessen wird trotzdem am Zustand.
+  const kaestchen = page.getByRole('checkbox', { name: adresse })
+  await page.locator('label').filter({ hasText: adresse }).click()
+  await expect(kaestchen).toBeChecked()
+  await page.getByRole('button', { name: 'Anlegen' }).click()
+
+  // Die Wirkung: Die Gruppe steht links, und die Mitgliederzahl stimmt.
+  const zeile = page.getByRole('button', { name: new RegExp(gruppenname) })
+  await expect(
+    zeile,
+    'Die Gruppe taucht nach dem Anlegen nicht mit ihrer Mitgliederzahl auf.',
+  ).toContainText('1 Mitglied', { timeout: 10_000 })
+  expect(roh, `Rohe Server-Meldung:\n  ${roh.join('\n  ')}`).toEqual([])
+
+  // Aufräumen: Gruppe weg — über die eigene Rückfrage, nie den Browser-Kasten.
+  await zeile.click()
+  await page.getByRole('button', { name: 'Gruppe entfernen' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Gruppe entfernen' }).click()
+  await expect(page.getByText(gruppenname)).toHaveCount(0, { timeout: 10_000 })
+
+  // ⚠️ Der Kontakt lebt noch: Eine Gruppe besitzt ihre Mitglieder nicht.
+  await expect(page.getByText(adresse).first()).toBeVisible()
+  await page.getByText(adresse).first().click()
+  await page.getByRole('button', { name: 'Entfernen', exact: true }).click()
+  await expect(page.getByText(adresse)).toHaveCount(0, { timeout: 10_000 })
+})
+
 test('Absendername und Bezeichnung sind zwei Felder', async ({ page }) => {
   /* ⚠️ **Aus einer Meldung vom 01.09.2026.** Ein Feld diente beiden Zwecken:
      Wer sein Postfach in der Ordnerspalte „Arbeit" nannte, verschickte Post

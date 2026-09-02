@@ -158,6 +158,46 @@ def _anriss_aus_teil(roh: bytes | None, struktur=None) -> str:
     return bereinigen.anreisser(text)
 
 
+def _wichtigkeit_deuten(roh: bytes | None) -> str:
+    """Aus ``Importance`` und ``X-Priority`` eine von drei Stufen machen.
+
+    Zwei Kopfzeilen fuer dieselbe Sache, weil Clients verschieden lesen und
+    schreiben: Outlook setzt ``Importance: high``, Thunderbird ``X-Priority: 1``
+    — oft steht auch beides da. ``Importance`` gewinnt, wenn beide da sind und
+    sich widersprechen: Es sagt woertlich, was gemeint ist, waehrend die Zahl
+    eine Deutung braucht.
+
+    ⚠️ **Die Zahl kommt selten allein.** ``X-Priority: 1 (Highest)`` ist der
+    Normalfall — deshalb zaehlt nur die erste Ziffer. 1–2 heisst hoch, 4–5
+    niedrig, alles andere (auch Unlesbares) normal: Eine kaputte Kopfzeile
+    darf keine Mail rot anmalen.
+    """
+    if not roh:
+        return "normal"
+
+    importance = ""
+    prioritaet = ""
+    for zeile in roh.decode(errors="replace").splitlines():
+        name, getrennt, wert = zeile.partition(":")
+        if not getrennt:
+            continue
+        name = name.strip().lower()
+        if name == "importance":
+            importance = wert.strip().lower()
+        elif name == "x-priority":
+            prioritaet = wert.strip()
+
+    if importance.startswith("high"):
+        return "hoch"
+    if importance.startswith("low"):
+        return "niedrig"
+    if prioritaet[:1] in ("1", "2"):
+        return "hoch"
+    if prioritaet[:1] in ("4", "5"):
+        return "niedrig"
+    return "normal"
+
+
 def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Runde:
     """Einen Ordner auf Stand bringen."""
     runde = Runde()
@@ -209,6 +249,10 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
                 # gewoehnliche Kopfzeile. Ohne sie zerfaellt ein Strang,
                 # sobald die Nachricht dazwischen fehlt.
                 b"BODY.PEEK[HEADER.FIELDS (REFERENCES)]",
+                # Die Wichtigkeit steht ebenfalls nur in Kopfzeilen — und je
+                # nach Absender in einer von zweien. Beide holen, sonst gilt
+                # eine Outlook-Mail als normal und eine Thunderbird-Mail nicht.
+                b"BODY.PEEK[HEADER.FIELDS (IMPORTANCE X-PRIORITY)]",
             ],
         )
         frische = []
@@ -226,8 +270,22 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
     # --- Flags der jüngsten Nachrichten nachziehen ----------------------- #
     juengste = sorted(alle_uids)[-FLAGS_FENSTER:]
     if juengste:
-        flags = klient.fetch(juengste, ["FLAGS"])
-        runde.geaendert = _flags_uebernehmen(db, ordner, flags)
+        if not ordner.wichtigkeit_nachgezogen:
+            # ⚠️ **Einmaliger Nachzug des Bestands.** Die Spalte
+            # ``wichtigkeit`` kam nach den ersten Abgleichen dazu; alle
+            # Zeilen davor standen auf „normal", während identische neue
+            # Mails ihr „!" bekamen. Nachgeholt wird im selben Fenster wie
+            # die Flags — dieselbe bewusste Grenze: Was älter ist, heilt
+            # erst das Öffnen (``koerper_holen``).
+            flags = klient.fetch(
+                juengste,
+                ["FLAGS", b"BODY.PEEK[HEADER.FIELDS (IMPORTANCE X-PRIORITY)]"],
+            )
+            runde.geaendert = _flags_uebernehmen(db, ordner, flags, mit_wichtigkeit=True)
+            ordner.wichtigkeit_nachgezogen = True
+        else:
+            flags = klient.fetch(juengste, ["FLAGS"])
+            runde.geaendert = _flags_uebernehmen(db, ordner, flags)
 
     # Die Zähler kommen aus den Nachrichten, nicht aus dem, was der Server
     # gemeldet hat: Sonst stimmen sie nach einem lokalen Verschieben nicht mehr.
@@ -239,6 +297,27 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
     )
     db.commit()
     return runde
+
+
+def _datum_aus_umschlag(wert) -> "datetime":
+    """Das ENVELOPE-Datum nach UTC — ohne die Zeitzone zu verlieren.
+
+    ⚠️ **Naiv heisst hier UTC, nicht Ortszeit.** Seit ``normalise_times=False``
+    (siehe ``imap.verbinden``) liefert der Server das Datum samt Zeitzone, und
+    ``astimezone`` rechnet richtig um. Ein naives Datum kommt nur noch von
+    einem Server, der gar keine Zeitzone nennt — es als Ortszeit zu deuten
+    hiesse, die Zeitzone des **nexmail-Rechners** zu raten, und genau dieses
+    Raten hat den Fehler verursacht: Auf einem +02:00-Rechner stand an jeder
+    Mail 09:52 statt 07:52, waehrend derselbe Code im UTC-Container zufaellig
+    stimmte.
+    """
+    from datetime import datetime, timezone
+
+    if wert is None:
+        return utcnow()
+    if wert.tzinfo is None:
+        return wert.replace(tzinfo=timezone.utc)
+    return wert.astimezone(timezone.utc)
 
 
 def _aus_fetch(db: Session, konto: Konto, ordner: Ordner, uid: int, felder: dict) -> Nachricht:
@@ -269,11 +348,7 @@ def _aus_fetch(db: Session, konto: Konto, ordner: Ordner, uid: int, felder: dict
         umschlag.subject.decode(errors="replace") if umschlag and umschlag.subject else ""
     )
 
-    datum = getattr(umschlag, "date", None) or utcnow()
-    if datum.tzinfo is None:
-        from datetime import timezone
-
-        datum = datum.replace(tzinfo=timezone.utc)
+    datum = _datum_aus_umschlag(getattr(umschlag, "date", None))
 
     message_id = (
         umschlag.message_id.decode(errors="replace") if umschlag and umschlag.message_id else ""
@@ -335,6 +410,9 @@ def _aus_fetch(db: Session, konto: Konto, ordner: Ordner, uid: int, felder: dict
         markiert=rb"\Flagged" in flags,
         beantwortet=rb"\Answered" in flags,
         hat_anhang=_hat_anhang(struktur),
+        wichtigkeit=_wichtigkeit_deuten(
+            felder.get(b"BODY[HEADER.FIELDS (IMPORTANCE X-PRIORITY)]")
+        ),
         anreisser=_anriss_aus_teil(felder.get(b"BODY[1]<0>"), struktur),
     )
 
@@ -347,18 +425,26 @@ def _hat_anhang(struktur) -> bool:
     return "attachment" in text or "'name'" in text or "filename" in text
 
 
-def _flags_uebernehmen(db: Session, ordner: Ordner, antwort: dict) -> int:
+def _flags_uebernehmen(
+    db: Session, ordner: Ordner, antwort: dict, mit_wichtigkeit: bool = False
+) -> int:
     geaendert = 0
     for uid, felder in antwort.items():
         flags = felder.get(b"FLAGS", ())
+        werte: dict = {
+            "gelesen": rb"\Seen" in flags,
+            "markiert": rb"\Flagged" in flags,
+            "beantwortet": rb"\Answered" in flags,
+        }
+        if mit_wichtigkeit:
+            # Nur beim einmaligen Nachzug — siehe ``ordner_abgleichen``.
+            werte["wichtigkeit"] = _wichtigkeit_deuten(
+                felder.get(b"BODY[HEADER.FIELDS (IMPORTANCE X-PRIORITY)]")
+            )
         ergebnis = db.execute(
             update(Nachricht)
             .where(Nachricht.ordner_id == ordner.id, Nachricht.uid == uid)
-            .values(
-                gelesen=rb"\Seen" in flags,
-                markiert=rb"\Flagged" in flags,
-                beantwortet=rb"\Answered" in flags,
-            )
+            .values(**werte)
         )
         geaendert += ergebnis.rowcount or 0
     return geaendert
@@ -382,6 +468,40 @@ GANZE_MAIL = "BODY.PEEK[]"
 GANZE_MAIL_SCHLUESSEL = b"BODY[]"
 
 
+def roh_holen(konto: Konto, nachricht: Nachricht) -> bytes | None:
+    """Die eine Roh-Mail einer Nachricht beim Anbieter abholen.
+
+    Der gemeinsame Abruf für den ``.eml``-Download, die Antwort-Vorlage und
+    das Weiterleiten als Anhang — drei Stellen, ein Weg. Wer hier etwas
+    ändert (etwa den Fetch-Schlüssel), ändert es damit für alle drei.
+
+    ⚠️ **Unter dem Schloss des Kontos**, wie jede eigene Verbindung: Apple
+    lässt genau eine zu und wirft darüber hinaus einfach heraus.
+
+    ``None`` heißt: Der Server kennt die Nachricht nicht mehr — die Meldung
+    dazu formuliert der Aufrufer, denn sie klingt beim Download anders als
+    beim Antworten.
+    """
+    imap_pw, _ = kontendienst.passwoerter_lesen(konto)
+    with HALTER.schloss(konto.id):
+        klient = imapdienst.verbinden(
+            konto.imap_server,
+            konto.imap_port,
+            konto.imap_sicherheit,
+            konto.imap_benutzer,
+            imap_pw,
+        )
+        try:
+            klient.select_folder(nachricht.ordner.pfad, readonly=True)
+            antwort = klient.fetch([nachricht.uid], [GANZE_MAIL])
+        finally:
+            try:
+                klient.logout()
+            except Exception:  # noqa: BLE001
+                pass
+    return antwort.get(nachricht.uid, {}).get(GANZE_MAIL_SCHLUESSEL) or None
+
+
 def koerper_holen(klient, db: Session, nachricht: Nachricht) -> None:
     """Die ganze Mail holen, zerlegen, bereinigen und ablegen.
 
@@ -403,6 +523,11 @@ def koerper_holen(klient, db: Session, nachricht: Nachricht) -> None:
     nachricht.koerper_html = html
     nachricht.geblockte_bilder = geblockt
     nachricht.koerper_geholt = utcnow()
+    # Die Wichtigkeit noch einmal aus den echten Kopfzeilen — Zeilen von vor
+    # der Spalte stehen sonst fuer immer auf „normal". Nur der Kopfteil: Im
+    # Rumpf kann ein zitiertes „Importance: high" stehen, das keines ist.
+    kopfteil = roh.split(b"\r\n\r\n", 1)[0].split(b"\n\n", 1)[0]
+    nachricht.wichtigkeit = _wichtigkeit_deuten(kopfteil)
     # ⚠️ **Immer überschreiben, nicht nur wenn leer.** Der Anreißer aus dem
     # Teilabruf ist eine Näherung; hier liegt die ganze, dekodierte Mail vor.
     # Vorher blieb eine einmal falsch gebaute Vorschau für immer stehen — auch
@@ -443,19 +568,51 @@ def koerper_holen(klient, db: Session, nachricht: Nachricht) -> None:
 # --- Ein ganzes Konto ---------------------------------------------------- #
 
 
+def _stoerung_merken(db: Session, konto: Konto, art: str) -> None:
+    """Abgewiesene Zugangsdaten am Konto festhalten - oder wieder austragen.
+
+    ⚠️ **Nur die Anmeldung zaehlt als Stoerung.** Ein Server, der gerade nicht
+    erreichbar ist, heilt von selbst; ein geaendertes Passwort heilt nie von
+    selbst. Wer beides in denselben Banner steckt, bringt den Betreiber dazu,
+    ihn wegzuklicken - und dann uebersieht er den Fall, der sein Zutun braucht.
+    """
+    if art == imapdienst.Fehlerart.ANMELDUNG:
+        neu = "anmeldung"
+    elif art == "":
+        neu = ""
+    else:
+        # Unerreichbar, Zeitgrenze, TLS: voruebergehend. Eine bestehende
+        # Anmelde-Stoerung bleibt stehen, bis eine Anmeldung GELINGT -
+        # sonst loescht ein kurzer Netzausfall die Meldung, die den
+        # Betreiber zum neuen Passwort fuehren soll.
+        return
+    if konto.stoerung != neu:
+        konto.stoerung = neu
+        db.commit()
+        if neu:
+            logger.warning("Sign-in to the mailbox was rejected; the account is flagged.")
+        else:
+            logger.info("Sign-in to the mailbox works again; the flag was cleared.")
+
+
 def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -> dict[str, Runde]:
     """Alle (oder nur den wichtigsten) Ordner eines Kontos abgleichen."""
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
 
     ergebnis: dict[str, Runde] = {}
     with HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        try:
+            klient = imapdienst.verbinden(
+                konto.imap_server,
+                konto.imap_port,
+                konto.imap_sicherheit,
+                konto.imap_benutzer,
+                imap_pw,
+            )
+        except imapdienst.Verbindungsfehler as fehler:
+            _stoerung_merken(db, konto, fehler.art)
+            raise
+        _stoerung_merken(db, konto, "")
         try:
             ordner = [o for o in konto.ordner if o.waehlbar and o.abonniert]
             if nur_posteingang:
@@ -470,6 +627,7 @@ def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -
                     logger.warning("Folder %s could not be synced: %s", eintrag.pfad, fehler)
             konto.zuletzt_geprueft = utcnow()
             konto.letzter_fehler = ""
+            konto.letzter_fehler_art = ""
             db.commit()
         finally:
             try:

@@ -3,6 +3,12 @@
  * Deutsch und Englisch sind gebaut. Eine dritte Sprache ist eine Datei
  * daneben und ein Eintrag in SPRACHEN - sonst nichts. Deshalb steht hier
  * eine Liste und keine Handvoll verstreuter if-Zweige.
+ *
+ * ⚠️ Zwei Texte entstehen im Server und haben dort eine EIGENE Pflegestelle:
+ * die Druckseiten-Beschriftungen (_DRUCK_TEXTE in routers/nachrichten.py)
+ * und die Zitatkoepfe (zitat_text/zitat_html in services/verfassen.py).
+ * Ohne Eintrag dort faellt eine dritte Sprache an diesen Stellen auf
+ * Englisch zurueck.
  */
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
