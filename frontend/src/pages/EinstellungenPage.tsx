@@ -16,14 +16,22 @@ import type { Ich } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Darstellung } from './Darstellung'
 import { KontoFormular } from './KontoFormular'
+import { Schlagworte } from './Schlagworte'
 import { Sicherheit } from './Sicherheit'
 import { Regeln } from './Regeln'
 import { Signaturen } from './Signaturen'
+import { Textvorlagen } from './Textvorlagen'
 import { PUNKT_KLASSE } from '../lib/farben'
 import { api } from '../api/client'
 import type { KontoZeile } from '../api/client'
 
-export type Reiter = 'postfaecher' | 'regeln' | 'signaturen' | 'sicherheit' | 'darstellung'
+export type Reiter =
+  | 'postfaecher'
+  | 'regeln'
+  | 'signaturen'
+  | 'schlagworte'
+  | 'sicherheit'
+  | 'darstellung'
 
 interface Props {
   reiter: Reiter
@@ -35,6 +43,9 @@ interface Props {
   ichNeuLaden?: () => void
   /** Nach Anlegen/AEndern/Entfernen: App-weite Kontenliste nachziehen (Banner!). */
   aufKontenGeaendert?: () => void
+  /** Nach jeder AEnderung im Reiter Schlagworte: Marken und Menues der
+   *  Mail-Ansicht nachziehen — was ich aendere, muss ich auch sehen. */
+  aufSchlagworteGeaendert?: () => void
 }
 
 export function EinstellungenPage({
@@ -45,6 +56,7 @@ export function EinstellungenPage({
   ich,
   ichNeuLaden,
   aufKontenGeaendert,
+  aufSchlagworteGeaendert,
 }: Props) {
   // ⚠️ Bearbeiten und Anlegen benutzen dasselbe Formular. Getrennt zu
   // pflegen hieße zwei Stellen, an denen ein Feld fehlen kann.
@@ -90,6 +102,7 @@ export function EinstellungenPage({
             },
             { id: 'regeln', label: t('einstellungen.regeln') },
             { id: 'signaturen', label: t('einstellungen.signaturen') },
+            { id: 'schlagworte', label: t('einstellungen.schlagworte') },
             { id: 'sicherheit', label: t('einstellungen.sicherheit') },
             { id: 'darstellung', label: t('einstellungen.darstellung') },
           ]}
@@ -135,7 +148,22 @@ export function EinstellungenPage({
           ) : reiter === 'regeln' ? (
             <Regeln />
           ) : reiter === 'signaturen' ? (
-            <Signaturen />
+            /* Die Textvorlagen wohnen im selben Reiter, als eigener Abschnitt
+               darunter — beides sind Textbausteine für das Schreiben. */
+            <div className="flex flex-col gap-6">
+              <Signaturen />
+              <section className="flex flex-col gap-4 border-t border-line-subtle pt-5">
+                <div>
+                  <h2 className="mb-1 text-[13px] font-semibold text-fg-1">
+                    {t('textvorlagen.titel')}
+                  </h2>
+                  <p className="mb-0 text-[12px] text-fg-3">{t('textvorlagen.hinweis')}</p>
+                </div>
+                <Textvorlagen />
+              </section>
+            </div>
+          ) : reiter === 'schlagworte' ? (
+            <Schlagworte aufGeaendert={aufSchlagworteGeaendert} />
           ) : reiter === 'sicherheit' ? (
             <Sicherheit ich={ich} ichNeuLaden={ichNeuLaden} />
           ) : (

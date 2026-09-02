@@ -28,6 +28,20 @@ export interface Konto {
   tags: string[]
 }
 
+/** Ein Schlagwort fuer einzelne Mails — als IMAP-Keyword gespeichert.
+ *
+ *  `atom` ist das Keyword auf dem Mailserver (unveraenderlich), `name` die
+ *  Anzeige. `farbe` kommt aus derselben geprueften Palette wie die
+ *  Postfachfarben — keine eigene. */
+export interface Schlagwort {
+  id: number
+  name: string
+  atom: string
+  farbe: Postfachfarbe
+  /** Wie viele bekannte Mails das Schlagwort tragen. */
+  anzahl: number
+}
+
 export interface Ordner {
   id: string
   kontoId: string
@@ -77,6 +91,9 @@ export interface Nachricht {
   anhaenge: Anhang[]
   /** Ob die Nachricht Bilder von aussen laedt - dann wird geblockt. */
   hatFremdbilder: boolean
+  /** Die Schlagwort-Atome dieser Mail — die Definitionen dazu kommen aus
+   *  `/api/schlagworte`. */
+  schlagworte: string[]
 }
 
 /** Ein Eintrag im Postausgang — geplant oder liegen geblieben.

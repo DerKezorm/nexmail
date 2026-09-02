@@ -18,8 +18,11 @@ import { Button, Dialog, Input } from '../ds'
 interface Frage {
   titel: string
   text?: string
-  /** Gesetzt heißt: mit Eingabefeld (Ersatz für `prompt`). */
-  eingabe?: { beschriftung: string; vorgabe?: string; platzhalter?: string }
+  /** Gesetzt heißt: mit Eingabefeld (Ersatz für `prompt`).
+   *  `typ` erlaubt andere Feldarten — „datetime-local" für die Wiedervorlage:
+   *  Der Browser liest den Wert als Ortszeit, der Aufrufer macht ISO-UTC
+   *  daraus (dasselbe Muster wie „Später senden" im Verfassen-Fenster). */
+  eingabe?: { beschriftung: string; vorgabe?: string; platzhalter?: string; typ?: string }
   /** Beschriftung der bestätigenden Schaltfläche. */
   knopf?: string
   /** Rot einfärben — für alles ohne Rückweg. */
@@ -77,6 +80,7 @@ export function useNachfrage() {
         <Input
           label={frage.eingabe.beschriftung}
           placeholder={frage.eingabe.platzhalter}
+          type={frage.eingabe.typ ?? 'text'}
           value={wert}
           autoFocus
           onChange={(e) => setWert(e.target.value)}

@@ -27,6 +27,7 @@ from .deps import angemeldet
 from .middleware import BasisPfadMiddleware, SicherheitskopfMiddleware, VorgangMiddleware
 from .routers import (
     aufgaben as aufgaben_router,
+    bilder as bilder_router,
     oidc as oidc_router,
     auth,
     benutzer as benutzer_router,
@@ -38,6 +39,7 @@ from .routers import (
     nachrichten,
     protokoll as protokoll_router,
     regeln,
+    schlagworte as schlagworte_router,
     setup,
     sicherung,
     sitzungen,
@@ -108,6 +110,15 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
         "Eine Sicherung auf einer frischen Installation einspielen. Zu diesem "
         "Zeitpunkt gibt es kein Konto, das sich anmelden könnte. Schließt sich "
         "selbst, sobald ein Benutzer existiert — wie /api/setup/konto."
+    ),
+    "/api/bilder/{marke}": (
+        "Bilder aus fremden Mails, geholt vom Server. Der Abruf kommt aus dem "
+        "abgeschotteten Lesebereich — der hat eine fremde Herkunft, und das "
+        "Sitzungs-Cookie steht auf SameSite=Strict, faehrt also nicht mit "
+        "(02.09.2026 im echten Browser gemessen). Der Ausweis ist die "
+        "Unterschrift in der Adresse: Sie oeffnet genau ein Bild, gilt eine "
+        "Stunde, und ausgestellt wird sie nur einem Angemeldeten fuer eine "
+        "Mail, die ihm gehoert."
     ),
     "/api/sicherung/pruefen-vor-einrichtung": (
         "Der Blick ins Archiv, bevor es eingespielt wird — auf einer frischen "
@@ -228,6 +239,10 @@ async def lebenslauf(_: FastAPI):
     # Aufbewahrung leeren — abgeschalteter Abgleich-Takt heisst nicht
     # „der Papierkorb waechst wieder ewig".
     taktdienst.aufraeumplan_starten()
+    # ⚠️ Und die Wiedervorlage: Auch sie haengt an einem eigenen Faden —
+    # abgeschalteter Abgleich-Takt heisst nicht „weggelegte Mails kommen
+    # nie zurueck".
+    taktdienst.wiedervorlage_starten()
 
     logger.info("nexmail %s is ready.", __version__)
     try:
@@ -288,6 +303,7 @@ app.include_router(konten.router, dependencies=NUR_ANGEMELDET)
 app.include_router(kontakte.router, dependencies=NUR_ANGEMELDET)
 app.include_router(nachrichten.router, dependencies=NUR_ANGEMELDET)
 app.include_router(regeln.router, dependencies=NUR_ANGEMELDET)
+app.include_router(schlagworte_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(protokoll_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(verfassen.router, dependencies=NUR_ANGEMELDET)
 app.include_router(suche.router, dependencies=NUR_ANGEMELDET)
@@ -302,6 +318,10 @@ app.include_router(einladung_router.router)
 # vor der Einrichtung (ohne Anmeldung, siehe Liste oben) und die beiden
 # Wege danach (mit). Die Abhaengigkeit haengt deshalb am einzelnen Endpunkt.
 app.include_router(sicherung.router)
+# ⚠️ **Ohne ``NUR_ANGEMELDET``, und das ist keine Nachlaessigkeit.** Die
+# Begruendung steht oben in OEFFENTLICHE_PFADE und ausfuehrlich in
+# routers/bilder.py.
+app.include_router(bilder_router.router)
 
 
 # --- Die gebaute Oberfläche ausliefern ---------------------------------- #

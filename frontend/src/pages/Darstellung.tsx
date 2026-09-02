@@ -14,8 +14,8 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Info } from 'lucide-react'
-import { Button, Select, Switch } from '../ds'
+import { Info, Trash2 } from 'lucide-react'
+import { Button, IconButton, Select, Switch } from '../ds'
 import { api, ApiFehler } from '../api/client'
 import { useGemerkt } from '../lib/haken'
 import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from '../lib/wischen'
@@ -29,6 +29,15 @@ export type Dichte = 'kompakt' | 'normal'
 interface Aufraeumen {
   papierkorb_tage: number
   junk_tage: number
+}
+
+/* Bilder in fremden Mails — der globale Schalter und die freigegebenen
+   Absender. ⚠️ **Liegt im Server, je Benutzer**, anders als der Rest dieser
+   Seite: Das ist keine Frage des Bildschirms, sondern eine Entscheidung über
+   die eigene Post. Derselbe Grund wie beim Aufräumen. */
+interface Bilder {
+  immer_laden: boolean
+  absender: string[]
 }
 
 const AUFRAEUMEN_STUFEN = [0, 7, 14, 30, 90] as const
@@ -94,6 +103,42 @@ export function Darstellung() {
       )
       api.holen<Aufraeumen>('/api/einstellungen/aufraeumen').then(setAufraeumen).catch(() => {})
     })
+  }
+
+  /* Dieselben drei Zustände wie beim Aufräumen: noch nicht geladen · geladen ·
+     ging nicht. Ein Fehler darf nicht wie „aus" aussehen. */
+  const [bilder, setBilder] = useState<Bilder | null>(null)
+  const [bilderFehler, setBilderFehler] = useState('')
+
+  const bilderLaden = useCallback(() => {
+    setBilderFehler('')
+    api
+      .holen<Bilder>('/api/einstellungen/bilder')
+      .then(setBilder)
+      .catch(() => setBilderFehler(t('anmeldung.fehler_allgemein')))
+  }, [t])
+
+  useEffect(bilderLaden, [bilderLaden])
+
+  const bilderStellen = (immer: boolean) => {
+    if (!bilder) return
+    setBilder({ ...bilder, immer_laden: immer })
+    api
+      .aendern<Bilder>('/api/einstellungen/bilder', { immer_laden: immer })
+      .then(setBilder)
+      .catch((f) => {
+        setBilderFehler(
+          f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'),
+        )
+        bilderLaden()
+      })
+  }
+
+  const absenderEntfernen = (adresse: string) => {
+    api
+      .senden<Bilder>('/api/einstellungen/bilder/absender/entfernen', { adresse })
+      .then(setBilder)
+      .catch(() => setBilderFehler(t('anmeldung.fehler_allgemein')))
   }
 
   const stufenText = (n: number) =>
@@ -223,6 +268,65 @@ export function Darstellung() {
                 </option>
               ))}
             </Select>
+          </>
+        )}
+      </section>
+
+      <section className="mt-2 flex flex-col gap-4 border-t border-line-subtle pt-5">
+        <div className="flex flex-col gap-1">
+          <h2 className="mb-0 text-[13px] font-semibold text-fg-1">
+            {t('darstellung.bilder_titel')}
+          </h2>
+          <p className="mb-0 text-[12px] text-fg-4">{t('darstellung.bilder_hinweis')}</p>
+        </div>
+
+        {bilderFehler && (
+          <div className="flex items-center gap-3">
+            <p className="mb-0 text-[13px] text-danger">{bilderFehler}</p>
+            <Button variant="ghost" size="sm" onClick={bilderLaden}>
+              {t('stoerung.nochmal')}
+            </Button>
+          </div>
+        )}
+
+        {bilder && (
+          <>
+            <Switch
+              checked={bilder.immer_laden}
+              label={t('darstellung.bilder_immer')}
+              description={t('darstellung.bilder_immer_hinweis')}
+              onCheckedChange={bilderStellen}
+            />
+
+            <div className="flex flex-col gap-2">
+              <p className="mb-0 text-[13px] font-medium text-fg-2">
+                {t('darstellung.bilder_absender')}
+              </p>
+              {bilder.absender.length === 0 ? (
+                <p className="mb-0 text-[12px] text-fg-4">
+                  {t('darstellung.bilder_absender_leer')}
+                </p>
+              ) : (
+                <ul className="flex list-none flex-col gap-1 p-0">
+                  {bilder.absender.map((adresse) => (
+                    <li
+                      key={adresse}
+                      className="flex items-center gap-2 rounded-md border border-line bg-surface-1 px-3 py-1.5"
+                    >
+                      <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-fg-2">
+                        {adresse}
+                      </span>
+                      <IconButton
+                        icon={<Trash2 />}
+                        size="sm"
+                        label={t('darstellung.bilder_absender_entfernen', { adresse })}
+                        onClick={() => absenderEntfernen(adresse)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </>
         )}
       </section>

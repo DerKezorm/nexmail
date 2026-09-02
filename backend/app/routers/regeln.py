@@ -1,4 +1,4 @@
-"""Regeln und Signaturen."""
+"""Regeln, Signaturen und Textvorlagen."""
 
 from __future__ import annotations
 
@@ -9,8 +9,12 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from ..deps import AngemeldeterBenutzer, DbSession
-from ..models import Ordner, Regel, Signatur
-from ..services import regeln as regeldienst, signaturen as signaturdienst
+from ..models import Ordner, Regel, Signatur, Textvorlage
+from ..services import (
+    regeln as regeldienst,
+    signaturen as signaturdienst,
+    textvorlagen as vorlagendienst,
+)
 
 logger = logging.getLogger("nexmail.regeln")
 
@@ -235,3 +239,96 @@ def signatur_entfernen(signatur_id: int, person: AngemeldeterBenutzer, db: DbSes
         signaturdienst.entfernen(db, person, signatur_id)
     except signaturdienst.SignaturFehler as fehler:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+
+
+# --- Textvorlagen ----------------------------------------------------------- #
+#
+# ⚠️ **Fehler gehen als KENNUNG hinaus, nicht als Satz** — dasselbe Muster wie
+# bei den Schlagworten. Die Oberflaeche uebersetzt ``textvorlage_name_vergeben``
+# in beide Sprachen; ein deutscher Satz als ``detail`` bliebe auf Englisch
+# deutsch.
+
+
+class TextvorlagenZeile(BaseModel):
+    id: int
+    name: str
+    inhalt_html: str
+    reihenfolge: int
+
+
+class TextvorlagenEingabe(BaseModel):
+    name: str = Field(max_length=200)
+    inhalt_html: str = ""
+
+
+class TextvorlagenSortierung(BaseModel):
+    ids: list[int]
+
+
+def _vorlage(v: Textvorlage) -> TextvorlagenZeile:
+    return TextvorlagenZeile(
+        id=v.id, name=v.name, inhalt_html=v.inhalt_html, reihenfolge=v.reihenfolge
+    )
+
+
+def _vorlagen_fehler(fehler: vorlagendienst.TextvorlagenFehler) -> HTTPException:
+    kennung = str(fehler)
+    if kennung == "textvorlage_unbekannt":
+        # Fremder Besitz und „gibt es nicht" antworten gleich.
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    if kennung == "textvorlage_name_vergeben":
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=kennung)
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=kennung)
+
+
+@router.get("/textvorlagen", response_model=list[TextvorlagenZeile])
+def textvorlagen(person: AngemeldeterBenutzer, db: DbSession) -> list[TextvorlagenZeile]:
+    return [_vorlage(v) for v in vorlagendienst.meine(db, person)]
+
+
+@router.post(
+    "/textvorlagen", response_model=TextvorlagenZeile, status_code=status.HTTP_201_CREATED
+)
+def textvorlage_anlegen(
+    eingabe: TextvorlagenEingabe, person: AngemeldeterBenutzer, db: DbSession
+) -> TextvorlagenZeile:
+    try:
+        return _vorlage(vorlagendienst.anlegen(db, person, eingabe.name, eingabe.inhalt_html))
+    except vorlagendienst.TextvorlagenFehler as fehler:
+        raise _vorlagen_fehler(fehler) from fehler
+
+
+@router.put("/textvorlagen/reihenfolge", status_code=status.HTTP_204_NO_CONTENT)
+def textvorlagen_ordnen(
+    wunsch: TextvorlagenSortierung, person: AngemeldeterBenutzer, db: DbSession
+) -> None:
+    """⚠️ **Vor ``/{vorlage_id}``**, sonst schluckt die Kennung dieses Wort.
+
+    FastAPI nimmt die erste passende Route. Stuende sie darunter, landete
+    „reihenfolge" als Kennung in ``vorlage_id`` und gaebe eine
+    Pydantic-Meldung ueber eine kaputte Zahl — dasselbe Muster wie bei
+    ``/api/aufgaben/reihenfolge``.
+    """
+    vorlagendienst.ordnen(db, person, wunsch.ids)
+
+
+@router.put("/textvorlagen/{vorlage_id}", response_model=TextvorlagenZeile)
+def textvorlage_aendern(
+    vorlage_id: int, eingabe: TextvorlagenEingabe, person: AngemeldeterBenutzer, db: DbSession
+) -> TextvorlagenZeile:
+    try:
+        return _vorlage(
+            vorlagendienst.aendern(db, person, vorlage_id, eingabe.name, eingabe.inhalt_html)
+        )
+    except vorlagendienst.TextvorlagenFehler as fehler:
+        raise _vorlagen_fehler(fehler) from fehler
+
+
+@router.delete("/textvorlagen/{vorlage_id}", status_code=status.HTTP_204_NO_CONTENT)
+def textvorlage_entfernen(
+    vorlage_id: int, person: AngemeldeterBenutzer, db: DbSession
+) -> None:
+    try:
+        vorlagendienst.entfernen(db, person, vorlage_id)
+    except vorlagendienst.TextvorlagenFehler as fehler:
+        raise _vorlagen_fehler(fehler) from fehler

@@ -71,10 +71,14 @@ class Server(FalscherServer):
     def search(self, kriterien):
         if kriterien and kriterien[0] == "HEADER":
             gesucht = kriterien[2]
+            # ⚠️ Wie ein echter Server: ``SEARCH HEADER`` ist nach RFC 3501
+            # ein TEILSTRING-Vergleich. Ein Doppelgaenger, der exakt
+            # vergleicht, machte den Exakt-Filter im Code unpruefbar — und
+            # verdeckte, dass eine Kennung in einer anderen stecken kann.
             return [
                 uid
                 for uid, e in self.ordner[self._aktuell]["nachrichten"].items()
-                if e.get("message_id") == gesucht
+                if gesucht in (e.get("message_id") or "")
             ]
         return sorted(self.ordner[self._aktuell]["nachrichten"])
 

@@ -8,7 +8,16 @@
  */
 import { api } from './client'
 import type { KontoZeile, OrdnerZeile } from './client'
-import type { Anhang, Konto, Nachricht, Ordner, OrdnerRolle, Person, Postfachfarbe } from '../daten/typen'
+import type {
+  Anhang,
+  Konto,
+  Nachricht,
+  Ordner,
+  OrdnerRolle,
+  Person,
+  Postfachfarbe,
+  Schlagwort,
+} from '../daten/typen'
 
 interface ApiPerson {
   name: string
@@ -32,6 +41,7 @@ interface ApiZeile {
   strang_ungelesen?: number
   thread_key?: string
   groesse: number
+  schlagworte?: string[]
 }
 
 interface ApiAnhang {
@@ -48,6 +58,7 @@ interface ApiVoll extends ApiZeile {
   html: string
   text: string
   geblockte_bilder: number
+  absender_freigegeben: boolean
   anhaenge: ApiAnhang[]
 }
 
@@ -78,6 +89,7 @@ function zeile(z: ApiZeile): Nachricht {
     strangAnzahl: z.strang_anzahl,
     strangUngelesen: z.strang_ungelesen,
     strangSchluessel: z.thread_key,
+    schlagworte: z.schlagworte ?? [],
   }
 }
 
@@ -147,6 +159,8 @@ export async function nachrichtenLaden(
   grenze = SEITE,
   /** Einen Strang zu einer Zeile zusammenfassen. */
   gruppiert = false,
+  /** Nur Mails mit diesem Schlagwort-Atom. Leer heißt: alle. */
+  schlagwort = '',
 ): Promise<Nachricht[]> {
   // ⚠️ **Gefiltert wird im Server.** Die Liste hier hält nur die neuesten 200
   // Zeilen — im Browser gefiltert fände „markiert" die Mail von vor drei
@@ -159,6 +173,10 @@ export async function nachrichtenLaden(
      hieße, bei vollem Posteingang drei Mails zu zeigen und zu behaupten, mehr
      gebe es nicht. Genau der Fehler, den `filter` weiter oben schon meidet. */
   if (kontoIds.length) frage.set('konto_ids', kontoIds.join(','))
+  /* ⚠️ **Auch der Schlagwort-Filter läuft im Server** — dieselbe Regel wie
+     beim ungelesen-Filter: Im Browser gefiltert fände er die markierte Mail
+     von vor drei Monaten nie und meldete „keine". */
+  if (schlagwort) frage.set('schlagwort', schlagwort)
   if (nurMarkierte) {
     frage.set('filter', 'markiert')
   } else {
@@ -233,6 +251,10 @@ export interface VolleNachricht extends Nachricht {
   html: string
   text: string
   geblockteBilder: number
+  /** Ist dieser Absender dauerhaft freigegeben? Dann bietet der Balken das
+   *  nicht noch einmal an — und er erscheint ohnehin nicht, weil die Bilder
+   *  schon drin sind. */
+  absenderFreigegeben: boolean
   echteAnhaenge: Anhang[]
 }
 
@@ -246,6 +268,7 @@ export async function nachrichtLaden(id: string): Promise<VolleNachricht> {
     html: roh.html,
     text: roh.text,
     geblockteBilder: roh.geblockte_bilder,
+    absenderFreigegeben: roh.absender_freigegeben,
     hatFremdbilder: roh.geblockte_bilder > 0,
     echteAnhaenge: roh.anhaenge
       .filter((a) => !a.inline)
@@ -266,9 +289,26 @@ export async function nachrichtLaden(id: string): Promise<VolleNachricht> {
   }
 }
 
-export async function bilderAnzeigen(id: string): Promise<string> {
-  const antwort = await api.senden<{ html: string }>(`/api/nachrichten/${id}/bilder`, {})
+/* Die Bilder holen — der Server tut es, nicht der Browser.
+ *
+ * ⚠️ **Was zurückkommt, enthält keine fremde Adresse mehr.** Jedes Bild zeigt
+ * auf `/api/bilder/<Marke>`; nur so kommt es an der Inhaltsregel vorbei, die
+ * der abgeschottete Lesebereich erbt. Von 0.1.0 bis 0.3.0 stand hier die echte
+ * Adresse, und der Knopf tat deshalb sichtbar nichts.
+ *
+ * `absenderMerken` ist der zweite Knopf im Hinweisbalken: „Immer von diesem
+ * Absender". */
+export async function bilderAnzeigen(id: string, absenderMerken = false): Promise<string> {
+  const antwort = await api.senden<{ html: string }>(`/api/nachrichten/${id}/bilder`, {
+    absender_merken: absenderMerken,
+  })
   return antwort.html
+}
+
+/** Eine Absender-Freigabe zurücknehmen — der „Rückgängig" im Balken und der
+ *  Papierkorb in den Einstellungen gehen beide hier durch. */
+export async function absenderVergessen(adresse: string): Promise<void> {
+  await api.senden('/api/einstellungen/bilder/absender/entfernen', { adresse })
 }
 
 export async function abgleichen(): Promise<{ neu: number; entfernt: number; ordner: number }> {
@@ -320,6 +360,70 @@ export async function zurueckholen(weg: Rueckweg): Promise<Zugergebnis> {
 
 export async function ordnerLeeren(ordnerId: string): Promise<Zugergebnis> {
   return api.senden(`/api/nachrichten/ordner/${Number(ordnerId)}/leeren`, {})
+}
+
+// --- Schlagworte --------------------------------------------------------- //
+
+export async function schlagworteLaden(): Promise<Schlagwort[]> {
+  return api.holen<Schlagwort[]>('/api/schlagworte')
+}
+
+export async function schlagwortAnlegen(name: string): Promise<Schlagwort> {
+  return api.senden<Schlagwort>('/api/schlagworte', { name })
+}
+
+/** Ein Schlagwort an Mails hängen oder von ihnen nehmen.
+ *
+ * ⚠️ Der Server schreibt es **erst als IMAP-Keyword zum Anbieter** und zieht
+ * dann seine Datenbank nach — geht es dort nicht, ändert sich auch hier
+ * nichts. Ein Server ohne eigene Keywords antwortet mit der Kennung
+ * `schlagworte_nicht_unterstuetzt`; die Aufrufstelle übersetzt sie.
+ */
+export async function schlagwortSetzen(
+  ids: string[],
+  atom: string,
+  setzen: boolean,
+): Promise<void> {
+  const pfad = `/api/nachrichten/schlagworte/${encodeURIComponent(atom)}`
+  const koerper = { ids: ids.map(Number) }
+  if (setzen) await api.senden(pfad, koerper)
+  else await api.loeschen(pfad, koerper)
+}
+
+// --- Wiedervorlage -------------------------------------------------------- //
+
+/** Ein wartender Wiedervorlage-Eintrag, Feldnamen wie beim Server.
+ *  `nachricht_id` ist die **aktuelle** Zeile der Mail, frisch über die
+ *  Message-ID nachgeschlagen — daran hängt die Aufwach-Marke in der Liste. */
+export interface WiedervorlageEintrag {
+  id: number
+  konto_id: string
+  nachricht_id: number | null
+  message_id: string
+  /** ISO-UTC — wann die Mail zurückkommt. */
+  aufwachen: string
+  zurueck_pfad: string
+  betreff: string
+}
+
+export async function wiedervorlagenLaden(): Promise<WiedervorlageEintrag[]> {
+  return api.holen<WiedervorlageEintrag[]>('/api/nachrichten/wiedervorlage')
+}
+
+/** Eine Mail bis zu einem Zeitpunkt weglegen.
+ *
+ * ⚠️ Der Server verschiebt sie **erst per IMAP** in den Ordner „Wiedervorlage"
+ * und legt dann den Merker an — scheitert das Verschieben, entsteht keiner.
+ * Zweimal weggelegt ersetzt den Eintrag, erzeugt keinen zweiten.
+ */
+export async function wiedervorlegen(
+  nachrichtId: string,
+  aufwachenIso: string,
+): Promise<WiedervorlageEintrag> {
+  return api.senden<WiedervorlageEintrag>('/api/nachrichten/wiedervorlage', {
+    nachricht_id: Number(nachrichtId),
+    aufwachen: aufwachenIso,
+  })
 }
 
 /** Alle Nachrichten eines Gesprächs — über alle Ordner, älteste zuerst.

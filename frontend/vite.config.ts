@@ -14,11 +14,28 @@ import tailwindcss from '@tailwindcss/vite'
 // uvicorn scheitert dann beim Start mit einem Fehler, den man erst im
 // Protokoll sieht. Im Container laeuft nexmail weiterhin auf 8000 - dort ist
 // es allein.
+/* ⚠️ **In der Entwicklungsumgebung gab es die Inhaltsregel gar nicht.**
+ * Das Dokument liefert Vite, den `Content-Security-Policy`-Kopf setzt nur das
+ * Backend — also traf er hier nie zu. Genau daran ist der Fehler
+ * „Bilder anzeigen tut nichts" drei Fassungen lang vorbeigelaufen: Lokal
+ * erschienen die Bilder, im Container nicht, und der abgeschottete Lesebereich
+ * meldet den Verstoss nicht einmal in der Konsole.
+ *
+ * Nachgezogen wird **nur `img-src`**, und das mit Absicht: Die vollständige
+ * Regel des Servers (`script-src 'self'`, kein `ws:` in `connect-src`) würde
+ * Vites eigenes Nachladen abwürgen. Was hier steht, ist die eine Zeile, an der
+ * sich Bilder entscheiden — der Rest wird im Container geprüft.
+ */
+const BILDREGEL = "img-src 'self' data: blob:"
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5175,
     strictPort: true,
+    headers: {
+      'Content-Security-Policy': BILDREGEL,
+    },
     proxy: {
       '/api': { target: 'http://127.0.0.1:8010', changeOrigin: false },
     },

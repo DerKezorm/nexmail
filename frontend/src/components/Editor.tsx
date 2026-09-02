@@ -56,9 +56,12 @@ interface Props {
   aufAendern: (html: string) => void
   /** Ein eingefügtes Bild soll als Anhang mitfahren, nicht als data:-URI. */
   aufBild: (datei: File) => Promise<string>
+  /** Reicht die Editor-Instanz nach draußen — für Befehle an der
+   *  Schreibmarke (Textvorlage einfügen). `null`, sobald sie weg ist. */
+  aufEditor?: (editor: TiptapEditor | null) => void
 }
 
-export function Editor({ inhalt, aufAendern, aufBild }: Props) {
+export function Editor({ inhalt, aufAendern, aufBild, aufEditor }: Props) {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: false }),
@@ -98,6 +101,12 @@ export function Editor({ inhalt, aufAendern, aufBild }: Props) {
       },
     },
   })
+
+  useEffect(() => {
+    aufEditor?.(editor)
+    return () => aufEditor?.(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor])
 
   // Wenn von außen ein anderer Startinhalt kommt (andere Nachricht), muss der
   // Editor ihn übernehmen — sonst steht die vorige Antwort noch drin.

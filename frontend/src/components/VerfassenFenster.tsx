@@ -15,12 +15,14 @@
  * ist. Die Mail liegt dann im Ausgang — geschlossen zu werden, während man
  * nicht weiß, ob sie draußen ist, ist der schlechteste aller Zustände.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronsDown, ChevronsUp, Clock, Minus, Paperclip, PenLine, Send, Trash2, X } from 'lucide-react'
+import { ChevronsDown, ChevronsUp, Clock, FileText, Minus, Paperclip, PenLine, Send, Trash2, X } from 'lucide-react'
+import type { Editor as TiptapEditor } from '@tiptap/react'
 import { Button, IconButton } from '../ds'
 import { Adressfeld } from './Adressfeld'
 import { Editor } from './Editor'
+import type { TextvorlagenZeile } from '../pages/Textvorlagen'
 import { useNachfrage } from './Nachfrage'
 import { api, ApiFehler } from '../api/client'
 import type { Konto, Nachricht } from '../daten/typen'
@@ -151,6 +153,18 @@ export function VerfassenFenster({
   const [eigenerZeitpunkt, setEigenerZeitpunkt] = useState('')
   const planRef = useRef<HTMLDivElement | null>(null)
 
+  /* Das Menü „Vorlage": wiederkehrende Antworten aus den Einstellungen. Ein
+     Klick fügt den Baustein an der Schreibmarke ein — dafür hält `editorRef`
+     die Tiptap-Instanz. Keine Vorlagen ist kein leeres Menü: Der eine
+     Eintrag sagt es und verweist auf die Einstellungen. */
+  const [vorlagen, setVorlagen] = useState<TextvorlagenZeile[] | null>(null)
+  /* ⚠️ Ein gescheiterter Abruf ist von „da ist nichts" zu unterscheiden —
+     sonst behauptet das Menue „Noch keine Vorlagen", obwohl es welche gibt. */
+  const [vorlagenFehler, setVorlagenFehler] = useState(false)
+  const [vorlagenOffen, setVorlagenOffen] = useState(false)
+  const vorlagenRef = useRef<HTMLDivElement | null>(null)
+  const editorRef = useRef<TiptapEditor | null>(null)
+
   /* „Senden rückholen" aus Einstellungen → Darstellung, in Sekunden. 0 heißt
      aus — dann verhält sich Senden exakt wie bisher. Eingestellt geht die
      Nachricht als kurzer Plan hinaus (senden_ab = jetzt + Aufschub), und die
@@ -172,6 +186,36 @@ export function VerfassenFenster({
     document.addEventListener('mousedown', beiKlick)
     return () => document.removeEventListener('mousedown', beiKlick)
   }, [planOffen])
+
+  useEffect(() => {
+    if (!vorlagenOffen) return
+    function beiKlick(e: MouseEvent) {
+      if (vorlagenRef.current && !vorlagenRef.current.contains(e.target as Node)) {
+        setVorlagenOffen(false)
+      }
+    }
+    document.addEventListener('mousedown', beiKlick)
+    return () => document.removeEventListener('mousedown', beiKlick)
+  }, [vorlagenOffen])
+
+  /* Die Vorlagen kommen beim Öffnen des Fensters — nicht erst beim Öffnen des
+     Menüs, sonst stünde dort beim ersten Klick kurz gar nichts. Ein Fehlschlag
+     wird als solcher gemerkt: Das Menü sagt dann „ließ sich nicht laden" mit
+     einem Eintrag zum Nachholen — nicht „Noch keine Vorlagen". */
+  const vorlagenLaden = useCallback(async () => {
+    try {
+      setVorlagen(await api.holen<TextvorlagenZeile[]>('/api/textvorlagen'))
+      setVorlagenFehler(false)
+    } catch {
+      setVorlagenFehler(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!offen) return
+    setVorlagenOffen(false)
+    void vorlagenLaden()
+  }, [offen, vorlagenLaden])
 
   /* --- Öffnen: Vorlage holen ------------------------------------------- */
 
@@ -701,7 +745,14 @@ export function VerfassenFenster({
         {laedt ? (
           <div className="min-h-0 flex-1" />
         ) : (
-          <Editor inhalt={html} aufAendern={setHtml} aufBild={bildEinfuegen} />
+          <Editor
+            inhalt={html}
+            aufAendern={setHtml}
+            aufBild={bildEinfuegen}
+            aufEditor={(e) => {
+              editorRef.current = e
+            }}
+          />
         )}
 
         {anlagen.length > 0 && (
@@ -825,6 +876,69 @@ export function VerfassenFenster({
               {t('verfassen.anhang')}
             </span>
           </label>
+
+          {/* „Vorlage" — ein Klick fügt den Baustein an der Schreibmarke
+              ein. Dasselbe Menümuster wie „Später senden" und das Mehr-Menü
+              des Lesebereichs (aria-haspopup). */}
+          <div ref={vorlagenRef} className="relative">
+            <Button
+              variant="ghost"
+              iconLeft={<FileText className="size-4" />}
+              aria-expanded={vorlagenOffen}
+              aria-haspopup="menu"
+              onClick={() => setVorlagenOffen((o) => !o)}
+            >
+              {t('verfassen.vorlage')}
+            </Button>
+
+            {vorlagenOffen && (
+              <div
+                role="menu"
+                aria-label={t('verfassen.vorlage')}
+                className="absolute bottom-full left-0 z-10 mb-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-line bg-surface-1 p-1 shadow-[var(--shadow-3)]"
+              >
+                {vorlagenFehler ? (
+                  /* ⚠️ Ein Fehler darf nicht wie Leere aussehen: Der Eintrag
+                     sagt, dass der Abruf scheiterte, und holt auf Klick nach. */
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void vorlagenLaden()}
+                    className="w-full px-2.5 py-1.5 text-left text-[13px] text-danger hover:bg-surface-3"
+                  >
+                    {t('verfassen.vorlagen_fehler')}
+                  </button>
+                ) : (vorlagen ?? []).length === 0 ? (
+                  /* ⚠️ Kein leeres Menü: Der eine Eintrag sagt, dass es keine
+                     Vorlagen gibt — und wo man sie anlegt. */
+                  <p
+                    role="menuitem"
+                    aria-disabled="true"
+                    className="mb-0 px-2.5 py-1.5 text-[13px] text-fg-3"
+                  >
+                    {t('verfassen.vorlagen_leer')}
+                  </p>
+                ) : (
+                  (vorlagen ?? []).map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setVorlagenOffen(false)
+                        // An der Schreibmarke, nicht ans Ende: Tiptap fügt an
+                        // der aktuellen Auswahl ein.
+                        editorRef.current?.chain().focus().insertContent(v.inhalt_html).run()
+                      }}
+                      className="block w-full truncate rounded-md px-2.5 py-1.5 text-left text-[13px] text-fg-1 transition-colors duration-[var(--dur-fast)] hover:bg-surface-3"
+                    >
+                      {v.name}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Wichtigkeit: ein Knopf, drei Stufen im Kreis — Vorgabe normal.
               ⚠️ Der Name trägt die aktuelle Stufe. Ein Symbol, das nur die

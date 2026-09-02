@@ -25,6 +25,11 @@ export interface MenueEintrag {
   deaktiviert?: boolean
   /** Untermenue, z. B. die Ordnerliste bei "Verschieben". */
   unter?: MenueEintrag[]
+  /** Gesetzt heisst: Dieser Eintrag ist ein Umschalter (menuitemcheckbox)
+   *  und traegt bei `true` ein Haekchen — z. B. ein gesetztes Schlagwort.
+   *  ⚠️ Nicht nur das Haekchen zeichnen: `aria-checked` muss mit, sonst ist
+   *  der Zustand fuer Vorleseprogramme unsichtbar. */
+  aktiv?: boolean
   tun?: () => void
 }
 
@@ -46,9 +51,12 @@ export function Kontextmenue({ x, y, eintraege, aufSchliessen }: Props) {
   function bedienbare(): HTMLButtonElement[] {
     const el = kasten.current
     if (!el) return []
-    return [...el.querySelectorAll<HTMLButtonElement>(':scope > div > [role="menuitem"]')].filter(
-      (b) => !b.disabled,
-    )
+    // Auch die Umschalter (menuitemcheckbox) gehoeren zur Pfeilnavigation.
+    return [
+      ...el.querySelectorAll<HTMLButtonElement>(
+        ':scope > div > [role="menuitem"], :scope > div > [role="menuitemcheckbox"]',
+      ),
+    ].filter((b) => !b.disabled)
   }
 
   /** Pfeiltasten, Pos1 und Ende. Ohne sie kommt man mit der Tastatur zwar
@@ -82,7 +90,9 @@ export function Kontextmenue({ x, y, eintraege, aufSchliessen }: Props) {
     })
     // Der Fokus wandert ins Menue. Bliebe er auf der Nachrichtenzeile,
     // wuerden die Pfeiltasten die Liste bewegen statt das Menue.
-    el.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus()
+    el.querySelector<HTMLButtonElement>(
+      '[role="menuitem"]:not(:disabled), [role="menuitemcheckbox"]:not(:disabled)',
+    )?.focus()
   }, [x, y])
 
   useEffect(() => {
@@ -148,6 +158,25 @@ export function Kontextmenue({ x, y, eintraege, aufSchliessen }: Props) {
   )
 }
 
+/** Das Haekchen eines gesetzten Umschalters. Nur Zierde — den Zustand traegt
+ *  `aria-checked` am Knopf. */
+function Haken() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className="!size-3.5 shrink-0 text-accent-text"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m5 13 4 4L19 7" />
+    </svg>
+  )
+}
+
 interface ZeileProps {
   eintrag: MenueEintrag
   unterOffen: boolean
@@ -164,7 +193,8 @@ function Zeile({ eintrag, unterOffen, aufUnter, aufSchliessen }: ZeileProps) {
       <div className="relative" onMouseEnter={() => aufUnter(hatUnter)} onMouseLeave={() => aufUnter(false)}>
         <button
           type="button"
-          role="menuitem"
+          role={eintrag.aktiv === undefined ? 'menuitem' : 'menuitemcheckbox'}
+          aria-checked={eintrag.aktiv === undefined ? undefined : eintrag.aktiv}
           disabled={eintrag.deaktiviert}
           aria-haspopup={hatUnter || undefined}
           aria-expanded={hatUnter ? unterOffen : undefined}
@@ -187,6 +217,7 @@ function Zeile({ eintrag, unterOffen, aufUnter, aufSchliessen }: ZeileProps) {
         >
           {eintrag.symbol}
           <span className="min-w-0 flex-1 truncate">{eintrag.text}</span>
+          {eintrag.aktiv && <Haken />}
           {hatUnter && <span className="shrink-0 text-fg-4">›</span>}
         </button>
 
@@ -196,20 +227,36 @@ function Zeile({ eintrag, unterOffen, aufUnter, aufSchliessen }: ZeileProps) {
             style={{ width: BREITE }}
             className="absolute top-0 left-full z-[61] max-h-[320px] overflow-y-auto rounded-lg border border-line bg-surface-1 py-1 shadow-[var(--shadow-3)]"
           >
+            {/* ⚠️ Dieselben Eigenschaften wie auf der obersten Ebene:
+                `deaktiviert` und `trennerDavor` gelten auch hier. Ein
+                Untermenue, das sie stumm verschluckt, laesst einen bewusst
+                gesperrten Eintrag („Heute Abend" nach 18 Uhr) klickbar. */}
             {eintrag.unter!.map((u) => (
-              <button
-                key={u.id}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  u.tun?.()
-                  aufSchliessen()
-                }}
-                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-2 transition-colors duration-[var(--dur-fast)] hover:bg-surface-3 hover:text-fg-1 [&>svg]:size-4 [&>svg]:shrink-0"
-              >
-                {u.symbol}
-                <span className="min-w-0 flex-1 truncate">{u.text}</span>
-              </button>
+              <div key={u.id}>
+                {u.trennerDavor && <div aria-hidden className="my-1 h-px bg-line-subtle" />}
+                <button
+                  type="button"
+                  role={u.aktiv === undefined ? 'menuitem' : 'menuitemcheckbox'}
+                  aria-checked={u.aktiv === undefined ? undefined : u.aktiv}
+                  disabled={u.deaktiviert}
+                  onClick={() => {
+                    u.tun?.()
+                    aufSchliessen()
+                  }}
+                  className={
+                    'flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] ' +
+                    'transition-colors duration-[var(--dur-fast)] [&>svg]:size-4 [&>svg]:shrink-0 ' +
+                    'disabled:cursor-not-allowed disabled:opacity-40 ' +
+                    (u.gefaehrlich
+                      ? 'text-danger hover:bg-danger-soft'
+                      : 'text-fg-2 hover:bg-surface-3 hover:text-fg-1')
+                  }
+                >
+                  {u.symbol}
+                  <span className="min-w-0 flex-1 truncate">{u.text}</span>
+                  {u.aktiv && <Haken />}
+                </button>
+              </div>
             ))}
           </div>
         )}

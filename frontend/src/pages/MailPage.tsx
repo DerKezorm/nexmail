@@ -15,8 +15,9 @@ import { Nachrichtenliste } from '../components/Nachrichtenliste'
 import type { Wischen } from '../components/Nachrichtenliste'
 import { Ordnerspalte } from '../components/Ordnerspalte'
 import type { Ziel } from '../components/Ordnerspalte'
+import type { MenueEintrag } from '../components/Kontextmenue'
 import { IconButton } from '../ds'
-import type { Ausgangseintrag, Konto, Nachricht, Ordner } from '../daten/typen'
+import type { Ausgangseintrag, Konto, Nachricht, Ordner, Schlagwort } from '../daten/typen'
 import type { VolleNachricht } from '../api/laden'
 import type { Verfassart } from '../components/VerfassenFenster'
 
@@ -65,6 +66,14 @@ interface Props {
   wischen?: Wischen
   filter?: 'alle' | 'ungelesen' | 'markiert'
   aufFilter?: (f: 'alle' | 'ungelesen') => void
+  /** Die Schlagwort-Definitionen — Marken in Liste und Lesebereich. */
+  schlagworte?: Schlagwort[]
+  /** Gewähltes Schlagwort-Atom der Filterzeile. Leer heißt: alle. */
+  schlagwortFilter?: string
+  aufSchlagwortFilter?: (atom: string) => void
+  /** Ein Schlagwort an einer Mail umschalten (Lesebereich). */
+  aufSchlagwort?: (n: Nachricht, atom: string, setzen: boolean) => void
+  aufNeuesSchlagwort?: (n: Nachricht) => void
   /** Fallengelassen über einem Ordner. */
   aufAblegen?: (ordnerId: string, ids: string[]) => void
   /** Aus welchem Postfach gerade gezogen wird. */
@@ -81,6 +90,12 @@ interface Props {
   /** Der Postausgang — geplante und liegen gebliebene Sendungen. */
   ausgaenge: Ausgangseintrag[]
   aufAusgangAbbrechen: (eintrag: Ausgangseintrag) => void
+  /** Wartende Wiedervorlage-Eintraege je Postfach (kontoId → Zahl). */
+  wiedervorlageZahlen?: Record<string, number>
+  /** Aufwach-Zeitpunkte je Nachricht-Kennung (ISO) — Marken in der Liste. */
+  aufwachZeiten?: Record<string, string>
+  /** Das Untermenü „Wiedervorlage" für „Weitere Aktionen" im Lesebereich. */
+  wiedervorlageMenue?: (n: Nachricht) => MenueEintrag[]
 }
 
 export function MailPage(p: Props) {
@@ -165,6 +180,9 @@ export function MailPage(p: Props) {
         anreisserZeigen={p.anreisserZeigen}
         filter={ziel.typ === 'markiert' ? 'markiert' : p.filter}
         aufFilter={p.aufFilter}
+        schlagworte={p.schlagworte}
+        schlagwortFilter={p.schlagwortFilter}
+        aufSchlagwortFilter={p.aufSchlagwortFilter}
         aufMehr={p.aufMehr}
         mehrLaedt={p.mehrLaedt}
         amEnde={p.amEnde}
@@ -172,6 +190,7 @@ export function MailPage(p: Props) {
         aufGruppiert={p.aufGruppiert}
         aufStrang={p.aufStrang}
         wischen={p.wischen}
+        aufwachZeiten={p.aufwachZeiten}
       />
     )
 
@@ -180,6 +199,7 @@ export function MailPage(p: Props) {
       gruppe={p.gruppe}
       aufGruppe={p.aufGruppe}
       ausgangZahl={p.ausgaenge.length}
+      wiedervorlageZahlen={p.wiedervorlageZahlen}
       konten={p.konten}
       ordner={p.ordner}
       ziel={ziel}
@@ -215,6 +235,10 @@ export function MailPage(p: Props) {
                 laedt={p.offeneLaedt}
                 aufVerfassen={(art, n) => p.aufVerfassen(art, n)}
                 istEntwurf={p.istEntwurf}
+                schlagworte={p.schlagworte}
+                aufSchlagwort={p.aufSchlagwort}
+                aufNeuesSchlagwort={p.aufNeuesSchlagwort}
+                wiedervorlageMenue={p.wiedervorlageMenue}
               />
             </div>
           </div>
@@ -291,6 +315,10 @@ export function MailPage(p: Props) {
           laedt={p.offeneLaedt}
           aufVerfassen={(art, n) => p.aufVerfassen(art, n)}
           istEntwurf={p.istEntwurf}
+          schlagworte={p.schlagworte}
+          aufSchlagwort={p.aufSchlagwort}
+          aufNeuesSchlagwort={p.aufNeuesSchlagwort}
+          wiedervorlageMenue={p.wiedervorlageMenue}
         />
       </div>
     </div>

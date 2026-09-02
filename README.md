@@ -26,12 +26,12 @@ Roundcube is webmail bolted onto one mailbox. Thunderbird does not run in a
 browser. Commercial clients want to pull your mail onto their servers. nexmail
 is the third option — and if you can use Outlook, you should feel at home.
 
-> **Version 0.3.0.** It reads, writes, searches, sorts, sends, schedules,
-> prints and backs itself up. It is used daily by its author against real
-> iCloud and IMAP mailboxes, and more than 600 automated tests watch over it —
-> including a suite that runs in a real browser. It is still young: try it on
-> a mailbox you can afford to have trouble with before you point it at the one
-> that matters.
+> **Version 0.4.0.** It reads, writes, searches, sorts, labels, sends,
+> schedules, prints and backs itself up. It is used daily by its author
+> against real iCloud and IMAP mailboxes, and close to 800 automated tests
+> watch over it — including a suite that runs in a real browser. It is still
+> young: try it on a mailbox you can afford to have trouble with before you
+> point it at the one that matters.
 
 The screenshots below show a throwaway instance filled with invented mail.
 Every address in them is under `example.com`, `example.org` or
@@ -92,9 +92,29 @@ archives or deletes, with the same undo as everywhere else.
 **Mailbox groups.** Tag mailboxes (`personal`, `work`, `club`) and switch
 between them above the folder tree.
 
+**Labels.** Colour a message *Important*, *Work*, *Later*. They are stored as
+IMAP keywords on the server, not in nexmail's database, so they outlive nexmail
+and show up in Thunderbird and on your phone. Labels another client set appear
+here too, with a name and a colour of their own.
+
+**Follow-up.** Park a message until this evening, tomorrow or next week. It
+moves into a real *Follow-up* folder on the server and comes back when it is
+due — visible from every other client, not a note that only nexmail knows.
+
+**Text templates.** The paragraphs you write again and again, kept once and
+dropped into a message from the compose window.
+
 **HTML mail, defused.** Server-side sanitising with an allow-list, images
 unhooked until you ask for them, and an iframe sandbox without scripts. The same
 sanitising runs on what *you* write, on the way out.
+
+When you do ask for the images, **nexmail's server fetches them, your browser
+never does**. The sender learns that the message was opened, which is the price
+of seeing the pictures in any client, but not your address, your browser or
+anything else about you. Allow a sender for good with one click, or switch the
+asking off entirely under *Appearance*. Addresses inside your own network are
+refused: a message pointing at `http://192.168.x.x/reset` would otherwise make
+the server a remote control for your home network.
 
 ## What it is not
 

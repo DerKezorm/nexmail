@@ -13,6 +13,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Archive,
+  Check,
+  Clock,
   CornerUpLeft,
   CornerUpRight,
   Download,
@@ -24,16 +26,20 @@ import {
   MoreHorizontal,
   Paperclip,
   PenLine,
+  Plus,
   Printer,
   ReplyAll,
+  Tag,
   Trash2,
 } from 'lucide-react'
-import type { Nachricht } from '../daten/typen'
+import type { Nachricht, Schlagwort } from '../daten/typen'
 import type { VolleNachricht } from '../api/laden'
-import { bilderAnzeigen } from '../api/laden'
+import { absenderVergessen, bilderAnzeigen } from '../api/laden'
 import { anzeigename, groesse, initialen, langesDatum } from '../lib/format'
+import { Schlagwortmarke } from './Schlagwortmarke'
 import { Button, EmptyState, IconButton } from '../ds'
 import { Kontextmenue } from './Kontextmenue'
+import type { MenueEintrag } from './Kontextmenue'
 import { appPfad } from '../lib/basis'
 import { nachrichtDrucken } from '../lib/drucken'
 
@@ -47,6 +53,18 @@ interface Props {
    *  entfaellt dann. Ein Fenster, das sich selbst noch einmal oeffnet,
    *  ergibt keinen Sinn - aufgefallen am 02.09.2026. */
   imEigenenFenster?: boolean
+  /** Die Schlagwort-Definitionen — fuer die Marken im Kopf und das
+   *  Untermenue unter „Weitere Aktionen". */
+  schlagworte?: Schlagwort[]
+  /** Ein Schlagwort an dieser Mail umschalten. Fehlt der Rueckruf (eigenes
+   *  Fenster), gibt es das Untermenue nicht. */
+  aufSchlagwort?: (n: Nachricht, atom: string, setzen: boolean) => void
+  /** „Neues Schlagwort…" — fragt nach dem Namen und setzt es gleich. */
+  aufNeuesSchlagwort?: (n: Nachricht) => void
+  /** Das Untermenü „Wiedervorlage" — dieselben Einträge wie im Kontextmenü
+   *  der Liste, aus derselben Quelle in `App` gebaut. Fehlt der Rückruf
+   *  (eigenes Fenster), gibt es den Eintrag nicht. */
+  wiedervorlageMenue?: (n: Nachricht) => MenueEintrag[]
 }
 
 export function Lesebereich({
@@ -55,16 +73,43 @@ export function Lesebereich({
   aufVerfassen,
   istEntwurf = false,
   imEigenenFenster = false,
+  schlagworte = [],
+  aufSchlagwort,
+  aufNeuesSchlagwort,
+  wiedervorlageMenue,
 }: Props) {
   const { t, i18n } = useTranslation()
   const [freigegeben, setFreigegeben] = useState<string | null>(null)
+  /* Die Adresse, die gerade dauerhaft freigegeben wurde — für die
+     Bestätigungszeile samt „Rückgängig". `null` heißt: nichts gemerkt. */
+  const [gemerkt, setGemerkt] = useState<string | null>(null)
+  const [bilderFehler, setBilderFehler] = useState(false)
   // Das Menü hinter „Weitere Aktionen" — dieselbe Kontextmenü-Zutat wie beim
   // Rechtsklick in der Liste, nur unter dem Knopf aufgeklappt.
   const [mehrMenue, setMehrMenue] = useState<{ x: number; y: number } | null>(null)
 
   // Beim Wechsel der Nachricht sind Bilder wieder geblockt. Alles andere wäre
   // eine Erlaubnis, die man einmal gibt und danach nie wieder sieht.
-  useEffect(() => setFreigegeben(null), [nachricht?.id])
+  useEffect(() => {
+    setFreigegeben(null)
+    setGemerkt(null)
+    setBilderFehler(false)
+  }, [nachricht?.id])
+
+  /* ⚠️ **Der Balken bleibt stehen und sagt es, wenn es schiefgeht.** Ein
+     geschluckter Fehler und ein Knopf ohne Wirkung sind derselbe Fehler — und
+     genau der stand hier drei Fassungen lang. */
+  const bilderZeigen = async (merken: boolean) => {
+    if (!nachricht) return
+    setBilderFehler(false)
+    try {
+      const html = await bilderAnzeigen(nachricht.id, merken)
+      setFreigegeben(html)
+      if (merken) setGemerkt(nachricht.von.adresse)
+    } catch {
+      setBilderFehler(true)
+    }
+  }
 
   const inhalt = freigegeben ?? nachricht?.koerper ?? ''
   const seite = useMemo(() => (nachricht ? rahmenInhalt(inhalt) : ''), [nachricht, inhalt])
@@ -176,6 +221,55 @@ export function Lesebereich({
                 symbol: <Paperclip />,
                 tun: () => aufVerfassen('anhang', nachricht),
               },
+              // „Wiedervorlage" — dieselben Zeitpunkte wie im Kontextmenü
+              // der Liste, aus derselben Quelle gebaut.
+              ...(wiedervorlageMenue
+                ? [
+                    {
+                      id: 'wiedervorlage',
+                      text: t('wiedervorlage.menue'),
+                      symbol: <Clock />,
+                      unter: wiedervorlageMenue(nachricht),
+                    } satisfies MenueEintrag,
+                  ]
+                : []),
+              // Das Schlagwort-Untermenue — dieselben Eintraege wie im
+              // Kontextmenue der Liste: Farbpunkt + Name, Haekchen wenn
+              // gesetzt, Klick schaltet um.
+              ...(aufSchlagwort
+                ? [
+                    {
+                      id: 'schlagwort',
+                      text: t('schlagworte.menue'),
+                      symbol: <Tag />,
+                      unter: [
+                        ...schlagworte.map((s): MenueEintrag => {
+                          const gesetzt = (nachricht.schlagworte ?? []).some(
+                            (a) => a.toLowerCase() === s.atom.toLowerCase(),
+                          )
+                          return {
+                            id: `schlagwort-${s.id}`,
+                            text: s.name,
+                            aktiv: gesetzt,
+                            symbol: <Schlagwortmarke farbe={s.farbe} />,
+                            tun: () => aufSchlagwort(nachricht, s.atom, !gesetzt),
+                          }
+                        }),
+                        ...(aufNeuesSchlagwort
+                          ? [
+                              {
+                                id: 'schlagwort-neu',
+                                text: t('schlagworte.neu'),
+                                symbol: <Plus />,
+                                trennerDavor: schlagworte.length > 0,
+                                tun: () => aufNeuesSchlagwort(nachricht),
+                              } satisfies MenueEintrag,
+                            ]
+                          : []),
+                      ],
+                    } satisfies MenueEintrag,
+                  ]
+                : []),
             ]}
             aufSchliessen={() => setMehrMenue(null)}
           />
@@ -193,6 +287,27 @@ export function Lesebereich({
             )}
             {nachricht.betreff || t('liste.kein_betreff')}
           </h1>
+
+          {/* Die Schlagworte — hier beschriftet, nicht nur als Punkt: Im
+              Lesebereich ist Platz, und der Name IST die Auskunft. */}
+          {(nachricht.schlagworte ?? []).length > 0 && (
+            <ul className="mb-3 flex list-none flex-wrap gap-1.5 p-0">
+              {(nachricht.schlagworte ?? []).map((atom) => {
+                const def = schlagworte.find(
+                  (s) => s.atom.toLowerCase() === atom.toLowerCase(),
+                )
+                return (
+                  <li
+                    key={atom}
+                    className="flex items-center gap-1.5 rounded-pill border border-line bg-surface-2 px-2 py-0.5 text-[11px] text-fg-2"
+                  >
+                    <Schlagwortmarke farbe={def?.farbe ?? 1} />
+                    {def?.name ?? atom}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
 
           {/* Niedrig ist im Lesebereich ein Satz, kein Zeichen — wer die Mail
               schon offen hat, braucht keinen Alarm, nur die Auskunft. */}
@@ -234,14 +349,43 @@ export function Lesebereich({
         {nachricht.geblockteBilder > 0 && freigegeben === null && (
           <div className="mx-6 mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-warning/40 bg-warning-soft px-4 py-3">
             <ImageOff className="size-4 shrink-0 text-warning" />
-            <p className="mb-0 min-w-0 flex-1 text-[13px] text-fg-2">{t('lesen.bilder_geblockt')}</p>
+            <p className="mb-0 min-w-[140px] flex-1 text-[13px] text-fg-2">
+              {bilderFehler ? t('lesen.bilder_ging_nicht') : t('lesen.bilder_geblockt')}
+            </p>
+            <Button size="sm" onClick={() => void bilderZeigen(false)}>
+              {t('lesen.bilder_anzeigen')}
+            </Button>
+            {/* ⚠️ **Nur, wenn der Absender noch nicht freigegeben ist.** Sonst
+                stünde hier ein Knopf, der nichts ändert — und der Balken
+                erscheint bei einem freigegebenen Absender ohnehin nicht. */}
+            {!nachricht.absenderFreigegeben && (
+              <Button size="sm" variant="ghost" onClick={() => void bilderZeigen(true)}>
+                {t('lesen.bilder_immer')}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* ⚠️ **Eine Handlung, die man nicht sieht, gibt es nicht.** „Immer
+            laden" ändert etwas Dauerhaftes an einem Ort, den man sonst nur in
+            den Einstellungen wiederfindet — also sagt es die Anwendung hier,
+            und der Fehlklick ist im selben Atemzug zurückzunehmen. */}
+        {gemerkt && (
+          <div className="mx-6 mt-4 flex flex-wrap items-center gap-2">
+            <Check className="size-4 shrink-0 text-success" />
+            <p className="mb-0 min-w-[140px] flex-1 text-[12px] text-fg-4">
+              {t('lesen.bilder_immer_gemerkt', { adresse: gemerkt })}
+            </p>
             <Button
               size="sm"
+              variant="ghost"
               onClick={() => {
-                void bilderAnzeigen(nachricht.id).then(setFreigegeben)
+                const adresse = gemerkt
+                setGemerkt(null)
+                void absenderVergessen(adresse).catch(() => setGemerkt(adresse))
               }}
             >
-              {t('lesen.bilder_anzeigen')}
+              {t('aktion.rueckgaengig')}
             </Button>
           </div>
         )}

@@ -15,6 +15,7 @@ import {
   Archive,
   ChevronDown,
   ChevronRight,
+  Clock,
   Flag,
   Mail,
   MailOpen,
@@ -23,12 +24,13 @@ import {
   Trash2,
 } from 'lucide-react'
 import type { Datumsgruppe } from '../lib/format'
-import { anzeigename, gruppeVon, kurzesDatum } from '../lib/format'
+import { anzeigename, gruppeVon, kurzesDatum, planzeit } from '../lib/format'
 import { PUNKT_KLASSE } from '../lib/farben'
+import { Schlagwortmarke } from './Schlagwortmarke'
 import type { WischAktion } from '../lib/wischen'
 import { wischSchwelle } from '../lib/wischen'
-import type { Konto, Nachricht } from '../daten/typen'
-import { EmptyState } from '../ds'
+import type { Konto, Nachricht, Postfachfarbe, Schlagwort } from '../daten/typen'
+import { EmptyState, Select } from '../ds'
 import { Inbox } from 'lucide-react'
 
 const GRUPPEN: Datumsgruppe[] = ['heute', 'gestern', 'diese_woche', 'aelter']
@@ -62,6 +64,14 @@ interface Props {
    *  wäre er sinnlos, die Auswahl steht schon fest. */
   filter?: 'alle' | 'ungelesen' | 'markiert'
   aufFilter?: (f: 'alle' | 'ungelesen') => void
+  /** Die Schlagwort-Definitionen — für die Farbmarken je Zeile und die
+   *  Auswahl in der Filterzeile. */
+  schlagworte?: Schlagwort[]
+  /** Gewähltes Schlagwort-Atom. Leer heißt: alle.
+   *  ⚠️ Gefiltert wird im **Server** (Parameter an /api/nachrichten), nicht
+   *  hier — die Liste hält nur die neuesten Zeilen. */
+  schlagwortFilter?: string
+  aufSchlagwortFilter?: (atom: string) => void
   /** Ältere nachladen. Fehlt sie, gibt es kein Weiterlesen. */
   aufMehr?: () => void
   mehrLaedt?: boolean
@@ -74,6 +84,9 @@ interface Props {
   aufStrang?: (schluessel: string) => Promise<Nachricht[]>
   /** Wischen am Finger — kommt nur in der schmalen Ansicht mit. */
   wischen?: Wischen
+  /** Aufwach-Zeitpunkte der Wiedervorlage (Nachricht-Kennung → ISO). Zeilen
+   *  mit Eintrag tragen ihre Marke — übersetzt, in Ortszeit. */
+  aufwachZeiten?: Record<string, string>
 }
 
 export function Nachrichtenliste({
@@ -90,6 +103,9 @@ export function Nachrichtenliste({
   anreisserZeigen = true,
   filter,
   aufFilter,
+  schlagworte = [],
+  schlagwortFilter = '',
+  aufSchlagwortFilter,
   aufMehr,
   mehrLaedt = false,
   amEnde = false,
@@ -97,6 +113,7 @@ export function Nachrichtenliste({
   aufGruppiert,
   aufStrang,
   wischen,
+  aufwachZeiten = {},
 }: Props) {
   /* Welche Stränge offen sind, samt ihrer Nachrichten.
      ⚠️ **Aufgeklappt bleibt aufgeklappt, bis man wieder klickt.** Ein Strang,
@@ -106,63 +123,114 @@ export function Nachrichtenliste({
   const { t, i18n } = useTranslation()
   const ungelesen = nachrichten.filter((n) => !n.gelesen).length
 
+  /* Was in der zweiten Kopfzeile steht. Einmal benannt, weil die Zeile selbst
+     wegfallen muss, wenn nichts davon zutrifft. */
+  const zeigtFilter = filter !== undefined && Boolean(aufFilter) && filter !== 'markiert'
+  const zeigtSchlagwortfilter =
+    filter !== undefined && filter !== 'markiert' && Boolean(aufSchlagwortFilter) && schlagworte.length > 0
+  const zeigtGruppiert = gruppiert !== undefined && Boolean(aufGruppiert)
+
   return (
     <div className="flex h-full min-h-0 flex-col border-r border-line-subtle bg-surface-1">
-      <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-line-subtle px-3">
-        <h2 className="truncate font-display text-[15px] font-medium text-fg-1">{titel}</h2>
-        <span className="shrink-0 text-[11px] tabular-nums text-fg-4">
-          {nachrichten.length === 1
-            ? t('liste.anzahl_eine')
-            : t('liste.anzahl_viele', { count: nachrichten.length })}
-          {ungelesen > 0 && ` · ${t('liste.ungelesen', { count: ungelesen })}`}
-        </span>
-      
-        {/* ⚠️ **Der Umschalter gehört über die Liste, nicht in ein Menü.**
-            „Wo sind meine Mails hin?" ist die Frage, die ein versteckter
-            Filter erzeugt. Sichtbar über der Liste beantwortet er sie, bevor
-            sie entsteht. */}
-        {filter !== undefined && aufFilter && filter !== 'markiert' && (
-          <div className="flex shrink-0 items-center gap-0.5 rounded-pill border border-line bg-surface-2 p-0.5">
-            {(['alle', 'ungelesen'] as const).map((f) => (
-              <button
-                key={f}
-                type="button"
-                aria-pressed={filter === f}
-                onClick={() => aufFilter(f)}
-                className={
-                  'rounded-pill px-2.5 py-0.5 text-[11px] font-medium transition-colors ' +
-                  'duration-[var(--dur-fast)] ' +
-                  (filter === f
-                    ? 'bg-accent text-on-accent'
-                    : 'text-fg-3 hover:bg-surface-3 hover:text-fg-1')
-                }
-              >
-                {t(`liste.filter_${f}`)}
-              </button>
-            ))}
-          </div>
-        )}
+      {/* ⚠️ **Zwei Zeilen, nicht eine.** In einer Zeile standen Ordnername,
+          Zahlen und drei Bedienelemente nebeneinander; sobald die Spalte
+          schmaler wurde, schnitt es Ordnername und Schlagwort-Auswahl auf
+          „Alle Pos…" und „Alle S…" zusammen. Am 02.09.2026 gemeldet: „Hier
+          werden die Texte abgeschnitten. Das ist kacke."
 
-        {/* ⚠️ **Vorgabe aus, bis man ihr traut.** Falsch gruppiert steckt
-            eine Mail in einem zugeklappten Strang, und man merkt es erst,
-            wenn man sie sucht. Deshalb ein Umschalter und kein Zwang. */}
-        {gruppiert !== undefined && aufGruppiert && (
-          <button
-            type="button"
-            aria-pressed={gruppiert}
-            title={t('liste.gruppiert_hinweis')}
-            onClick={() => aufGruppiert(!gruppiert)}
-            className={
-              'flex shrink-0 items-center gap-1 rounded-pill px-2.5 py-0.5 text-[11px] ' +
-              'font-medium transition-colors duration-[var(--dur-fast)] ' +
-              (gruppiert
-                ? 'bg-accent text-on-accent'
-                : 'border border-line text-fg-3 hover:bg-surface-3 hover:text-fg-1')
-            }
-          >
-            <MessagesSquare aria-hidden className="size-3" />
-            {t('liste.gruppiert')}
-          </button>
+          Oben steht seither, **wo man ist** und wie viel dort liegt; darunter,
+          **wonach eingeschränkt wird**. „Gespräche" steht mit oben, weil die
+          zweite Zeile sonst bei schmaler Spalte auf drei umbricht — sie ändert
+          die Form der Liste, nicht ihren Inhalt. */}
+      <div className="shrink-0 border-b border-line-subtle px-3 py-1.5">
+        <div className="flex h-6 items-center gap-2">
+          <h2 className="min-w-0 flex-1 truncate font-display text-[15px] font-medium text-fg-1">
+            {titel}
+          </h2>
+          <span className="shrink-0 text-[11px] tabular-nums text-fg-4">
+            {nachrichten.length === 1
+              ? t('liste.anzahl_eine')
+              : t('liste.anzahl_viele', { count: nachrichten.length })}
+            {ungelesen > 0 && ` · ${t('liste.ungelesen', { count: ungelesen })}`}
+          </span>
+
+          {/* ⚠️ **Vorgabe aus, bis man ihr traut.** Falsch gruppiert steckt
+              eine Mail in einem zugeklappten Strang, und man merkt es erst,
+              wenn man sie sucht. Deshalb ein Umschalter und kein Zwang. */}
+          {zeigtGruppiert && aufGruppiert && (
+            <button
+              type="button"
+              aria-pressed={gruppiert}
+              title={t('liste.gruppiert_hinweis')}
+              onClick={() => aufGruppiert(!gruppiert)}
+              className={
+                'flex shrink-0 items-center gap-1 rounded-pill px-2.5 py-0.5 text-[11px] ' +
+                'font-medium transition-colors duration-[var(--dur-fast)] ' +
+                (gruppiert
+                  ? 'bg-accent text-on-accent'
+                  : 'border border-line text-fg-3 hover:bg-surface-3 hover:text-fg-1')
+              }
+            >
+              <MessagesSquare aria-hidden className="size-3" />
+              {t('liste.gruppiert')}
+            </button>
+          )}
+        </div>
+
+        {/* Die zweite Zeile entsteht nur, wenn es dort etwas zu bedienen gibt —
+            bei „Markierte" bliebe sie sonst als leerer Streifen stehen. */}
+        {(zeigtFilter || zeigtSchlagwortfilter) && (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            {/* ⚠️ **Der Umschalter gehört über die Liste, nicht in ein Menü.**
+                „Wo sind meine Mails hin?" ist die Frage, die ein versteckter
+                Filter erzeugt. Sichtbar über der Liste beantwortet er sie,
+                bevor sie entsteht. */}
+            {zeigtFilter && aufFilter && (
+              <div className="flex shrink-0 items-center gap-0.5 rounded-pill border border-line bg-surface-2 p-0.5">
+                {(['alle', 'ungelesen'] as const).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    aria-pressed={filter === f}
+                    onClick={() => aufFilter(f)}
+                    className={
+                      'rounded-pill px-2.5 py-0.5 text-[11px] font-medium transition-colors ' +
+                      'duration-[var(--dur-fast)] ' +
+                      (filter === f
+                        ? 'bg-accent text-on-accent'
+                        : 'text-fg-3 hover:bg-surface-3 hover:text-fg-1')
+                    }
+                  >
+                    {t(`liste.filter_${f}`)}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Die Schlagwort-Auswahl — alle / je Definition. ⚠️ Gefiltert wird
+                im Server; hier fällt nur die Wahl. Ohne Definitionen wäre die
+                Auswahl ein Klick ins Leere und bleibt weg.
+
+                ⚠️ **Feste Breite, kein `max-w`.** Der Baustein bringt seine
+                eigene Hülle mit; eine Klasse am `select` bremst das Schrumpfen
+                der Hülle nicht, und „Alle Schlagworte" stand dann als
+                „Alle S…" da. */}
+            {zeigtSchlagwortfilter && aufSchlagwortFilter && (
+              <div className="w-[150px] shrink-0">
+                <Select
+                  size="sm"
+                  aria-label={t('schlagworte.filter')}
+                  value={schlagwortFilter}
+                  onChange={(e) => aufSchlagwortFilter(e.target.value)}
+                  className="text-[11px]"
+                  options={[
+                    { value: '', label: t('schlagworte.filter_alle') },
+                    ...schlagworte.map((s) => ({ value: s.atom, label: s.name })),
+                  ]}
+                />
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -188,6 +256,7 @@ export function Nachrichtenliste({
                       <Zeile
                         n={n}
                         farbe={konten.find((k) => k.id === n.kontoId)?.farbe}
+                        marken={markenVon(n, schlagworte)}
                         postfachZeigen={postfachZeigen}
                         gewaehlt={n.id === gewaehlt}
                         mitausgewaehlt={mehrfach.includes(n.id)}
@@ -199,6 +268,13 @@ export function Nachrichtenliste({
                         sprache={i18n.language}
                         keinBetreff={t('liste.kein_betreff')}
                         wichtigHoch={t('liste.wichtig_hoch')}
+                        aufwachText={
+                          aufwachZeiten[n.id]
+                            ? t('wiedervorlage.marke', {
+                                wann: planzeit(aufwachZeiten[n.id], i18n.language),
+                              })
+                            : undefined
+                        }
                         strangAnzahl={istStrang ? n.strangAnzahl : undefined}
                         strangOffen={offen}
                         aufStrangKlappen={
@@ -235,6 +311,7 @@ export function Nachrichtenliste({
                               <Zeile
                                 n={m}
                                 farbe={konten.find((k) => k.id === m.kontoId)?.farbe}
+                                marken={markenVon(m, schlagworte)}
                                 postfachZeigen={postfachZeigen}
                                 gewaehlt={m.id === gewaehlt}
                                 mitausgewaehlt={mehrfach.includes(m.id)}
@@ -246,6 +323,13 @@ export function Nachrichtenliste({
                                 sprache={i18n.language}
                                 keinBetreff={t('liste.kein_betreff')}
                                 wichtigHoch={t('liste.wichtig_hoch')}
+                                aufwachText={
+                                  aufwachZeiten[m.id]
+                                    ? t('wiedervorlage.marke', {
+                                        wann: planzeit(aufwachZeiten[m.id], i18n.language),
+                                      })
+                                    : undefined
+                                }
                                 wisch={wischen}
                               />
                             </div>
@@ -332,9 +416,21 @@ function Fuss({
   )
 }
 
+/** Die Farbmarken einer Zeile: die Atome der Mail, mit Name und Farbe aus den
+ *  Definitionen. Ein Atom ohne Definition (frisch vom Server, noch nie
+ *  abgeglichen) erscheint trotzdem — mit dem Atom als Namen. */
+function markenVon(n: Nachricht, definitionen: Schlagwort[]) {
+  return (n.schlagworte ?? []).map((atom) => {
+    const def = definitionen.find((d) => d.atom.toLowerCase() === atom.toLowerCase())
+    return { atom, name: def?.name ?? atom, farbe: (def?.farbe ?? 1) as Postfachfarbe }
+  })
+}
+
 interface ZeileProps {
   n: Nachricht
   farbe?: 1 | 2 | 3 | 4 | 5 | 6
+  /** Die gesetzten Schlagworte als Farbmarken — mit Name für title/aria. */
+  marken?: { atom: string; name: string; farbe: Postfachfarbe }[]
   postfachZeigen: boolean
   gewaehlt: boolean
   mitausgewaehlt: boolean
@@ -347,6 +443,10 @@ interface ZeileProps {
   keinBetreff: string
   /** Vorlesbarer Name des Ausrufezeichens bei hoher Wichtigkeit. */
   wichtigHoch: string
+  /** Fertig übersetzte Aufwach-Marke der Wiedervorlage — nur an Zeilen mit
+   *  Eintrag gesetzt. Der Text kommt von oben, damit die Zeile keine eigene
+   *  Übersetzung braucht (dasselbe Muster wie `keinBetreff`). */
+  aufwachText?: string
   /** Gesetzt heißt: Diese Zeile ist der Kopf eines Gesprächs. */
   strangAnzahl?: number
   strangOffen?: boolean
@@ -380,6 +480,7 @@ function Zeile({
   strangText,
   n,
   farbe,
+  marken = [],
   postfachZeigen,
   gewaehlt,
   mitausgewaehlt,
@@ -391,6 +492,7 @@ function Zeile({
   sprache,
   keinBetreff,
   wichtigHoch,
+  aufwachText,
   wisch,
 }: ZeileProps) {
   /* --- Wischen: die Zeile mit dem Finger zur Seite ziehen --------------- */
@@ -610,6 +712,12 @@ function Zeile({
           >
             {anzeigename(n.von)}
           </span>
+          {/* Die Farbmarken der gesetzten Schlagworte. ⚠️ Rechtecke, keine
+              Punkte — der Punkt links am Rand gehört dem Postfach, und zwei
+              gleiche Formen in einer Zeile liest man falsch. */}
+          {marken.map((m) => (
+            <Schlagwortmarke key={m.atom} farbe={m.farbe} name={m.name} />
+          ))}
           {/* ⚠️ Nicht nur Farbe: Das Zeichen selbst plus ein vorlesbarer Name.
               Niedrig erscheint in der Liste bewusst gar nicht — ein Zeichen
               für „unwichtig" wäre lauter als die Post, die es meint. */}
@@ -632,6 +740,15 @@ function Zeile({
         <div className={'truncate text-[13px] ' + (n.gelesen ? 'text-fg-2' : 'font-medium text-fg-1')}>
           {n.betreff || keinBetreff}
         </div>
+
+        {/* Die Aufwach-Marke der Wiedervorlage — klein, übersetzt, Ortszeit.
+            Die Uhr ist Beiwerk (aria-hidden); die Auskunft ist der Text. */}
+        {aufwachText && (
+          <div className="flex items-center gap-1 text-[11px] text-fg-3">
+            <Clock aria-hidden className="size-3 shrink-0" />
+            <span className="truncate">{aufwachText}</span>
+          </div>
+        )}
 
         {anreisserZeigen && (
           <div className="truncate text-[12px] text-fg-4">{n.anreisser}</div>

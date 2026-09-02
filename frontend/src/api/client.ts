@@ -82,7 +82,15 @@ export const api = {
     anfrage<T>(pfad, { method: 'PATCH', body: JSON.stringify(koerper) }),
   formular: <T>(pfad: string, daten: FormData) =>
     anfrage<T>(pfad, { method: 'POST', body: daten }),
-  loeschen: <T>(pfad: string) => anfrage<T>(pfad, { method: 'DELETE' }),
+  /** DELETE — mit optionalem Rumpf: „Schlagwort von diesen Mails nehmen"
+   *  braucht die Liste der Kennungen. */
+  loeschen: <T>(pfad: string, koerper?: unknown) =>
+    anfrage<T>(
+      pfad,
+      koerper === undefined
+        ? { method: 'DELETE' }
+        : { method: 'DELETE', body: JSON.stringify(koerper) },
+    ),
 
   /** Eine Datei holen und im Browser speichern.
    *

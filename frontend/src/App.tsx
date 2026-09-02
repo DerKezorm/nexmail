@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Archive,
   ChevronsDownUp,
+  Clock,
   CornerUpLeft,
   CornerUpRight,
   Flag,
@@ -27,6 +28,7 @@ import {
   FolderX,
   Paperclip,
   PenLine,
+  Plus,
   Printer,
   Mail,
   MailOpen,
@@ -35,6 +37,7 @@ import {
   SlidersHorizontal,
   Star,
   StarOff,
+  Tag,
   Trash2,
 } from 'lucide-react'
 import { Kopfbanner } from './components/Kopfbanner'
@@ -74,13 +77,19 @@ import {
   ordnerUmbenennen,
   ordnerAlsGelesen,
   ordnerLeeren,
+  schlagwortAnlegen,
+  schlagwortSetzen,
+  schlagworteLaden,
   suchen as ladenSuchen,
   verschieben,
+  wiedervorlagenLaden,
+  wiedervorlegen,
   zug,
   zurueckholen,
 } from './api/laden'
-import type { Rueckweg, VolleNachricht } from './api/laden'
-import type { Ausgangseintrag, Konto, Nachricht, Ordner } from './daten/typen'
+import type { Rueckweg, VolleNachricht, WiedervorlageEintrag } from './api/laden'
+import type { Ausgangseintrag, Konto, Nachricht, Ordner, Schlagwort } from './daten/typen'
+import { Schlagwortmarke } from './components/Schlagwortmarke'
 import { useGemerkt, useSchmal } from './lib/haken'
 import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from './lib/wischen'
 import type { WischAktion } from './lib/wischen'
@@ -104,6 +113,32 @@ interface AppProps {
  *  deshalb hier oben und nicht mitten im Code. */
 /** Vorgabe, bis jemand etwas anderes einstellt: zwei Sekunden. */
 const GELESEN_NACH_VORGABE = 2
+
+/* Die festen Zeitpunkte der Wiedervorlage — Ortszeit rein, ISO-UTC raus,
+ * dasselbe Muster wie „Später senden" im Verfassen-Fenster. */
+
+function heute18(): Date {
+  const d = new Date()
+  d.setHours(18, 0, 0, 0)
+  return d
+}
+
+function morgen8(): Date {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  d.setHours(8, 0, 0, 0)
+  return d
+}
+
+function naechsterMontag8(): Date {
+  const d = new Date()
+  // getDay(): So=0 … Sa=6. „Nächsten Montag" heißt nie heute — wer es am
+  // Montagmorgen wählt, meint den in einer Woche.
+  const tage = (8 - d.getDay()) % 7 || 7
+  d.setDate(d.getDate() + tage)
+  d.setHours(8, 0, 0, 0)
+  return d
+}
 
 interface Menuelage {
   x: number
@@ -154,6 +189,22 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     void aufgabenZaehlen()
   }, [aufgabenZaehlen])
 
+  /* Die wartenden Wiedervorlage-Eintraege. Daran haengen die Zahl an der
+     Zeile des Wiedervorlage-Ordners und die Aufwach-Marken in der Liste. */
+  const [wiedervorlagen, setWiedervorlagen] = useState<WiedervorlageEintrag[]>([])
+  const wiedervorlagenNachsehen = useCallback(async () => {
+    try {
+      setWiedervorlagen(await wiedervorlagenLaden())
+    } catch {
+      // Zahl und Marken sind Beiwerk — der alte Bestand bleibt stehen, wie
+      // bei den Aufgaben.
+    }
+  }, [])
+
+  useEffect(() => {
+    void wiedervorlagenNachsehen()
+  }, [wiedervorlagenNachsehen])
+
   /* Der Postausgang — geplante und liegen gebliebene Sendungen. Die Zeile in
      der Ordnerspalte erscheint nur, wenn hier etwas liegt. */
   const [ausgaenge, setAusgaenge] = useState<Ausgangseintrag[]>([])
@@ -189,6 +240,14 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
 
   const [konten, setKonten] = useState<Konto[]>([])
   const [ordner, setOrdner] = useState<Ordner[]>([])
+  /* Die Schlagwort-Definitionen — Marken, Menü und Filterzeile hängen daran.
+     Geladen mit dem Stamm: Der Abgleich kann fremde Atome mitbringen, und
+     die sollen ohne F5 erscheinen. */
+  const [schlagworte, setSchlagworte] = useState<Schlagwort[]>([])
+  /* Das gewählte Schlagwort der Filterzeile (Atom). Leer heißt: alle.
+     ⚠️ Gefiltert wird im **Server** — derselbe Grund wie beim
+     ungelesen-Filter, siehe CLAUDE.md. */
+  const [schlagwortFilter, setSchlagwortFilter] = useGemerkt('nexmail.schlagwort', '')
   const [nachrichten, setNachrichten] = useState<Nachricht[]>([])
   const [offene, setOffene] = useState<VolleNachricht | null>(null)
   const [offeneLaedt, setOffeneLaedt] = useState(false)
@@ -277,6 +336,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       const k = await kontenLaden()
       setKonten(k)
       setOrdner(await ordnerLaden(k))
+      setSchlagworte(await schlagworteLaden())
       setStammGeladen(true)
       setStammFehler('')
     } catch (f) {
@@ -299,6 +359,18 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         .map((k) => k.id)
     : []
 
+  /* Der Schlagwort-Filter greift nur, solange es die Definition noch gibt.
+     Ein gemerktes Atom, dessen Schlagwort gelöscht wurde, hieße sonst: leere
+     Liste ohne sichtbaren Grund — dieselbe Regel wie beim gemerkten
+     Postfach-Schlagwort. Und nicht bei „Markierte": Dort ist die Auswahl
+     schon die Aussage, und die Filterzeile ist ausgeblendet — ein unsichtbar
+     weiterwirkender Filter versteckte markierte Post. */
+  const wirksamesSchlagwort = schlagworte.some(
+    (s) => s.atom.toLowerCase() === schlagwortFilter.toLowerCase(),
+  )
+    ? schlagwortFilter
+    : ''
+
   const listeLaden = useCallback(async () => {
     // Der Ausgang ist keine Nachrichtenliste - er kommt aus der eigenen
     // Warteschlange, nicht aus einem Ordner. Hier gibt es nichts zu holen.
@@ -318,6 +390,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       // ⚠️ Nicht bei „Markierte": Dort ist die Auswahl die Aussage — ein
       // Gespräch daraus zu machen versteckte gerade die markierte Mail.
       gruppiert && ziel.typ !== 'markiert',
+      ziel.typ === 'markiert' ? '' : wirksamesSchlagwort,
     )
     setNachrichten(seite)
     // ⚠️ **Am Ende ist man, wenn die Seite nicht voll war** — nicht erst, wenn
@@ -325,7 +398,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     // Anfrage, und der Fuß behauptet so lange, es gebe noch etwas.
     setAmEnde(seite.length < SEITE)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ziel, listenfilter, gruppiert, gefilterteKontoIds.join(',')])
+  }, [ziel, listenfilter, gruppiert, wirksamesSchlagwort, gefilterteKontoIds.join(',')])
 
   /* Ältere nachladen.
    *
@@ -352,6 +425,9 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         // Zeile 61 in die flache Ansicht zurück — und dieselbe Mail steht
         // dann zweimal da: einmal im Strang, einmal einzeln.
         gruppiert && ziel.typ !== 'markiert',
+        // ⚠️ Und auch beim Nachladen das Schlagwort — sonst mischt Seite 2
+        // wieder alles darunter.
+        ziel.typ === 'markiert' ? '' : wirksamesSchlagwort,
       )
       // ⚠️ Doppelte trotzdem aussieben: Ein Abgleich, der zwischendurch lief,
       // kann eine Zeile verschoben haben. Zwei gleiche Kennungen in der Liste
@@ -366,7 +442,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       setMehrLaedt(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ziel, listenfilter, amEnde, gruppiert, nachrichten, gefilterteKontoIds.join(',')])
+  }, [ziel, listenfilter, amEnde, gruppiert, nachrichten, wirksamesSchlagwort, gefilterteKontoIds.join(',')])
 
   useEffect(() => {
     void listeLaden()
@@ -540,6 +616,244 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     setNachrichten((alle) => alle.map((n) => (n.id === id ? { ...n, ...wunsch } : n)))
     setOffene((o) => (o && o.id === id ? { ...o, ...wunsch } : o))
   }, [])
+
+  /* --- Schlagworte ------------------------------------------------------ */
+
+  /** Ein Schlagwort an Mails setzen oder nehmen.
+   *
+   * ⚠️ **Erst der Server, dann die Anzeige** — der Endpunkt schreibt das
+   * IMAP-Keyword zum Anbieter, bevor er lokal nachzieht; scheitert das,
+   * bleibt auch hier alles, wie es war, und der Grund steht unten. Die
+   * Kennungen des Servers werden übersetzt, kein roher Text.
+   */
+  const schlagwortSchalten = useCallback(
+    async (ids: string[], atom: string, setzen: boolean) => {
+      try {
+        await schlagwortSetzen(ids, atom, setzen)
+      } catch (f) {
+        const detail = f instanceof ApiFehler ? f.detail : ''
+        setStoerung(
+          detail === 'schlagworte_nicht_unterstuetzt'
+            ? t('schlagworte.fehler_nicht_unterstuetzt')
+            : detail === 'schlagwort_ordner_veraltet'
+              ? t('schlagworte.fehler_veraltet')
+              : detail || t('anmeldung.fehler_allgemein'),
+        )
+        return
+      }
+      const anpassen = <T extends Nachricht>(n: T): T => {
+        if (!ids.includes(n.id)) return n
+        const ohne = (n.schlagworte ?? []).filter(
+          (a) => a.toLowerCase() !== atom.toLowerCase(),
+        )
+        return { ...n, schlagworte: setzen ? [...ohne, atom] : ohne }
+      }
+      setNachrichten((alle) => alle.map(anpassen))
+      setOffene((o) => (o ? anpassen(o) : o))
+      // Die Zahl an der Definition (für die Lösch-Rückfrage) hängt daran.
+      try {
+        setSchlagworte(await schlagworteLaden())
+      } catch {
+        // Die Zahl ist Beiwerk — die Marken stimmen auch ohne sie.
+      }
+    },
+    [t],
+  )
+
+  /** „Neues Schlagwort…": nach dem Namen fragen, anlegen, gleich setzen.
+   *  Das Atom entsteht im Server aus dem Namen (Umlaute umgeschrieben,
+   *  Kollision nummeriert). */
+  const neuesSchlagwort = useCallback(
+    async (ids: string[]) => {
+      const name = await fragen({
+        titel: t('schlagworte.neu_titel'),
+        text: t('schlagworte.neu_text'),
+        eingabe: {
+          beschriftung: t('schlagworte.name'),
+          platzhalter: t('schlagworte.name_platzhalter'),
+        },
+        knopf: t('schlagworte.anlegen'),
+      })
+      if (typeof name !== 'string' || !name.trim()) return
+      let atom: string
+      try {
+        const definition = await schlagwortAnlegen(name.trim())
+        atom = definition.atom
+        setSchlagworte((v) => [...v, definition])
+      } catch (f) {
+        const detail = f instanceof ApiFehler ? f.detail : ''
+        setStoerung(
+          detail === 'schlagwort_name_vergeben'
+            ? t('schlagworte.fehler_name_vergeben')
+            : detail || t('anmeldung.fehler_allgemein'),
+        )
+        return
+      }
+      await schlagwortSchalten(ids, atom, true)
+    },
+    [fragen, schlagwortSchalten, t],
+  )
+
+  /** Das Untermenü „Schlagwort" — Kontextmenü der Liste und „Weitere
+   *  Aktionen" im Lesebereich bauen es aus derselben Quelle. */
+  const schlagwortUntermenue = useCallback(
+    (n: Nachricht, ids: string[]): MenueEintrag[] => [
+      ...schlagworte.map((s): MenueEintrag => {
+        const gesetzt = (n.schlagworte ?? []).some(
+          (a) => a.toLowerCase() === s.atom.toLowerCase(),
+        )
+        return {
+          id: `schlagwort-${s.id}`,
+          text: s.name,
+          aktiv: gesetzt,
+          symbol: <Schlagwortmarke farbe={s.farbe} />,
+          tun: () => void schlagwortSchalten(ids, s.atom, !gesetzt),
+        }
+      }),
+      {
+        id: 'schlagwort-neu',
+        text: t('schlagworte.neu'),
+        symbol: <Plus />,
+        trennerDavor: schlagworte.length > 0,
+        tun: () => void neuesSchlagwort(ids),
+      },
+    ],
+    [schlagworte, schlagwortSchalten, neuesSchlagwort, t],
+  )
+
+  /* --- Wiedervorlage ---------------------------------------------------- */
+
+  /** Weglegen: Der Server verschiebt die Mail **erst per IMAP** in den
+   *  Ordner „Wiedervorlage" und legt dann den Merker an — scheitert das
+   *  Verschieben, entsteht keiner, und der Grund steht hier. */
+  const wiedervorlegenAusfuehren = useCallback(
+    async (ids: string[], wann: Date) => {
+      try {
+        for (const id of ids) await wiedervorlegen(id, wann.toISOString())
+      } catch (f) {
+        const detail = f instanceof ApiFehler ? f.detail : ''
+        setStoerung(
+          detail === 'wiedervorlage_ohne_kennung'
+            ? t('wiedervorlage.fehler_ohne_kennung')
+            : detail === 'wiedervorlage_kennung_unbrauchbar'
+              ? t('wiedervorlage.fehler_kennung_unbrauchbar')
+              : detail === 'wiedervorlage_ordner_fehlt'
+                ? t('wiedervorlage.fehler_ordner')
+                : detail || t('anmeldung.fehler_allgemein'),
+        )
+      }
+      // Auch nach einem Fehlschlag mitten in einer Mehrfachauswahl: Baum
+      // (neuer Ordner), Liste (Mail weg), Zahl und Marken sollen die
+      // Wahrheit zeigen — dieselbe Reihenfolge wie nach jedem Zug.
+      setGewaehlt(null)
+      setMehrfach([])
+      await stammLaden()
+      await listeLaden()
+      await wiedervorlagenNachsehen()
+    },
+    [stammLaden, listeLaden, wiedervorlagenNachsehen, t],
+  )
+
+  /** „Eigener Zeitpunkt …": datetime-local über die Nachfrage — der Browser
+   *  liest Ortszeit, hinausgeschickt wird ISO in UTC. */
+  const wiedervorlageEigen = useCallback(
+    async (ids: string[]) => {
+      const wert = await fragen({
+        titel: t('wiedervorlage.eigen_titel'),
+        text: t('wiedervorlage.eigen_text'),
+        eingabe: { beschriftung: t('wiedervorlage.eigen_feld'), typ: 'datetime-local' },
+        knopf: t('wiedervorlage.weglegen'),
+      })
+      if (typeof wert !== 'string' || !wert) return
+      const wann = new Date(wert)
+      if (Number.isNaN(wann.getTime()) || wann.getTime() <= Date.now()) {
+        // Ein Zeitpunkt in der Vergangenheit hieße: sofort wieder oben —
+        // das hat niemand gemeint. Sagen statt stumm ausführen.
+        setStoerung(t('wiedervorlage.vergangen'))
+        return
+      }
+      await wiedervorlegenAusfuehren(ids, wann)
+    },
+    [fragen, wiedervorlegenAusfuehren, t],
+  )
+
+  /** Einen wartenden Merker wegnehmen — die Mail bleibt, wo sie liegt.
+   *  Der Ausweg, wenn ein Eintrag nicht mehr zurückkommen soll oder sein
+   *  Aufwecken dauerhaft scheitert. */
+  const wiedervorlageAufheben = useCallback(
+    async (ids: string[]) => {
+      const betroffene = wiedervorlagen.filter(
+        (w) => w.nachricht_id !== null && ids.includes(String(w.nachricht_id)),
+      )
+      try {
+        for (const w of betroffene) {
+          await api.loeschen(`/api/nachrichten/wiedervorlage/${w.id}`)
+        }
+      } catch {
+        setStoerung(t('anmeldung.fehler_allgemein'))
+      }
+      await wiedervorlagenNachsehen()
+    },
+    [wiedervorlagen, wiedervorlagenNachsehen, t],
+  )
+
+  /** Das Untermenü „Wiedervorlage" — Kontextmenü der Liste und „Weitere
+   *  Aktionen" im Lesebereich bauen es aus derselben Quelle. */
+  const wiedervorlageUntermenue = useCallback(
+    (ids: string[]): MenueEintrag[] => {
+      const eintraege: MenueEintrag[] = [
+        {
+          id: 'wv-heute',
+          text: t('wiedervorlage.heute_abend'),
+          // Nach 18 Uhr läge „Heute Abend" in der Vergangenheit — der Eintrag
+          // sagt es, statt die Mail auf der Stelle zurückkommen zu lassen.
+          deaktiviert: heute18().getTime() <= Date.now(),
+          tun: () => void wiedervorlegenAusfuehren(ids, heute18()),
+        },
+        {
+          id: 'wv-morgen',
+          text: t('wiedervorlage.morgen'),
+          tun: () => void wiedervorlegenAusfuehren(ids, morgen8()),
+        },
+        {
+          id: 'wv-montag',
+          text: t('wiedervorlage.montag'),
+          tun: () => void wiedervorlegenAusfuehren(ids, naechsterMontag8()),
+        },
+        {
+          id: 'wv-eigen',
+          text: t('wiedervorlage.eigen'),
+          trennerDavor: true,
+          tun: () => void wiedervorlageEigen(ids),
+        },
+      ]
+      // Trägt eine der gewählten Mails schon eine Aufwach-Marke, lässt sie
+      // sich hier auch wieder wegnehmen — nur der Merker fällt, die Mail
+      // bleibt liegen.
+      const wartet = wiedervorlagen.some(
+        (w) => w.nachricht_id !== null && ids.includes(String(w.nachricht_id)),
+      )
+      if (wartet) {
+        eintraege.push({
+          id: 'wv-aufheben',
+          text: t('wiedervorlage.aufheben'),
+          trennerDavor: true,
+          tun: () => void wiedervorlageAufheben(ids),
+        })
+      }
+      return eintraege
+    },
+    [wiedervorlagen, wiedervorlegenAusfuehren, wiedervorlageEigen, wiedervorlageAufheben, t],
+  )
+
+  /* Was die Ordnerspalte und die Liste aus den Eintraegen brauchen: die Zahl
+     je Postfach und der Aufwach-Zeitpunkt je (aktueller) Nachrichtzeile. */
+  const wiedervorlageZahlen: Record<string, number> = {}
+  const aufwachZeiten: Record<string, string> = {}
+  for (const w of wiedervorlagen) {
+    wiedervorlageZahlen[w.konto_id] = (wiedervorlageZahlen[w.konto_id] ?? 0) + 1
+    if (w.nachricht_id !== null) aufwachZeiten[String(w.nachricht_id)] = w.aufwachen
+  }
 
   /* --- Die Zwei-Sekunden-Regel ----------------------------------------- */
 
@@ -900,6 +1214,15 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           },
         },
         {
+          /* Das Schlagwort-Untermenü: Farbpunkt + Name, Häkchen wenn gesetzt,
+             Klick schaltet um — plus „Neues Schlagwort…". Dieselben Einträge
+             stehen im Lesebereich unter „Weitere Aktionen". */
+          id: 'schlagwort',
+          text: t('schlagworte.menue'),
+          symbol: <Tag />,
+          unter: schlagwortUntermenue(n, ids),
+        },
+        {
           /* ⚠️ **Hier, gleich hinter „Markieren".** Ein Fähnchen und eine
              Aufgabe beantworten dieselbe Frage — „das noch" —, nur trägt das
              Fähnchen der Mailserver und die Aufgabe nexmail. Sie gehören
@@ -921,6 +1244,16 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
               }
             })()
           },
+        },
+        {
+          /* Die Wiedervorlage direkt neben der Aufgabe: Beide beantworten
+             „das noch, aber später" — die Aufgabe merkt es sich nur, die
+             Wiedervorlage legt die Mail selbst weg und bringt sie zum
+             gewählten Zeitpunkt ungelesen zurück. */
+          id: 'wiedervorlage',
+          text: t('wiedervorlage.menue'),
+          symbol: <Clock />,
+          unter: wiedervorlageUntermenue(ids),
         },
         {
           id: 'verschieben',
@@ -1323,6 +1656,13 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 punkteZeigen={punkteZeigen}
                 filter={listenfilter}
                 aufFilter={setListenfilter}
+                schlagworte={schlagworte}
+                schlagwortFilter={wirksamesSchlagwort}
+                aufSchlagwortFilter={setSchlagwortFilter}
+                aufSchlagwort={(n, atom, setzen) =>
+                  void schlagwortSchalten([n.id], atom, setzen)
+                }
+                aufNeuesSchlagwort={(n) => void neuesSchlagwort([n.id])}
                 gruppe={gruppe}
                 aufGruppe={setGruppe}
                 aufMehr={mehrLaden}
@@ -1358,6 +1698,9 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 aufEinklappen={einklappenUmschalten}
                 ausgaenge={ausgaenge}
                 aufAusgangAbbrechen={(e) => void ausgangAbbrechen(e)}
+                wiedervorlageZahlen={wiedervorlageZahlen}
+                aufwachZeiten={aufwachZeiten}
+                wiedervorlageMenue={(n) => wiedervorlageUntermenue([n.id])}
               />
             </>
           )}
@@ -1396,6 +1739,14 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                  Falle wie beim zweiten Faktor: Was ich aendere, muss
                  ich auch sehen. */
               aufKontenGeaendert={() => void stammLaden()}
+              /* Umbenennen, Farbwechsel und Löschen im Reiter Schlagworte
+                 müssen in Liste und Lesebereich ankommen — dieselbe Leitung
+                 wie beim Zugangsdaten-Banner. stammLaden holt auch die
+                 Definitionen; listeLaden die Marken an den Zeilen. */
+              aufSchlagworteGeaendert={() => {
+                void stammLaden()
+                void listeLaden()
+              }}
             />
           )}
 

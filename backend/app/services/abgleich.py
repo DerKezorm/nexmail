@@ -31,7 +31,14 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import Anhang, Konto, Nachricht, Ordner, utcnow
-from . import bereinigen, imap as imapdienst, konten as kontendienst, mime, straenge
+from . import (
+    bereinigen,
+    imap as imapdienst,
+    konten as kontendienst,
+    mime,
+    schlagworte as schlagwortdienst,
+    straenge,
+)
 
 logger = logging.getLogger("nexmail.abgleich")
 
@@ -256,11 +263,17 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
             ],
         )
         frische = []
+        atome: set[str] = set()
         for uid, felder in antwort.items():
             zeile = _aus_fetch(db, konto, ordner, uid, felder)
             db.add(zeile)
             frische.append(zeile)
+            atome.update(schlagwortdienst.atome_lesen(zeile))
             runde.neu += 1
+        # ⚠️ **Fremde Atome legen ihre Definition selbst an.** Was Thunderbird
+        # oder das Telefon als Keyword vergeben hat, soll hier als Schlagwort
+        # erscheinen — nicht unsichtbar an der Mail kleben.
+        schlagwortdienst.definitionen_sicherstellen(db, konto.benutzer_id, atome)
         db.commit()
         runde.neue_ids.extend(z.id for z in frische)
 
@@ -409,6 +422,9 @@ def _aus_fetch(db: Session, konto: Konto, ordner: Ordner, uid: int, felder: dict
         gelesen=rb"\Seen" in flags,
         markiert=rb"\Flagged" in flags,
         beantwortet=rb"\Answered" in flags,
+        # ⚠️ Alle Nicht-Systemflags werden als Schlagwort-Atome uebernommen —
+        # das ist der Interop-Gewinn (siehe services/schlagworte.py).
+        schlagworte=json.dumps(schlagwortdienst.atome_aus_flags(flags), ensure_ascii=False),
         hat_anhang=_hat_anhang(struktur),
         wichtigkeit=_wichtigkeit_deuten(
             felder.get(b"BODY[HEADER.FIELDS (IMPORTANCE X-PRIORITY)]")
@@ -429,12 +445,18 @@ def _flags_uebernehmen(
     db: Session, ordner: Ordner, antwort: dict, mit_wichtigkeit: bool = False
 ) -> int:
     geaendert = 0
+    gesehene_atome: set[str] = set()
     for uid, felder in antwort.items():
         flags = felder.get(b"FLAGS", ())
+        atome = schlagwortdienst.atome_aus_flags(flags)
+        gesehene_atome.update(atome)
         werte: dict = {
             "gelesen": rb"\Seen" in flags,
             "markiert": rb"\Flagged" in flags,
             "beantwortet": rb"\Answered" in flags,
+            # ⚠️ Auch das Flags-Fenster zieht Schlagworte nach: Wer am Telefon
+            # eine Marke setzt oder nimmt, sieht das hier ohne Neuabgleich.
+            "schlagworte": json.dumps(atome, ensure_ascii=False),
         }
         if mit_wichtigkeit:
             # Nur beim einmaligen Nachzug — siehe ``ordner_abgleichen``.
@@ -447,6 +469,10 @@ def _flags_uebernehmen(
             .values(**werte)
         )
         geaendert += ergebnis.rowcount or 0
+    # Fremde Atome aus dem Fenster bekommen ebenfalls ihre Definition.
+    schlagwortdienst.definitionen_sicherstellen(
+        db, ordner.konto.benutzer_id, gesehene_atome
+    )
     return geaendert
 
 
@@ -640,7 +666,20 @@ def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -
     # braucht selbst eine IMAP-Verbindung, und die bekäme sie nicht (eine je
     # Postfach). Und nur auf Neues, weil eine Regel sonst bei jedem Abgleich
     # Post zurückschöbe, die jemand von Hand woandershin geräumt hat.
-    neue = [kennung for runde in ergebnis.values() for kennung in runde.neue_ids]
+    #
+    # ⚠️ **Und nie auf den Wiedervorlage-Ordner.** Was dort liegt, hat ein
+    # Mensch bewusst weggelegt — auch von einem anderen Gerät aus, das legt
+    # die Mail dort hinein, ohne dass nexmail sie vorher kannte. Für den
+    # Abgleich ist sie dann „neu", und eine Regel schöbe die bewusste Ablage
+    # beim nächsten Takt wieder heraus.
+    from .wiedervorlage import ORDNER_NAME as wiedervorlage_ordner  # kreisfrei erst hier
+
+    neue = [
+        kennung
+        for pfad, runde in ergebnis.items()
+        if pfad != wiedervorlage_ordner
+        for kennung in runde.neue_ids
+    ]
     if neue:
         _regeln_laufen_lassen(db, konto, neue)
 

@@ -41,6 +41,9 @@ _versand_halt = threading.Event()
 _aufraeumfaden: threading.Thread | None = None
 _aufraeumen_halt = threading.Event()
 
+_wiedervorlagefaden: threading.Thread | None = None
+_wiedervorlage_halt = threading.Event()
+
 #: Wie oft nach faelligen geplanten Sendungen gesehen wird. Eine Minute:
 #: Der Zeitpunkt wird auf die Minute eingestellt - viel spaeter als eine
 #: Minute darf „18:00" nicht hinausgehen.
@@ -164,7 +167,40 @@ def aufraeumplan_starten() -> None:
     _aufraeumfaden.start()
 
 
+def _wiedervorlageschleife() -> None:
+    """Die Wiedervorlage — legt Faelliges zurueck, sobald die Zeit da ist.
+
+    ⚠️ **Ein eigener Faden, bewusst nicht im Abgleich-Takt.** Derselbe Grund
+    wie beim Versandplan: ``NEXMAIL_TAKT_SEKUNDEN=0`` heisst „nicht dauernd
+    Post holen" — nicht „weggelegte Mails kommen nie zurueck". Hinge das
+    Aufwachen am Takt, laege eine fuer 18:00 weggelegte Mail am naechsten
+    Morgen noch im Wiedervorlage-Ordner.
+    """
+    from . import wiedervorlage
+
+    while not _wiedervorlage_halt.wait(wiedervorlage.NACHSEHEN_SEKUNDEN):
+        try:
+            wiedervorlage.runde()
+        except Exception as fehler:  # noqa: BLE001
+            # Der Faden darf nie sterben - sonst wacht nichts mehr auf, und
+            # niemand merkt es, bis eine Mail zu spaet wieder auffaellt.
+            logger.warning("The snooze check failed a round: %s", fehler)
+
+
+def wiedervorlage_starten() -> None:
+    global _wiedervorlagefaden
+
+    if _wiedervorlagefaden is not None and _wiedervorlagefaden.is_alive():
+        return
+    _wiedervorlage_halt.clear()
+    _wiedervorlagefaden = threading.Thread(
+        target=_wiedervorlageschleife, name="nexmail-wiedervorlage", daemon=True
+    )
+    _wiedervorlagefaden.start()
+
+
 def anhalten() -> None:
+    _wiedervorlage_halt.set()
     _aufraeumen_halt.set()
     _versand_halt.set()
     _sicherung_halt.set()
@@ -220,4 +256,5 @@ __all__ = [
     "laeuft",
     "starten",
     "versandplan_starten",
+    "wiedervorlage_starten",
 ]

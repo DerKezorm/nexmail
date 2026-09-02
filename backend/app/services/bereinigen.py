@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
+from html import unescape
 
 import nh3
 
@@ -66,6 +68,12 @@ _IMG_SRC = re.compile(r"(<img\b[^>]*?)\ssrc=", re.IGNORECASE)
 #: in Gruppe 2, 3 oder 4.
 _IMG_CID = re.compile(
     r"""(<img\b[^>]*?\ssrc=)(?:"cid:([^"]*)"|'cid:([^']*)'|cid:([^\s>]*))""",
+    re.IGNORECASE,
+)
+#: Ein ausgeklinktes Bild. Die Adresse steht je nach Anführungszeichen in
+#: Gruppe 2, 3 oder 4 — dasselbe Muster wie bei ``_IMG_CID``.
+_IMG_AUSGEKLINKT = re.compile(
+    rf"""(<img\b[^>]*?\s){BILD_MERKMAL}=(?:"([^"]*)"|'([^']*)'|([^\s>]*))""",
     re.IGNORECASE,
 )
 _TAGS = re.compile(r"<[^>]+>")
@@ -149,9 +157,36 @@ def cid_einsetzen(html: str, quellen: dict[str, str]) -> str:
     return _IMG_CID.sub(tauschen, html)
 
 
-def bilder_einhaengen(html: str) -> str:
-    """Die Umkehrung — erst wenn jemand „Bilder anzeigen" gedrückt hat."""
-    return html.replace(f" {BILD_MERKMAL}=", " src=")
+def bilder_vermitteln(html: str, adresse: Callable[[str], str]) -> str:
+    """Die Umkehrung — erst wenn jemand „Bilder anzeigen" gedrückt hat.
+
+    ⚠️ **Die fremde Adresse kommt nicht zurück ins ``src``.** Bis zum
+    02.09.2026 stand hier ein schlichtes Zurücktauschen, und genau das war der
+    Grund, warum der Knopf sichtbar nichts tat: Der Lesebereich läuft in einem
+    ``<iframe sandbox>``, der die Inhaltsregel der Anwendung erbt, und dort
+    steht ``img-src 'self' data: blob:``. Der Browser verwarf jede
+    ``https``-Adresse — stumm, weil aus einem abgeschotteten Rahmen keine
+    Verstossmeldung herauskommt.
+
+    Stattdessen steht dort jetzt eine Adresse **dieser** Anwendung, hinter der
+    der Bild-Vermittler sitzt. ``adresse`` baut sie aus der echten Adresse.
+
+    ⚠️ **Die gespeicherte Adresse ist HTML-maskiert.** nh3 macht aus einem
+    ``&`` im Attribut ein ``&amp;`` — wer das nicht zurücknimmt, signiert und
+    holt eine Adresse, die es so nie gab. Bei Zähl-Adressen mit einem halben
+    Dutzend Parametern ist das der Normalfall, nicht die Ausnahme.
+    """
+
+    def tauschen(treffer: re.Match[str]) -> str:
+        roh = unescape(treffer.group(2) or treffer.group(3) or treffer.group(4) or "")
+        if not roh.strip():
+            return f'{treffer.group(1)}src=""'
+        sicher = (
+            adresse(roh.strip()).replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
+        )
+        return f'{treffer.group(1)}src="{sicher}"'
+
+    return _IMG_AUSGEKLINKT.sub(tauschen, html)
 
 
 def fuer_anzeige(roh_html: str) -> tuple[str, int]:

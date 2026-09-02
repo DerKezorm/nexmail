@@ -97,10 +97,15 @@ test('Platzhalter enthalten keine persönlichen Daten', async ({ page }) => {
 test('Regeln und Signaturen: Auswahllisten sind gefärbt, nichts läuft über', async ({ page }) => {
   await zuEinstellungen(page)
 
-  for (const reiter of ['Regeln', 'Signaturen']) {
+  // ⚠️ Der Knopf heißt je Reiter anders — und im Reiter Signaturen stehen
+  // seit den Textvorlagen ZWEI „Neue …"-Knöpfe. Ein /Neue/-Muster träfe beide.
+  for (const [reiter, knopf] of [
+    ['Regeln', 'Neue Regel'],
+    ['Signaturen', 'Neue Signatur'],
+  ] as const) {
     await page.getByRole('tab', { name: reiter }).click()
-    await expect(page.getByRole('button', { name: /Neue/ })).toBeVisible()
-    await page.getByRole('button', { name: /Neue/ }).click()
+    await expect(page.getByRole('button', { name: knopf })).toBeVisible()
+    await page.getByRole('button', { name: knopf }).click()
 
     await auswahllistenSindGefaerbt(page)
     await keinTextLaeuftUeber(page)
@@ -374,4 +379,87 @@ test('Der Pfeil einer Auswahl gehört zum Klickziel', async ({ page }) => {
     return schlecht
   })
   expect(treffer, 'Unter dem Pfeil liegt nicht die Auswahl: ' + treffer.join(', ')).toEqual([])
+})
+
+test('Der Kopf über der Liste schneidet nichts ab', async ({ page }) => {
+  /* ⚠️ **Der eigentliche Fehler stand in einer Zeile.** Ordnername, Zahlen und
+     drei Bedienelemente nebeneinander: Sobald die Spalte schmaler wurde, blieb
+     „Alle Pos…" und „Alle S…" übrig. Am 02.09.2026 gemeldet.
+
+     ⚠️ **`keinTextLaeuftUeber` hätte es nie gefunden** — es überspringt alles
+     mit `text-overflow: ellipsis`, und genau das war der Ordnername. Ein
+     `<select>` beschneidet seinen Text ohnehin lautlos. Gemessen wird deshalb
+     hier von Hand: die Breite, die der Text wirklich braucht. */
+  await anmelden(page)
+
+  const zu_eng = await page.evaluate(() => {
+    function breite(el: HTMLElement, text: string) {
+      const stil = getComputedStyle(el)
+      const flaeche = document.createElement('canvas').getContext('2d')
+      if (!flaeche) return 0
+      flaeche.font = `${stil.fontWeight} ${stil.fontSize} ${stil.fontFamily}`
+      return flaeche.measureText(text).width
+    }
+
+    const schlecht: string[] = []
+
+    const titel = document.querySelector<HTMLElement>('h2.truncate')
+    if (titel && titel.scrollWidth > titel.clientWidth + 1) {
+      schlecht.push(`Ordnername „${titel.textContent}" braucht ${titel.scrollWidth}px, hat ${titel.clientWidth}px`)
+    }
+
+    for (const sel of Array.from(document.querySelectorAll('select'))) {
+      const gewaehlt = sel.options[sel.selectedIndex]?.text ?? ''
+      const stil = getComputedStyle(sel)
+      const platz =
+        sel.clientWidth - parseFloat(stil.paddingLeft) - parseFloat(stil.paddingRight)
+      const noetig = breite(sel, gewaehlt)
+      if (noetig > platz + 1) {
+        schlecht.push(`Auswahl „${gewaehlt}" braucht ${Math.round(noetig)}px, hat ${Math.round(platz)}px`)
+      }
+    }
+    return schlecht
+  })
+
+  expect(zu_eng, 'Im Kopf über der Liste wird abgeschnitten:\n  ' + zu_eng.join('\n  ')).toEqual([])
+})
+
+test('Schlagworte sind Rechtecke, Postfächer sind Punkte', async ({ page }) => {
+  /* ⚠️ **Zwei gleiche Formen für zwei verschiedene Dinge liest man falsch.**
+     Am 02.09.2026 gemeldet: „Der Kreis für die Schlagworte ist doof. Mach
+     daraus Rechtecke. Sonst verwechselt man es mit den Kreis, die für ein
+     Postfach stehen." In einer Listenzeile stehen beide nebeneinander. */
+  await anmelden(page)
+
+  /* Eine Marke ist ein leerer Kasten mit Farbe. Das „!" für Wichtigkeit ist
+     ebenfalls `role="img"`, trägt aber Text — sonst prüfte der Test dessen
+     Form. ⚠️ Und die Liste kommt nachgeladen: erst warten, dann messen, nie
+     eine feste Wartezeit. */
+  const messen = () =>
+    page.evaluate(() =>
+      Array.from(document.querySelectorAll<HTMLElement>('[role="img"]'))
+        .filter((el) => {
+          if ((el.textContent ?? '').trim() !== '' || el.querySelector('svg')) return false
+          const grund = getComputedStyle(el).backgroundColor
+          return el.clientWidth > 0 && grund !== 'rgba(0, 0, 0, 0)' && grund !== 'transparent'
+        })
+        .map((el) => ({
+          name: el.getAttribute('aria-label') ?? '',
+          breit: el.clientWidth,
+          hoch: el.clientHeight,
+          radius: getComputedStyle(el).borderTopLeftRadius,
+        })),
+    )
+
+  await expect
+    .poll(async () => (await messen()).length, {
+      message: 'Keine Schlagwortmarke in der Liste gefunden',
+    })
+    .toBeGreaterThan(0)
+  const marken = await messen()
+  for (const m of marken) {
+    expect(m.breit, `„${m.name}" ist nicht breiter als hoch`).toBeGreaterThan(m.hoch)
+    // Ein Kreis hätte hier den halben Kasten oder 9999px stehen.
+    expect(parseFloat(m.radius), `„${m.name}" ist rund statt eckig`).toBeLessThan(m.hoch / 2)
+  }
 })

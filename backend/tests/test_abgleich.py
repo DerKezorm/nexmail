@@ -50,6 +50,10 @@ class FalscherServer:
     def __init__(self):
         self.ordner: dict[str, dict] = {}
         self.geholt: list[int] = []
+        # ⚠️ Ob der Server eigene Keywords erlaubt (PERMANENTFLAGS mit \*).
+        # Der Doppelgaenger kann beides — wie ein echter Server: iCloud
+        # erlaubt Keywords, mancher Ordner anderswo nicht.
+        self.eigene_keywords = True
 
     def anlegen(self, pfad: str, uidvalidity: int = 100):
         self.ordner[pfad] = {"uidvalidity": uidvalidity, "nachrichten": {}}
@@ -62,6 +66,7 @@ class FalscherServer:
         gelesen=False,
         roh: bytes | None = None,
         kopfzeilen: dict[str, str] | None = None,
+        schlagworte: list[str] | None = None,
     ):
         self.ordner[pfad]["nachrichten"][uid] = {
             "betreff": betreff,
@@ -71,13 +76,23 @@ class FalscherServer:
             # Kopfzeilen, die ein HEADER.FIELDS-Abruf liefern soll — z. B.
             # References, Importance oder X-Priority. Namen wie in der Mail.
             "kopfzeilen": kopfzeilen or {},
+            # IMAP-Keywords an der Nachricht — z. B. von Thunderbird gesetzt.
+            "schlagworte": list(schlagworte or []),
         }
 
     # --- die Muschelschalen von IMAPClient ---------------------------- #
 
     def select_folder(self, pfad: str, readonly: bool = False):  # noqa: ARG002
         self._aktuell = pfad
-        return {b"UIDVALIDITY": self.ordner[pfad]["uidvalidity"]}
+        # PERMANENTFLAGS wie bei einem echten Server: mit \* duerfen Clients
+        # eigene Keywords anlegen, ohne nicht.
+        dauerhaft = (rb"\Seen", rb"\Flagged", rb"\Answered", rb"\Deleted", rb"\Draft")
+        if self.eigene_keywords:
+            dauerhaft = (*dauerhaft, rb"\*")
+        return {
+            b"UIDVALIDITY": self.ordner[pfad]["uidvalidity"],
+            b"PERMANENTFLAGS": dauerhaft,
+        }
 
     def search(self, _kriterien):
         return sorted(self.ordner[self._aktuell]["nachrichten"])
@@ -94,6 +109,8 @@ class FalscherServer:
                 flags.append(rb"\Seen")
             if eintrag["markiert"]:
                 flags.append(rb"\Flagged")
+            for keyword in eintrag.get("schlagworte", []):
+                flags.append(keyword.encode())
 
             zeile: dict = {b"FLAGS": tuple(flags)}
             if any("ENVELOPE" in str(f) for f in felder):

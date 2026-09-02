@@ -119,6 +119,14 @@ class Benutzer(Base):
     #: Benutzer als Spalte statt als Einstellungs-Schluessel.
     aufraeumen_zuletzt: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
 
+    #: „Bilder immer anzeigen" — der globale Schalter unter Darstellung.
+    #: ⚠️ **Im Server, obwohl Darstellung sonst im Browser wohnt.** Das hier
+    #: ist keine Frage des Bildschirms, sondern eine Entscheidung ueber die
+    #: eigene Post: Wer sie am Arbeitsrechner still anders vorfaende als zu
+    #: Hause, wuesste nie, warum ein Absender einmal Bescheid weiss und einmal
+    #: nicht. Vorgabe aus — wer sie einschaltet, hat den Satz daneben gelesen.
+    bilder_immer_laden: Mapped[bool] = mapped_column(Boolean, default=False)
+
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
     sitzungen: Mapped[list["Sitzung"]] = relationship(
@@ -414,6 +422,11 @@ class Nachricht(Base):
     gelesen: Mapped[bool] = mapped_column(Boolean, default=False)
     markiert: Mapped[bool] = mapped_column(Boolean, default=False)
     beantwortet: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: JSON-Liste der Schlagwort-Atome (IMAP-Keywords) dieser Nachricht.
+    #: ⚠️ **Die Wahrheit liegt auf dem Server** — hier steht nur, was der
+    #: Abgleich zuletzt gesehen hat. Gesetzt und entfernt wird deshalb immer
+    #: erst per STORE beim Anbieter, dann hier (siehe services/schlagworte.py).
+    schlagworte: Mapped[str] = mapped_column(Text, default="[]")
     hat_anhang: Mapped[bool] = mapped_column(Boolean, default=False)
     #: ``hoch`` | ``normal`` | ``niedrig`` — beim Abgleich aus den Kopfzeilen
     #: ``Importance`` und ``X-Priority`` gedeutet, weil Absender mal die eine,
@@ -681,6 +694,31 @@ class Signatur(Base):
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
+class Textvorlage(Base):
+    """Ein wiederkehrender Antwortbaustein fuer das Verfassen-Fenster.
+
+    ⚠️ **Der Name ist je Benutzer einmalig** — er ist das, was im
+    Vorlagen-Menue steht. Zwei gleichnamige Eintraege saehen dort identisch
+    aus, und welcher eingefuegt wird, entschiede der Zufall.
+
+    ⚠️ **Der Inhalt ist bereits bereinigt** — dieselbe Bereinigung wie beim
+    Senden, wie bei den Signaturen. Er landet wortwoertlich im Editor und
+    geht von dort denselben Weg hinaus wie jede Mail.
+    """
+
+    __tablename__ = "textvorlage"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+
+    name: Mapped[str] = mapped_column(String(200), default="")
+    inhalt_html: Mapped[str] = mapped_column(Text, default="")
+    #: Die Reihenfolge im Vorlagen-Menue — zum Ziehen, wie bei den Aufgaben.
+    reihenfolge: Mapped[int] = mapped_column(Integer, default=0)
+
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
 class Einladung(Base):
     """Eine ausgesprochene Einladung, die noch niemand angenommen hat.
 
@@ -759,6 +797,86 @@ class Aufgabe(Base):
     )
 
 
+class Wiedervorlage(Base):
+    """Eine weggelegte Mail, die zu einem Zeitpunkt wieder auffallen soll.
+
+    Die Mail selbst liegt in einem **echten** IMAP-Ordner „Wiedervorlage" auf
+    dem Mailserver — sie bleibt damit von jedem Client aus sichtbar, nichts
+    verschwindet in einer Nur-nexmail-Logik. Diese Tabelle traegt nur den
+    Merker: wann sie zurueckkommt und wohin.
+
+    ⚠️ **Wiedergefunden wird ueber die ``Message-ID``, nie ueber die
+    Zeilennummer** — dieselbe Begruendung wie bei den Aufgaben: Das Weglegen
+    selbst ist ein Verschieben, die lokale Zeile stirbt dabei, und beim
+    Aufwachen liegt die Mail unter einer neuen UID. Die ``Message-ID``
+    vergibt der absendende Server, und sie bleibt.
+
+    ⚠️ **Zweimal weggelegt ersetzt den Eintrag** (neues Aufwachen), erzeugt
+    keinen zweiten — die Eindeutigkeit unten haelt dagegen.
+    """
+
+    __tablename__ = "wiedervorlage"
+    __table_args__ = (
+        UniqueConstraint("benutzer_id", "konto_id", "message_id", name="uq_wiedervorlage_mail"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+    konto_id: Mapped[str] = mapped_column(String(32), index=True)
+
+    #: Der bestaendige Weg zurueck zur Mail.
+    message_id: Mapped[str] = mapped_column(String(500), index=True)
+    #: Wann die Mail zurueckkommt — UTC, wie jeder Zeitstempel hier.
+    aufwachen: Mapped[datetime] = mapped_column(UtcDateTime)
+    #: Woher sie kam — dorthin geht sie beim Aufwachen zurueck.
+    zurueck_pfad: Mapped[str] = mapped_column(String(512))
+    #: Abzug des Betreffs — damit die Liste der wartenden Eintraege etwas
+    #: sagt, auch wenn die Mail gerade in keiner lokalen Zeile steht.
+    betreff_abzug: Mapped[str] = mapped_column(Text, default="")
+    #: Wie oft das Aufwecken hintereinander gescheitert ist — steuert den
+    #: wachsenden Abstand bis zum naechsten Versuch (services/wiedervorlage).
+    fehlversuche: Mapped[int] = mapped_column(Integer, default=0)
+    #: Vor diesem Zeitpunkt wird nicht erneut aufgeweckt. Leer heisst: sofort,
+    #: sobald ``aufwachen`` erreicht ist.
+    naechster_versuch: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Schlagwort(Base):
+    """Ein Schlagwort fuer einzelne Mails — als IMAP-Keyword gespeichert.
+
+    ⚠️ **Das Atom lebt auf dem Mailserver, der Name nur hier.** ``atom`` ist
+    das IMAP-Keyword (nur ``A-Za-z0-9_-``), das an jeder markierten Mail
+    haengt und damit nexmail ueberlebt: Thunderbird und das Telefon sehen es
+    auch. ``name`` ist die Anzeige und darf Umlaute tragen; Umbenennen
+    aendert nur ihn — das Atom steht ja auf fremden Servern.
+
+    ⚠️ **Eindeutig je Benutzer, ohne Ruecksicht auf Gross/klein.** IMAP
+    vergleicht Keywords ohne Gross/klein (RFC 3501); „Arbeit" und „ARBEIT"
+    sind auf dem Server dasselbe Flag. Zwei Definitionen dafuer waeren zwei
+    Zeilen fuer eine Wahrheit. Die Datenbank sichert die exakte Form, der
+    Dienst vergleicht klein (services/schlagworte.py) — dasselbe Muster wie
+    bei den Postfach-Schlagworten und den Kontaktgruppen.
+
+    ``farbe`` ist eine der sechs geprueften Postfachfarben (1..6) — keine
+    eigene Palette, siehe frontend/src/lib/farben.ts.
+    """
+
+    __tablename__ = "schlagwort"
+    __table_args__ = (UniqueConstraint("benutzer_id", "atom", name="uq_schlagwort_atom"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+
+    #: Was in der Oberflaeche steht.
+    name: Mapped[str] = mapped_column(String(100))
+    #: Das IMAP-Keyword. Nur ``A-Za-z0-9_-``.
+    atom: Mapped[str] = mapped_column(String(100))
+    #: 1 bis 6 — dieselben Toene wie die Postfachfarben.
+    farbe: Mapped[int] = mapped_column(Integer, default=1)
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
 class OidcAnbieter(Base):
     """Ein Anmelde-Anbieter nach OpenID Connect — vom Betreiber eingerichtet.
 
@@ -787,4 +905,37 @@ class OidcAnbieter(Base):
     #: Leerzeichengetrennt. ``openid`` haengt der Dienst selbst an.
     scopes: Mapped[str] = mapped_column(String(300), default="openid email profile")
     aktiv: Mapped[bool] = mapped_column(Boolean, default=True)
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Bildfreigabe(Base):
+    """„Von diesem Absender immer laden" — wie in Thunderbird.
+
+    ⚠️ **Die volle Adresse, nicht die Domain.** Am 02.09.2026 so entschieden:
+    Eine Domain-Freigabe waere bequemer (Newsletter wechseln oft zwischen
+    ``news@``, ``info@`` und ``no-reply@``), aber ein Klick gaebe dann auch
+    jeder kuenftigen Werbemail derselben Firma frei — und der Klick faellt in
+    dem Moment, in dem man eine bestimmte Mail sehen will, nicht in dem, in
+    dem man ueber eine Firma entscheidet.
+
+    ⚠️ **Die Absenderadresse ist faelschbar, und das ist hier in Ordnung.**
+    Wer sie faelscht, erreicht genau eins: dass seine Bilder geladen werden,
+    also dass er erfaehrt, wann die Mail geoeffnet wurde. Dasselbe erreicht er
+    mit einer Mail, auf deren Balken jemand klickt. Es ist kein Zugang zu
+    irgendetwas.
+
+    Eindeutig je Benutzer, ohne Ruecksicht auf Gross/klein — Mailadressen
+    werden ueberall in nexmail klein verglichen.
+    """
+
+    __tablename__ = "bildfreigabe"
+    __table_args__ = (
+        UniqueConstraint("benutzer_id", "adresse", name="uq_bildfreigabe_adresse"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+
+    #: Klein geschrieben abgelegt — verglichen wird nie mit Gross/klein.
+    adresse: Mapped[str] = mapped_column(String(320))
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)

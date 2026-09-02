@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from ..config import get_settings
 from ..db import einstellung_lesen, einstellung_schreiben
 from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
-from ..services import systempost
+from ..services import bildfreigaben, systempost
 from ..services.aufraeumen import ERLAUBTE_TAGE
 
 router = APIRouter(prefix="/api/einstellungen", tags=["einstellungen"])
@@ -119,6 +119,65 @@ def aufraeumen_schreiben(
         papierkorb_tage=ich.aufraeumen_papierkorb_tage,
         junk_tage=ich.aufraeumen_junk_tage,
     )
+
+
+# --- Bilder in fremden Mails --------------------------------------------- #
+
+
+class Bilder(BaseModel):
+    """Der globale Schalter und die freigegebenen Absender.
+
+    ⚠️ **Je Benutzer im Server, obwohl der Reiter „Darstellung" heisst.** Der
+    Rest dieser Seite liegt im Browser, weil er zum Geraet gehoert. Das hier
+    gehoert nicht zum Geraet: Wer die Bilder am Arbeitsrechner still anders
+    behandelt bekaeme als zu Hause, wuesste nie, warum ein Absender einmal
+    Bescheid weiss und einmal nicht. Dasselbe Muster wie beim Aufraeumen.
+    """
+
+    immer_laden: bool = False
+    absender: list[str] = []
+
+
+def _bilder(db, ich) -> Bilder:
+    return Bilder(
+        immer_laden=ich.bilder_immer_laden,
+        absender=[f.adresse for f in bildfreigaben.liste(db, ich)],
+    )
+
+
+class BilderEingabe(BaseModel):
+    immer_laden: bool = False
+
+
+class Absender(BaseModel):
+    adresse: str = Field(min_length=1, max_length=320)
+
+
+@router.get("/bilder", response_model=Bilder)
+def bilder_lesen(ich: AngemeldeterBenutzer, db: DbSession) -> Bilder:
+    return _bilder(db, ich)
+
+
+@router.put("/bilder", response_model=Bilder)
+def bilder_schreiben(eingabe: BilderEingabe, ich: AngemeldeterBenutzer, db: DbSession) -> Bilder:
+    ich.bilder_immer_laden = eingabe.immer_laden
+    db.commit()
+    return _bilder(db, ich)
+
+
+@router.post("/bilder/absender/entfernen", response_model=Bilder)
+def absender_entfernen(eingabe: Absender, ich: AngemeldeterBenutzer, db: DbSession) -> Bilder:
+    """Eine Freigabe zuruecknehmen.
+
+    ⚠️ **POST, nicht DELETE.** Eine Mailadresse im Pfad traegt ``@`` und
+    Punkte; unter einem Reverse Proxy ist das eine Fehlerquelle, die man erst
+    beim fremden Aufbau bemerkt. Der Koerper hat das Problem nicht.
+
+    ⚠️ **Eine Adresse, die es nicht (mehr) gibt, ist kein Fehler.** Wer zweimal
+    auf „Rueckgaengig" tippt, hat sich verklickt, nicht geirrt.
+    """
+    bildfreigaben.vergessen(db, ich, eingabe.adresse)
+    return _bilder(db, ich)
 
 
 # --- Der Postausgang von nexmail selbst ---------------------------------- #

@@ -30,11 +30,17 @@ test.beforeEach(async ({ page }, info) => {
 test('Ein Wisch nach rechts über die Schwelle archiviert', async ({ page }) => {
   const absagen = serverabsagen(page)
   const zeilen = page.locator('button[draggable="true"]')
-  const anzahl = await zeilen.count()
   /* Der rohe Ordnername aus der Überschrift — so heißt der Zielordner auch
      im Verschieben-Untermenü (beides `o.name`, nicht die Übersetzung). */
   const quellTitel = await page.locator('h2').first().innerText()
   const betreff = await zeilen.first().locator('div.min-w-0 > div').nth(1).innerText()
+  /* ⚠️ **Der Betreff benennt hier nicht genau eine Mail.** Die Anhang-Tests
+     legen im selben Lauf Prüfnachrichten mit gleichlautendem Betreff in genau
+     die Ordner, die dieser Test greift, und räumen sie nicht weg. Gezählt
+     wird deshalb, wie viele Treffer es vorher gab — hinterher muss es einer
+     weniger sein. Am 02.09.2026 dreimal an derselben Wurzel rot geworden. */
+  const inQuelle = zeilen.filter({ hasText: betreff })
+  const vorherInQuelle = await inQuelle.count()
 
   /* ⚠️ Der eigentliche Wächter: Es muss wirklich ein Archivieren-Befehl zum
      Server gehen. Eine rein örtliche Änderung sähe in der Liste genauso aus. */
@@ -49,15 +55,28 @@ test('Ein Wisch nach rechts über die Schwelle archiviert', async ({ page }) => 
 
   // Die Folge in der Oberfläche: Rückgängig-Leiste da, Zeile weg.
   await expect(page.getByRole('status').filter({ hasText: 'Archiviert' })).toBeVisible()
+  /* ⚠️ **Diesen Betreff zählen, nicht alle Zeilen.** Bis zum 02.09.2026 stand
+     hier `anzahl - 1` über die ganze Liste, und der Test wurde rot, sobald der
+     Ordner mehr Post hielt als eine Listenseite: Die Liste lädt 60 Zeilen, das
+     Archivieren nimmt eine heraus, und das Nachladen füllt sofort wieder auf
+     60 auf. Die Zahl war richtig und die Aussage trotzdem falsch. */
   await expect
-    .poll(() => zeilen.count(), { message: 'Die archivierte Zeile steht noch in der Liste.' })
-    .toBe(anzahl - 1)
+    .poll(() => inQuelle.count(), {
+      message: 'Die archivierte Zeile steht noch in der Liste.',
+    })
+    .toBe(vorherInQuelle - 1)
   await absagen.pruefen()
 
   // Und die Mail liegt wirklich im Archiv — nachgesehen, nicht geglaubt.
   await inOrdner(page, /^Archiv( \d+)?$/)
-  const archiviert = zeilen.filter({ hasText: betreff }).first()
-  await expect(archiviert, 'Die Mail liegt nicht im Archiv.').toBeVisible({ timeout: 15_000 })
+  const imArchiv = zeilen.filter({ hasText: betreff })
+  await expect(imArchiv.first(), 'Die Mail liegt nicht im Archiv.').toBeVisible({ timeout: 15_000 })
+  /* ⚠️ **Der Betreff benennt nicht immer genau eine Mail.** Im
+     Entwicklungspostfach liegen dutzende Prüfnachrichten mit gleichlautendem
+     Betreff (die Anhang-Tests legen sie paarweise an). Gezählt wird deshalb,
+     wie viele es vorher waren — hinterher muss es eine weniger sein. */
+  const vorher = await imArchiv.count()
+  const archiviert = imArchiv.first()
 
   /* Zurückschieben statt des Rückgängig-Knopfs: `/api/nachrichten/zurueck`
      bewegt nur auf dem IMAP-Server, in die Liste käme die Mail erst mit dem
@@ -80,14 +99,16 @@ test('Ein Wisch nach rechts über die Schwelle archiviert', async ({ page }) => 
     timeout: 20_000,
   })
   await expect(page.getByRole('heading', { name: 'Archiv', exact: true })).toBeVisible()
-  await expect(zeilen.filter({ hasText: betreff })).toHaveCount(0, { timeout: 20_000 })
+  await expect(imArchiv, 'Die Mail ist nicht aus dem Archiv verschwunden.').toHaveCount(vorher - 1, {
+    timeout: 20_000,
+  })
 
-  // Zurück im Ausgangsordner steht der alte Bestand wieder.
+  // Zurück im Ausgangsordner steht die Nachricht wieder — dieselbe, nicht
+  // irgendeine. Auch hier zählt der Betreff, nicht die Menge.
   await inOrdner(page, knopfMuster(quellKnopf))
-  await expect
-    .poll(() => zeilen.count(), { message: 'Die Nachricht kam nicht zurück.', timeout: 15_000 })
-    .toBe(anzahl)
-  await expect(zeilen.filter({ hasText: betreff }).first()).toBeVisible()
+  await expect(zeilen.filter({ hasText: betreff }).first(), 'Die Nachricht kam nicht zurück.').toBeVisible({
+    timeout: 15_000,
+  })
   await absagen.pruefen()
 })
 

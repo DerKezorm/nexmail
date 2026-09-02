@@ -119,13 +119,36 @@ def test_verstecktes_bild_wird_genauso_ausgeklinkt():
 
 
 def test_bilder_kommen_auf_wunsch_zurueck():
+    """Und zwar über den Vermittler, nicht als fremde Adresse.
+
+    ⚠️ **Genau das war der Fehler von 0.1.0 bis 0.3.0.** Die echte Adresse
+    wieder einzuhängen sieht richtig aus und ist es nicht: Der Lesebereich
+    erbt ``img-src 'self' data: blob:``, und der Browser verwirft ``https``
+    stumm.
+    """
     roh = '<img src="https://absender.example/bild.jpg">'
     html, _ = bereinigen.fuer_anzeige(roh)
     assert " src=" not in html
 
-    wieder = bereinigen.bilder_einhaengen(html)
-    assert 'src="https://absender.example/bild.jpg"' in wieder
+    wieder = bereinigen.bilder_vermitteln(html, lambda _: "/api/bilder/MARKE")
+    assert 'src="/api/bilder/MARKE"' in wieder
     assert bereinigen.BILD_MERKMAL not in wieder
+    # ⚠️ Die fremde Adresse steht danach nirgends mehr im Dokument — sonst
+    # hätte der Browser sie wieder in der Hand.
+    assert "absender.example" not in wieder
+
+
+def test_der_vermittler_bekommt_die_unmaskierte_adresse():
+    """⚠️ nh3 macht aus ``&`` im Attribut ein ``&amp;``.
+
+    Wer das nicht zurücknimmt, signiert und holt eine Adresse, die es nie
+    gab — und Zähl-Adressen mit mehreren Parametern sind der Normalfall.
+    """
+    roh = '<img src="https://absender.example/p.gif?a=1&b=2&c=3">'
+    html, _ = bereinigen.fuer_anzeige(roh)
+    gesehen: list[str] = []
+    bereinigen.bilder_vermitteln(html, lambda u: gesehen.append(u) or "/x")
+    assert gesehen == ["https://absender.example/p.gif?a=1&b=2&c=3"]
 
 
 def test_grossgeschriebenes_img_wird_auch_erwischt():

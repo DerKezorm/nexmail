@@ -27,10 +27,14 @@ from ..models import Anhang, Konto, Nachricht, Ordner
 from ..services import (
     abgleich,
     bereinigen,
+    bildfreigaben,
+    bildvermittler,
     handeln,
     imap as imapdienst,
     konten as kontendienst,
     mime,
+    schlagworte as schlagwortdienst,
+    wiedervorlage as wiedervorlagedienst,
 )
 from .einstellungen import SCHLUESSEL_ZEITZONE
 
@@ -90,6 +94,9 @@ class Zeile(BaseModel):
     strang_ungelesen: int = 0
     #: Der Schluessel, mit dem sich der Strang aufklappen laesst.
     thread_key: str = ""
+    #: Die Schlagwort-Atome dieser Mail — die Oberflaeche macht daraus die
+    #: Farbmarken (Definitionen kommen aus /api/schlagworte).
+    schlagworte: list[str] = []
 
 
 class AnhangZeile(BaseModel):
@@ -106,7 +113,14 @@ class Voll(Zeile):
     #: Bereinigt und mit ausgeklinkten Bildern.
     html: str
     text: str
+    #: Wie viele Bilder noch ausgeklinkt sind. ⚠️ **Nicht die Spalte, sondern
+    #: der Stand fuer diese Antwort:** Ist der Absender freigegeben oder steht
+    #: „Bilder immer anzeigen" an, sind die Bilder schon drin — dann ist die
+    #: Zahl 0, und der Hinweisbalken erscheint gar nicht erst.
     geblockte_bilder: int
+    #: Ob dieser Absender dauerhaft freigegeben ist — der Balken bietet dann
+    #: kein zweites Mal „immer laden" an.
+    absender_freigegeben: bool = False
     anhaenge: list[AnhangZeile]
 
 
@@ -133,6 +147,7 @@ def _zeile(n: Nachricht) -> Zeile:
         wichtigkeit=n.wichtigkeit,
         groesse=n.groesse,
         thread_key=n.thread_key,
+        schlagworte=schlagwortdienst.atome_lesen(n),
     )
 
 
@@ -170,6 +185,12 @@ def liste(
     #: Deshalb der Merkpunkt: „gib mir, was älter ist als das hier". Die
     #: Kennung muss mit, weil zwei Mails dieselbe Sekunde tragen können.
     nach: str = "",
+    #: Nur Mails mit diesem Schlagwort-Atom.
+    #:
+    #: ⚠️ **Im Server gefiltert, nicht im Browser** — dieselbe Regel wie beim
+    #: ungelesen-Filter: Die Oberflaeche haelt nur die neuesten Zeilen; ein
+    #: Filter darin faende die markierte Mail von vor drei Monaten nie.
+    schlagwort: str = "",
     #: Einen Strang zu einer Zeile zusammenfassen.
     #:
     #: ⚠️ **Gezeigt wird die neueste Nachricht im gerade sichtbaren Bereich**,
@@ -206,6 +227,9 @@ def liste(
         abfrage = abfrage.where(Nachricht.gelesen.is_(False))
     elif filter == "markiert":
         abfrage = abfrage.where(Nachricht.markiert.is_(True))
+
+    if schlagwort:
+        abfrage = abfrage.where(schlagwortdienst.traegt_atom(schlagwort))
 
     if suche.strip():
         muster = f"%{suche.strip()}%"
@@ -322,6 +346,136 @@ def strang(schluessel: str, person: AngemeldeterBenutzer, db: DbSession) -> list
     return [_zeile(n) for n in zeilen]
 
 
+class SchlagwortAuswahl(BaseModel):
+    ids: list[int]
+
+
+class Schlagwortstand(BaseModel):
+    beruehrt: int
+
+
+def _schlagwort_zuweisen(
+    atom: str, ids: list[int], person, db, setzen: bool
+) -> Schlagwortstand:
+    """⚠️ **Erst der Server, dann lokal** — der Dienst haelt die Reihenfolge.
+
+    Ein Server ohne eigene Keywords (PERMANENTFLAGS ohne ``\\*``) antwortet
+    mit der KENNUNG ``schlagworte_nicht_unterstuetzt``; die Oberflaeche
+    uebersetzt sie. Kein deutscher Satz als ``detail``.
+    """
+    nachrichten = _auswahl(db, person, ids)
+    try:
+        beruehrt = schlagwortdienst.zuweisen(db, person, nachrichten, atom, setzen)
+    except schlagwortdienst.SchlagwortFehler as fehler:
+        kennung = str(fehler)
+        if kennung == "schlagwort_unbekannt":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from fehler
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=kennung
+        ) from fehler
+    return Schlagwortstand(beruehrt=beruehrt)
+
+
+# ⚠️ **Vor den ``/{nachricht_id}``-Routen registriert.** FastAPI nimmt die
+# erste passende Route; staenden diese beiden dahinter, wuerde ein Atom wie
+# „flags" oder „bilder" von ``POST /{nachricht_id}/…`` geschluckt und als
+# kaputte Zahl gemeldet — dasselbe Muster wie bei /api/aufgaben/reihenfolge.
+@router.post("/schlagworte/{atom}", response_model=Schlagwortstand)
+def schlagwort_geben(
+    atom: str, auswahl: SchlagwortAuswahl, person: AngemeldeterBenutzer, db: DbSession
+) -> Schlagwortstand:
+    """Ein Schlagwort an Mails haengen — als IMAP-Keyword, Mehrfachauswahl
+    inbegriffen."""
+    return _schlagwort_zuweisen(atom, auswahl.ids, person, db, setzen=True)
+
+
+@router.delete("/schlagworte/{atom}", response_model=Schlagwortstand)
+def schlagwort_nehmen(
+    atom: str, auswahl: SchlagwortAuswahl, person: AngemeldeterBenutzer, db: DbSession
+) -> Schlagwortstand:
+    return _schlagwort_zuweisen(atom, auswahl.ids, person, db, setzen=False)
+
+
+class WiedervorlageWunsch(BaseModel):
+    nachricht_id: int
+    #: Wann die Mail zurueckkommt — ISO, wird als UTC gespeichert.
+    aufwachen: datetime
+
+
+class WiedervorlageZeile(BaseModel):
+    id: int
+    konto_id: str
+    #: Die **aktuelle** lokale Zeile der Mail, frisch ueber die Message-ID
+    #: nachgeschlagen. ``null`` heisst: gerade in keiner lokalen Zeile.
+    nachricht_id: int | None
+    message_id: str
+    aufwachen: datetime
+    zurueck_pfad: str
+    betreff: str
+
+
+def _wiedervorlage_zeile(s: wiedervorlagedienst.Sicht) -> WiedervorlageZeile:
+    e = s.eintrag
+    return WiedervorlageZeile(
+        id=e.id,
+        konto_id=e.konto_id,
+        nachricht_id=s.nachricht_id,
+        message_id=e.message_id,
+        aufwachen=e.aufwachen,
+        zurueck_pfad=e.zurueck_pfad,
+        betreff=e.betreff_abzug,
+    )
+
+
+# ⚠️ Ebenfalls **vor** den ``/{nachricht_id}``-Routen — sonst wuerde
+# „wiedervorlage" als kaputte Zahl gemeldet, dasselbe Muster wie oben.
+@router.get("/wiedervorlage", response_model=list[WiedervorlageZeile])
+def wiedervorlage_liste(person: AngemeldeterBenutzer, db: DbSession) -> list[WiedervorlageZeile]:
+    """Alle wartenden Eintraege — Ordnerbaum-Zahl und Listen-Marken haengen daran."""
+    return [_wiedervorlage_zeile(s) for s in wiedervorlagedienst.alle(db, person)]
+
+
+@router.post("/wiedervorlage", response_model=WiedervorlageZeile, status_code=status.HTTP_201_CREATED)
+def wiedervorlage_anlegen(
+    wunsch: WiedervorlageWunsch, person: AngemeldeterBenutzer, db: DbSession
+) -> WiedervorlageZeile:
+    """Eine Mail bis zu einem Zeitpunkt weglegen.
+
+    Erst der IMAP-MOVE in den Wiedervorlage-Ordner, dann der Eintrag —
+    scheitert das Verschieben, entsteht **kein** Eintrag. Zweimal weggelegt
+    ersetzt den Eintrag (neues Aufwachen), erzeugt keinen zweiten.
+    """
+    try:
+        eintrag = wiedervorlagedienst.weglegen(db, person, wunsch.nachricht_id, wunsch.aufwachen)
+    except wiedervorlagedienst.WiedervorlageFehler as fehler:
+        kennung = str(fehler)
+        if kennung == "wiedervorlage_nachricht_fehlt":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from fehler
+        # KENNUNG, kein deutscher Satz — die Oberflaeche uebersetzt.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=kennung) from fehler
+    except handeln.HandelnFehler as fehler:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+    return _wiedervorlage_zeile(
+        wiedervorlagedienst.Sicht(eintrag=eintrag, nachricht_id=None)
+    )
+
+
+@router.delete("/wiedervorlage/{eintrag_id}", status_code=status.HTTP_204_NO_CONTENT)
+def wiedervorlage_entfernen(
+    eintrag_id: int, person: AngemeldeterBenutzer, db: DbSession
+) -> None:
+    """Einen Merker von Hand wegnehmen — die Mail bleibt, wo sie liegt.
+
+    ⚠️ Der Ausweg fuer einen Eintrag, dessen Aufwecken dauerhaft scheitert:
+    Ohne diese Route wuerde der Benutzer ihn nie los. Fremder Besitz
+    antwortet wie „gibt es nicht".
+    """
+    try:
+        wiedervorlagedienst.entfernen(db, person, eintrag_id)
+    except wiedervorlagedienst.WiedervorlageFehler as fehler:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from fehler
+
+
 def _meine(db, person, nachricht_id: int) -> Nachricht:
     nachricht = db.get(Nachricht, nachricht_id)
     # Erst holen, dann Besitzer prüfen - und bei fremdem Besitz dasselbe
@@ -354,20 +508,47 @@ def _koerper_sicherstellen(db, nachricht: Nachricht) -> None:
                 pass
 
 
+def _bildadresse(marke_fuer: str) -> str:
+    """Die Adresse, unter der der Vermittler dieses Bild ausliefert.
+
+    ⚠️ **Mit dem Vorbau.** Der Lesebereich ist ein ``srcdoc``-Rahmen; relative
+    Adressen darin loesen sich gegen das **Elterndokument** auf. Ein blosses
+    ``/api/bilder/…`` landete unter einem Unterpfad an der Wurzel der Domain —
+    derselbe Fallstrick wie beim Cookie-Pfad und bei ``lib/basis.ts``.
+    """
+    return f"{get_settings().url_base}/api/bilder/{bildvermittler.marke_ausstellen(marke_fuer)}"
+
+
+def _koerper_fuer_anzeige(nachricht: Nachricht, mit_bildern: bool) -> str:
+    """Der Nachrichtentext, wie ihn der Lesebereich zeigen darf.
+
+    ⚠️ **``cid_einsetzen`` gehoert in beide Wege.** Bis zum 02.09.2026 setzte
+    nur ``GET /{id}`` die eingebetteten Bilder ein; „Bilder anzeigen" gab den
+    Rohtext zurueck. Wer den Knopf drueckte, verlor damit ausgerechnet die
+    Bilder, die schon da waren — Logo und Bildschirmfotos derselben Mail.
+    """
+    html = bereinigen.cid_einsetzen(nachricht.koerper_html, _inline_quellen(nachricht))
+    if mit_bildern:
+        html = bereinigen.bilder_vermitteln(html, _bildadresse)
+    return html
+
+
 @router.get("/{nachricht_id}", response_model=Voll)
 def eine(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Voll:
     """Eine Nachricht mit Körper — der wird beim ersten Mal geholt."""
     nachricht = _meine(db, person, nachricht_id)
     _koerper_sicherstellen(db, nachricht)
 
+    freigegeben = bildfreigaben.darf_laden(db, person, nachricht.von_adresse)
     grund = _zeile(nachricht).model_dump()
     return Voll(
         **grund,
         an=_personen(nachricht.an_json),
         kopie=_personen(nachricht.kopie_json),
-        html=bereinigen.cid_einsetzen(nachricht.koerper_html, _inline_quellen(nachricht)),
+        html=_koerper_fuer_anzeige(nachricht, mit_bildern=freigegeben),
         text=nachricht.koerper_text,
-        geblockte_bilder=nachricht.geblockte_bilder,
+        geblockte_bilder=0 if freigegeben else nachricht.geblockte_bilder,
+        absender_freigegeben=freigegeben,
         anhaenge=[
             AnhangZeile(
                 id=a.id,
@@ -385,16 +566,31 @@ class Html(BaseModel):
     html: str
 
 
+class BilderEingabe(BaseModel):
+    #: „Von diesem Absender immer laden" — der zweite Knopf im Hinweisbalken.
+    absender_merken: bool = False
+
+
 @router.post("/{nachricht_id}/bilder", response_model=Html)
-def bilder_anzeigen(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Html:
-    """Die Bilder wieder einhängen — auf ausdrücklichen Wunsch.
+def bilder_anzeigen(
+    nachricht_id: int,
+    eingabe: BilderEingabe,
+    person: AngemeldeterBenutzer,
+    db: DbSession,
+) -> Html:
+    """Die Bilder anzeigen — auf ausdrücklichen Wunsch.
 
     ⚠️ **Das ist eine Entscheidung des Menschen, kein Vorgang.** Bis hierher
-    hat der Browser die Adressen nie gesehen; danach weiß der Absender, dass
-    und wann seine Mail geöffnet wurde.
+    hat niemand die Adressen angefasst; danach weiß der Absender, dass und wann
+    seine Mail geöffnet wurde. Neu seit dem 02.09.2026: Es weiß es der
+    **Server**, nicht der Browser — der Absender sieht die Adresse dieser
+    Installation und sonst nichts. Kein Verweis auf die Herkunft, kein Keks,
+    keine Kennung des Lesers.
     """
     nachricht = _meine(db, person, nachricht_id)
-    return Html(html=bereinigen.bilder_einhaengen(nachricht.koerper_html))
+    if eingabe.absender_merken:
+        bildfreigaben.merken(db, person, nachricht.von_adresse)
+    return Html(html=_koerper_fuer_anzeige(nachricht, mit_bildern=True))
 
 
 #: Wie groß ein eingebettetes Bild höchstens sein darf, um im Lesebereich

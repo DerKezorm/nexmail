@@ -116,7 +116,14 @@ interface Props {
    *  geblieben. 0 blendet die Zeile aus: Ein Ausgang, der fast immer leer
    *  ist, waere sonst eine Zeile, die fast immer nichts sagt. */
   ausgangZahl: number
+  /** Wartende Wiedervorlage-Eintraege je Postfach (kontoId → Zahl). Die Zahl
+   *  steht an der Zeile des Wiedervorlage-Ordners, wenn sie groesser 0 ist. */
+  wiedervorlageZahlen?: Record<string, number>
 }
+
+/* Der Wiedervorlage-Ordner heisst auf jedem Server gleich — der Name ist im
+ * Server festgelegt (services/wiedervorlage.ORDNER_NAME), oberste Ebene. */
+const WIEDERVORLAGE_PFAD = 'Wiedervorlage'
 
 export function Ordnerspalte({
   konten,
@@ -134,6 +141,7 @@ export function Ordnerspalte({
   gruppe,
   aufGruppe,
   ausgangZahl,
+  wiedervorlageZahlen = {},
 }: Props) {
   // Über welchem Ordner der Zeiger gerade schwebt. ⚠️ Ohne sichtbares Ziel
   // ist Ziehen ein Ratespiel: Man lässt los und weiß erst hinterher, wo es
@@ -285,6 +293,7 @@ export function Ordnerspalte({
                 })`}
                 punkt={farbeVon(o.kontoId)}
                 ungelesen={o.ungelesen}
+                wartend={o.pfad === WIEDERVORLAGE_PFAD ? (wiedervorlageZahlen[o.kontoId] ?? 0) : 0}
                 aktiv={ziel.typ === 'ordner' && ziel.id === o.id}
                 onClick={() => aufZiel({ typ: 'ordner', id: o.id })}
                 onContextMenu={(e) => aufKontext(e, o)}
@@ -341,6 +350,7 @@ export function Ordnerspalte({
                     symbol={SYMBOL[o.rolle]}
                     name={anzeigename(o, t)}
                     ungelesen={o.ungelesen}
+                    wartend={o.pfad === WIEDERVORLAGE_PFAD ? (wiedervorlageZahlen[o.kontoId] ?? 0) : 0}
                     stern={favoriten.includes(o.id)}
                     aktiv={ziel.typ === 'ordner' && ziel.id === o.id}
                     onContextMenu={(e) => aufKontext(e, o)}
@@ -376,6 +386,9 @@ interface ZeileProps {
   symbol: ReactNode
   name: string
   ungelesen: number
+  /** Wartende Wiedervorlage-Eintraege dieses Kontos — nur an der Zeile des
+   *  Wiedervorlage-Ordners gesetzt, 0 blendet die Marke aus. */
+  wartend?: number
   aktiv: boolean
   onClick: () => void
   onContextMenu?: (e: React.MouseEvent) => void
@@ -474,6 +487,7 @@ function Zeile({
   symbol,
   name,
   ungelesen,
+  wartend = 0,
   aktiv,
   onClick,
   onContextMenu,
@@ -487,6 +501,7 @@ function Zeile({
   aufAblegen,
   aufAbweisungZeile,
 }: ZeileProps) {
+  const { t } = useTranslation()
   return (
     <button
       type="button"
@@ -546,6 +561,19 @@ function Zeile({
       {symbol}
       <span className="min-w-0 flex-1 truncate">{name}</span>
       {stern && <Star className="size-3 shrink-0 fill-current text-warning opacity-70" />}
+      {/* Wartende Wiedervorlagen dieses Kontos. Die Uhr sagt, dass es keine
+          Ungelesen-Zahl ist — und der vorlesbare Name sagt es Vorlesehilfen. */}
+      {wartend > 0 && (
+        <span
+          role="img"
+          aria-label={t('wiedervorlage.wartend', { count: wartend })}
+          title={t('wiedervorlage.wartend', { count: wartend })}
+          className="flex shrink-0 items-center gap-0.5 text-[11px] font-semibold tabular-nums text-fg-3"
+        >
+          <Clock aria-hidden className="size-3" />
+          {wartend}
+        </span>
+      )}
       {ungelesen > 0 && (
         <span className="shrink-0 text-[11px] font-semibold tabular-nums text-fg-3">{ungelesen}</span>
       )}

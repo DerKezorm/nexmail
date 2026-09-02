@@ -142,6 +142,8 @@
     "bilder_geblockt": "Images in this message were not loaded. They would tell the sender when you opened it.",
     "bilder_anzeigen": "Show images",
     "bilder_immer": "Always from this sender",
+    "bilder_immer_gemerkt": "Images from {{adresse}} will always be loaded from now on.",
+    "bilder_ging_nicht": "The images could not be loaded. The sender's server did not answer.",
     "details_zeigen": "Show headers",
     "wichtig_hoch": "High importance",
     "wichtig_niedrig": "This message was sent with low importance."
@@ -159,6 +161,9 @@
     "kopie_zeigen": "Cc",
     "blindkopie_zeigen": "Bcc",
     "anhang": "Attach",
+    "vorlage": "Template",
+    "vorlagen_leer": "No templates yet — create them under Settings → Signatures.",
+    "vorlagen_fehler": "Templates could not be loaded — click to retry.",
     "signatur": "Signature",
     "entwurf_gespeichert": "Draft saved",
     "verwerfen": "Discard",
@@ -276,7 +281,8 @@
     "entfernen": "Remove",
     "aktiv": "Active",
     "bald": "Comes in a later stage.",
-    "protokoll": "Log"
+    "protokoll": "Log",
+    "schlagworte": "Tags"
   },
   "attrappe": {
     "hinweis": "Mock-up — invented messages, no mailbox connected"
@@ -443,6 +449,52 @@
     "entfernen": "Remove signature",
     "entfernen_sicher": "Remove the signature {{name}}?"
   },
+  "textvorlagen": {
+    "titel": "Templates",
+    "hinweis": "Recurring replies you insert while writing — via the Template menu in the compose window.",
+    "neu": "New template",
+    "leer": "No templates yet",
+    "leer_text": "A building block you insert at the cursor while writing.",
+    "name": "Name",
+    "speichern": "Save template",
+    "entfernen": "Remove template",
+    "entfernen_sicher": "Remove the template {{name}}?",
+    "fehler_name_vergeben": "A template with this name already exists.",
+    "fehler_name_fehlt": "The template needs a name.",
+    "laden_ging_nicht": "Templates could not be loaded. They are not gone — the server is not answering right now.",
+    "ziehen": "Drag to change the order in the Template menu."
+  },
+  "schlagworte": {
+    "menue": "Tag",
+    "neu": "New tag…",
+    "neu_titel": "New tag",
+    "neu_text": "The name is stored on the mailbox as an IMAP keyword and shows up in other apps too. Umlauts and special characters are rewritten for that.",
+    "name": "Name",
+    "name_platzhalter": "e.g. Invoices",
+    "anlegen": "Create",
+    "atom_vorschau": "Stored on the mailbox as:",
+    "filter": "Filter by tag",
+    "filter_alle": "All tags",
+    "leer_titel": "No tags yet",
+    "leer_text": "Create one here — or set it right on a message, via the list’s context menu.",
+    "anzahl_mails": "messages with this tag: {{count}}",
+    "farbe_waehlen": "Choose a colour for “{{name}}”",
+    "farbe_1": "Green",
+    "farbe_2": "Blue",
+    "farbe_3": "Amber",
+    "farbe_4": "Coral",
+    "farbe_5": "Pink",
+    "farbe_6": "Grey",
+    "umbenennen": "Rename",
+    "umbenennen_hinweis": "Only the display name changes. The keyword “{{atom}}” stays on the mail server — other apps keep showing that form.",
+    "entfernen": "Delete tag",
+    "entfernen_sicher": "“{{name}}” will be removed from {{count}} messages nexmail knows about, then deleted.",
+    "entfernen_hinweis": "Messages nexmail has never synced keep the keyword on the server.",
+    "fehler_nicht_unterstuetzt": "This mailbox does not allow custom tags — the mail server only accepts its system flags.",
+    "fehler_veraltet": "The folder was rebuilt on the mail server. nexmail is re-syncing it — try again in a moment.",
+    "fehler_name_vergeben": "A tag with this name already exists.",
+    "fehler_name_leer": "The name must not be empty."
+  },
   "sicherheit": {
     "zwei_faktor": "Second factor",
     "aktiv": "Set up and active.",
@@ -503,7 +555,14 @@
     "aufraeumen_papierkorb": "Empty trash automatically",
     "aufraeumen_junk": "Empty junk automatically",
     "aufraeumen_aus": "Never",
-    "aufraeumen_tage": "Older than {{n}} days"
+    "aufraeumen_tage": "Older than {{n}} days",
+    "bilder_titel": "Images in incoming mail",
+    "bilder_hinweis": "These two settings live on the server and apply on every device, unlike the rest of this page. Finding them set differently on a second machine would leave you guessing why one sender knows and another does not.",
+    "bilder_immer": "Always show images",
+    "bilder_immer_hinweis": "Load images from every sender without asking. Every sender then learns when you opened their message. The images are fetched by nexmail's server, not by your browser, so your address stays hidden.",
+    "bilder_absender": "Always loaded from",
+    "bilder_absender_leer": "No sender allowed yet.",
+    "bilder_absender_entfernen": "Withdraw the permission for {{adresse}}"
   },
   "protokoll": {
     "stufe": "Detail",
@@ -608,6 +667,24 @@
     "laden_ging_nicht": "Tasks could not be loaded. They are not gone — the server is not answering right now.",
     "machen": "Turn into task",
     "schon_aufgabe": "Already in your tasks"
+  },
+  "wiedervorlage": {
+    "menue": "Snooze",
+    "heute_abend": "This evening 6:00 PM",
+    "morgen": "Tomorrow 8:00 AM",
+    "montag": "Next Monday 8:00 AM",
+    "eigen": "Pick a time …",
+    "eigen_titel": "Snooze",
+    "eigen_text": "The message moves to the “Wiedervorlage” folder and returns unread at the chosen time.",
+    "eigen_feld": "Date and time",
+    "weglegen": "Snooze",
+    "vergangen": "That time is in the past.",
+    "marke": "Snoozed: {{wann}}",
+    "wartend": "{{count}} snoozed",
+    "fehler_ohne_kennung": "This message has no Message-ID, so it cannot be snoozed.",
+    "fehler_kennung_unbrauchbar": "This message's Message-ID contains characters that cannot be searched reliably — it cannot be snoozed.",
+    "fehler_ordner": "The snooze folder could not be created on the server.",
+    "aufheben": "Cancel snooze"
   },
   "oidc": {
     "was_ist_das": "Sign in through an external provider — Keycloak, Authentik, Authelia. While this list is empty nothing changes: no buttons, no open endpoints.",
