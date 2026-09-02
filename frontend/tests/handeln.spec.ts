@@ -10,7 +10,7 @@
  * Zustand der Anwendung und kippt, wenn die Handlung angekommen ist.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { anmelden, serverabsagen } from './hilfen'
+import { anmelden, postfach, serverabsagen } from './hilfen'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -112,17 +112,45 @@ test('„Neuer Unterordner" fragt im eigenen Fenster nach', async ({ page }) => 
 /* --- Hilfen ------------------------------------------------------------- */
 
 async function inOrdnerMitNachrichten(page: Page) {
+  /* ⚠️ **Das Testpostfach, nicht der erstbeste Ordner dieses Namens.**
+     `getByRole('button', { name: 'Papierkorb' }).first()` nimmt den des
+     Postfachs, das zufaellig oben steht — und der kann leer sein, waehrend
+     zwei Postfaecher weiter unten neunzehn Mails liegen. Der Helfer gab dann
+     auf, `test.skip` sprang an, und **sechs von acht Tests dieser Datei
+     uebersprangen sich stillschweigend**.
+
+     ⚠️ **Ein uebersprungener Test sieht im Bericht aus wie ein gruener.** Am
+     02.09.2026 war der neue Waechter fuer die Untermenues deshalb hohl: Beide
+     Mutationen liefen auf Rueckgabecode 0, weil der Test gar nicht lief.
+
+     ⚠️ **Und gewartet wird auf die Antwort, nicht auf die Uhr.** Eine feste
+     Wartezeit war zu kurz, sobald der Mailserver traege ist. */
+  const baum = postfach(page)
+  const zeilen = page.locator('button[draggable="true"]')
+
+  /* ⚠️ **Erst muss der Baum ueberhaupt da sein.** Die Ordner kommen je
+     Postfach einzeln nach; wer sofort nach ihnen greift, findet keinen und
+     haelt das Testpostfach fuer leer. Genau daran uebersprangen sich die
+     Tests. */
+  await expect
+    .poll(() => baum.getByRole('button').count(), { timeout: 15000 })
+    .toBeGreaterThan(0)
+
   for (const name of ['Papierkorb', 'Archiv', 'Posteingang', 'Gesendet']) {
-    const knopf = page.getByRole('button', { name }).first()
+    const knopf = baum.getByRole('button', { name }).first()
     if (!(await knopf.count())) continue
     await knopf.click()
-    // ⚠️ Warten, bis die Liste **dieses** Ordners steht. Ohne das misst der
-    // Test den vorigen Ordner - genau daran ist der erste Anlauf gescheitert.
-    await page.waitForTimeout(800)
-    if (await page.locator('button[draggable="true"]').count()) return
+    try {
+      await expect.poll(() => zeilen.count(), { timeout: 6000 }).toBeGreaterThan(0)
+      return
+    } catch {
+      // Dieser Ordner ist wirklich leer. Der naechste.
+    }
   }
-  test.skip(true, 'Kein Ordner mit Nachrichten gefunden.')
+  test.skip(true, 'Im Testpostfach liegt in keinem Ordner Post.')
 }
+
+
 
 async function kontext(page: Page) {
   const zeile = page.locator('button[draggable="true"]').first()
@@ -161,3 +189,95 @@ async function klickenUndLesen(page: Page, muster: RegExp): Promise<string> {
   await page.waitForTimeout(400)
   return alt
 }
+
+/* ⚠️ **Gemeldet am 02.09.2026: „das ist NEBEN meinem Monitor".**
+ *
+ * Die Untermenüs von „Schlagwort" und „Wiedervorlage" standen fest auf
+ * `left-full`. Am rechten Rand kippt das Menü selbst nach links — das
+ * Untermenü ging trotzdem nach rechts weiter und landete außerhalb des
+ * Bildschirms. Sichtbar wird das nur ganz rechts, also genau dort, wo man es
+ * beim Bauen nicht ausprobiert.
+ */
+test('Ein Untermenü bleibt im Bild, auch am rechten Rand', async ({ page }) => {
+  // Der gemeldete Weg: eine Mail öffnen, „Weitere Aktionen" ganz rechts in der
+  // Werkzeugleiste des Lesebereichs. Das Menü kippt dort nach links — das
+  // Untermenü ging trotzdem weiter nach rechts.
+  await page.locator('button[draggable="true"]').first().click()
+  const mehr = page.getByRole('button', { name: 'Weitere Aktionen' })
+  await expect(mehr).toBeVisible()
+
+  const sicht = page.viewportSize()!
+  const knopf = (await mehr.boundingBox())!
+  expect(
+    sicht.width - knopf.x,
+    'Der Knopf steht nicht am rechten Rand — der Test misst dann nichts.',
+  ).toBeLessThan(120)
+
+  await mehr.click()
+  await expect(page.getByRole('menu').first()).toBeVisible()
+
+  let geprueft = 0
+  for (const name of ['Schlagwort', 'Wiedervorlage']) {
+    const punkt = page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).first()
+    if (!(await punkt.count())) continue
+    await punkt.hover()
+    const unter = page.getByRole('menu').nth(1)
+    await expect(unter).toBeVisible()
+    const kasten = (await unter.boundingBox())!
+    geprueft += 1
+
+    expect(
+      Math.round(kasten.x + kasten.width),
+      `Das Untermenü „${name}" ragt ${Math.round(kasten.x + kasten.width - sicht.width)} px ` +
+        'über den rechten Rand hinaus — dort sieht es niemand.',
+    ).toBeLessThanOrEqual(sicht.width)
+    expect(Math.round(kasten.x), `Das Untermenü „${name}" steht links außerhalb.`).toBeGreaterThanOrEqual(0)
+    expect(
+      Math.round(kasten.y + kasten.height),
+      `Das Untermenü „${name}" ragt unten heraus.`,
+    ).toBeLessThanOrEqual(sicht.height)
+  }
+
+  // ⚠️ Ohne das ist der Test still grün, wenn es die Untermenüs gar nicht gibt.
+  expect(geprueft, 'Kein einziges Untermenü geprüft.').toBeGreaterThan(0)
+})
+
+/* Dieselbe Regel nach unten. „Verschieben" trägt die längste Liste — an der
+ * unteren Kante ragte sie sonst aus dem Bild, und die letzten Ordner waren
+ * unerreichbar. */
+test('Ein Untermenü bleibt im Bild, auch am unteren Rand', async ({ page }) => {
+  /* ⚠️ **Ein flaches Fenster, sonst misst der Test nichts.** Bei 900 px Höhe
+     passt das Untermenü unter die letzte Zeile — die Prüfung wäre grün, ohne
+     je die Kante berührt zu haben. Ein Laptop mit 768 px ist ohnehin der
+     häufigere Fall als der Entwicklungsbildschirm. */
+  await page.setViewportSize({ width: 1440, height: 480 })
+  const zeilen = page.locator('button[draggable="true"]')
+  const letzte = zeilen.last()
+  await expect(letzte).toBeVisible()
+  await letzte.scrollIntoViewIfNeeded()
+
+  const sicht = page.viewportSize()!
+  const zeile = (await letzte.boundingBox())!
+  await letzte.click({ button: 'right', position: { x: 20, y: zeile.height - 4 } })
+  await expect(page.getByRole('menu').first()).toBeVisible()
+
+  const punkt = page.getByRole('menuitem', { name: /^Verschieben/ }).first()
+  await expect(punkt).toBeVisible()
+  await punkt.hover()
+  const unter = page.getByRole('menu').nth(1)
+  await expect(unter).toBeVisible()
+
+  const kasten = (await unter.boundingBox())!
+  // ⚠️ Erst prüfen, dass die Lage überhaupt eng ist — sonst ist der Test
+  // still grün, weil unten reichlich Platz war.
+  const anker = (await punkt.boundingBox())!
+  expect(
+    anker.y + kasten.height,
+    'Das Untermenü hätte hier ohnehin gepasst — der Test misst nichts.',
+  ).toBeGreaterThan(sicht.height)
+  expect(
+    Math.round(kasten.y + kasten.height),
+    `Das Untermenü ragt ${Math.round(kasten.y + kasten.height - sicht.height)} px unten heraus.`,
+  ).toBeLessThanOrEqual(sicht.height)
+  expect(Math.round(kasten.y), 'Das Untermenü ist oben herausgerutscht.').toBeGreaterThanOrEqual(0)
+})

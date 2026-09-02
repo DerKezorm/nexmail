@@ -3,8 +3,16 @@
  * Rechtsklick wie in Outlook. Drei Dinge, die man dabei leicht falsch macht
  * und die hier absichtlich anders sind:
  *
- * 1. **Es bleibt im Bild.** Ein Menue, das am unteren Rand aufklappt, waere
- *    zur Haelfte abgeschnitten - es kippt deshalb nach oben bzw. nach links.
+ * 1. **Es bleibt im Bild — samt seiner Untermenues.** Ein Menue, das am
+ *    unteren Rand aufklappt, waere zur Haelfte abgeschnitten; es kippt
+ *    deshalb nach oben bzw. nach links.
+ *
+ *    ⚠️ **Das galt bis zum 02.09.2026 nur fuer die oberste Ebene.** Die
+ *    Untermenues von „Schlagwort" und „Wiedervorlage" standen fest auf
+ *    `left-full` — und ein Rechtsklick am rechten Rand schob sie **neben den
+ *    Bildschirm**. Gemeldet aus dem Betrieb: „das ist NEBEN meinem Monitor".
+ *    Sichtbar wird das nur, wenn das Menue selbst schon gekippt ist, also
+ *    genau dort, wo man es beim Bauen nicht ausprobiert.
  * 2. **Es schliesst bei allem.** Klick daneben, Escape, Scrollen, ein zweiter
  *    Rechtsklick woanders, Wechsel in ein anderes Fenster.
  * 3. **Es ist mit der Tastatur bedienbar.** Pfeile, Enter, Escape. Die
@@ -186,11 +194,36 @@ interface ZeileProps {
 
 function Zeile({ eintrag, unterOffen, aufUnter, aufSchliessen }: ZeileProps) {
   const hatUnter = Boolean(eintrag.unter?.length)
+  const reihe = useRef<HTMLDivElement>(null)
+  const unterkasten = useRef<HTMLDivElement>(null)
+  /** Auf welcher Seite das Untermenue aufgeht, und wie weit es hochruecken
+   *  muss. ⚠️ Gemessen wird in `useLayoutEffect` — das laeuft **vor** dem
+   *  Zeichnen, das Untermenue blitzt also nicht erst an der falschen Stelle
+   *  auf. */
+  const [lage, setLage] = useState<{ links: boolean; hoch: number }>({ links: false, hoch: 0 })
+
+  useLayoutEffect(() => {
+    if (!unterOffen) return
+    const anker = reihe.current?.getBoundingClientRect()
+    const eigen = unterkasten.current?.getBoundingClientRect()
+    if (!anker) return
+    // Rechts kein Platz? Dann links neben das Menue — nicht neben den Monitor.
+    const links = anker.right + BREITE > window.innerWidth - 8 && anker.left - BREITE > 8
+    // Und nach unten dasselbe: so weit hoch, dass der Fuss noch im Bild ist.
+    const hoehe = eigen?.height ?? 0
+    const ueberstand = anker.top + hoehe - (window.innerHeight - 8)
+    setLage({ links, hoch: ueberstand > 0 ? Math.min(ueberstand, anker.top - 8) : 0 })
+  }, [unterOffen])
 
   return (
     <>
       {eintrag.trennerDavor && <div aria-hidden className="my-1 h-px bg-line-subtle" />}
-      <div className="relative" onMouseEnter={() => aufUnter(hatUnter)} onMouseLeave={() => aufUnter(false)}>
+      <div
+        ref={reihe}
+        className="relative"
+        onMouseEnter={() => aufUnter(hatUnter)}
+        onMouseLeave={() => aufUnter(false)}
+      >
         <button
           type="button"
           role={eintrag.aktiv === undefined ? 'menuitem' : 'menuitemcheckbox'}
@@ -218,14 +251,21 @@ function Zeile({ eintrag, unterOffen, aufUnter, aufSchliessen }: ZeileProps) {
           {eintrag.symbol}
           <span className="min-w-0 flex-1 truncate">{eintrag.text}</span>
           {eintrag.aktiv && <Haken />}
-          {hatUnter && <span className="shrink-0 text-fg-4">›</span>}
+          {hatUnter && (
+            <span className="shrink-0 text-fg-4">{unterOffen && lage.links ? '‹' : '›'}</span>
+          )}
         </button>
 
         {hatUnter && unterOffen && (
           <div
+            ref={unterkasten}
             role="menu"
-            style={{ width: BREITE }}
-            className="absolute top-0 left-full z-[61] max-h-[320px] overflow-y-auto rounded-lg border border-line bg-surface-1 py-1 shadow-[var(--shadow-3)]"
+            style={{ width: BREITE, top: -lage.hoch }}
+            className={
+              'absolute z-[61] max-h-[320px] overflow-y-auto rounded-lg border border-line ' +
+              'bg-surface-1 py-1 shadow-[var(--shadow-3)] ' +
+              (lage.links ? 'right-full' : 'left-full')
+            }
           >
             {/* ⚠️ Dieselben Eigenschaften wie auf der obersten Ebene:
                 `deaktiviert` und `trennerDavor` gelten auch hier. Ein
