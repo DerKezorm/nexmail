@@ -26,12 +26,13 @@ Roundcube is webmail bolted onto one mailbox. Thunderbird does not run in a
 browser. Commercial clients want to pull your mail onto their servers. nexmail
 is the third option — and if you can use Outlook, you should feel at home.
 
-> **Version 0.5.0.** It reads, writes, searches, sorts, labels, sends,
-> schedules, prints, answers for you while you are away and backs itself up.
-> It is used daily by its author against real iCloud and IMAP mailboxes, and
-> more than 850 automated tests watch over it — including a suite that runs in
-> a real browser. It is still young: try it on a mailbox you can afford to have
-> trouble with before you point it at the one that matters.
+> **Version 0.6.0.** It reads, writes, searches, sorts, labels, sends,
+> schedules, prints, answers for you while you are away, keeps a calendar and
+> backs itself up. It is used daily by its author against real iCloud and IMAP
+> mailboxes, and more than 1,150 automated tests watch over it — including 126
+> that drive a real browser against a real mailbox. It is still young: try it
+> on a mailbox you can afford to have trouble with before you point it at the
+> one that matters.
 
 The screenshots below show a throwaway instance filled with invented mail.
 Every address in them is under `example.com`, `example.org` or
@@ -114,8 +115,43 @@ on the mail server, independently of it.
 **Meeting invitations.** An `.ics` shows up as a card rather than an
 unopenable attachment: title, time in your own time zone, place, organiser.
 Accept, tentative or decline goes back as a proper reply, and nexmail remembers
-what you answered. It has no calendar, so the event is not stored anywhere —
-that is still on the list.
+what you answered. *Add to calendar* is a separate button on purpose: saying
+yes tells the organiser you are coming, it does not mean you want the entry.
+
+**Calendar.** Month, week and day, with your own calendars in nexmail or
+connected over CalDAV to iCloud, Nextcloud or anything else that speaks it.
+Google works too, through the same consent you gave for the mailbox. Recurring
+events are stored once and worked out for the window on screen, so a *every
+Monday* does not fill the database to the year 2031; *this one, this and
+following, all* is asked the way every calendar asks it, because the format
+leaves no other answer. A published `.ics` link can be subscribed to
+read-only. What nexmail does not understand in a foreign event travels through
+untouched: alarms, attendees and a dozen `X-APPLE-` properties come back out
+the way they came in.
+
+Reminders live on the event as a `VALARM`, so what you set here also goes off
+on your phone. In nexmail itself they only reach you while it is open; a
+reminder that fires when the browser is closed needs web push, which is not
+built yet.
+
+**Google and Microsoft mailboxes.** Both providers stopped accepting a
+password for IMAP and SMTP, so nexmail signs in with OAuth. Two levels, kept
+apart on purpose: the operator registers one app with the provider, every user
+gives consent for their own mailbox. No secret ships with nexmail — the
+repository is public, and both providers revoke a key they find in one, so
+each operator registers their own. The administration page says so plainly
+rather than letting you guess why nothing works.
+
+**Moving between mailboxes.** Drag a message from one account to another.
+`MOVE` and `COPY` only work inside one connection, so this fetches, appends at
+the target, checks that it really arrived, and only then deletes at the source.
+That order is the whole safety: the worst case is a message that exists twice,
+which you can see and clean up.
+
+**Moving in and out.** Import a Thunderbird `mbox`, or download a folder as
+`mbox` or as a ZIP of `.eml` files. What is already there is skipped by
+`Message-ID`, so an interrupted import can simply be repeated. Read and
+flagged state travels both ways.
 
 **HTML mail, defused.** Server-side sanitising with an allow-list, images
 unhooked until you ask for them, and an iframe sandbox without scripts. The same
@@ -131,12 +167,16 @@ the server a remote control for your home network.
 
 ## What it is not
 
-* **No calendar.** That is a second mail core in size.
-* **No PGP or S/MIME.** Key management is a project of its own.
-* **No Microsoft 365 yet.** Basic auth for IMAP/SMTP is switched off in most
-  tenants, and OAuth for mailbox access is not built yet. Gmail works with an
-  app password and two-factor auth. iCloud, GMX, web.de, mailbox.org and plain
-  IMAP servers work without detours.
+* **No PGP or S/MIME.** Key management is a project of its own, and half-built
+  encryption is worse than none.
+* **No invitations of your own yet.** nexmail reads an invitation and answers
+  it, but it cannot send one. Attendees on your own events are shown, not
+  edited.
+* **No Microsoft calendar.** Microsoft speaks no CalDAV; events there need the
+  Graph API, which is a client of its own. Mail through IMAP and SMTP works.
+* **No push notifications.** Reminders and the out-of-office reply only work
+  while nexmail is running. Your provider can usually answer mail on the
+  server, independently of it.
 
 ## Built with
 

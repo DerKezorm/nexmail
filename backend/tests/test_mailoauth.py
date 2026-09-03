@@ -306,12 +306,12 @@ def test_der_verbindungstest_benutzt_das_token(klient, db, welt, anbieter, monke
     antwort = klient.post(
         "/api/konten/pruefen",
         json={
-            "adresse": "anja@gmail.com",
+            "adresse": "anja@example.com",
             "imap_server": "imap.gmail.com",
-            "imap_benutzer": "anja@gmail.com",
+            "imap_benutzer": "anja@example.com",
             "imap_passwort": "",
             "smtp_server": "smtp.gmail.com",
-            "smtp_benutzer": "anja@gmail.com",
+            "smtp_benutzer": "anja@example.com",
             "smtp_passwort": "",
             "oauth_zugang_id": zugang.id,
         },
@@ -326,11 +326,11 @@ def test_ein_fremder_zugang_gibt_404(klient, db, welt, anbieter):
     antwort = klient.post(
         "/api/konten/pruefen",
         json={
-            "adresse": "anja@gmail.com",
+            "adresse": "anja@example.com",
             "imap_server": "imap.gmail.com",
-            "imap_benutzer": "anja@gmail.com",
+            "imap_benutzer": "anja@example.com",
             "smtp_server": "smtp.gmail.com",
-            "smtp_benutzer": "anja@gmail.com",
+            "smtp_benutzer": "anja@example.com",
             "oauth_zugang_id": "gibtesnicht",
         },
     )
@@ -367,11 +367,11 @@ def test_auch_das_ANLEGEN_benutzt_das_token(klient, db, welt, anbieter, monkeypa
         "/api/konten",
         json={
             "anzeigename": "Gmail",
-            "adresse": "anja@gmail.com",
+            "adresse": "anja@example.com",
             "imap_server": "imap.gmail.com",
-            "imap_benutzer": "anja@gmail.com",
+            "imap_benutzer": "anja@example.com",
             "smtp_server": "smtp.gmail.com",
-            "smtp_benutzer": "anja@gmail.com",
+            "smtp_benutzer": "anja@example.com",
             "oauth_zugang_id": zugang.id,
         },
     )
@@ -388,11 +388,11 @@ def test_mit_zustimmung_faellt_der_app_passwort_hinweis_weg(db, welt, anbieter, 
     from app.routers.konten import Eingabe, _wie_anmelden
 
     eingabe = Eingabe(
-        adresse="anja@gmail.com",
+        adresse="anja@example.com",
         imap_server="imap.gmail.com",
-        imap_benutzer="anja@gmail.com",
+        imap_benutzer="anja@example.com",
         smtp_server="smtp.gmail.com",
-        smtp_benutzer="anja@gmail.com",
+        smtp_benutzer="anja@example.com",
         oauth_zugang_id=zugang.id,
     )
     wo, token = _wie_anmelden(db, welt, eingabe)
@@ -410,11 +410,11 @@ def _postfach_und_kalender(db, person, zugang):
     konto = Konto(
         benutzer_id=person.id,
         anzeigename="Anja",
-        adresse="anja@gmail.com",
+        adresse="anja@example.com",
         imap_server="imap.gmail.com",
-        imap_benutzer="anja@gmail.com",
+        imap_benutzer="anja@example.com",
         smtp_server="smtp.gmail.com",
-        smtp_benutzer="anja@gmail.com",
+        smtp_benutzer="anja@example.com",
         oauth_zugang_id=zugang.id,
     )
     kalender = Kalender(

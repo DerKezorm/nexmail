@@ -636,17 +636,17 @@ def _mit_zustimmung(db, person):
     """Ein Postfach und ein Kalender an derselben Google-Zustimmung."""
     from app.models import Kalender, Konto, OauthZugang
 
-    zugang = OauthZugang(benutzer_id=person.id, art="google", adresse="anja@gmail.com")
+    zugang = OauthZugang(benutzer_id=person.id, art="google", adresse="anja@example.com")
     db.add(zugang)
     db.flush()
     konto = Konto(
         benutzer_id=person.id,
         anzeigename="Anja",
-        adresse="anja@gmail.com",
+        adresse="anja@example.com",
         imap_server="imap.gmail.com",
-        imap_benutzer="anja@gmail.com",
+        imap_benutzer="anja@example.com",
         smtp_server="smtp.gmail.com",
-        smtp_benutzer="anja@gmail.com",
+        smtp_benutzer="anja@example.com",
         oauth_zugang_id=zugang.id,
     )
     kalender = Kalender(
