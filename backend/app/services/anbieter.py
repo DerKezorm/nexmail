@@ -184,7 +184,13 @@ def autoconfig(adresse: str) -> Vorschlag | None:
             continue
         vorschlag = _aus_xml(roh)
         if vorschlag is not None:
-            logger.info("Autoconfig found settings for %s at %s.", domaene, url)
+            # ⚠️ **Ohne den Abfrageteil.** Zwei der drei Adressen tragen die
+            # Mailadresse als Parameter (``?emailaddress=…``), und das Protokoll
+            # wird weitergereicht. Welche der drei Quellen geantwortet hat,
+            # steht weiterhin da — mehr braucht die Fehlersuche nicht.
+            logger.info(
+                "Autoconfig found settings for %s at %s.", domaene, url.split("?")[0]
+            )
             return vorschlag
     return None
 

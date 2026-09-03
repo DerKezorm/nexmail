@@ -236,7 +236,7 @@ function Postausgang() {
 
       <div className="grid grid-cols-[1fr_120px_150px] gap-3">
         <Input
-          label={t('konto.smtp_server')}
+          label={t('konto.server')}
           placeholder="smtp.example.org"
           value={f.server}
           onChange={(e) => setF({ ...f, server: e.target.value })}
@@ -248,7 +248,7 @@ function Postausgang() {
           onChange={(e) => setF({ ...f, port: Number(e.target.value.replace(/\D/g, '')) || 0 })}
         />
         <Select
-          label={t('konto.verschluesselung')}
+          label={t('konto.sicherheit')}
           value={f.sicherheit}
           onChange={(e) => setF({ ...f, sicherheit: e.target.value })}
           options={[
@@ -261,7 +261,7 @@ function Postausgang() {
 
       <div className="grid grid-cols-2 gap-3">
         <Input
-          label={t('konto.benutzername')}
+          label={t('konto.benutzer')}
           value={f.benutzer}
           onChange={(e) => setF({ ...f, benutzer: e.target.value })}
         />

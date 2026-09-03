@@ -537,3 +537,33 @@ def test_eine_zweite_statuszeile_entsteht_nicht(db, welt):
 
     assert austausch._kopf(zweimal).count(b"X-Mozilla-Status") == 1
     assert austausch.flags_lesen(zweimal) == [rb"\Seen"]
+
+
+def test_eine_liegengebliebene_hochladung_wird_beim_start_weggeraeumt(klient):
+    """⚠️ **Ein Neustart mitten im Import ließ bis zu vier Gigabyte liegen.**
+
+    Der Import-Faden löscht seine Datei im ``finally``. Er ist ein
+    ``daemon``-Faden: Beim Herunterfahren wird er beendet, ohne dorthin zu
+    kommen. Im ganzen Backend kannte bisher genau eine Stelle das Verzeichnis
+    ``data/einfuhr``, und das war die, die hineinschreibt.
+
+    ``klient`` fährt die Anwendung hoch, das ist hier der Prüfling.
+    """
+    from app.config import get_settings
+    from app.services.austausch import einfuhr_aufraeumen
+
+    ordner = get_settings().data_dir / "einfuhr"
+    ordner.mkdir(parents=True, exist_ok=True)
+    rest = ordner / "abgebrochen.mbox"
+    rest.write_bytes(b"From x\n\nHalbe Sache\n")
+    assert rest.is_file()
+
+    assert einfuhr_aufraeumen() == 1
+    assert not rest.exists(), "Die liegengebliebene Hochladung ist noch da."
+
+
+def test_der_kehrer_faellt_ohne_verzeichnis_nicht_um():
+    """Beim allerersten Start gibt es das Verzeichnis noch gar nicht."""
+    from app.services.austausch import einfuhr_aufraeumen
+
+    assert einfuhr_aufraeumen() == 0

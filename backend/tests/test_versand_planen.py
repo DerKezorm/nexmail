@@ -381,3 +381,45 @@ def test_gesendetes_laesst_sich_nicht_abbrechen(klient, db, postausgang, entwurf
     assert antwort.status_code == 409
     db.expire_all()
     assert db.get(Ausgang, zeile.id) is not None
+
+
+def test_ein_unerwarteter_fehler_laesst_die_uebrigen_nicht_liegen(db, postausgang, monkeypatch, caplog):
+    """⚠️ **Und beim Start wäre er schlimmer als „liegen bleiben".**
+
+    Bis zum 03.09.2026 fing die Schleife nur `SendeFehler`. Eine andere
+    Ausnahme bei der k-ten Mail — etwa ein `StaleDataError`, weil jemand
+    gerade das Postfach entfernt hat — brach sie ab, und die übrigen blieben
+    für 60 Sekunden liegen. Beim Hochfahren ist es mehr als das:
+    `warteschlange_abarbeiten` läuft dort im Lebenslauf **ohne eigenes `try`**,
+    also wäre nexmail an einem einzigen kaputten Eintrag gar nicht mehr
+    hochgekommen.
+
+    Geprüft wird mit zwei Einträgen: Der erste platzt, der zweite muss
+    trotzdem hinausgehen. Mit nur einem wäre der Test grün, egal wie der Code
+    aussieht.
+    """
+    import logging
+
+    konto, smtp, _ = postausgang
+
+    erste = senden.einreihen(db, konto, _entwurf())
+    zweite = senden.einreihen(db, konto, _entwurf())
+
+    echt = senden.versenden
+
+    def platzt(sitzung, zeile):
+        if zeile.id == erste.id:
+            raise RuntimeError("Das Postfach gibt es nicht mehr.")
+        return echt(sitzung, zeile)
+
+    monkeypatch.setattr(senden, "versenden", platzt)
+
+    with caplog.at_level(logging.ERROR, logger="nexmail.senden"):
+        ergebnis = senden.warteschlange_abarbeiten(db)
+
+    assert ergebnis["versucht"] == 2, "Nach dem Fehler kam der zweite Eintrag nicht mehr dran."
+    assert ergebnis["gesendet"] == 1
+    assert len(smtp.gesendet) == 1, "Die zweite Mail ist nicht hinausgegangen."
+    assert any("unexpected error" in e.getMessage() for e in caplog.records), (
+        "Der Fehler steht nicht im Protokoll."
+    )

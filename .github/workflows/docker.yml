@@ -34,11 +34,21 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          # Beide Dateien, sonst hat der Zwischenspeicher einen anderen
+          # Schluessel als die Installation eine Zeile weiter unten.
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
 
+      # requirements-dev.txt zieht requirements.txt ueber "-r" mit ein, also
+      # fehlt nichts. Der Unterschied ist pytest: Frueher stand hier ein
+      # nacktes "pytest", und pip nahm die neueste Fassung von PyPI - am
+      # 03.09.2026 also 9.1.1, waehrend die Entwicklung auf dem gepinnten
+      # 8.4.2 misst. Ein ganzer Hauptsprung Unterschied, und niemand haette
+      # gemerkt, ob ein roter Lauf am Code oder an der Fassung liegt.
       - name: Install dependencies
         working-directory: backend
-        run: pip install -r requirements.txt pytest
+        run: pip install -r requirements-dev.txt
 
       - name: Backend tests
         working-directory: backend
@@ -65,12 +75,19 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Type-check and build the frontend
+      # The fast layer next to the browser tests: translation keys, pure
+      # helpers, and the width lists in the Playwright configuration. It takes
+      # under a second and needs no browser, so there is no reason for it not
+      # to run here. The browser tests still need a real mailbox and a running
+      # backend; they stay a local step.
+      - name: Type-check, fast tests, build and weigh the frontend
         working-directory: frontend
         run: |
           npm ci
           npx tsc --noEmit
+          npm test
           npm run build
+          node tools/gewicht-pruefen.mjs
 
   image:
     name: Build image

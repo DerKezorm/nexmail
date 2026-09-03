@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
+from sqlalchemy import event
 from email.message import EmailMessage
 
 from app.models import Konto, Nachricht, Ordner
@@ -283,6 +284,55 @@ def test_flags_werden_nachgezogen(db, konto):
     zeile = db.query(Nachricht).one()
     assert zeile.gelesen is True
     assert zeile.markiert is True
+
+
+def test_eine_taktrunde_ohne_aenderung_schreibt_nichts(db, konto):
+    """⚠️ **Sonst schreibt jede Runde das ganze Fenster neu.**
+
+    Der Flags-Nachzug lief bis zum 03.09.2026 je UID in ein ``UPDATE``, ohne
+    den alten Wert anzusehen. Bei ``FLAGS_FENSTER = 2000`` sind das
+    zweitausend Schreibvorgaenge je Ordner und Taktrunde, auch wenn sich seit
+    zwei Minuten nichts getan hat. Gemessen 740,7 ms je Fenster gegen 16,8 ms
+    mit Vergleich; bei fuenf Postfaechern und Takt 120 s rund 111 Sekunden
+    Rechenzeit je Stunde, ohne dass jemand etwas tut.
+
+    Gezaehlt werden die Schreibvorgaenge selbst, nicht die Laufzeit: Eine Zeit
+    ist auf einem geteilten Rechner keine Zusicherung.
+    """
+    server = FalscherServer()
+    server.anlegen("INBOX")
+    for uid in range(1, 6):
+        server.einwerfen("INBOX", uid, f"Nachricht {uid}")
+
+    ordner = _posteingang(db, konto)
+    abgleich.ordner_abgleichen(server, db, konto, ordner)
+
+    schreibvorgaenge = []
+
+    @event.listens_for(db.get_bind(), "before_cursor_execute")
+    def mitzaehlen(conn, cursor, anweisung, parameter, kontext, viele):  # noqa: ARG001
+        if anweisung.lstrip().upper().startswith("UPDATE NACHRICHT"):
+            schreibvorgaenge.append(anweisung)
+
+    try:
+        # Zweite Runde, am Server hat sich nichts getan.
+        abgleich.ordner_abgleichen(server, db, konto, ordner)
+        assert schreibvorgaenge == [], (
+            f"{len(schreibvorgaenge)} Schreibvorgaenge, obwohl sich nichts geaendert hat."
+        )
+
+        # Und die Gegenprobe: EINE echte Aenderung schreibt auch genau eine Zeile.
+        server.ordner["INBOX"]["nachrichten"][3]["gelesen"] = True
+        abgleich.ordner_abgleichen(server, db, konto, ordner)
+        assert len(schreibvorgaenge) == 1, (
+            "Eine geaenderte Nachricht muss genau einen Schreibvorgang ergeben, "
+            f"es waren {len(schreibvorgaenge)}."
+        )
+    finally:
+        event.remove(db.get_bind(), "before_cursor_execute", mitzaehlen)
+
+    db.expire_all()
+    assert db.query(Nachricht).filter(Nachricht.uid == 3).one().gelesen is True
 
 
 def test_zaehler_stimmen(db, konto):
@@ -743,3 +793,133 @@ def test_neue_zugangsdaten_raeumen_die_marke_sofort(klient, db, monkeypatch):
     antwort = klient.put(f"/api/konten/{konto_id}", json=eingabe)
     assert antwort.status_code == 200, antwort.text
     assert antwort.json()["stoerung"] == ""
+
+
+def test_verwaiste_anhaenge_werden_beim_start_weggeraeumt(db, konto):
+    """⚠️ **Geschrieben hat sie jemand, gelöscht bis zum 03.09.2026 niemand.**
+
+    Verwaist eine Datei auf zwei Wegen, und beide passieren nur in der
+    Datenbank: Beim Neuholen einer Nachricht räumt `nachricht.anhaenge.clear()`
+    die Zeilen weg, beim Löschen einer Nachricht nimmt die Kaskade sie mit.
+    Gemessen an `data-dev`: 6 von 13 Dateien ohne Zeile, 91,5 Prozent der Bytes.
+    """
+    from app.config import get_settings
+    from app.models import Anhang
+
+    blobs = get_settings().blob_dir
+    blobs.mkdir(parents=True, exist_ok=True)
+    (blobs / "verwaist").write_bytes(b"gehoert niemandem mehr")
+    (blobs / "gebraucht").write_bytes(b"haengt an einer Nachricht")
+
+    server = FalscherServer()
+    server.anlegen("INBOX")
+    server.einwerfen("INBOX", 1, "Mit Anhang")
+    ordner = _posteingang(db, konto)
+    abgleich.ordner_abgleichen(server, db, konto, ordner)
+    nachricht = db.query(Nachricht).one()
+    nachricht.anhaenge.append(
+        Anhang(teil_id="1", dateiname="a.txt", mime="text/plain", groesse=1, blob_hash="gebraucht")
+    )
+    db.commit()
+
+    assert abgleich.blobs_aufraeumen(db) == 1
+
+    assert not (blobs / "verwaist").exists(), "Die verwaiste Datei liegt noch da."
+    assert (blobs / "gebraucht").exists(), (
+        "Eine Datei mit Zeile wurde weggeworfen — das wäre Datenverlust."
+    )
+
+
+def test_der_anhang_kehrer_faellt_ohne_verzeichnis_nicht_um(db):
+    """Beim allerersten Start gibt es das Verzeichnis noch gar nicht."""
+    import shutil
+
+    from app.config import get_settings
+
+    shutil.rmtree(get_settings().blob_dir, ignore_errors=True)
+    assert abgleich.blobs_aufraeumen(db) == 0
+
+
+def _takt_freigeben(takt) -> None:
+    """Die Halt-Marke des Takts zuruecknehmen.
+
+    ⚠️ **Sonst laeuft ``einmal()`` gar nicht erst ueber ein Postfach.**
+    ``anhalten()`` setzt ``_halt``, und das passiert am Ende **jedes**
+    ``TestClient(app)`` — also in fast jedem Test dieser Reihe. ``starten()``
+    raeumt die Marke zwar wieder weg, kehrt bei ``NEXMAIL_TAKT_SEKUNDEN=0``
+    aber schon vorher um; und genau so laeuft die Testumgebung.
+
+    Im Betrieb heilt das von selbst: Dort ist der Takt eingeschaltet, und der
+    naechste ``starten()`` raeumt die Marke. Hier nicht, und ohne diese Zeile
+    ist der Test allein gruen und in der Datei rot — mit einer Meldung, die auf
+    den Abgleich zeigt statt auf die Marke.
+    """
+    takt._halt.clear()  # noqa: SLF001 - genau darum geht es hier
+
+def test_der_takt_meldet_einen_programmfehler_nicht_als_uebersprungen(db, konto, monkeypatch, caplog):
+    """⚠️ **Ein abgewiesenes Passwort ist etwas anderes als ein Fehler im Code.**
+
+    Bis zum 03.09.2026 ging beides als INFO mit demselben Satz hinaus:
+    ``Background sync skipped <Adresse>: <Fehler>``. In der Protokolldatei
+    stand deshalb neun Mal ``module 'app.services.imap' has no attribute
+    'ANMELDUNG'`` — ein ``AttributeError``, also ein Fehler im Programm — neben
+    139 abgewiesenen Anmeldungen, ohne Rückverfolg und durch nichts davon zu
+    unterscheiden.
+
+    ⚠️ **Der Faden darf trotzdem nicht sterben.** Genau dafür wird hier
+    gefangen; nur die Stufe und der Rückverfolg ändern sich.
+    """
+    import logging
+
+    from app.services import takt
+
+    def platzt(*_a, **_k):
+        raise AttributeError("module 'app.services.imap' has no attribute 'ANMELDUNG'")
+
+    monkeypatch.setattr(abgleich, "konto_abgleichen", platzt)
+    _takt_freigeben(takt)
+
+    with caplog.at_level(logging.INFO, logger="nexmail.takt"):
+        stand = takt.einmal()
+
+    assert stand["gescheitert"] == 1, "Der Faden hat den Fehler nicht überlebt."
+    meldungen = [e.getMessage() for e in caplog.records]
+    assert not any("skipped" in m for m in meldungen), (
+        "Ein Programmfehler ging als gewöhnliche Absage durch: " + " | ".join(meldungen)
+    )
+    unerwartet = [e for e in caplog.records if e.levelno >= logging.ERROR]
+    assert unerwartet, "Der Programmfehler steht nicht als Fehler im Protokoll."
+    assert unerwartet[0].exc_info is not None, (
+        "Ohne Rückverfolg ist nicht zu sehen, wo der Fehler herkommt."
+    )
+
+
+def test_eine_abgewiesene_anmeldung_bleibt_eine_gewoehnliche_absage(db, konto, monkeypatch, caplog):
+    """Die Gegenprobe: Der erwartete Fall darf nicht zum Fehler werden.
+
+    Ein falsches Passwort ist ein Betriebszustand. Würde er als ERROR mit
+    Rückverfolg hinausgehen, wäre nach einer Woche jedes Protokoll voll damit
+    und der echte Fehler darin unsichtbar.
+    """
+    import logging
+
+    from app.services import imap as imapdienst
+    from app.services import takt
+
+    def abgewiesen(*_a, **_k):
+        raise imapdienst.Verbindungsfehler(
+            imapdienst.Fehlerart.ANMELDUNG, "Benutzername oder Passwort wurde abgewiesen."
+        )
+
+    monkeypatch.setattr(abgleich, "konto_abgleichen", abgewiesen)
+    _takt_freigeben(takt)
+
+    with caplog.at_level(logging.INFO, logger="nexmail.takt"):
+        takt.einmal()
+
+    assert any("skipped" in e.getMessage() for e in caplog.records), (
+        "Die erwartete Absage fehlt im Protokoll."
+    )
+    assert not [e for e in caplog.records if e.levelno >= logging.ERROR], (
+        "Ein falsches Passwort ist kein Programmfehler."
+    )

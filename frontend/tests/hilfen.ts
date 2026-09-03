@@ -14,8 +14,23 @@ export async function anmelden(seite: Page) {
    * überleben zwischen Tests. Ein Lauf, der den Filter auf „ungelesen" stehen
    * lässt, gibt dem nächsten eine andere Liste — und der scheitert an etwas,
    * das er gar nicht geprüft hat. Genau so am 01.09.2026 passiert. */
-  await seite.goto('/')
-  await seite.evaluate(() => {
+  /* ⚠️ **Vor dem Laden, nicht danach.** Bis zum 03.09.2026 stand hier
+     ``goto`` → ``evaluate`` → ``reload``: zwei volle Ladungen der Anwendung je
+     Test, bei 140 Testfällen also 280. Gemessen kostete das Paar 640 bis
+     960 ms, ein einzelner Aufruf 340 bis 470 ms. Ein ``addInitScript`` läuft
+     **vor** dem Code der Seite, also genügt ein Aufruf — und die Zusicherung
+     wird sogar stärker: Vorher hat die Anwendung die alten Werte einmal
+     gelesen, bevor sie weggeräumt wurden.
+
+     ⚠️ **Genau einmal, nicht bei jeder Navigation.** ``addInitScript``
+     läuft bei jedem Laden erneut. Ohne die Marke im ``sessionStorage`` würde
+     ein späteres ``reload`` im selben Test eine gerade eingestellte Dichte
+     wieder wegräumen — und ein Test, der prüft, ob eine Einstellung das
+     Neuladen übersteht, prüfte dann das Gegenteil. Der ``sessionStorage`` lebt
+     so lange wie der Reiter, also genau so lange wie der Test. */
+  await seite.addInitScript(() => {
+    if (sessionStorage.getItem('nexmail.test.geleert')) return
+    sessionStorage.setItem('nexmail.test.geleert', '1')
     for (const k of [
       'nexmail.filter',
       'nexmail.dichte',
@@ -37,7 +52,7 @@ export async function anmelden(seite: Page) {
       localStorage.removeItem(k)
     }
   })
-  await seite.reload()
+  await seite.goto('/')
   await expect(
     seite.getByRole('button', { name: 'Mail', exact: true }),
     'Die Mail-Ansicht steht nicht da. Läuft das Backend auf 8010 mit data-dev?',

@@ -1,3 +1,7 @@
+/// <reference types="vitest/config" />
+// ⚠️ Diese Zeile ist kein Beiwerk: Ohne sie kennt Vites
+// ``UserConfigExport`` den Abschnitt ``test`` nicht, und ``npx tsc --noEmit``
+// bricht ab — im automatischen Bau also, nicht hier.
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -30,6 +34,71 @@ const BILDREGEL = "img-src 'self' data: blob:"
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+
+  /* Die schnelle Ebene neben den Oberflaechen-Tests.
+   *
+   * ⚠️ **Sie ersetzt keinen Browser-Test.** jsdom haette keinen einzigen der
+   * Fehler gefunden, die aus dem Betrieb gemeldet wurden - ueberlaufende
+   * Beschriftung, abgeschnittener Auswahlwert, weisse Auswahlliste auf
+   * schwarzem Grund, ein Kontextmenue ohne Wirkung. Das steht so im Kopf von
+   * ``playwright.config.ts`` und bleibt richtig.
+   *
+   * ⚠️ **Sie steht daneben, fuer das, was ein Browser gar nicht besser
+   * weiss.** Ein fehlender Uebersetzungsschluessel ist ein Textvergleich; ihn
+   * im Browser zu suchen heisst, jede Ansicht einmal zu oeffnen. Am 03.09.2026
+   * standen vier rohe Schluessel auf der Verwaltungsseite, und der vorhandene
+   * Browser-Waechter kam nie in den Reiter, in dem sie stehen.
+   *
+   * ⚠️ **``environment: node``, kein jsdom.** Was hier geprueft wird,
+   * braucht kein Dokument: Sprachdateien, reine Rechenfunktionen, die
+   * Uebereinstimmung zweier Listen. Ein jsdom waere ein weiteres Paket in der
+   * Lieferkette, das nichts traegt. Wer spaeter ein Bauteil zeichnen will,
+   * holt es dann - und begruendet es dann.
+   */
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts'],
+    // Die Oberflaechen-Tests laufen mit Playwright, nicht hier - sonst
+    // versucht Vitest sie zu starten und scheitert an fehlendem Browser.
+    exclude: ['node_modules/**', 'tests/**', 'dist/**'],
+  },
+
+  build: {
+    /* Das Manifest ist die Zutatenliste des Baus: welches Stueck haengt fest
+     * am Einstieg, welches wird nur bei Bedarf geholt. Ohne es muss ein
+     * Gewichtswaechter raten, welche Datei wozu gehoert. Es landet in
+     * ``dist/.vite/`` und wird nie ausgeliefert. */
+    manifest: true,
+    rollupOptions: {
+      output: {
+        /* ⚠️ **Das aendert am ERSTEN Besuch nichts** — dieselben Bytes,
+         * nur anders verpackt. Es hilft beim zweiten: Das Geruest aus React,
+         * i18next und dem Editor aendert sich nur, wenn eine Fremdbibliothek
+         * erneuert wird, also selten. Nach einem nexmail-Update holt der
+         * Browser deshalb nur den Anwendungsteil neu.
+         *
+         * Gemessen am 03.09.2026: ein einziges Stueck von 1.089,93 kB, davon
+         * 380,5 kB Editor (tiptap und ProseMirror), 197,3 kB React, 58,8 kB
+         * Kalenderseite, 43,9 kB i18next. Jede Zeile Anwendungscode machte
+         * bisher alles davon ungueltig.
+         *
+         * ⚠️ **Was hier NICHT steht, ist ein ``lazy()`` auf den Editor.**
+         * Das waere der eigentliche Gewinn beim ersten Besuch (35 Prozent des
+         * JavaScript), aendert aber, WANN das Verfassen-Fenster seinen Zustand
+         * aufbaut: Es haengt heute immer im Baum und schaltet ueber ``offen``.
+         * Der Weg nach „Senden rueckgaengig“ verlaesst sich darauf. Das
+         * gehoert einzeln gebaut und einzeln geprueft, nicht nebenbei.
+         */
+        manualChunks(id: string) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('@tiptap') || id.includes('prosemirror')) return 'editor'
+          if (id.includes('i18next')) return 'sprachen'
+          return 'geruest'
+        },
+      },
+    },
+  },
+
   server: {
     port: 5175,
     strictPort: true,

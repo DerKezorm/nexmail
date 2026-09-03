@@ -1,4 +1,4 @@
-"""Middleware: Unterpfad abstreifen, Sicherheitskopfzeilen setzen."""
+"""Middleware: Unterpfad abstreifen, Oberflaeche packen, Sicherheitskopfzeilen setzen."""
 
 from __future__ import annotations
 
@@ -8,7 +8,44 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+from starlette.middleware.gzip import GZipMiddleware
+
 logger = logging.getLogger("nexmail.anfrage")
+
+
+class OberflaechePackenMiddleware:
+    """Packt die gebaute Oberflaeche, aber **nicht** die Schnittstelle.
+
+    ⚠️ **Der ganze Gewinn liegt in den statischen Dateien.** Gemessen am
+    03.09.2026: Der Einstieg wiegt 1.134.849 Byte roh und 342.188 gepackt, also
+    70 Prozent weniger. Bei einer Erstinstallation ohne Reverse Proxy ging das
+    bisher ungepackt hinaus - der Server setzt selbst keine Packung, und die
+    ``docker-compose.yml`` stellt keinen Proxy davor.
+
+    ⚠️ **Die API bleibt bewusst ungepackt.** Gepackte Antworten sind die
+    Voraussetzung fuer BREACH: Wer eine Eingabe steuert, die zusammen mit einem
+    Geheimnis in derselben Antwort landet, kann das Geheimnis an der Laenge
+    ablesen. Bei einem Mailclient steuert ein Fremder die Eingabe muehelos, er
+    schickt einfach eine Mail mit dem Betreff seiner Wahl. Ein Geheimnis im
+    Rumpf gibt es heute nicht (die Sitzung liegt in einem HttpOnly-Cookie),
+    aber der Gewinn waere ohnehin klein: Eine Listenantwort sind gemessen
+    36 kB. Also die Klasse gar nicht erst aufmachen.
+
+    ⚠️ **Der Pfad ist hier schon ohne Unterpfad.** ``BasisPfadMiddleware``
+    haengt weiter aussen und hat ihn abgestreift, bevor diese Middleware ihn
+    sieht - sonst traefe ``/api`` unter einem Vorbau nie zu, und die
+    Schnittstelle waere doch gepackt.
+    """
+
+    def __init__(self, app: Any, mindestgroesse: int = 1000) -> None:
+        self._durchreichen = app
+        self._packend = GZipMiddleware(app, minimum_size=mindestgroesse)
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http" or scope.get("path", "").startswith("/api"):
+            await self._durchreichen(scope, receive, send)
+            return
+        await self._packend(scope, receive, send)
 
 
 

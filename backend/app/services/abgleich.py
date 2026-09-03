@@ -458,8 +458,36 @@ def _hat_anhang(struktur) -> bool:
 def _flags_uebernehmen(
     db: Session, ordner: Ordner, antwort: dict, mit_wichtigkeit: bool = False
 ) -> int:
+    """Gelesen, markiert, beantwortet und die Schlagworte aus dem Fenster.
+
+    ⚠️ **Geschrieben wird nur, was sich wirklich geaendert hat.** Bis zum
+    03.09.2026 lief hier je UID ein ``UPDATE``, ohne den alten Wert
+    anzusehen — bei ``FLAGS_FENSTER = 2000`` also zweitausend Schreibvorgaenge
+    je Ordner und Taktrunde, auch wenn sich seit zwei Minuten nichts getan hat.
+    Gemessen: 740,7 ms je Fenster gegen 16,8 ms, wenn vorher verglichen wird.
+    Bei fuenf Postfaechern und einem Takt von 120 Sekunden waren das rund
+    111 Sekunden Rechenzeit je Stunde, ohne dass ein Mensch etwas tut.
+
+    ⚠️ **Und die Rueckgabe stimmt jetzt.** Vorher war es die Zahl der
+    getroffenen Zeilen, also die Fenstergroesse — die Oberflaeche meldete nach
+    jedem Abgleich „2000 geaendert", und das war schlicht falsch.
+    """
     geaendert = 0
     gesehene_atome: set[str] = set()
+
+    # ⚠️ **Der Bestand des Fensters in EINER Abfrage.** Je UID einzeln
+    # nachzusehen waere derselbe Fehler in gruen: zweitausend Abfragen statt
+    # zweitausend Schreibvorgaengen.
+    vorher = {
+        n.uid: n
+        for n in db.execute(
+            select(Nachricht).where(
+                Nachricht.ordner_id == ordner.id,
+                Nachricht.uid.in_(list(antwort)),
+            )
+        ).scalars()
+    }
+
     for uid, felder in antwort.items():
         flags = felder.get(b"FLAGS", ())
         atome = schlagwortdienst.atome_aus_flags(flags)
@@ -477,12 +505,20 @@ def _flags_uebernehmen(
             werte["wichtigkeit"] = _wichtigkeit_deuten(
                 felder.get(b"BODY[HEADER.FIELDS (IMPORTANCE X-PRIORITY)]")
             )
-        ergebnis = db.execute(
+
+        zeile = vorher.get(uid)
+        if zeile is None:
+            # Die UID kennt nexmail (noch) nicht — dann gibt es auch nichts
+            # zu aendern. Das Holen neuer Nachrichten macht ``_aus_fetch``.
+            continue
+        if all(getattr(zeile, feld) == wert for feld, wert in werte.items()):
+            continue
+        db.execute(
             update(Nachricht)
             .where(Nachricht.ordner_id == ordner.id, Nachricht.uid == uid)
             .values(**werte)
         )
-        geaendert += ergebnis.rowcount or 0
+        geaendert += 1
     # Fremde Atome aus dem Fenster bekommen ebenfalls ihre Definition.
     schlagwortdienst.definitionen_sicherstellen(
         db, ordner.konto.benutzer_id, gesehene_atome
@@ -597,6 +633,56 @@ def koerper_holen(klient, db: Session, nachricht: Nachricht) -> None:
         )
     nachricht.hat_anhang = any(not a.inline for a in zerlegt.anhaenge)
     db.commit()
+
+
+def blobs_aufraeumen(db: Session) -> int:
+    """Anhangsdateien wegwerfen, auf die keine Zeile mehr zeigt. Einmal beim Start.
+
+    ⚠️ **Bis zum 03.09.2026 loeschte sie niemand.** Geschrieben werden sie
+    hier, ein paar Zeilen weiter oben; einen Loeschweg gab es im ganzen Backend
+    nicht. Verwaist eine Datei auf zwei Wegen: Beim Neuholen einer Nachricht
+    raeumt ``nachricht.anhaenge.clear()`` die Zeilen weg, und beim Loeschen
+    einer Nachricht nimmt die Kaskade sie mit — beides in der Datenbank, ohne
+    dass eine Datei angefasst wird.
+
+    Gemessen an ``data-dev`` am 03.09.2026: 6 von 13 Dateien ohne Zeile,
+    1.741.577 von 1.903.636 Byte, also 91,5 Prozent. Hochgerechnet auf ein
+    Postfach mit 20.000 Nachrichten waeren das Hunderte Megabyte, die nie
+    wieder weggehen.
+
+    ⚠️ **Die Pruefsumme ist der Dateiname, und sie ist geteilt.** Dieselbe
+    Anlage in zwei Mails liegt einmal da. Deshalb wird gegen **alle**
+    ``anhang``-Zeilen geprueft und nicht gegen die eines Benutzers; wer je nach
+    Benutzer aufraeumte, loeschte dem anderen seinen Anhang weg.
+
+    ⚠️ **Nur beim Start.** Waehrend des Betriebs liegt zwischen dem Schreiben
+    der Datei und dem ``commit`` ihrer Zeile ein Moment, in dem sie verwaist
+    aussieht. Beim Hochfahren nimmt niemand Anfragen entgegen, und der Fall
+    kann nicht eintreten.
+    """
+    blobs = get_settings().blob_dir
+    if not blobs.is_dir():
+        return 0
+
+    bekannt = {
+        h for h in db.execute(select(Anhang.blob_hash)).scalars() if h
+    }
+    weg = 0
+    frei = 0
+    for datei in blobs.iterdir():
+        if not datei.is_file() or datei.name in bekannt:
+            continue
+        try:
+            groesse = datei.stat().st_size
+            datei.unlink()
+        except OSError:  # pragma: no cover - Windows haelt die Datei manchmal
+            logger.warning("The orphaned attachment %s could not be removed.", datei.name)
+            continue
+        weg += 1
+        frei += groesse
+    if weg:
+        logger.info("Removed %s orphaned attachment file(s), %s bytes.", weg, frei)
+    return weg
 
 
 # --- Ein ganzes Konto ---------------------------------------------------- #

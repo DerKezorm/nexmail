@@ -359,8 +359,12 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     try {
       const k = await kontenLaden()
       setKonten(k)
-      setOrdner(await ordnerLaden(k))
-      setSchlagworte(await schlagworteLaden())
+      // ⚠️ **Die Schlagworte haengen nicht an den Ordnern.** Nacheinander
+      // waren es drei Umlaeufe hintereinander, und stammLaden laeuft nach
+      // jedem Handgriff. Nur der Ordnerbaum braucht die Konten.
+      const [baum, marken] = await Promise.all([ordnerLaden(k), schlagworteLaden()])
+      setOrdner(baum)
+      setSchlagworte(marken)
       setStammGeladen(true)
       setStammFehler('')
     } catch (f) {

@@ -230,10 +230,25 @@ class _KontextFilter(logging.Filter):
 
 
 class _KeinDoppelterStacktrace(logging.Filter):
-    """uvicorns zweiten Stacktrace unterdrücken — unsere Zeile sagt mehr."""
+    """uvicorns zweiten Stacktrace unterdrücken — unsere Zeile sagt mehr.
+
+    ⚠️ **Verglichen wird gestrippt, und das ist der ganze Punkt.** uvicorn
+    schreibt ``"Exception in ASGI application
+"`` — **mit** Zeilenumbruch; er
+    steht wörtlich in ``uvicorn/protocols/http/h11_impl.py``. Verglichen wurde
+    ohne, und damit griff dieser Filter vom ersten Tag an nie. Gezählt am
+    03.09.2026 in ``data-dev/logs``: 24 Blöcke, 2.462 Zeilen, 179.873 Byte,
+    also 15,1 Prozent der Datei.
+
+    ⚠️ **Es geht nicht um den Platz.** Unsere eigene Zeile aus
+    ``middleware.py`` trägt die Vorgangsnummer und die betroffene Adresse; der
+    zweite Rückverfolg trägt sie nicht. Wer im Protokoll sucht, findet dasselbe
+    Ereignis zweimal — einmal mit Zusammenhang, einmal ohne — und hält es für
+    zwei.
+    """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        return record.getMessage() != "Exception in ASGI application"
+        return record.getMessage().strip() != "Exception in ASGI application"
 
 
 @dataclass(frozen=True)

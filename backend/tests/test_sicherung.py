@@ -335,3 +335,68 @@ def test_beide_wege_wollen_eine_anmeldung(klient, pfad):
     einrichten(klient)
     klient.cookies.clear()
     assert klient.post(pfad, json={"passwort": ARCHIVPASSWORT}).status_code == 401
+
+
+def test_die_groesse_wird_beim_lesen_gezaehlt_nicht_danach():
+    """⚠️ **Sonst liegt die Datei schon im Speicher, wenn die Grenze greift.**
+
+    Bis zum 03.09.2026 stand hier `daten = await datei.read()` und die Prüfung
+    eine Zeile später. Bei `MAX_BYTES = 512 MB` heißt das: Der Container nimmt
+    sich das halbe Gigabyte, bevor er ablehnt — und dieser Weg ist über
+    `/api/sicherung/einspielen-vor-einrichtung` **ohne Anmeldung** erreichbar.
+    Der Nachbarrouter (mbox-Upload) macht es seit jeher in Blöcken richtig.
+
+    Gezählt wird, wie viele Bytes wirklich gelesen wurden, nicht die Laufzeit:
+    Genau darum geht es.
+    """
+    import asyncio
+
+    from app.routers import sicherung as router
+
+    class ZaehlendeDatei:
+        """Tut so, als wäre sie doppelt so groß wie erlaubt."""
+
+        def __init__(self) -> None:
+            self.gelesen = 0
+            self.uebrig = router.MAX_BYTES * 2
+
+        async def read(self, groesse: int = -1) -> bytes:
+            if groesse < 0:  # der alte Weg: alles auf einmal
+                block = b"x" * self.uebrig
+                self.uebrig = 0
+            else:
+                block = b"x" * min(groesse, self.uebrig)
+                self.uebrig -= len(block)
+            self.gelesen += len(block)
+            return block
+
+    datei = ZaehlendeDatei()
+    with pytest.raises(Exception) as fehler:
+        asyncio.run(router._gelesen(datei))  # noqa: SLF001 - genau das ist der Prüfling
+
+    assert getattr(fehler.value, "status_code", None) == 413
+    # ⚠️ Ein Block Toleranz: Der Abbruch kommt, sobald die Grenze überschritten
+    # ist, also einen Block danach.
+    assert datei.gelesen <= router.MAX_BYTES + router.UPLOAD_BLOCK, (
+        f"{datei.gelesen} Bytes gelesen, obwohl bei {router.MAX_BYTES} Schluss ist."
+    )
+
+
+def test_eine_kleine_sicherung_kommt_vollstaendig_an():
+    """Die Gegenprobe: Blockweise lesen darf nichts abschneiden."""
+    import asyncio
+
+    from app.routers import sicherung as router
+
+    inhalt = bytes(range(256)) * 9000  # gut 2 MB, also mehrere Blöcke
+
+    class Datei:
+        def __init__(self) -> None:
+            self.rest = inhalt
+
+        async def read(self, groesse: int = -1) -> bytes:
+            block = self.rest if groesse < 0 else self.rest[:groesse]
+            self.rest = b"" if groesse < 0 else self.rest[groesse:]
+            return block
+
+    assert asyncio.run(router._gelesen(Datei())) == inhalt  # noqa: SLF001

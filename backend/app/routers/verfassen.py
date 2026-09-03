@@ -275,7 +275,7 @@ def _entwurf_bauen(konto: Konto, wunsch: Sendewunsch) -> verfassen.Entwurf:
             ) from fehler
         if len(inhalt) > MAX_ANHANG:
             raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 detail=f"„{eintrag.dateiname}“ ist größer als 25 MB.",
             )
         anlagen.append(

@@ -315,7 +315,22 @@ def warteschlange_abarbeiten(db: Session) -> dict[str, int]:
             versenden(db, zeile)
             ergebnis["gesendet"] += 1
         except SendeFehler:
+            # Der erwartete Fall: Der Mailserver nimmt sie gerade nicht.
             ergebnis["liegen"] += 1
+        except Exception:  # noqa: BLE001
+            # ⚠️ **Alles andere darf die Schleife nicht abbrechen.** Bis
+            # zum 03.09.2026 stand hier nur ``except SendeFehler``. Ein
+            # anderer Fehler bei der k-ten Mail liess die uebrigen liegen —
+            # und beim Start noch mehr: ``warteschlange_abarbeiten`` laeuft im
+            # Lebenslauf ohne eigenes ``try``, eine Ausnahme dort haette also
+            # nexmail gar nicht erst hochkommen lassen. Genau dieselbe Falle
+            # wie beim Abgleich am 03.09.2026, nur einen Dienst weiter.
+            #
+            # Zurueckgerollt wird zuerst: Sonst laeuft die naechste Zeile in
+            # dieselbe gesperrte Sitzung.
+            db.rollback()
+            ergebnis["liegen"] += 1
+            logger.exception("Sending queue entry %s hit an unexpected error.", zeile.id)
     return ergebnis
 
 

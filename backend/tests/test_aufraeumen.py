@@ -285,3 +285,46 @@ def test_nur_die_angebotenen_stufen(klient):
     )
     assert antwort.status_code == 400
     assert "Aufbewahrung" in antwort.json()["detail"]
+
+
+def test_ein_gescheiterter_benutzer_haelt_die_runde_nicht_auf(db, welt, monkeypatch, caplog):
+    """⚠️ **Die Falle vom 03.09.2026, einen Dienst weiter.**
+
+    Takt und Wiedervorlage haben seit dem Vorfall je eine Absicherung um den
+    einzelnen Vorgang; das Aufräumen hatte als einziges keine. Ein Fehler beim
+    k-ten Benutzer — etwa ein `StaleDataError`, weil jemand gerade ein Postfach
+    entfernt hat — riss alle folgenden mit, und die nächste Runde kommt erst in
+    einer Stunde (`NACHSEHEN_SEKUNDEN = 3600`).
+
+    Geprüft wird mit zwei Benutzern: Der erste platzt, der zweite muss trotzdem
+    drankommen. Mit nur einem wäre der Test grün, egal wie der Code aussieht.
+    """
+    from conftest import zweiten_benutzer_anlegen
+
+    erster = _person(db)
+    zweiter, _ = zweiten_benutzer_anlegen(db)
+    for wer in (erster, zweiter):
+        wer.aufraeumen_papierkorb_tage = 7
+        wer.aufraeumen_zuletzt = None
+    db.commit()
+
+    drangewesen: list[str] = []
+    echt = aufraeumen.benutzer_aufraeumen
+
+    def platzt(sitzung, person):
+        drangewesen.append(person.benutzername)
+        if person.id == erster.id:
+            raise RuntimeError("Das Postfach gibt es nicht mehr.")
+        return echt(sitzung, person)
+
+    monkeypatch.setattr(aufraeumen, "benutzer_aufraeumen", platzt)
+
+    with caplog.at_level(logging.ERROR, logger="nexmail.aufraeumen"):
+        aufraeumen.runde()
+
+    assert len(drangewesen) == 2, (
+        f"Nach dem Fehler kam niemand mehr dran: {drangewesen}"
+    )
+    assert any("Auto-clean failed" in e.getMessage() for e in caplog.records), (
+        "Der Fehler steht nicht im Protokoll."
+    )

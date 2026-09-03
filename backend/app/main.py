@@ -24,7 +24,12 @@ from . import __version__
 from .config import get_settings
 from .db import SessionLocal, init_db
 from .deps import angemeldet
-from .middleware import BasisPfadMiddleware, SicherheitskopfMiddleware, VorgangMiddleware
+from .middleware import (
+    BasisPfadMiddleware,
+    OberflaechePackenMiddleware,
+    SicherheitskopfMiddleware,
+    VorgangMiddleware,
+)
 from .routers import (
     abwesenheit as abwesenheit_router,
     aufgaben as aufgaben_router,
@@ -56,10 +61,19 @@ from .routers import (
 from .services import imap as imapdienst
 from .services import sitzung as sitzungsdienst
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
-)
+# ⚠️ **Hier stand ``logging.basicConfig``, und es war eine Undichtigkeit.**
+# Es haengt einen StreamHandler **ohne Filter** an den Wurzel-Logger, und der
+# steht vor den Handlern aus ``protokoll.einrichten()``. Folge, am 03.09.2026
+# gemessen: Jede Zeile ging zweimal auf die Standardfehlerausgabe, und die
+# erste Kopie ging an der Zensur vorbei. In ``docker logs`` stand
+# ``A001 LOGIN nutzer@example.org Sonnenblume42Xyz`` im Klartext, waehrend die
+# Protokolldatei brav ``… ***`` zeigte. Dazu Ortszeit statt UTC und keine
+# Vorgangsnummer, also zwei Zeitachsen in einer Ausgabe.
+#
+# Ersatzlos gestrichen: Zwischen dem Import dieses Moduls und
+# ``protokoll.einrichten()`` (erste Zeile des Lebenslaufs) wird **nichts**
+# protokolliert - nachgemessen, nicht vermutet -, und die Stufe setzt
+# ``stufe_anwenden`` ohnehin selbst.
 logger = logging.getLogger("nexmail")
 
 einstellungen_ = get_settings()
@@ -194,16 +208,33 @@ async def lebenslauf(_: FastAPI):
         # NULL hiesse Rueckfall aufs Absendedatum, und eine gestern geloeschte
         # Januar-Mail waere beim naechsten Lauf endgueltig weg. „Jetzt" gibt
         # dem Bestand eine frische Frist: die sichere Richtung.
-        from sqlalchemy import update as _update
+        #
+        # ⚠️ **Einmal, gemerkt an einem Schluessel** — wie beim
+        # Strang-Neuaufbau darueber. Ohne die Marke lief bei JEDEM Start ein
+        # ``UPDATE ... WHERE angekommen IS NULL`` ueber die ganze Tabelle, und
+        # zwar auch dann, wenn es keine einzige Zeile mehr trifft: Es gibt
+        # keinen Index auf ``angekommen``, der Plan ist ``SCAN nachricht``.
+        # Gemessen am 03.09.2026: 327 ms bei 250.000 Zeilen, bei jedem
+        # Hochfahren, fuer null geaenderte Zeilen.
+        #
+        # ⚠️ **Wer die Spalte je erneut nachzieht, loescht die Marke.**
+        # Neue Zeilen bekommen ihren Wert aus der Vorgabe (``default=utcnow``
+        # in ``models.Nachricht``); NULL entsteht nur beim Nachziehen einer
+        # Spalte per ``ALTER TABLE``, und das passiert genau einmal je Spalte.
+        if einstellung_lesen(db, "ankunft_nachgetragen") != "1":
+            from sqlalchemy import update as _update
 
-        from .models import Nachricht, utcnow
+            from .models import Nachricht, utcnow
 
-        db.execute(
-            _update(Nachricht)
-            .where(Nachricht.angekommen.is_(None))
-            .values(angekommen=utcnow())
-        )
-        db.commit()
+            nachgetragen = db.execute(
+                _update(Nachricht)
+                .where(Nachricht.angekommen.is_(None))
+                .values(angekommen=utcnow())
+            ).rowcount
+            einstellung_schreiben(db, "ankunft_nachgetragen", "1")
+            db.commit()
+            if nachgetragen:
+                logger.info("Filled in the arrival date for %s message(s).", nachgetragen)
 
         weg = sitzungsdienst.aufraeumen(db)
         if weg:
@@ -228,6 +259,24 @@ async def lebenslauf(_: FastAPI):
         from .services import senden as sendedienst
 
         sendedienst.aufraeumen(db)
+
+        # ⚠️ **Und die Hochladungen eines abgebrochenen Imports.** Der
+        # Import-Faden loescht seine Datei im ``finally``; ein Neustart
+        # mittendrin laesst ihn nie dorthin kommen. Uebrig blieben bis zu vier
+        # Gigabyte in ``data/einfuhr``, die niemand je wieder ansieht.
+        from .services import austausch as austauschdienst
+
+        austauschdienst.einfuhr_aufraeumen()
+
+        # ⚠️ **Und die Anhaenge, auf die keine Zeile mehr zeigt.** Sie werden
+        # beim Abgleich geschrieben und bis zum 03.09.2026 von niemandem
+        # geloescht; in ``data-dev`` waren 91,5 Prozent des Verzeichnisses
+        # verwaist. Nur hier, beim Start: Im Betrieb liegt zwischen dem
+        # Schreiben der Datei und dem Festschreiben ihrer Zeile ein Moment, in
+        # dem sie verwaist aussieht.
+        from .services import abgleich as abgleichdienst
+
+        abgleichdienst.blobs_aufraeumen(db)
         offen = sendedienst.warteschlange_abarbeiten(db)
         if offen["versucht"]:
             logger.info(
@@ -358,6 +407,33 @@ def _statisches_verzeichnis() -> Path | None:
     return mitgeliefert if mitgeliefert.is_dir() else None
 
 
+def _datei_im_haus(wurzel: Path, pfad: str) -> Path | None:
+    """Die angefragte Datei, aber nur wenn sie wirklich unter ``wurzel`` liegt.
+
+    ⚠️ **Ohne diese Pruefung liefert der Auffangweg jede Datei des Containers
+    aus.** ``wurzel / pfad`` folgt einem ``..`` klaglos: ``/app/static`` plus
+    ``../../data/secret.key`` ist ``/data/secret.key``, und genau das kam am
+    03.09.2026 mit HTTP 200 zurueck. Ohne Anmeldung, und samt dem Schluessel,
+    der jedes gespeicherte Postfach-Passwort einwickelt; die Datenbank kam
+    denselben Weg. Ein Browser raeumt ``..`` vor dem Senden weg, deshalb faellt
+    es beim Bedienen nie auf - ``curl --path-as-is`` und jeder Suchlauf tun es
+    nicht.
+
+    ⚠️ **Verglichen wird nach ``resolve()``, nicht auf der Zeichenkette.** Das
+    loest ``..``, ``.`` und Verknuepfungen auf einmal auf; wer stattdessen nach
+    ``".."`` im Text sucht, hat die kodierten Formen und den umgekehrten
+    Schraegstrich als Trenner unter Windows uebersehen.
+    """
+    try:
+        datei = (wurzel / pfad).resolve()
+    except (OSError, ValueError):
+        # Ungueltige Zeichen im Pfad. Unter Windows wirft das statt zu scheitern.
+        return None
+    if not datei.is_relative_to(wurzel):
+        return None
+    return datei if datei.is_file() else None
+
+
 def _index_mit_vorbau(datei: Path, basis: str | None = None) -> str | None:
     """``index.html`` mit vorangestelltem Unterpfad — oder ``None`` ohne.
 
@@ -425,6 +501,9 @@ def _css_mit_vorbau(ordner: Path, basis: str | None = None) -> dict[str, str]:
 
 _frontend = _statisches_verzeichnis()
 if _frontend is not None:
+    # ⚠️ Einmal aufgeloest. ``_datei_im_haus`` vergleicht dagegen, und ein
+    # unaufgeloester Vergleichswert liesse jeden Vergleich ins Leere laufen.
+    _wurzel = _frontend.resolve()
     _index = _index_mit_vorbau(_frontend / "index.html")
     _css = _css_mit_vorbau(_frontend)
 
@@ -436,8 +515,8 @@ if _frontend is not None:
         def stilvorlage(name: str):
             if name in _css:
                 return Response(_css[name], media_type="text/css")
-            datei = _frontend / "assets" / name
-            if datei.is_file():
+            datei = _datei_im_haus(_wurzel, f"assets/{name}")
+            if datei is not None:
                 return FileResponse(datei)
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
@@ -451,8 +530,8 @@ if _frontend is not None:
         bei ``/einstellungen`` nicht mit 404 antworten, sonst ist ein
         Neuladen mitten in der App ein Fehler.
         """
-        datei = _frontend / pfad
-        if pfad and datei.is_file():
+        datei = _datei_im_haus(_wurzel, pfad) if pfad else None
+        if datei is not None:
             return FileResponse(datei)
         if _index is not None:
             return HTMLResponse(_index)
@@ -467,6 +546,12 @@ app.add_middleware(SicherheitskopfMiddleware)
 # die, die eine Ausnahme auslöst. Ohne das fehlte ausgerechnet beim Absturz
 # die Vorgangsnummer.
 app.add_middleware(VorgangMiddleware)
+
+# ⚠️ **Weiter außen als die Vorgangsnummer**, damit die fertige Antwort
+# gepackt wird und nicht ein Zwischenstand. Und innerhalb des Unterpfads: Der
+# Pfad muss hier schon ohne Vorbau ankommen, sonst greift die Ausnahme für
+# ``/api`` unter einem Vorbau nicht.
+app.add_middleware(OberflaechePackenMiddleware)
 
 # ⚠️ **Nach den Inhaltsregeln, damit ganz außen.** Jede Anfrage wird zuerst vom
 # Unterpfad befreit, bevor irgendetwas anderes sie sieht — so zählen Routing,

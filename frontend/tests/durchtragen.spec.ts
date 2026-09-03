@@ -540,16 +540,31 @@ test('„Als gelesen" lässt sich auf „nur von Hand" stellen', async ({ page }
      dann geht ohnehin keine Anfrage hinaus. Der Test bestand, ohne etwas zu
      prüfen; die Mutationsprobe hat ihn aufgedeckt. Über den Filter
      „Ungelesene" ist die Auswahl eindeutig. */
-  await page.getByRole('button', { name: /^(Ungelesene|Unread)$/ }).click()
-
   /* ⚠️ **Auf die Antwort warten, nicht auf die Uhr — und schon gar nicht
      sofort zählen.** Bis zum 02.09.2026 stand hier ein `count()` direkt nach
      dem Klick. Kam die gefilterte Liste erst danach, sah der Test noch die
      ungefilterte, sprang nicht ab und wartete dann zwanzig Sekunden auf eine
-     Zeile, die es nicht gab. Sichtbar wurde das nur, wenn gerade gar keine
-     ungelesene Mail da war — also selten und scheinbar zufällig. */
-  const kopfzahl = page.getByText(/\d+ (Nachrichten?|messages?)/).first()
-  await expect(kopfzahl).toBeVisible({ timeout: 20_000 })
+     Zeile, die es nicht gab.
+
+     ⚠️ **Der zweite Anlauf wartete auf den Listenkopf, und das war wieder
+     ein Umweg.** Am 03.09.2026 im vollen Lauf rot, einzeln grün: Der Kopf
+     stand mit „1 Nachricht · 1 ungelesen“ sichtbar da, und der Sucher fand ihn
+     trotzdem nicht. Ein Text, dessen Form vom Zustand abhängt (Einzahl,
+     Mehrzahl, mit und ohne Ungelesen-Teil, zwei Sprachen), ist kein Anker.
+
+     Gewartet wird jetzt auf das, worauf es ankommt: die **Antwort des
+     Servers** auf den Filterklick. Danach ist die Liste die gefilterte, und
+     zählen ist sicher. */
+  const gefiltert = page.waitForResponse(
+    (a) =>
+      a.url().includes('/api/nachrichten') &&
+      a.request().method() === 'GET' &&
+      a.url().includes('filter=ungelesen'),
+    { timeout: 20_000 },
+  )
+  await page.getByRole('button', { name: /^(Ungelesene|Unread)$/ }).click()
+  await gefiltert
+
   const ungelesen = page.locator('button[draggable="true"]').first()
   const wieviele = await page.locator('button[draggable="true"]').count()
   test.skip(wieviele === 0, 'Keine ungelesene Nachricht da — nichts zu prüfen.')

@@ -42,6 +42,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..models import Konto, Ordner
 from . import abgleich, imap as imapdienst, konten as kontendienst
 
@@ -610,6 +611,42 @@ def vorgang_starten(
     )
     vorgang.faden.start()
     return vorgang
+
+
+def einfuhr_aufraeumen() -> int:
+    """Liegengebliebene Hochladungen wegwerfen. Einmal beim Start.
+
+    ⚠️ **Der Faden raeumt seine Datei selbst weg, aber nur wenn er zu Ende
+    kommt.** ``_lauf`` loescht sie im ``finally``; ein Neustart mitten im
+    Import laesst den Faden gar nicht erst dorthin kommen (er ist ``daemon``,
+    er wird einfach beendet). Uebrig bleibt eine Datei von bis zu vier Gigabyte
+    in ``data/einfuhr`` — und im ganzen Backend kannte bisher genau EINE Stelle
+    dieses Verzeichnis, naemlich die, die hineinschreibt.
+
+    ⚠️ **Beim Start ist jede Datei dort verwaist.** Die laufenden Vorgaenge
+    leben nur im Arbeitsspeicher (``_VORGAENGE``), ueberstehen also keinen
+    Neustart; das steht so auch in SPAETER.md. Es gibt darum nichts zu
+    unterscheiden, und das ist der Grund, warum hier nichts nachgesehen wird.
+
+    Dasselbe Muster wie ``senden.aufraeumen`` fuer den Ausgang — dort liegen
+    gemessen null verwaiste Dateien, hier lag alles.
+    """
+    ordner = get_settings().data_dir / "einfuhr"
+    if not ordner.is_dir():
+        return 0
+    weg = 0
+    for datei in ordner.iterdir():
+        if not datei.is_file():
+            continue
+        try:
+            datei.unlink()
+        except OSError:  # pragma: no cover - Windows haelt die Datei manchmal
+            logger.warning("The leftover upload %s could not be removed.", datei)
+            continue
+        weg += 1
+    if weg:
+        logger.info("Removed %s leftover upload(s) from an interrupted import.", weg)
+    return weg
 
 
 def _lauf(vorgang: Vorgang, datei: Path) -> None:

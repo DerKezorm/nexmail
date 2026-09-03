@@ -28,8 +28,8 @@ Packaged via [Fontsource](https://fontsource.org/); the npm wrappers are MIT.
 |---|---|
 | FastAPI, SQLAlchemy, pydantic, pydantic-settings, argon2-cffi, pyotp, nh3, charset-normalizer, PyJWT, pyzipper | MIT |
 | uvicorn, IMAPClient, httpx, segno | BSD-3-Clause |
-| python-multipart | Apache-2.0 |
-| cryptography | Apache-2.0 **or** BSD-3-Clause |
+| python-multipart, tzdata | Apache-2.0 |
+| cryptography, python-dateutil | Apache-2.0 **or** BSD-3-Clause |
 
 ## Frontend
 

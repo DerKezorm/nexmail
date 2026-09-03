@@ -152,6 +152,102 @@ def test_eine_reihe_verschwindet_nicht_beim_weiterblaettern(db, welt):
     assert len(_fenster(db, person, 20, 30)) == 2
 
 
+def _gelesene_termine(db, arbeit):
+    """Wie viele ``Termin``-Zeilen die Abfrage wirklich aus der Datei holt.
+
+    ⚠️ **Das Ergebnis allein beweist hier nichts.** ``fenster`` siebt
+    hinterher in Python nach, was das Fenster beruehrt — die Liste war also
+    auch vorher richtig. Falsch war, wie viel dafuer gelesen wurde. Ein Test
+    auf die Rueckgabe bestand die Mutationsprobe deshalb klaglos.
+    """
+    from sqlalchemy import event as _event
+
+    from app.models import Termin as _Termin
+
+    db.expunge_all()  # sonst kommen sie aus der Identitaetsabbildung
+    geladen: list[int] = []
+
+    @_event.listens_for(db, "loaded_as_persistent")
+    def merken(sitzung, instanz):  # noqa: ARG001
+        if isinstance(instanz, _Termin):
+            geladen.append(instanz.id)
+
+    try:
+        ergebnis = arbeit()
+    finally:
+        _event.remove(db, "loaded_as_persistent", merken)
+    return ergebnis, geladen
+
+
+def test_die_vergangenheit_wird_nicht_mitgelesen(db, welt):
+    """⚠️ **Ohne untere Grenze las jede Monatsansicht den ganzen Bestand.**
+
+    Bis zum 03.09.2026 stand hier nur ``beginn < bis``. Ein einzelner Termin
+    von vor drei Jahren kam damit bei jedem Blaettern mit — samt seiner
+    ``roh``-Spalte, in der das ganze ``VEVENT`` steht. Gemessen bei 20.000
+    Terminen ueber zehn Jahre: 19.438 gelesene Zeilen statt der 660, die das
+    Fenster wirklich beruehren.
+    """
+    person, kalender = welt
+    for tag in (1, 2, 3, 4):
+        termine.anlegen(db, person, kalender.id, titel=f"Lange her {tag}", beginn=_berlin(tag))
+    termine.anlegen(db, person, kalender.id, titel="Im Fenster", beginn=_berlin(12))
+
+    raus, gelesen = _gelesene_termine(db, lambda: _fenster(db, person, 10, 15))
+
+    assert [s.termin.titel for s in raus] == ["Im Fenster"]
+    assert len(gelesen) == 1, (
+        f"{len(gelesen)} Zeilen gelesen, um einen Termin zu zeigen — "
+        "die Vergangenheit kommt mit."
+    )
+
+
+def test_ein_termin_der_ins_fenster_hineinragt_bleibt_drin(db, welt):
+    """⚠️ **``ende > von``, nicht ``beginn >= von``.**
+
+    Eine Fortbildung von Montag bis Freitag muss auch dann dastehen, wenn das
+    Fenster erst am Mittwoch beginnt. Wer auf den Beginn einschraenkt, laesst
+    sie verschwinden, und zwar nur beim Blaettern — also genau dort, wo es
+    niemand ausprobiert.
+    """
+    person, kalender = welt
+    termine.anlegen(
+        db, person, kalender.id, titel="Fortbildung",
+        beginn=_berlin(8), ende=_berlin(12),
+    )
+    assert [s.termin.titel for s in _fenster(db, person, 10, 15)] == ["Fortbildung"]
+
+
+def test_ein_termin_der_genau_am_fensteranfang_endet_faellt_heraus(db, welt):
+    """⚠️ **``DTEND`` ist ausschliessend, und hier faellt das auf.**
+
+    Eine Besprechung von 22 bis 24 Uhr endet genau dann, wenn das Fenster des
+    naechsten Tages beginnt. Sie beruehrt es nicht mehr. Mit ``ende >= von``
+    wuerde sie weiterhin aus der Datei gelesen; im Ergebnis saehe man das
+    nicht, weil ``fenster`` sie danach aussiebt — gelesen waere sie trotzdem,
+    und bei einem Kalender mit Jahren an Bestand ist genau das der Posten.
+
+    ⚠️ **Nicht mit einem ganztaegigen Termin geprueft.** Der landet auf
+    UTC-Mitternacht (nachgemessen: Beginn 9. September 00:00 Berlin wird zu
+    ``2026-09-08 00:00+00:00``) und liegt damit gar nicht am Rand. Ein Test
+    darauf saehe richtig aus und bewiese nichts — die erste Fassung dieses
+    Tests hat die Mutationsprobe deshalb klaglos bestanden.
+    """
+    person, kalender = welt
+    termine.anlegen(
+        db, person, kalender.id, titel="Endet punktgenau",
+        beginn=_berlin(9, 22), ende=_berlin(10, 0),
+    )
+    termine.anlegen(db, person, kalender.id, titel="Im Fenster", beginn=_berlin(11))
+
+    raus, gelesen = _gelesene_termine(db, lambda: _fenster(db, person, 10, 15))
+
+    assert [s.termin.titel for s in raus] == ["Im Fenster"]
+    assert len(gelesen) == 1, (
+        "Der Termin, der genau zum Fensteranfang endet, wird mitgelesen."
+    )
+
+
 def test_ein_abgesagter_termin_steht_nicht_im_kalender(db, welt):
     person, kalender = welt
     t = termine.anlegen(db, person, kalender.id, titel="Weg", beginn=_berlin(2))

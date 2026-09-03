@@ -407,6 +407,39 @@ class Nachricht(Base):
         # je Ordner, mit ihm 0,05 ms - bei 120 Ordnern der Unterschied
         # zwischen fluessig und sekundenlang blockiert.
         Index("ix_nachricht_ungelesen", "ordner_id", sqlite_where=text("gelesen = 0")),
+        # ⚠️ **Der Ordnerbaum, und der Teilindex darueber traegt ihn
+        # nicht.** ``routers/konten.py`` zaehlt je Postfach Gesamtzahl UND
+        # Ungelesene in einer Gruppenabfrage, eingeschraenkt auf ``konto_id``.
+        # Damit ist ``ix_nachricht_ungelesen`` aussen vor (er steht allein auf
+        # ``ordner_id``), und SQLite laeuft ueber ``ix_nachricht_konto_id`` samt
+        # einem TEMP B-TREE fuer die Gruppierung. Gemessen am 03.09.2026 bei
+        # 250.000 Nachrichten: 373,6 ms fuer den ganzen Baum. Mit diesem
+        # Deckindex 36,1 ms, Plan ``SEARCH ... USING COVERING INDEX``, und die
+        # Datenbank waechst um 6,1 Prozent.
+        #
+        # ⚠️ **Die 5,6 ms in CLAUDE.md galten einer anderen Abfrage.**
+        # Sie stammen von der reinen Ungelesen-Zaehlung ueber ``ordner_id``; die
+        # Gesamtzahl kam am 02.09.2026 dazu und hat den Teilindex ausgeschlossen.
+        # Der Baum wird nach jedem Handgriff geholt, nicht nur beim Start.
+        Index("ix_nachricht_zaehlen", "konto_id", "ordner_id", "gelesen"),
+        # ⚠️ **Die Ansicht, die jeder nach der Anmeldung zuerst sieht.**
+        # „Alle Posteingaenge" schraenkt auf ``benutzer_id`` ein und sortiert
+        # nach ``datum``; ``ix_nachricht_liste`` ist ``(ordner_id, datum)`` und
+        # taugt nur fuer EINEN Ordner. Ohne diesen Index sortiert SQLite den
+        # ganzen Bestand des Benutzers, um 60 Zeilen zu zeigen: gemessen
+        # 1.145 ms bei 250.000 Nachrichten, mit ihm 0,7 ms. Er traegt auch den
+        # Merkpunkt beim Weiterblaettern und den Filter „markiert" ueber alle
+        # Postfaecher.
+        Index("ix_nachricht_zeitachse", "benutzer_id", "datum"),
+        # ⚠️ **Aufgaben und Wiedervorlage finden ihre Mail hierueber.**
+        # Beide zeigen mit der ``message_id`` auf die Nachricht, weil eine
+        # Zeilennummer den naechsten Abgleich nicht ueberlebt (siehe Aufgabe).
+        # Auf ``nachricht`` hatte die Spalte keinen Index, also wurde je Eintrag
+        # der halbe Bestand abgesucht: gemessen 180 ms je Aufgabe bei 250.000
+        # Nachrichten, bei zwanzig Aufgaben 3,5 s. Der teuerste Fall ist die
+        # verwaiste Aufgabe, weil dann alles abgesucht wird, ohne etwas zu
+        # finden.
+        Index("ix_nachricht_message_id", "benutzer_id", "message_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

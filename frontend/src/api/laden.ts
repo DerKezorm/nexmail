@@ -107,11 +107,27 @@ export async function kontenLaden(): Promise<Konto[]> {
   }))
 }
 
+/** Die Ordner aller Postfaecher.
+ *
+ * ⚠️ **Nebenlaeufig, nicht nacheinander.** Bis zum 03.09.2026 stand hier
+ * ein ``await`` in der Schleife: bei fuenf Postfaechern fuenf Umlaeufe
+ * hintereinander, und das nach **jedem** Handgriff — ``stammLaden`` laeuft
+ * nach jedem Verschieben, Loeschen, Archivieren und Lesen (27 Aufrufstellen in
+ * ``App.tsx``). Gemessen am Entwicklungsstand mit vier Postfaechern: 40 ms
+ * seriell gegen die Dauer des langsamsten Abrufs.
+ *
+ * ⚠️ **Die Reihenfolge bleibt die der Postfaecher.** ``Promise.all`` haelt
+ * sie ein; wer die Ergebnisse in der Reihenfolge ihres Eintreffens anhaengte,
+ * bekaeme einen Ordnerbaum, der bei jedem Laden anders sortiert ist.
+ */
 export async function ordnerLaden(konten: Konto[]): Promise<Ordner[]> {
+  const antworten = await Promise.all(
+    konten.map((konto) => api.holen<OrdnerZeile[]>(`/api/konten/${konto.id}/ordner`)),
+  )
+
   const alle: Ordner[] = []
-  for (const konto of konten) {
-    const roh = await api.holen<OrdnerZeile[]>(`/api/konten/${konto.id}/ordner`)
-    for (const o of roh) {
+  for (const [i, konto] of konten.entries()) {
+    for (const o of antworten[i]) {
       if (!o.abonniert || !o.waehlbar) continue
       alle.push({
         // Die Kennung kommt vom Server als Zahl; die Oberfläche rechnet mit

@@ -31,7 +31,7 @@ from __future__ import annotations
 import logging
 import re
 
-from sqlalchemy import Engine, select, text
+from sqlalchemy import Engine, func, select, text
 from sqlalchemy.orm import Session
 
 from ..models import Benutzer, Konto, Nachricht, Ordner
@@ -137,9 +137,36 @@ def neu_aufbauen(db: Session) -> int:
     """
     db.execute(text("INSERT INTO nachricht_fts(nachricht_fts) VALUES ('rebuild')"))
     db.commit()
-    anzahl = db.execute(select(Nachricht.id)).scalars().all()
-    logger.info("Full-text index rebuilt for %s messages.", len(anzahl))
-    return len(anzahl)
+    # ⚠️ **Zaehlen, nicht holen.** Hier stand ``select(Nachricht.id)`` samt
+    # ``len()`` darauf — bei 250.000 Nachrichten eine Python-Liste mit
+    # 250.000 Ganzzahlen, nur um sie zu zaehlen.
+    anzahl = db.execute(select(func.count(Nachricht.id))).scalar_one()
+    logger.info("Full-text index rebuilt for %s messages.", anzahl)
+    return anzahl
+
+
+def index_verdichten(db: Session) -> None:
+    """Den Volltextindex zusammenschieben, nachdem geloescht wurde.
+
+    ⚠️ **Ein Loeschen macht den Index groesser, nicht kleiner.** FTS5 traegt
+    die Loeschung als eigenen Eintrag nach; die alten Segmente bleiben stehen,
+    bis sie jemand zusammenschiebt. Am 03.09.2026 gemessen: Nach dem Loeschen
+    aller 2.717 Nachrichten war ``nachricht_fts_data`` von 492.588 auf 497.759
+    Byte **gewachsen**. Erst ``optimize`` holte es auf 30 Byte herunter, also
+    rund 291 Byte toter Index je geloeschter Nachricht.
+
+    ⚠️ **Nur wenn wirklich etwas wegfiel**, und darum vom Aufraeumdienst
+    gerufen: Der laeuft hoechstens einmal am Tag. ``optimize`` liest den ganzen
+    Index; bei jedem Loeschen waere das teurer als der Gewinn.
+
+    ⚠️ **Das ist nicht ``VACUUM``.** Die Datenbankdatei selbst schrumpft
+    dabei nicht — der frei gewordene Platz steht in der Freiliste und wird
+    wiederverwendet. Ein ``VACUUM`` braucht kurzzeitig den doppelten Platz und
+    sperrt die Datei; das gehoert dem Betreiber in die Hand gegeben und nicht
+    in einen Hintergrundfaden.
+    """
+    db.execute(text("INSERT INTO nachricht_fts(nachricht_fts) VALUES ('optimize')"))
+    db.commit()
 
 
 # --- Die Anfrage --------------------------------------------------------- #

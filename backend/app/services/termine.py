@@ -182,8 +182,24 @@ def fenster(
         .where(Kalender.benutzer_id == benutzer.id)
         # ⚠️ **Eine Reihe kann VOR dem Fenster beginnen und hineinreichen.**
         # Auf ``beginn >= von`` einzuschraenken liesse jeden wiederholten
-        # Termin verschwinden, sobald man eine Woche weiterblaettert.
-        .where((Termin.beginn < bis) | (Termin.rrule != ""))
+        # Termin verschwinden, sobald man eine Woche weiterblaettert. Reihen
+        # bleiben deshalb ohne unteres Ende; ausgerechnet werden sie danach.
+        #
+        # ⚠️ **Ein EINZELNER Termin braucht das nicht.** Bis zum 03.09.2026
+        # fehlte hier jede untere Grenze, und damit las eine Monatsansicht die
+        # gesamte Vergangenheit mit — samt der ``roh``-Spalte, in der das ganze
+        # ``VEVENT`` steht. Gemessen bei 20.000 Terminen ueber zehn Jahre:
+        # 19.438 Zeilen statt der 660, die das Fenster beruehren. Je weiter man
+        # blaettert, desto mehr Vergangenheit kam mit.
+        #
+        # ⚠️ **``ende > von``, nicht ``beginn >= von``.** Ein Termin, der
+        # vor dem Fenster beginnt und hineinragt, gehoert dazu. Und ``DTEND``
+        # ist ausschliessend: Ein ganztaegiger Termin am Vortag endet auf
+        # 00:00 des Fenstertages und faellt damit richtig heraus.
+        .where(
+            (Termin.rrule != "")
+            | ((Termin.beginn < bis) & (Termin.ende > von))
+        )
     )
     if kalender_ids is not None:
         abfrage = abfrage.where(Termin.kalender_id.in_(kalender_ids))

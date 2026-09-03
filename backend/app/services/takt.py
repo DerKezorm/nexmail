@@ -271,6 +271,9 @@ def einmal() -> dict[str, int]:
 
     from . import protokoll
 
+    from . import imap as imapdienst
+    from .protokoll import adresse_kuerzen as kurz
+
     stand = {"postfaecher": 0, "neu": 0, "gescheitert": 0}
     with SessionLocal() as db:
         # ⚠️ **Hier läuft die Selbstabschaltung der Protokollstufe.** Sie
@@ -298,7 +301,23 @@ def einmal() -> dict[str, int]:
                 # Erst zurueckrollen, dann berichten: Sonst laeuft schon die
                 # naechste Abfrage in dieselbe gesperrte Sitzung.
                 db.rollback()
-                logger.info("Background sync skipped %s: %s", adresse, fehler)
+                # ⚠️ **Ein abgewiesenes Passwort ist etwas anderes als ein
+                # Fehler im Programm.** Bis zum 03.09.2026 ging beides als INFO
+                # mit demselben Satz hinaus. In der Protokolldatei stand
+                # deshalb neun Mal ``module 'app.services.imap' has no
+                # attribute 'ANMELDUNG'`` — ein ``AttributeError`` — neben 139
+                # abgewiesenen Anmeldungen, ohne Rueckverfolg und ohne dass
+                # irgendetwas ihn von einem Betriebszustand unterschied.
+                #
+                # Unterschieden wird an der Ausnahmeart, nicht am Text: Was
+                # ``imap`` selbst als Verbindungsfehler meldet, ist erwartet.
+                # Alles andere ist unerwartet und bekommt seinen Rueckverfolg.
+                if isinstance(fehler, imapdienst.Verbindungsfehler):
+                    logger.info("Background sync skipped %s: %s", kurz(adresse), fehler)
+                else:
+                    logger.exception(
+                        "Background sync hit an unexpected error on %s.", kurz(adresse)
+                    )
     if stand["neu"]:
         logger.info("Background sync brought %s new message(s).", stand["neu"])
     return stand

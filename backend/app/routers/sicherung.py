@@ -128,14 +128,40 @@ def erstellen(eingabe: Passwort, _: AngemeldeterBenutzer) -> Response:
     )
 
 
+#: Wie viel je Schritt gelesen wird. Dieselbe Blockgroesse wie beim
+#: mbox-Upload in ``routers/austausch.py``.
+UPLOAD_BLOCK = 1024 * 1024
+
+
 async def _gelesen(datei: UploadFile) -> bytes:
-    daten = await datei.read()
-    if len(daten) > MAX_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Die Datei ist zu groß für eine nexmail-Sicherung.",
-        )
-    return daten
+    """Die hochgeladene Sicherung, aber nur bis zur Grenze.
+
+    ⚠️ **Gezaehlt wird WAEHREND des Lesens, nicht danach.** Bis zum
+    03.09.2026 stand hier ``daten = await datei.read()`` und die Pruefung eine
+    Zeile spaeter — die Grenze griff also erst, wenn die ganze Datei schon im
+    Arbeitsspeicher lag. Bei ``MAX_BYTES = 512 MB`` heisst das: Der Container
+    hat sich das Halbe-Gigabyte genommen, bevor er ablehnt.
+
+    ⚠️ **Und dieser Weg ist vor der Ersteinrichtung offen.**
+    ``/api/sicherung/einspielen-vor-einrichtung`` nimmt einen Upload **ohne
+    Anmeldung** entgegen; das steht so begruendet in ``OEFFENTLICHE_PFADE``.
+    Genau deshalb ist es hier mehr als eine Aufraeumarbeit.
+
+    Der Nachbarrouter macht es seit jeher richtig
+    (``routers/austausch.py``, mbox-Upload) — hier stand nur die andere
+    Reihenfolge.
+    """
+    teile: list[bytes] = []
+    gelesen = 0
+    while block := await datei.read(UPLOAD_BLOCK):
+        gelesen += len(block)
+        if gelesen > MAX_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail="Die Datei ist zu groß für eine nexmail-Sicherung.",
+            )
+        teile.append(block)
+    return b"".join(teile)
 
 
 async def _pruefen(request: Request, datei: UploadFile, passwort: str) -> Befund:

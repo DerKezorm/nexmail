@@ -38,15 +38,38 @@ def test_kein_passwort_kommt_durch(zeile):
 
 
 def test_der_zensor_haengt_an_jedem_handler(tmp_path, monkeypatch):
-    """Nicht nur die Funktion — der Filter muss auch wirklich hängen."""
+    """Nicht nur die Funktion — der Filter muss auch wirklich hängen.
+
+    ⚠️ **Geprüft werden ALLE Handler der Wurzel, nicht nur die eigenen.** Bis
+    zum 03.09.2026 stand hier ``if getattr(h, "_nexmail", False)`` — und
+    schloss damit ausgerechnet den undichten Handler von der Prüfung aus:
+    ``logging.basicConfig`` in ``main.py`` hängte einen StreamHandler ohne
+    Filter an dieselbe Wurzel, er lief **vor** unseren, und in ``docker logs``
+    stand das Postfach-Passwort im Klartext. Der Test war grün, das Loch war
+    offen. Ein Wächter, der sich seine Prüflinge selbst aussucht, ist keiner.
+    """
     protokoll.einrichten()
     wurzel = logging.getLogger()
-    unsere = [h for h in wurzel.handlers if getattr(h, "_nexmail", False)]
 
-    assert unsere, "Kein eigener Handler eingerichtet."
-    for handler in unsere:
+    # ⚠️ **Pytests eigene Handler zaehlen nicht mit.** ``LogCaptureHandler``
+    # und ``_LiveLoggingNullHandler`` haengt der Testlauf selbst an die Wurzel;
+    # sie sammeln fuer den Bericht und schreiben weder in eine Datei noch nach
+    # ``docker logs``. Erkannt werden sie am **Modul** ihrer Klasse und nicht
+    # am Namen: Ein Name laesst sich in einer neuen pytest-Fassung still
+    # aendern, und dann pruefte dieser Test wieder nichts.
+    ausgebende = [
+        h for h in wurzel.handlers if not type(h).__module__.startswith("_pytest")
+    ]
+
+    assert any(getattr(h, "_nexmail", False) for h in ausgebende), (
+        "Kein eigener Handler eingerichtet."
+    )
+    for handler in ausgebende:
         arten = {type(f).__name__ for f in handler.filters}
-        assert "_Zensor" in arten, "Ein Handler ohne Zensor — dort käme ein Passwort durch."
+        assert "_Zensor" in arten, (
+            f"{type(handler).__name__} hängt ohne Zensor an der Wurzel — "
+            "dort käme ein Passwort durch."
+        )
 
 
 def test_ein_passwort_landet_nicht_in_der_datei():
@@ -176,3 +199,28 @@ def test_eine_anfrage_bekommt_eine_vorgangsnummer(klient):
     antwort = klient.get("/api/health")
     assert "x-nexmail-vorgang" in antwort.headers
     assert len(antwort.headers["x-nexmail-vorgang"]) == 8
+
+
+def test_uvicorns_zweiter_rueckverfolg_faellt_weg():
+    """⚠️ **Der Filter dafür griff vom ersten Tag an nie.**
+
+    uvicorn schreibt `"Exception in ASGI application\n"` — mit Zeilenumbruch,
+    er steht wörtlich in `uvicorn/protocols/http/h11_impl.py`. Verglichen wurde
+    ohne. Gezählt am 03.09.2026 in `data-dev/logs`: 24 Blöcke, 2.462 Zeilen,
+    179.873 Byte, also 15,1 Prozent der Datei.
+
+    Es geht nicht um den Platz: Unsere eigene Zeile trägt die Vorgangsnummer
+    und die Adresse, dieser Rückverfolg nicht. Zweimal dasselbe Ereignis, und
+    nur eines davon lässt sich zuordnen.
+    """
+    filter_ = protokoll._KeinDoppelterStacktrace()  # noqa: SLF001 - genau das ist der Prüfling
+
+    def zeile(text: str) -> logging.LogRecord:
+        return logging.LogRecord("uvicorn.error", logging.ERROR, __file__, 1, text, (), None)
+
+    assert filter_.filter(zeile("Exception in ASGI application\n")) is False, (
+        "So, wie uvicorn es wirklich schreibt — und genau das kam durch."
+    )
+    assert filter_.filter(zeile("Exception in ASGI application")) is False
+    # Und die Gegenprobe: Alles andere bleibt stehen.
+    assert filter_.filter(zeile("Something else entirely")) is True

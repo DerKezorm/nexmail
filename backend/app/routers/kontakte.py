@@ -219,7 +219,7 @@ async def einlesen(
     roh = await datei.read(MAX_VCARD + 1)
     if len(roh) > MAX_VCARD:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="Die Datei ist größer als 5 MB — das ist keine vCard.",
         )
     # ⚠️ **Nicht streng dekodieren.** vCards aus Outlook kommen oft in

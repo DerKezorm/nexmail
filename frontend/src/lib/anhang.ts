@@ -80,7 +80,16 @@ export function eigenerText(html: string, signaturHtml: string): string {
  *  ⚠️ **Wortanfang gebunden, Wortende offen.** „die angehängte Rechnung" und
  *  „attachments" sollen treffen, also darf hinter dem Wort weitergeschrieben
  *  sein. Davor muss ein Nicht-Buchstabe stehen: „unattached" ist ausdrücklich
- *  **kein** Anhang, und aus „anbeißen" wird kein „anbei".
+ *  **kein** Anhang.
+ *
+ *  ⚠️ **Was ein Wort ANFÄNGT, trifft dagegen — auch „anbeißen".** Hier stand
+ *  bis zum 03.09.2026 das Gegenteil, und der Satz war schlicht falsch: Das
+ *  offene Wortende lässt sich nicht gleichzeitig schließen. Aufgefallen ist es
+ *  erst, als die schnelle Prüfebene den zugesagten Fall nachprüfte.
+ *
+ *  Der Tausch ist bewusst so herum: Ein zu viel gefragter Anhang kostet einen
+ *  Klick, ein vergessener kostet eine zweite Mail. „anbeißen" in einer
+ *  Geschäftsmail ist selten genug dafür.
  */
 export function erwaehntAnhang(text: string): boolean {
   return ANHANG_SIGNALWOERTER.some((wort) => new RegExp(`(^|\\P{L})${wort}`, 'iu').test(text))

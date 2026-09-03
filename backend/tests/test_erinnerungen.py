@@ -74,6 +74,66 @@ def test_ein_alter_termin_laeutet_nicht_nach(db, welt):
     assert erinnerungen.faellige(db, person, jetzt=spaeter) == []
 
 
+def test_alte_termine_werden_gar_nicht_erst_gelesen(db, welt):
+    """⚠️ **Die Oberflaeche fragt alle 30 Sekunden hier nach.**
+
+    Bis zum 03.09.2026 hatte die Abfrage kein unteres Ende: ``beginn <= bis``
+    und sonst nichts. Damit las jeder Aufruf den gesamten Kalenderbestand aus
+    der Datei, samt der ``roh``-Spalte mit dem ganzen ``VEVENT``. Gemessen bei
+    20.000 Terminen: 6.475 Zeilen statt 216.
+
+    Das Ergebnis war schon vorher richtig — ``faellige`` siebt hinterher aus.
+    Falsch war, wie viel dafuer gelesen wurde. Deshalb zaehlt dieser Test die
+    gelesenen Zeilen und nicht die Rueckgabe.
+    """
+    from sqlalchemy import event as _event
+
+    person, kalender = welt
+    # Vier Termine aus der Vergangenheit, einer jetzt.
+    for tage in (30, 60, 90, 120):
+        _termin(db, person, kalender, titel=f"Vorbei {tage}",
+                beginn=JETZT - timedelta(days=tage),
+                ende=JETZT - timedelta(days=tage) + timedelta(hours=1))
+    _termin(db, person, kalender)
+
+    db.expunge_all()
+    gelesen: list[int] = []
+
+    @_event.listens_for(db, "loaded_as_persistent")
+    def merken(sitzung, instanz):  # noqa: ARG001
+        if isinstance(instanz, Termin):
+            gelesen.append(instanz.id)
+
+    try:
+        raus = erinnerungen.faellige(db, person, jetzt=JETZT)
+    finally:
+        _event.remove(db, "loaded_as_persistent", merken)
+
+    assert [f.titel for f in raus] == ["Quartalsbesprechung"]
+    assert len(gelesen) == 1, (
+        f"{len(gelesen)} Termine gelesen, um einen zu melden — "
+        "die Vergangenheit kommt mit."
+    )
+
+
+def test_eine_reihe_wird_weiterhin_ohne_unteres_ende_geholt(db, welt):
+    """⚠️ **Und das ist der Grund, warum die Grenze nur fuer Einzelne gilt.**
+
+    Eine woechentliche Besprechung beginnt einmal, vor Monaten, und laeuft
+    weiter. Wer sie am Beginn einschraenkt, erinnert nie wieder an sie.
+    """
+    person, kalender = welt
+    _termin(
+        db, person, kalender, titel="Jour fixe",
+        beginn=JETZT - timedelta(days=63),
+        ende=JETZT - timedelta(days=63) + timedelta(hours=1),
+        rrule="FREQ=WEEKLY",
+    )
+
+    raus = erinnerungen.faellige(db, person, jetzt=JETZT)
+    assert [f.titel for f in raus] == ["Jour fixe"]
+
+
 # --- Genau einmal --------------------------------------------------------- #
 
 

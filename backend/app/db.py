@@ -191,6 +191,46 @@ def _fehlende_spalten() -> list[str]:
     return ergaenzt
 
 
+def _fehlende_indizes() -> list[str]:
+    """Indizes, die das Modell kennt und die Datenbank noch nicht.
+
+    ⚠️ **``create_all`` legt Indizes nur mit einer NEUEN Tabelle an.**
+    Steht die Tabelle schon, sieht es sie gar nicht an. Ein Index, der spaeter
+    zu ``models.py`` dazukommt, entsteht damit auf einer frischen Installation
+    und auf keiner gewachsenen - also ueberall dort nicht, wo er gebraucht
+    wird. Und es faellt nirgends auf: kein Fehler beim Start, keine Meldung,
+    nur eine Anwendung, die bei genug Bestand langsam wird.
+
+    Am 03.09.2026 nachgesehen und belegt: ``models.py`` deklariert
+    ``betreff_kern`` mit ``index=True``, in ``data-dev/nexmail.db`` steht
+    ``ix_nachricht_betreff_kern`` nicht. Die Spalte war per ``ALTER TABLE``
+    nachgezogen worden, der Index blieb aus.
+
+    Nur **Anlegen**, nie Loeschen - dieselbe Regel wie bei den Spalten. Ein
+    Index, den jemand von Hand angelegt hat, geht niemanden etwas an.
+    """
+    pruefer = inspect(engine)
+    ergaenzt: list[str] = []
+    vorhandene_tabellen = set(pruefer.get_table_names())
+
+    for tabelle in Base.metadata.sorted_tables:
+        if tabelle.name not in vorhandene_tabellen:
+            continue  # Die legt create_all samt ihren Indizes an.
+        da = {i["name"] for i in pruefer.get_indexes(tabelle.name)}
+        for index in tabelle.indexes:
+            if index.name in da:
+                continue
+            # ⚠️ **Vorher sagen, dass es dauert.** Ein Index ueber eine
+            # Nachrichtentabelle mit Hunderttausenden Zeilen entsteht beim
+            # Start, bevor die Anwendung antwortet. Ohne diese Zeile sieht ein
+            # langer Start aus wie ein Haenger, und der Betreiber startet neu -
+            # mitten im Indexbau.
+            logger.info("Creating missing index %s on %s ...", index.name, tabelle.name)
+            index.create(bind=engine)
+            ergaenzt.append(index.name)
+    return ergaenzt
+
+
 def init_db() -> None:
     """Datenbank auf den Stand der laufenden Fassung bringen.
 
@@ -206,6 +246,12 @@ def init_db() -> None:
     neue_spalten = _fehlende_spalten()
     if neue_spalten:
         logger.info("Schema updated, columns added: %s", ", ".join(neue_spalten))
+
+    # ⚠️ **Nach den Spalten.** Ein Index kann auf einer Spalte stehen,
+    # die es eine Zeile weiter oben noch nicht gab.
+    neue_indizes = _fehlende_indizes()
+    if neue_indizes:
+        logger.info("Schema updated, indexes added: %s", ", ".join(sorted(neue_indizes)))
 
     if fehlend:
         logger.info("Schema updated, tables added: %s", ", ".join(sorted(fehlend)))

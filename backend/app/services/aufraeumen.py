@@ -51,7 +51,7 @@ def faellig(person: Benutzer) -> bool:
 
 def benutzer_aufraeumen(db: Session, person: Benutzer) -> int:
     """Eine Runde fuer einen Benutzer: alle Konten, Papierkorb und Junk."""
-    from . import handeln
+    from . import handeln, protokoll
 
     vorgaben = (
         ("papierkorb", person.aufraeumen_papierkorb_tage),
@@ -82,8 +82,13 @@ def benutzer_aufraeumen(db: Session, person: Benutzer) -> int:
                     geloescht += handeln.alte_entfernen(db, ordner, stichtag)
                 except Exception as fehler:  # noqa: BLE001
                     # Fangen, warnen, weiter — dasselbe Muster wie im Takt.
+                    # ⚠️ **Gekuerzt.** Das Protokoll wird weitergereicht, und
+                    # die Domaene traegt die Fehlersuche allein.
                     logger.warning(
-                        "Auto-clean skipped %s (%s): %s", konto.adresse, ordner.pfad, fehler
+                        "Auto-clean skipped %s (%s): %s",
+                        protokoll.adresse_kuerzen(konto.adresse),
+                        ordner.pfad,
+                        fehler,
                     )
     return geloescht
 
@@ -97,9 +102,39 @@ def runde() -> dict[str, int]:
             if not faellig(person):
                 continue
             stand["benutzer"] += 1
-            stand["geloescht"] += benutzer_aufraeumen(db, person)
-            person.aufraeumen_zuletzt = utcnow()
-            db.commit()
+            # ⚠️ **Je Benutzer abgesichert, nicht je Runde.** Bis zum
+            # 03.09.2026 stand hier nichts: Ein Fehler beim k-ten Benutzer
+            # — etwa ein ``StaleDataError``, weil jemand gerade ein Postfach
+            # entfernt hat — riss alle folgenden mit, und die naechste Runde
+            # kommt erst in einer Stunde (``NACHSEHEN_SEKUNDEN``). Takt und
+            # Wiedervorlage haben diese Absicherung seit dem Vorfall vom
+            # 03.09.2026; das Aufraeumen hatte sie als einziges nicht.
+            #
+            # Der Name wird VOR der Arbeit gemerkt: Ist die Sitzung nach dem
+            # Fehler gesperrt, wirft schon ``person.benutzername`` erneut —
+            # mitten im ``except``. Dieselbe Lehre wie in ``takt.einmal``.
+            wer = person.benutzername
+            try:
+                stand["geloescht"] += benutzer_aufraeumen(db, person)
+                person.aufraeumen_zuletzt = utcnow()
+                db.commit()
+            except Exception:  # noqa: BLE001
+                # ⚠️ Kein Zaehler im Ergebnis: Die Protokollzeile sagt alles,
+                # was zu sagen ist, und das Woerterbuch ist ein Vertrag, den
+                # zwei Tests woertlich festhalten.
+                db.rollback()
+                logger.exception("Auto-clean failed for %s.", wer)
+                continue
+        # ⚠️ **Nach dem Loeschen den Volltextindex zusammenschieben.** FTS5
+        # traegt eine Loeschung als eigenen Eintrag nach; die alten Segmente
+        # bleiben stehen, und der Index waechst beim Loeschen sogar. Gemessen
+        # rund 291 Byte toter Index je geloeschter Nachricht. Hier ist die
+        # richtige Stelle: hoechstens einmal am Tag, und nur wenn wirklich
+        # etwas wegfiel.
+        if stand["geloescht"]:
+            from . import suche as suchdienst
+
+            suchdienst.index_verdichten(db)
     if stand["geloescht"]:
         logger.info(
             "Auto-clean removed %s old message(s) for %s user(s).",

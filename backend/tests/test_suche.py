@@ -275,3 +275,50 @@ def test_ein_gefuellter_index_wird_beim_start_nicht_neu_gebaut(db, postfach):
 
     # Nicht neu gebaut - der Eintrag fehlt weiterhin.
     assert suche.suchen(db, person, "Rechnung") == []
+
+
+def test_der_index_waechst_beim_loeschen_und_das_verdichten_holt_es_zurueck(db, postfach):
+    """⚠️ **Ein Löschen macht den Volltextindex größer, nicht kleiner.**
+
+    FTS5 trägt die Löschung als eigenen Eintrag nach; die alten Segmente
+    bleiben stehen, bis sie jemand zusammenschiebt. Am 03.09.2026 an `data-dev`
+    gemessen: Nach dem Löschen aller 2.717 Nachrichten war `nachricht_fts_data`
+    von 492.588 auf 497.759 Byte **gewachsen**. Erst `optimize` holte es auf
+    30 Byte herunter — rund 291 Byte toter Index je gelöschter Nachricht.
+
+    Gemessen wird die Größe des Indexspeichers, nicht die Laufzeit.
+    """
+    from sqlalchemy import text as _text
+
+    from app.services import suche
+
+    person, konto, ordner = postfach
+    for i in range(60):
+        db.add(
+            Nachricht(
+                benutzer_id=person.id, konto_id=konto.id, ordner_id=ordner.id, uid=1000 + i,
+                betreff=f"Quartalsbericht {i} Rechnung Angebot", von_adresse="wer@example.org",
+                von_name="Wer", anreisser="Ein längerer Anreißer mit vielen Wörtern darin.",
+                datum=datetime.now(timezone.utc),
+            )
+        )
+    db.commit()
+
+    def indexgroesse() -> int:
+        return db.execute(
+            _text("select coalesce(sum(length(block)), 0) from nachricht_fts_data")
+        ).scalar_one()
+
+    nach_dem_fuellen = indexgroesse()
+    assert nach_dem_fuellen > 0, "Der Index ist leer — dann prüft der Test nichts."
+
+    db.execute(_text("delete from nachricht"))
+    db.commit()
+    nach_dem_loeschen = indexgroesse()
+
+    suche.index_verdichten(db)
+    nach_dem_verdichten = indexgroesse()
+
+    assert nach_dem_verdichten < nach_dem_loeschen, (
+        f"Verdichten hat nichts gebracht: {nach_dem_loeschen} -> {nach_dem_verdichten} Byte."
+    )
