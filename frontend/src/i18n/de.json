@@ -1210,6 +1210,10 @@
     "angemeldet_am": "angemeldet am {{datum}}",
     "zuletzt_erreicht": "zuletzt erreicht am {{datum}}",
     "nie_erreicht": "noch nichts zugestellt",
-    "geraet_entfernen": "Gerät entfernen"
+    "geraet_entfernen": "Gerät entfernen",
+    "lage_erlaubt_ohne_anmeldung": "Erlaubt, aber nicht angemeldet",
+    "lage_erlaubt_ohne_anmeldung_hinweis": "Der Browser darf Meldungen zeigen, dieser Server kennt das Gerät aber nicht. Das passiert nach einem Umzug, nach dem Löschen der Browserdaten oder wenn nexmail neu aufgesetzt wurde. Ein Klick holt es nach, ohne dass jemand noch einmal gefragt wird.",
+    "anmelden_nachholen": "Anmeldung nachholen",
+    "keine_antwort": "Der Browser hat die Nachfrage weder erlaubt noch abgelehnt. Auf einem iPhone passiert das, wenn nexmail nicht vom Home-Bildschirm aus geöffnet wurde."
   }
 }

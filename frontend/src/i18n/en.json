@@ -1210,6 +1210,10 @@
     "angemeldet_am": "registered on {{datum}}",
     "zuletzt_erreicht": "last reached on {{datum}}",
     "nie_erreicht": "nothing delivered yet",
-    "geraet_entfernen": "Remove device"
+    "geraet_entfernen": "Remove device",
+    "lage_erlaubt_ohne_anmeldung": "Allowed, but not registered",
+    "lage_erlaubt_ohne_anmeldung_hinweis": "The browser may show notifications, but this server does not know the device. That happens after a move, after clearing browser data, or when nexmail was set up again. One click catches it up, without asking anyone twice.",
+    "anmelden_nachholen": "Register this device",
+    "keine_antwort": "The browser neither allowed nor denied the request. On an iPhone this happens when nexmail was not opened from the home screen."
   }
 }

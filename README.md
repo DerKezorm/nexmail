@@ -26,7 +26,7 @@ Roundcube is webmail bolted onto one mailbox. Thunderbird does not run in a
 browser. Commercial clients want to pull your mail onto their servers. nexmail
 is the third option — and if you can use Outlook, you should feel at home.
 
-> **Version 0.7.0.** It reads, writes, searches, sorts, labels, sends,
+> **Version 0.7.1.** It reads, writes, searches, sorts, labels, sends,
 > schedules, prints, answers for you while you are away, keeps a calendar,
 > backs itself up and can now reach you when the browser is closed. It is used
 > daily by its author against real iCloud and IMAP mailboxes, and more than

@@ -44,7 +44,10 @@ const UHRZEITEN = Array.from({ length: 48 }, (_, i) => {
 
 export function Benachrichtigungen() {
   const { t, i18n } = useTranslation()
-  const [lage, setLage] = useState<push.PushLage>(() => push.lage())
+  /* ⚠️ Die Lage steht erst nach einer Rückfrage beim Service Worker fest,
+     deshalb nicht als Anfangswert. Bis dahin gilt „noch nicht erlaubt" —
+     das ist der harmlose Irrtum von beiden. */
+  const [lage, setLage] = useState<push.PushLage>('offen')
   const [einst, setEinst] = useState<Einstellungen | null>(null)
   const [geraete, setGeraete] = useState<GeraetZeile[] | null>(null)
   /* ⚠️ Drei Zustände, nicht zwei: noch nicht geladen · geladen · ging nicht.
@@ -56,6 +59,12 @@ export function Benachrichtigungen() {
 
   const laden = useCallback(async () => {
     try {
+      /* ⚠️ **Erst nachanmelden, dann lesen.** Ein Browser, dessen Erlaubnis
+         noch steht, dessen Abonnement der Server aber nicht kennt, heilt sich
+         hier von selbst — ohne jemanden zu fragen, denn nur die Nachfrage
+         braucht einen Klick. Scheitert es, bleibt die Seite trotzdem
+         bedienbar; der Kasten oben sagt dann, was los ist. */
+      await push.sicherstellen().catch(() => null)
       const eigen = await push.vorhandene()
       const [e, g] = await Promise.all([
         api.holen<Einstellungen>('/api/push/einstellungen'),
@@ -66,6 +75,7 @@ export function Benachrichtigungen() {
       setEinst(e)
       setGeraete(g)
       setFehler(null)
+      setLage(await push.lage())
     } catch (e) {
       setFehler(e instanceof ApiFehler ? e.detail : String(e))
     }
@@ -92,16 +102,35 @@ export function Benachrichtigungen() {
     setFehler(null)
     try {
       await push.anmelden()
-      setLage(push.lage())
       await laden()
     } catch (e) {
       /* ⚠️ Der Browser sagt „denied", sobald jemand die Nachfrage wegklickt —
          und danach fragt er nie wieder. Die Lage wird deshalb neu gelesen,
          damit der Kasten sofort den richtigen Satz zeigt statt weiter zum
          Klicken einzuladen. */
-      setLage(push.lage())
+      setLage(await push.lage())
       const kennung = e instanceof Error ? e.message : String(e)
-      if (kennung !== 'push_abgelehnt') setFehler(kennung)
+      /* „Abgelehnt“ braucht keine Fehlermeldung: Der Kasten sagt es schon,
+         und ein bewusstes Nein ist kein Fehler. Alles andere sehr wohl — ein
+         Klick, der nichts tut und nichts sagt, ist derselbe Fehler wie ein
+         gesperrter Knopf. */
+      if (kennung === 'push_keine_antwort') setFehler(t('push.keine_antwort'))
+      else if (kennung !== 'push_abgelehnt') setFehler(kennung)
+    } finally {
+      setLaeuft(false)
+    }
+  }
+
+  /** Die Anmeldung nachholen, wenn die Erlaubnis steht und der Server das
+   *  Gerät trotzdem nicht kennt. Fragt nichts, meldet aber den Fehlschlag. */
+  async function nachholen() {
+    setLaeuft(true)
+    setFehler(null)
+    try {
+      await push.sicherstellen()
+      await laden()
+    } catch (e) {
+      setFehler(e instanceof ApiFehler ? e.detail : String(e))
     } finally {
       setLaeuft(false)
     }
@@ -121,7 +150,6 @@ export function Benachrichtigungen() {
     try {
       if (zeile.dieses) await push.abmelden(zeile.id)
       else await api.loeschen(`/api/push/geraete/${zeile.id}`)
-      setLage(push.lage())
       await laden()
     } catch (e) {
       setFehler(e instanceof ApiFehler ? e.detail : String(e))
@@ -163,10 +191,22 @@ export function Benachrichtigungen() {
             <Button variant="secondary" onClick={probe}>
               {probeGesagt ? t('push.probe_unterwegs') : t('push.probe')}
             </Button>
+          ) : lage === 'erlaubt_ohne_anmeldung' ? (
+            <Button onClick={nachholen} disabled={laeuft}>
+              {t('push.anmelden_nachholen')}
+            </Button>
           ) : (
+            /* ⚠️ `kein_home` sperrt mit: Auf einem iPhone im gewöhnlichen
+               Reiter führt die Nachfrage zu nichts, und ein Knopf, der nichts
+               bewirkt, schickt einen auf die falsche Fährte. */
             <Button
               onClick={erlauben}
-              disabled={laeuft || lage === 'unmoeglich' || lage === 'abgelehnt'}
+              disabled={
+                laeuft ||
+                lage === 'unmoeglich' ||
+                lage === 'abgelehnt' ||
+                lage === 'kein_home'
+              }
             >
               {t('push.erlauben')}
             </Button>

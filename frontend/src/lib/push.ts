@@ -9,13 +9,13 @@
 import { api } from '../api/client'
 import { appPfad } from './basis'
 
-/** Warum es hier nicht weitergeht. Die Oberfläche übersetzt die Kennung. */
-export type PushLage =
-  | 'bereit' // erlaubt und angemeldet
-  | 'offen' // der Browser hat noch nicht gefragt
-  | 'abgelehnt' // der Browser hat Nein — nur in seinen Einstellungen zurückzunehmen
-  | 'unmoeglich' // dieser Browser kann kein Push
-  | 'kein_home' // iOS ohne Home-Bildschirm
+/* Die Entscheidung selbst wohnt in `pushlage.ts` — ohne Browser-Bezug, damit
+   die schnelle Pruefebene sie ohne jsdom pruefen kann. Hier steht nur, was
+   wirklich einen Browser braucht. */
+export type { PushLage, Umstaende } from './pushlage'
+import { lageAus } from './pushlage'
+import type { PushLage } from './pushlage'
+export { lageAus }
 
 export interface Anmeldung {
   endpunkt: string
@@ -33,21 +33,27 @@ export function moeglich(): boolean {
    führt zu nichts — und sagt auch nicht, warum. Ohne diese Prüfung tippt
    jemand am iPhone auf „Erlauben", nichts passiert, und er hält nexmail für
    kaputt. */
-function iosOhneHomeBildschirm(): boolean {
-  const apfel = /iPad|iPhone|iPod/.test(navigator.userAgent)
-  if (!apfel) return false
-  const alsApp =
+function alsAppGestartet(): boolean {
+  return (
     window.matchMedia('(display-mode: standalone)').matches ||
     (navigator as { standalone?: boolean }).standalone === true
-  return !alsApp
+  )
 }
 
-export function lage(): PushLage {
-  if (!moeglich()) return 'unmoeglich'
-  if (iosOhneHomeBildschirm()) return 'kein_home'
-  if (Notification.permission === 'granted') return 'bereit'
-  if (Notification.permission === 'denied') return 'abgelehnt'
-  return 'offen'
+/** Die Lage dieses Browsers, jetzt.
+ *
+ * ⚠️ **Asynchron, und das muss sie sein:** Ob dieses Gerät angemeldet ist,
+ * steht im Service Worker und nicht in einer Eigenschaft von `window`.
+ */
+export async function lage(): Promise<PushLage> {
+  const kannPush = moeglich()
+  return lageAus({
+    kannPush,
+    istApple: /iPad|iPhone|iPod/.test(navigator.userAgent),
+    alsApp: alsAppGestartet(),
+    erlaubnis: kannPush ? Notification.permission : 'default',
+    angemeldet: (await vorhandene()) !== null,
+  })
 }
 
 /** Den Service Worker registrieren — mehrfach aufrufbar. */
@@ -95,8 +101,33 @@ export async function vorhandene(): Promise<Anmeldung | null> {
 export async function anmelden(): Promise<Anmeldung> {
   if (!moeglich()) throw new Error('push_unmoeglich')
 
+  /* ⚠️ **Kein `await` vor dieser Zeile.** Safari verlangt, dass die Nachfrage
+     in derselben Aufgabe wie der Klick läuft; ein Umweg über eine Zusage
+     davor, und sie kommt gar nicht erst hoch. */
   const erlaubnis = await Notification.requestPermission()
-  if (erlaubnis !== 'granted') throw new Error('push_abgelehnt')
+  if (erlaubnis === 'denied') throw new Error('push_abgelehnt')
+  /* ⚠️ **„default" ist nicht „denied".** Manche Browser, iOS voran, geben die
+     Nachfrage still zurück, ohne sie zu zeigen. Das als Ablehnung zu
+     verbuchen hiesse: Der Knopf tut nichts und sagt nichts. */
+  if (erlaubnis !== 'granted') throw new Error('push_keine_antwort')
+
+  const daten = await sicherstellen()
+  if (daten === null) throw new Error('push_anmeldung_gescheitert')
+  return daten
+}
+
+/** Dafür sorgen, dass ein Browser mit erteilter Erlaubnis auch angemeldet ist.
+ *
+ * ⚠️ **Fragt nichts und darf deshalb beim Laden laufen.** Nur
+ * `requestPermission` braucht einen Klick; `subscribe` mit längst erteilter
+ * Erlaubnis nicht. Ohne diese Stelle bleibt ein Gerät für immer stumm, dessen
+ * Erlaubnis noch steht, dessen Abonnement aber weg ist — nach einem Löschen
+ * der Browserdaten, nach einem Serverumzug, oder weil der Server neu
+ * aufgesetzt wurde und seine Tabelle leer ist. Die Erlaubnis überlebt das
+ * alles, die Anmeldung nicht.
+ */
+export async function sicherstellen(): Promise<Anmeldung | null> {
+  if (!moeglich() || Notification.permission !== 'granted') return null
 
   const reg = await arbeiter()
   await navigator.serviceWorker.ready
@@ -105,8 +136,8 @@ export async function anmelden(): Promise<Anmeldung> {
     '/api/push/schluessel',
   )
 
-  /* ⚠️ **Eine vorhandene Anmeldung wird wiederverwendet, nicht ersetzt.**
-     `subscribe` wirft, wenn schon eine mit einem anderen Schlüssel besteht —
+  /* ⚠️ **Ein vorhandenes Abonnement wird wiederverwendet, nicht ersetzt.**
+     `subscribe` wirft, wenn schon eines mit einem anderen Schlüssel besteht —
      und das passiert wirklich, nämlich nach einem Serverumzug. */
   const abo =
     (await reg.pushManager.getSubscription()) ??
@@ -116,6 +147,8 @@ export async function anmelden(): Promise<Anmeldung> {
     }))
 
   const daten = alsAnmeldung(abo)
+  /* ⚠️ **Immer melden, auch bei einem vorhandenen Abonnement.** Der Server
+     kennt es womöglich nicht; er legt dieselbe Adresse kein zweites Mal an. */
   await api.senden('/api/push/anmelden', daten)
   return daten
 }
