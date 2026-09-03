@@ -15,6 +15,7 @@ import { Button, Dialog, Tabs } from '../ds'
 import type { Ich } from '../api/client'
 import { Postfachkacheln } from '../components/Postfachkacheln'
 import { PostfachHinzufuegen } from '../components/PostfachHinzufuegen'
+import { Benachrichtigungen } from './Benachrichtigungen'
 import { Darstellung } from './Darstellung'
 import { KontoFormular } from './KontoFormular'
 import { Schlagworte } from './Schlagworte'
@@ -33,6 +34,7 @@ export type Reiter =
   | 'abwesenheit'
   | 'schlagworte'
   | 'sicherheit'
+  | 'benachrichtigungen'
   | 'darstellung'
 
 interface Props {
@@ -113,6 +115,7 @@ export function EinstellungenPage({
             { id: 'abwesenheit', label: t('einstellungen.abwesenheit') },
             { id: 'schlagworte', label: t('einstellungen.schlagworte') },
             { id: 'sicherheit', label: t('einstellungen.sicherheit') },
+            { id: 'benachrichtigungen', label: t('einstellungen.benachrichtigungen') },
             { id: 'darstellung', label: t('einstellungen.darstellung') },
           ]}
         />
@@ -161,6 +164,8 @@ export function EinstellungenPage({
             <Schlagworte aufGeaendert={aufSchlagworteGeaendert} />
           ) : reiter === 'sicherheit' ? (
             <Sicherheit ich={ich} ichNeuLaden={ichNeuLaden} />
+          ) : reiter === 'benachrichtigungen' ? (
+            <Benachrichtigungen />
           ) : (
             // Alle Reiter sind gebaut — hier gibt es keinen Rest mehr.
             <Darstellung />

@@ -48,6 +48,7 @@ from .routers import (
     konten,
     nachrichten,
     protokoll as protokoll_router,
+    push as push_router,
     regeln,
     schlagworte as schlagworte_router,
     setup,
@@ -306,6 +307,10 @@ async def lebenslauf(_: FastAPI):
     # nie zurueck".
     taktdienst.wiedervorlage_starten()
     taktdienst.kalender_starten()
+    # ⚠️ Der engste Faden von allen (eine Minute): Eine Erinnerung
+    # „fuenf Minuten vorher“ waere bei einem weiteren Takt im schlechtesten
+    # Fall erst nach dem Termin draußen.
+    taktdienst.push_starten()
 
     logger.info("nexmail %s is ready.", __version__)
     try:
@@ -377,6 +382,7 @@ app.include_router(termine_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(austausch_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(erinnerungen_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(kalender_router.router, dependencies=NUR_ANGEMELDET)
+app.include_router(push_router.router, dependencies=NUR_ANGEMELDET)
 # ⚠️ **Nicht als Ganzes geschuetzt.** Der Rueckweg vom Anbieter ist eine
 # Navigation von fremder Seite; er traegt seinen eigenen Nachweis (Anlauf-
 # Cookie plus signierter Zustand) und darf deshalb ohne Sitzung ankommen.

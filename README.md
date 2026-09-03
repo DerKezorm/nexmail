@@ -26,13 +26,13 @@ Roundcube is webmail bolted onto one mailbox. Thunderbird does not run in a
 browser. Commercial clients want to pull your mail onto their servers. nexmail
 is the third option — and if you can use Outlook, you should feel at home.
 
-> **Version 0.6.0.** It reads, writes, searches, sorts, labels, sends,
-> schedules, prints, answers for you while you are away, keeps a calendar and
-> backs itself up. It is used daily by its author against real iCloud and IMAP
-> mailboxes, and more than 1,150 automated tests watch over it — including 126
-> that drive a real browser against a real mailbox. It is still young: try it
-> on a mailbox you can afford to have trouble with before you point it at the
-> one that matters.
+> **Version 0.7.0.** It reads, writes, searches, sorts, labels, sends,
+> schedules, prints, answers for you while you are away, keeps a calendar,
+> backs itself up and can now reach you when the browser is closed. It is used
+> daily by its author against real iCloud and IMAP mailboxes, and more than
+> 1,200 automated tests watch over it — including 140 that drive a real browser
+> against a real mailbox. It is still young: try it on a mailbox you can afford
+> to have trouble with before you point it at the one that matters.
 
 The screenshots below show a throwaway instance filled with invented mail.
 Every address in them is under `example.com`, `example.org` or
@@ -130,9 +130,19 @@ untouched: alarms, attendees and a dozen `X-APPLE-` properties come back out
 the way they came in.
 
 Reminders live on the event as a `VALARM`, so what you set here also goes off
-on your phone. In nexmail itself they only reach you while it is open; a
-reminder that fires when the browser is closed needs web push, which is not
-built yet.
+on your phone. They reach you through the browser as well, with nexmail closed
+— see *Notifications* below.
+
+**Notifications.** nexmail can reach you with the browser closed: an event
+reminder that falls due, and mail the sync actually just fetched. Every device
+grants permission for itself; what you get notified about belongs to your
+account and is the same everywhere. New mail is announced **after** the rules
+have run, so a message a rule just filed into junk does not claim to be in your
+inbox — and a mailbox's very first sync announces nothing, because at that
+point every message is new. Quiet hours drop notifications rather than
+deferring them: a reminder delivered at seven in the morning for an event at
+eleven last night is not a reminder. On a phone this needs the site on the home
+screen; iOS delivers nothing to an ordinary tab, and says nothing about why.
 
 **Google and Microsoft mailboxes.** Both providers stopped accepting a
 password for IMAP and SMTP, so nexmail signs in with OAuth. Two levels, kept
@@ -174,9 +184,9 @@ the server a remote control for your home network.
   edited.
 * **No Microsoft calendar.** Microsoft speaks no CalDAV; events there need the
   Graph API, which is a client of its own. Mail through IMAP and SMTP works.
-* **No push notifications.** Reminders and the out-of-office reply only work
-  while nexmail is running. Your provider can usually answer mail on the
-  server, independently of it.
+* **No out-of-office reply while nexmail is down.** It answers only when the
+  container runs. Your provider can usually do this on the server instead,
+  independently of nexmail.
 
 ## Built with
 

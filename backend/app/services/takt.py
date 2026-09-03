@@ -47,6 +47,9 @@ _wiedervorlage_halt = threading.Event()
 _kalenderfaden: threading.Thread | None = None
 _kalender_halt = threading.Event()
 
+_pushfaden: threading.Thread | None = None
+_push_halt = threading.Event()
+
 #: Wie oft nach faelligen geplanten Sendungen gesehen wird. Eine Minute:
 #: Der Zeitpunkt wird auf die Minute eingestellt - viel spaeter als eine
 #: Minute darf „18:00" nicht hinausgehen.
@@ -243,7 +246,42 @@ def _kalenderschleife() -> None:
             logger.warning("A calendar sync round failed: %s", fehler)
 
 
+def push_starten() -> None:
+    """Faellige Terminerinnerungen an angemeldete Geraete schicken.
+
+    ⚠️ **Ein eigener Faden, und der engste von allen** (eine Minute). Eine
+    Erinnerung „fuenf Minuten vorher" bei einem Nachsehen alle zehn Minuten
+    kaeme im schlechtesten Fall **nach** dem Termin — und damit waere die
+    ganze Funktion wertlos. Er kostet trotzdem fast nichts: Wer kein Geraet
+    angemeldet hat, wird uebersprungen, bevor irgendetwas gerechnet wird.
+
+    ⚠️ **Nicht am Kalender-Takt.** Der sieht alle zehn Minuten beim fremden
+    Server nach, was es Neues gibt; das hier feuert, was laengst in der
+    Datenbank steht. Zwei verschiedene Fragen, zwei Frequenzen.
+    """
+    global _pushfaden
+
+    if _pushfaden is not None and _pushfaden.is_alive():
+        return
+    _push_halt.clear()
+    _pushfaden = threading.Thread(target=_pushschleife, name="nexmail-push", daemon=True)
+    _pushfaden.start()
+
+
+def _pushschleife() -> None:
+    from . import push
+
+    while not _push_halt.wait(push.NACHSEHEN_SEKUNDEN):
+        try:
+            push.erinnerungen_runde()
+        except Exception as fehler:  # noqa: BLE001
+            # Der Faden darf nie sterben — sonst hoeren die Meldungen still
+            # auf, und man merkt es erst an einem verpassten Termin.
+            logger.warning("A push round failed: %s", fehler)
+
+
 def anhalten() -> None:
+    _push_halt.set()
     _kalender_halt.set()
     _wiedervorlage_halt.set()
     _aufraeumen_halt.set()
@@ -328,6 +366,7 @@ __all__ = [
     "aufraeumplan_starten",
     "einmal",
     "laeuft",
+    "push_starten",
     "starten",
     "versandplan_starten",
     "wiedervorlage_starten",

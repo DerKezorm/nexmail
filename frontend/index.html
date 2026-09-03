@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!--
+      ⚠️ Absolut, nicht relativ: Der Server schreibt beim Start jedes
+      href="/… auf href="{vorbau}/… um. Ein relatives "manifest.webmanifest"
+      löste sich dagegen gegen die gerade offene Adresse auf und zeigte auf
+      /einladung/manifest.webmanifest, sobald jemand tief einsteigt.
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!--
+      ⚠️ Für iOS. Erst wenn nexmail auf dem Home-Bildschirm liegt, liefert
+      Apple überhaupt Web Push aus — ohne diese Zeile öffnet Safari beim
+      Tippen einen gewöhnlichen Reiter, und der zählt nicht.
+    -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="nexmail" />
+    <link rel="apple-touch-icon" href="/symbol-192.png" />
+    <meta name="theme-color" content="#0b0f0f" />
     <title>nexmail</title>
   </head>
   <body>

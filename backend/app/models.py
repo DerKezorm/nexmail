@@ -127,9 +127,39 @@ class Benutzer(Base):
     #: nicht. Vorgabe aus — wer sie einschaltet, hat den Satz daneben gelesen.
     bilder_immer_laden: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # --- Web Push --------------------------------------------------------- #
+    #
+    # ⚠️ **Wobei gemeldet wird, gehoert dem Benutzer; ob ueberhaupt, dem
+    # Geraet.** Die Erlaubnis erteilt jeder Browser fuer sich, und sie steht
+    # deshalb in ``PushAnmeldung``. Was eine Meldung ausloest, ist dagegen eine
+    # Entscheidung ueber die eigene Post — wer sie am Telefon anders vorfaende
+    # als am Rechner, wuesste nie, warum es einmal klingelt und einmal nicht.
+    # Dieselbe Trennung wie bei ``bilder_immer_laden`` daneben.
+    push_termine: Mapped[bool] = mapped_column(Boolean, default=True)
+    push_mail: Mapped[bool] = mapped_column(Boolean, default=True)
+    #: Aus heisst: nur der Posteingang. ⚠️ **Das ist die Vorgabe, mit Absicht.**
+    #: Was eine Regel ins Archiv geraeumt hat, hat der Benutzer weggeordnet;
+    #: eine Meldung darueber macht die Regel wertlos.
+    push_mail_alle_ordner: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Eine Mail, die auf einem anderen Geraet schon gelesen wurde, kommt beim
+    #: Abgleich trotzdem als „neu" herein.
+    push_mail_nur_ungelesen: Mapped[bool] = mapped_column(Boolean, default=True)
+    #: Eine Meldung je Abgleichrunde statt einer je Nachricht.
+    push_mail_buendeln: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    #: ⚠️ **Als Text, nicht als Uhrzeit.** „Ab 22 Uhr Ruhe" ist eine Aussage
+    #: ueber die Ortszeit des Betreibers, nicht ueber einen Zeitstempel — genau
+    #: dieselbe Ueberlegung wie beim Zeitraum der Abwesenheitsnotiz.
+    push_ruhezeit: Mapped[bool] = mapped_column(Boolean, default=False)
+    push_ruhezeit_von: Mapped[str] = mapped_column(String(5), default="22:00")
+    push_ruhezeit_bis: Mapped[str] = mapped_column(String(5), default="07:00")
+
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
     sitzungen: Mapped[list["Sitzung"]] = relationship(
+        back_populates="benutzer", cascade="all, delete-orphan"
+    )
+    push_anmeldungen: Mapped[list["PushAnmeldung"]] = relationship(
         back_populates="benutzer", cascade="all, delete-orphan"
     )
     codes: Mapped[list["Wiederherstellungscode"]] = relationship(
@@ -325,6 +355,21 @@ class Konto(Base):
     #: Zeichen ab („abgewie"). Am 02.09.2026 aufgefallen. Der Server benennt
     #: (``Fehlerart``), die Oberflaeche uebersetzt - wie bei OIDC.
     letzter_fehler_art: Mapped[str] = mapped_column(String(30), default="")
+
+    #: Ob dieses Postfach schon einmal vollstaendig abgeglichen wurde.
+    #:
+    #: ⚠️ **Nur fuer die Benachrichtigungen, und dort unentbehrlich.** Beim
+    #: ersten Abgleich ist **jede** Mail neu; ein frisch eingerichtetes
+    #: Postfach mit 8.000 Nachrichten meldete sonst „8.000 neue Nachrichten"
+    #: — oder, ohne Buendelung, achttausendmal. Die erste Runde setzt die
+    #: Marke und meldet nichts.
+    #:
+    #: ⚠️ **Bestehende Postfaecher fangen ebenfalls bei ``False`` an**, denn
+    #: ``_fehlende_spalten`` legt die Spalte mit der Vorgabe an. Sie
+    #: verschlucken damit **eine** Runde nach dem Update. Das ist der billige
+    #: Fehler von beiden: Andersherum bekaeme jeder beim ersten Start nach dem
+    #: Update eine Meldung ueber seinen halben Posteingang.
+    erstabgleich_durch: Mapped[bool] = mapped_column(Boolean, default=False)
 
     benutzer: Mapped[Benutzer] = relationship()
     ordner: Mapped[list["Ordner"]] = relationship(
@@ -1291,6 +1336,59 @@ class Erinnerungszustellung(Base):
     #: Weggeklickt. ⚠️ Die Zeile bleibt stehen — geloescht kaeme die
     #: Erinnerung beim naechsten Abruf sofort wieder.
     erledigt: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class PushAnmeldung(Base):
+    """Ein Browser, der Meldungen annimmt.
+
+    ⚠️ **Je Geraet eine Zeile, nicht je Benutzer.** Die Erlaubnis erteilt der
+    Browser, und er gibt dafuer eine Adresse beim Push-Dienst seines
+    Herstellers heraus (Mozilla, Google, Apple). Wer sich an drei Geraeten
+    anmeldet, steht dreimal hier — und wer die Browserdaten loescht, faellt
+    beim naechsten Zustellversuch mit 404 oder 410 heraus.
+
+    ⚠️ **Diese drei Felder liegen im Klartext, anders als jedes Passwort.**
+    Das ist eine Entscheidung, keine Nachlaessigkeit:
+
+    * Der Browser haendigt sie **jeder Seite dieser Herkunft** aus und baut sie
+      auf Wunsch jederzeit neu. Sie sind kein Geheimnis, das nexmail huetet.
+    * Ein Abonnement, das mit ``applicationServerKey`` entstanden ist, nimmt
+      **nur** Meldungen an, die mit unserem VAPID-Schluessel unterschrieben
+      sind. Ohne den privaten Teil ist die Zeile wertlos — und **der** liegt
+      verschluesselt (``push.SCHLUESSEL``, Kontext ``push-vapid``).
+    * Verschluesselt liessen sie sich nicht eindeutig halten: AES-GCM salzt
+      jeden Vorgang, derselbe Endpunkt saehe zweimal verschieden aus, und der
+      eindeutige Index waere wirkungslos.
+
+    Wer das je aendert, aendert damit auch den Index.
+    """
+
+    __tablename__ = "push_anmeldung"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    #: Die Adresse beim Push-Dienst. Eindeutig: Derselbe Browser, der sich ein
+    #: zweites Mal anmeldet, bekommt dieselbe zurueck und soll keine zweite
+    #: Zeile erzeugen.
+    endpunkt: Mapped[str] = mapped_column(Text, unique=True)
+    #: Der oeffentliche Schluessel des Browsers (P-256, base64url).
+    p256dh: Mapped[str] = mapped_column(String(200))
+    #: Das gemeinsame Geheimnis fuer die Ableitung (base64url).
+    auth: Mapped[str] = mapped_column(String(64))
+
+    #: „Firefox, Windows" — aus dem User-Agent, nur zum Wiedererkennen in der
+    #: Liste. ⚠️ Nicht zur Unterscheidung: Zwei gleiche Browser auf demselben
+    #: Rechner heissen gleich, und getrennt werden sie am Endpunkt.
+    geraet: Mapped[str] = mapped_column(String(120), default="")
+
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    #: Wann zuletzt wirklich etwas ankam. ⚠️ Das ist nicht „zuletzt benutzt":
+    #: Ein Geraet, das monatelang nichts zu melden bekam, ist trotzdem gesund.
+    zuletzt_erreicht: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+
+    benutzer: Mapped["Benutzer"] = relationship(back_populates="push_anmeldungen")
 
 
 class OauthZugang(Base):

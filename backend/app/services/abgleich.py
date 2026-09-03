@@ -771,7 +771,49 @@ def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -
     if neue:
         _regeln_laufen_lassen(db, konto, neue)
 
+    _melden(db, konto, neue, ergebnis)
     return ergebnis
+
+
+def _melden(
+    db: Session, konto: Konto, kennungen: list[int], ergebnis: dict[str, Runde]
+) -> None:
+    """Web Push, wenn wirklich neue Post da ist.
+
+    ⚠️ **NACH den Regeln, und das ist der ganze Grund, warum es hier steht und
+    nicht in ``ordner_abgleichen``.** Eine Regel raeumt Sekundenbruchteile
+    spaeter ins Archiv oder in den Junk; wer davor meldet, sagt „neu im
+    Posteingang" ueber eine Mail, die dort nie lag.
+
+    ⚠️ **Beim ersten Abgleich eines Postfachs wird nichts gemeldet.** Da ist
+    jede Mail neu — bei einem frisch eingerichteten Postfach mit
+    achttausend Nachrichten waere das eine Meldung „8.000 neue Nachrichten"
+    oder, ohne Buendelung, achttausend Meldungen. Die Marke wird auch dann
+    gesetzt, wenn der Abgleich gar nichts brachte: Ein leeres Postfach ist
+    danach genauso „bekannt" wie ein volles.
+
+    ⚠️ **Und jeder Fehler bleibt hier.** Eine misslungene Meldung darf keine
+    Post aufhalten — dieselbe Haltung wie bei den Regeln daneben.
+    """
+    from . import push as pushdienst
+
+    try:
+        erstmalig = not konto.erstabgleich_durch
+        if erstmalig:
+            konto.erstabgleich_durch = True
+            db.commit()
+            return
+        if not kennungen:
+            return
+        pushdienst.neue_mail_melden(
+            db,
+            konto,
+            kennungen,
+            {pfad for pfad, runde in ergebnis.items() if runde.neu_aufgebaut},
+        )
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        logger.exception("Push notification failed after a sync round.")
 
 
 def _regeln_laufen_lassen(db: Session, konto: Konto, kennungen: list[int]) -> None:

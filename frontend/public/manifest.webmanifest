@@ -1,0 +1,21 @@
+{
+  "name": "nexmail",
+  "short_name": "nexmail",
+  "description": "Der eigene E-Mail-Client.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0f0f",
+  "theme_color": "#0b0f0f",
+  "icons": [
+    { "src": "symbol-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "symbol-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    {
+      "src": "symbol-maskierbar-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

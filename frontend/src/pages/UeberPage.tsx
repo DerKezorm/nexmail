@@ -100,6 +100,12 @@ export function UeberPage() {
     { name: 'SQLite', url: 'https://sqlite.org', lizenz: 'Public Domain' },
     { name: 'IMAPClient', url: 'https://github.com/mjs/imapclient', lizenz: 'BSD-3' },
     { name: 'nh3', url: 'https://nh3.readthedocs.io', lizenz: 'MIT' },
+    { name: 'py-vapid', url: 'https://github.com/mozilla-services/vapid', lizenz: 'MPL-2.0' },
+    {
+      name: 'http-ece',
+      url: 'https://github.com/martinthomson/encrypted-content-encoding',
+      lizenz: 'MIT',
+    },
     { name: 'React', url: 'https://react.dev', lizenz: 'MIT' },
     { name: 'Vite', url: 'https://vite.dev', lizenz: 'MIT' },
     { name: 'Tailwind CSS', url: 'https://tailwindcss.com', lizenz: 'MIT' },

@@ -108,3 +108,27 @@ tzdata==2026.1
 # dateutil ist die Umsetzung, gegen die alle anderen geprueft werden, und
 # bringt ausser six nichts mit.
 python-dateutil==2.9.0.post0
+
+# Web Push: die Unterschrift des Anwendungsservers (VAPID, RFC 8292).
+#
+# ⚠️ **Bewusst eine Bibliothek, obwohl pyjwt schon dasteht.** Der JWT allein
+# waere drei Zeilen; die Kopfzeile drumherum ist es nicht. `Authorization:
+# vapid t=<jwt>,k=<schluessel>` will den oeffentlichen Schluessel als
+# unkomprimierten Punkt in base64url ohne Polster, und genau daran scheitert
+# eine eigene Fassung still: Der Push-Dienst antwortet mit 401, und das sieht
+# aus wie ein abgelaufener Schluessel.
+#
+# Bringt ausser `cryptography` nichts mit, das ohnehin gepinnt ist.
+# Am 03.09.2026 gegen api.osv.dev geprueft: null Meldungen.
+py-vapid==1.9.4
+
+# Web Push: den Rumpf verschluesseln (aes128gcm, RFC 8291).
+#
+# ⚠️ **Hier waere Selbstbauen wirklich falsch.** ECDH gegen den Schluessel des
+# Browsers, HKDF mit zwei verschiedenen Infos, dann die Satzrahmen von
+# aes128gcm samt Polsterung. Wer sich dabei vertut, bekommt keinen Fehler,
+# sondern eine Meldung, die auf dem Telefon nicht aufgeht.
+#
+# Haengt ebenfalls nur an `cryptography`.
+# Am 03.09.2026 gegen api.osv.dev geprueft: null Meldungen.
+http-ece==1.2.1
