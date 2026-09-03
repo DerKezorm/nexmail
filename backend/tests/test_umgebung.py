@@ -136,3 +136,56 @@ def test_gewarnt_wird_einmal_je_zone(caplog, monkeypatch):
 
     assert len([e for e in caplog.records if "Europe/Berlin" in e.getMessage()]) == 1
 
+
+
+def test_die_xml_bremse_haelt():
+    """⚠️ **Ohne sie braucht CalDAV ein zusätzliches Paket.**
+
+    Ein CalDAV-Server antwortet mit XML. Der Betreiber trägt ihn zwar selbst
+    ein — aber er kann übernommen sein, und dann liest nexmails Container
+    dessen Antwort. Drei Angriffe sind die üblichen:
+
+    * **Billion Laughs** — verschachtelte Entitäten, die sich zu Gigabyte
+      aufblasen und den Container am Speicher ersticken.
+    * **XXE** — eine Entität, die eine lokale Datei einliest.
+    * **SSRF über XXE** — eine, die eine Adresse im eigenen Netz abruft.
+
+    Am 02.09.2026 gegen Python 3.14 (Entwicklung) **und** 3.13 im Container
+    gemessen: Alle drei werden abgewiesen. Deshalb steht hier ``xml.etree`` und
+    kein ``defusedxml``.
+
+    ⚠️ **Die Bremse hängt an der Patch-Fassung**, nicht an 3.13 als solchem.
+    Wer das Abbild auf ein älteres Python setzt, soll hier einen roten Lauf
+    bekommen und nicht beim Nutzer.
+    """
+    import xml.etree.ElementTree as ET
+
+    bombe = (
+        '<?xml version="1.0"?>\n<!DOCTYPE lolz [\n <!ENTITY lol "lol">\n'
+        + "".join(
+            f' <!ENTITY lol{i} "{"&lol%d;" % (i - 1) * 10 if i > 1 else "&lol;" * 10}">\n'
+            for i in range(1, 8)
+        )
+        + "]>\n<a>&lol7;</a>"
+    )
+    # ⚠️ **Auf den GRUND prüfen, nicht auf „irgendein Fehler".** Eine kaputt
+    # zusammengebaute Bombe würde auch scheitern — und der Test wäre grün,
+    # ohne die Bremse je berührt zu haben.
+    with pytest.raises(ET.ParseError) as fehler:
+        ET.fromstring(bombe)
+    assert "amplification" in str(fehler.value), str(fehler.value)
+
+    with pytest.raises(ET.ParseError):
+        ET.fromstring(
+            '<?xml version="1.0"?>\n'
+            '<!DOCTYPE a [ <!ENTITY x SYSTEM "file:///etc/passwd"> ]>\n<a>&x;</a>'
+        )
+
+    # ⚠️ Die Gegenprobe: Echtes CalDAV-XML muss durchgehen. Ohne sie wäre der
+    # Test auch dann grün, wenn xml.etree gar nichts mehr läse.
+    baum = ET.fromstring(
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<d:multistatus xmlns:d="DAV:"><d:response>'
+        "<d:displayname>Privat</d:displayname></d:response></d:multistatus>"
+    )
+    assert [e.text for e in baum.iter("{DAV:}displayname")] == ["Privat"]

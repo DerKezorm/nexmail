@@ -497,13 +497,7 @@ def _koerper_sicherstellen(db, nachricht: Nachricht) -> None:
     konto = db.get(Konto, nachricht.konto_id)
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             abgleich.koerper_holen(klient, db, nachricht)
         finally:
@@ -702,7 +696,7 @@ def roh(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession):
     nachricht = _meine(db, person, nachricht_id)
     konto = db.get(Konto, nachricht.konto_id)
 
-    inhalt = abgleich.roh_holen(konto, nachricht)
+    inhalt = abgleich.roh_holen(db, konto, nachricht)
     if not inhalt:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -909,13 +903,7 @@ def flags_setzen(
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
 
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             klient.select_folder(nachricht.ordner.pfad, readonly=False)
             if wunsch.gelesen is not None:

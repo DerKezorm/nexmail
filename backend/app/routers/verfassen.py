@@ -97,7 +97,7 @@ def vorlage(
         from ..services import signaturen as signaturdienst
 
         unterschrift = signaturdienst.fuer_konto(db, person, konto.id)
-        roh = _roh(konto, nachricht)
+        roh = _roh(db, konto, nachricht)
         return Vorlage(
             signatur=unterschrift.html if unterschrift else "",
             konto_id=konto.id,
@@ -118,7 +118,7 @@ def vorlage(
             ],
         )
 
-    zerlegt = mime.zerlegen(_roh(konto, nachricht))
+    zerlegt = mime.zerlegen(_roh(db, konto, nachricht))
 
     eigene = {k.adresse.lower() for k in kontendienst.meine(db, person)}
 
@@ -197,7 +197,7 @@ def _text_als_html(text: str) -> str:
     return "".join(f"<p>{z or '<br>'}</p>" for z in zeilen)
 
 
-def _roh(konto: Konto, nachricht: Nachricht) -> bytes:
+def _roh(db, konto: Konto, nachricht: Nachricht) -> bytes:
     """Die ganze Mail holen — für Zitat, Kette und den Anhang-Modus.
 
     Der zwischengespeicherte Körper genügt hier nicht: Für ``References``
@@ -205,7 +205,7 @@ def _roh(konto: Konto, nachricht: Nachricht) -> bytes:
     Abruf selbst ist derselbe wie beim ``.eml``-Download
     (``abgleich.roh_holen``) — eine Stelle, nicht zwei.
     """
-    roh = abgleich.roh_holen(konto, nachricht)
+    roh = abgleich.roh_holen(db, konto, nachricht)
     if not roh:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

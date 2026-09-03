@@ -35,6 +35,13 @@ test('Postfach-Formular: deutsche Beschriftungen passen in ihre Spalten', async 
   await zuEinstellungen(page)
   await page.getByRole('button', { name: 'Postfach hinzufügen' }).first().click()
 
+  /* ⚠️ **Seit dem 03.09.2026 steht eine Weiche davor.** Die (+)-Kachel fragt
+     erst, woher das Postfach kommt — aber nur, wenn der Betreiber Google oder
+     Microsoft eingetragen hat. Beides muss der Test können, sonst ist er von
+     der Einrichtung der Entwicklungsumgebung abhängig. */
+  const weg = page.getByText('IMAP und SMTP')
+  if (await weg.count()) await weg.first().click()
+
   // Der Serverblock ist zugeklappt, solange Autoconfig noch nichts gemeldet
   // hat — die langen Beschriftungen stecken darin.
   const aufklappen = page.getByRole('button', { name: /Serverdaten/ })
@@ -174,6 +181,20 @@ test('Unterordner stehen eingerückt unter ihrem Ordner', async ({ page }, info)
   const baum = postfach(page)
   const ordner = baum.getByRole('button', { name: 'Posteingang' }).first()
   await expect(ordner, `Das Postfach „${TESTPOSTFACH}" steht nicht im Baum.`).toBeVisible()
+
+  /* ⚠️ **Ein abgebrochener Lauf lässt den Ordner stehen** — und der nächste
+     scheitert dann an „gibt es in diesem Postfach schon". Das ist keine
+     Aussage über die Oberfläche, sondern über den vorigen Lauf. Also
+     wegräumen, **bevor** es losgeht: Nach dem Rechtsklick steht schon ein
+     Fenster offen, und das fängt jeden weiteren Klick ab. */
+  const alter = baum.getByRole('button', { name: 'ZZ-Testordner', exact: true })
+  if (await alter.count()) {
+    await rechtsklick(page, alter.first())
+    await page.getByRole('menuitem', { name: 'Ordner entfernen' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Ordner entfernen' }).click()
+    await expect(alter).toHaveCount(0, { timeout: 20_000 })
+  }
+
   await rechtsklick(page, ordner)
   await page.getByRole('menuitem', { name: /Neuer Unterordner/ }).click()
 
@@ -276,7 +297,10 @@ test('Ein Postfach lässt sich bearbeiten, ohne das Passwort neu zu tippen', asy
     'Der Speichern-Knopf ist gesperrt, obwohl nur das Passwortfeld leer ist.',
   ).toBeEnabled()
 
-  await page.getByRole('button', { name: 'Abbrechen' }).click()
+  /* ⚠️ **Im Fenster gibt es kein „Abbrechen“.** Seit dem 03.09.2026
+     wohnt das Postfach-Formular in einem Dialog, und dessen einziger Ausgang
+     ist das Kreuz — zwei Wege hinaus, die dasselbe tun, sind einer zu viel. */
+  await page.getByRole('button', { name: 'Schließen' }).click()
 })
 
 test('Reiter Sicherheit zeigt Geräte und Wiederherstellungscodes', async ({ page }) => {

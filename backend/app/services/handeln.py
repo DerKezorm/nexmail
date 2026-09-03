@@ -117,13 +117,7 @@ def verschieben(
 
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             klient.select_folder(quelle.pfad, readonly=False)
             _verschieben_auf_dem_server(klient, uids, ziel.pfad)
@@ -221,10 +215,7 @@ def ueber_konten(
     # in entgegengesetzter Richtung wuerden sich sonst gegenseitig aussperren.
     erst, dann = sorted((quell_konto.id, ziel_konto.id))
     with abgleich.HALTER.schloss(erst), abgleich.HALTER.schloss(dann):
-        quell_klient = imapdienst.verbinden(
-            quell_konto.imap_server, quell_konto.imap_port, quell_konto.imap_sicherheit,
-            quell_konto.imap_benutzer, quell_pw,
-        )
+        quell_klient = imapdienst.fuer_konto(db, quell_konto)
         ziel_klient = None
         try:
             quell_klient.select_folder(quelle.pfad, readonly=True)
@@ -232,10 +223,7 @@ def ueber_konten(
                 uids, [abgleich.GANZE_MAIL, "FLAGS", "INTERNALDATE"]
             )
 
-            ziel_klient = imapdienst.verbinden(
-                ziel_konto.imap_server, ziel_konto.imap_port, ziel_konto.imap_sicherheit,
-                ziel_konto.imap_benutzer, ziel_pw,
-            )
+            ziel_klient = imapdienst.fuer_konto(db, ziel_konto)
 
             angekommen: list[int] = []
             for uid in uids:
@@ -332,13 +320,7 @@ def zurueck(db: Session, weg: Rueckweg) -> int:
     zurueckgeholt = 0
 
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             klient.select_folder(weg.ziel_pfad, readonly=False)
             gefunden: list[int] = []
@@ -378,13 +360,7 @@ def ordner_als_gelesen(db: Session, konto: Konto, ordner: Ordner) -> int:
     uids = [n.uid for n in offen]
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             klient.select_folder(ordner.pfad, readonly=False)
             # In Blöcken: Ein einzelner Befehl mit zehntausend Nummern
@@ -418,13 +394,7 @@ def ordner_leeren(db: Session, ordner: Ordner) -> int:
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
 
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             klient.select_folder(ordner.pfad, readonly=False)
             uids = klient.search(["ALL"])
@@ -479,13 +449,7 @@ def alte_entfernen(db: Session, ordner: Ordner, stichtag) -> int:
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
 
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             klient.select_folder(ordner.pfad, readonly=False)
             abgleich.ordner_abgleichen(klient, db, konto, ordner)

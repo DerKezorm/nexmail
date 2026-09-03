@@ -312,7 +312,7 @@ def test_ausgegeben_wird_in_der_reihenfolge_der_liste(db, welt):
     for uid, betreff in ((1, "Eins"), (2, "Zwei"), (3, "Drei")):
         einwerfen(server, "Archiv", uid, _roh(f"<n{uid}@example.org>", betreff))
 
-    raus = list(austausch.roh_stroemen(konto, "Archiv", [3, 1, 2]))
+    raus = list(austausch.roh_stroemen(db, konto, "Archiv", [3, 1, 2]))
 
     assert [uid for uid, *_ in raus] == [3, 1, 2]
     assert b"Inhalt von Drei." in raus[0][1]
@@ -324,7 +324,7 @@ def test_eine_verschwundene_mail_bricht_den_export_nicht_ab(db, welt):
     server, konto, _ = welt
     einwerfen(server, "Archiv", 1, _roh("<a@example.org>", "Eins"))
 
-    raus = list(austausch.roh_stroemen(konto, "Archiv", [1, 99]))
+    raus = list(austausch.roh_stroemen(db, konto, "Archiv", [1, 99]))
 
     assert [uid for uid, *_ in raus] == [1]
 
@@ -338,7 +338,7 @@ def test_der_export_holt_blockweise(db, welt, monkeypatch):
         einwerfen(server, "Archiv", uid, _roh(f"<n{uid}@example.org>", f"Nummer {uid}"))
 
     server.gefragt.clear()
-    list(austausch.roh_stroemen(konto, "Archiv", [1, 2, 3, 4, 5]))
+    list(austausch.roh_stroemen(db, konto, "Archiv", [1, 2, 3, 4, 5]))
 
     ganze = [f for f in server.gefragt if abgleich.GANZE_MAIL in f]
     assert len(ganze) == 3, "Es wurde nicht in Blöcken zu zwei geholt"
@@ -516,7 +516,7 @@ def test_gelesen_wandert_auch_HINAUS(db, welt):
     datei = b"".join(
         austausch.als_mbox(
             austausch.status_einsetzen(roh, flags)
-            for _, roh, flags in austausch.roh_stroemen(konto, "Archiv", [1, 2])
+            for _, roh, flags in austausch.roh_stroemen(db, konto, "Archiv", [1, 2])
         )
     )
     wieder = list(austausch.mbox_lesen(io.BytesIO(datei)))

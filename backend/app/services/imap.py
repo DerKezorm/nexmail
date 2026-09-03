@@ -124,9 +124,20 @@ def _anmeldefehler(app_passwort_wo: str) -> Verbindungsfehler:
 
 
 def verbinden(
-    server: str, port: int, sicherheit: str, benutzer: str, passwort: str, app_passwort_wo: str = ""
+    server: str,
+    port: int,
+    sicherheit: str,
+    benutzer: str,
+    passwort: str,
+    app_passwort_wo: str = "",
+    token: str = "",
 ) -> IMAPClient:
-    """Anmelden und die offene Verbindung zurueckgeben. Der Aufrufer schliesst."""
+    """Anmelden und die offene Verbindung zurueckgeben. Der Aufrufer schliesst.
+
+    ⚠️ **Mit ``token`` wird XOAUTH2 gesprochen, nicht LOGIN.** Google und
+    Microsoft nehmen ein Passwort ueber IMAP nicht mehr an; ein ``login()`` mit
+    Zugriffstoken scheitert dort mit derselben Meldung wie ein Tippfehler.
+    """
     try:
         # ⚠️ **normalise_times=False, sonst stimmt jede Uhrzeit nur in UTC.**
         # Ab Werk rechnet IMAPClient jedes Datum in die Systemzeit um und
@@ -150,7 +161,10 @@ def verbinden(
         raise _deuten(fehler, server, port) from fehler
 
     try:
-        klient.login(benutzer, passwort)
+        if token:
+            klient.oauth2_login(benutzer, token)
+        else:
+            klient.login(benutzer, passwort)
     except LoginError as fehler:
         klient.shutdown()
         raise _anmeldefehler(app_passwort_wo) from fehler
@@ -162,9 +176,20 @@ def verbinden(
 
 
 def smtp_pruefen(
-    server: str, port: int, sicherheit: str, benutzer: str, passwort: str, app_passwort_wo: str = ""
+    server: str,
+    port: int,
+    sicherheit: str,
+    benutzer: str,
+    passwort: str,
+    app_passwort_wo: str = "",
+    token: str = "",
 ) -> None:
-    """Nur anmelden und wieder auflegen — nichts senden."""
+    """Nur anmelden und wieder auflegen — nichts senden.
+
+    ⚠️ **Mit ``token`` wird XOAUTH2 gesprochen.** Ohne diesen Weg scheitert der
+    Verbindungstest bei Google und Microsoft immer — und beim Anlegen ist er
+    Pflicht, das Postfach liesse sich also gar nicht einrichten.
+    """
     try:
         if sicherheit == "ssl":
             verbindung = smtplib.SMTP_SSL(server, port, timeout=ZEITGRENZE)
@@ -175,7 +200,12 @@ def smtp_pruefen(
         raise _deuten(fehler, server, port) from fehler
 
     try:
-        verbindung.login(benutzer, passwort)
+        if token:
+            from .senden import _xoauth2_anmelden
+
+            _xoauth2_anmelden(verbindung, benutzer, token)
+        else:
+            verbindung.login(benutzer, passwort)
     except smtplib.SMTPAuthenticationError as fehler:
         raise _anmeldefehler(app_passwort_wo) from fehler
     except Exception as fehler:  # noqa: BLE001
@@ -329,3 +359,40 @@ __all__ = [
     "smtp_pruefen",
     "verbinden",
 ]
+
+
+def fuer_konto(db, konto, app_passwort_wo: str = "") -> IMAPClient:
+    """Die Verbindung zu einem Postfach — mit Passwort **oder** mit Token.
+
+    ⚠️ **Jede IMAP-Verbindung geht hier durch, und das ist der Punkt.** Vorher
+    stand an sechsundzwanzig Stellen dasselbe fuenfzeilige Muster; eine davon
+    haette den OAuth-Weg vergessen, und der Fehler waere „Anmeldung
+    fehlgeschlagen" gewesen — dieselbe Meldung wie bei einem Tippfehler, nur
+    an einer einzigen Stelle im Programm.
+
+    ⚠️ **Das Zugriffstoken wird hier frisch geholt**, nicht im Aufrufer. Es
+    lebt eine Stunde; wer es weiterreicht, faehrt bei einem langen Vorgang
+    (Import, Export) irgendwann mit einem abgelaufenen.
+    """
+    from . import konten as kontendienst
+    from . import mailoauth
+
+    if konto.oauth_zugang_id:
+        from ..models import OauthZugang
+
+        zugang = db.get(OauthZugang, konto.oauth_zugang_id)
+        if zugang is None:
+            raise Verbindungsfehler(
+                Fehlerart.ANMELDUNG, "Die Zustimmung zu diesem Konto fehlt."
+            )
+        token = mailoauth.zugriffstoken(db, zugang)
+        return verbinden(
+            konto.imap_server, konto.imap_port, konto.imap_sicherheit,
+            konto.imap_benutzer, "", app_passwort_wo, token=token,
+        )
+
+    imap_pw, _ = kontendienst.passwoerter_lesen(konto)
+    return verbinden(
+        konto.imap_server, konto.imap_port, konto.imap_sicherheit,
+        konto.imap_benutzer, imap_pw, app_passwort_wo,
+    )

@@ -212,13 +212,7 @@ def _ordner_sicherstellen(db: Session, konto: Konto) -> Ordner:
 
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             try:
                 klient.create_folder(ORDNER_NAME)
@@ -348,13 +342,7 @@ def _aufwecken(db: Session, eintrag: Wiedervorlage) -> bool:
 
     gefunden: list[int] = []
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             # ⚠️ **Kein breiter except um SELECT und SEARCH.** Hier stand
             # einer — und deutete jeden Timeout und jedes BAD als „Ordner

@@ -28,6 +28,7 @@ from .middleware import BasisPfadMiddleware, SicherheitskopfMiddleware, VorgangM
 from .routers import (
     abwesenheit as abwesenheit_router,
     aufgaben as aufgaben_router,
+    mailoauth as mailoauth_router,
     austausch as austausch_router,
     bilder as bilder_router,
     oidc as oidc_router,
@@ -35,6 +36,8 @@ from .routers import (
     benutzer as benutzer_router,
     einladung as einladung_router,
     einstellungen,
+    erinnerungen as erinnerungen_router,
+    kalender as kalender_router,
     health,
     kontakte,
     konten,
@@ -69,6 +72,13 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
     "/api/health": (
         "Der Docker-Healthcheck läuft ohne Anmeldung — er soll ja gerade dann "
         "antworten, wenn etwas nicht stimmt."
+    ),
+    "/api/mailoauth/{art}/zurueck": (
+        "Der Rückweg von Google oder Microsoft ist eine Navigation von fremder "
+        "Seite — ein Sitzungs-Cookie mit SameSite=strict fährt dabei nicht mit. "
+        "Der Nachweis steckt stattdessen im Anlauf-Cookie (SameSite=lax) und "
+        "im zufälligen Zustand, der zurückkommen muss; ohne beides passiert "
+        "nichts. Dasselbe Muster wie beim OIDC-Rückweg."
     ),
     "/api/setup/status": (
         "Die Oberfläche muss wissen, ob sie den Einrichtungsassistenten oder "
@@ -246,6 +256,7 @@ async def lebenslauf(_: FastAPI):
     # abgeschalteter Abgleich-Takt heisst nicht „weggelegte Mails kommen
     # nie zurueck".
     taktdienst.wiedervorlage_starten()
+    taktdienst.kalender_starten()
 
     logger.info("nexmail %s is ready.", __version__)
     try:
@@ -315,6 +326,12 @@ app.include_router(benutzer_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(aufgaben_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(termine_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(austausch_router.router, dependencies=NUR_ANGEMELDET)
+app.include_router(erinnerungen_router.router, dependencies=NUR_ANGEMELDET)
+app.include_router(kalender_router.router, dependencies=NUR_ANGEMELDET)
+# ⚠️ **Nicht als Ganzes geschuetzt.** Der Rueckweg vom Anbieter ist eine
+# Navigation von fremder Seite; er traegt seinen eigenen Nachweis (Anlauf-
+# Cookie plus signierter Zustand) und darf deshalb ohne Sitzung ankommen.
+app.include_router(mailoauth_router.router)
 app.include_router(ueber_router.router, dependencies=NUR_ANGEMELDET)
 # ⚠️ **Ohne ``NUR_ANGEMELDET``.** Hinweg und Rueckweg gehoeren zur
 # Anmeldung; die Verwaltungs-Adressen darin haengen einzeln am Betreiber.

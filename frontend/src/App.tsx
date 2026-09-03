@@ -57,6 +57,7 @@ import type { Ziel } from './components/Ordnerspalte'
 import { Lesebereich } from './components/Lesebereich'
 import { MailPage } from './pages/MailPage'
 import { AufgabenPage } from './pages/AufgabenPage'
+import { KalenderPage } from './pages/KalenderPage'
 import { KontaktePage } from './pages/KontaktePage'
 import { EinstellungenPage } from './pages/EinstellungenPage'
 import { Verwaltung } from './pages/Verwaltung'
@@ -64,6 +65,8 @@ import type { VerwaltungsReiter } from './pages/Verwaltung'
 import type { Reiter } from './pages/EinstellungenPage'
 import type { Ich } from './api/client'
 import type { Suchbefund } from './api/laden'
+import { RUECKWEG } from './lib/oauthrueckweg'
+import { Erinnerungsfenster } from './components/Erinnerungsfenster'
 import { api, ApiFehler } from './api/client'
 import {
   abgleichen,
@@ -154,7 +157,9 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const { t, i18n } = useTranslation()
   const schmal = useSchmal()
 
-  const [ansicht, setAnsicht] = useState<Ansicht>('mail')
+  const [ansicht, setAnsicht] = useState<Ansicht>(
+    RUECKWEG.weiter === 'postfach' ? 'einstellungen' : 'mail',
+  )
   const [verwaltungsReiter, setVerwaltungsReiter] = useState<VerwaltungsReiter>('protokoll')
   const [ziel, setZiel] = useState<Ziel>({ typ: 'alle' })
   const [gewaehlt, setGewaehlt] = useState<string | null>(null)
@@ -326,6 +331,11 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
 
   const [reiter, setReiter] = useState<Reiter>('postfaecher')
   const [formularOffen, setFormularOffen] = useState(false)
+  /* Das Fenster hinter der (+)-Kachel — die Weiche zwischen IMAP, Google und
+     Microsoft. ⚠️ **Beim Rückweg vom Anbieter steht es sofort offen:** Die
+     Zustimmung kostet eine ganze Seitennavigation, und ohne diesen Anfangswert
+     landete man danach in der Mail-Ansicht statt dort, wo man war. */
+  const [wahlOffen, setWahlOffen] = useState(RUECKWEG.weiter === 'postfach')
 
   /* --- Laden ----------------------------------------------------------- */
 
@@ -1586,7 +1596,10 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   function postfachHinzufuegen() {
     setAnsicht('einstellungen')
     setReiter('postfaecher')
-    setFormularOffen(true)
+    // ⚠️ **Dieselbe Weiche wie die (+)-Kachel.** Zwei Wege hinein, von denen
+    // einer die Anbieterauswahl überspringt, wären zwei verschiedene
+    // Anwendungen.
+    setWahlOffen(true)
     setSchubladeOffen(false)
   }
 
@@ -1784,6 +1797,11 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
             </>
           )}
 
+          {/* ⚠️ **Noch eine Attrappe** — erfundene Termine, kein Backend. Wie
+            Stufe A der Mail-Ansicht: erst die Ansicht abstimmen, dann die
+            Datenquelle tauschen. */}
+          {ansicht === 'kalender' && <KalenderPage />}
+
           {ansicht === 'aufgaben' && (
             <AufgabenPage
               konten={konten}
@@ -1808,6 +1826,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
               reiter={reiter}
               aufReiter={setReiter}
               formularOffen={formularOffen}
+              wahlOffen={wahlOffen}
+              aufWahl={setWahlOffen}
               aufFormular={(offen) => {
                 setFormularOffen(offen)
                 if (!offen) void stammLaden()
@@ -1852,6 +1872,11 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           }}
         />
       )}
+
+      {/* ⚠️ **Über allem, nicht in der Kalenderansicht.** Eine Erinnerung
+          erreicht einen auch dann, wenn man gerade Post liest — sonst wäre
+          sie nur für die da, die ohnehin auf den Kalender sehen. */}
+      <Erinnerungsfenster />
 
       {menue && (
         <Kontextmenue

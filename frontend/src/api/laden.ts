@@ -7,6 +7,7 @@
  * wird hier übersetzt: eine Datei, eine Aufgabe.
  */
 import { api } from './client'
+import type { Wiederholung } from '../components/Wiederholungsfeld'
 import type { KontoZeile, OrdnerZeile } from './client'
 import type {
   Anhang,
@@ -469,6 +470,8 @@ export interface Einladung {
   /** `zusage` | `vorbehalt` | `absage` — leer, solange nicht geantwortet. */
   antwort: string
   antwortAm: string | null
+  /** Liegt der Termin schon in einem Kalender? */
+  imKalender: boolean
 }
 
 interface ApiEinladung {
@@ -487,6 +490,7 @@ interface ApiEinladung {
   teilnehmer: EinladungPerson[]
   antwort: string
   antwort_am: string | null
+  im_kalender?: boolean
 }
 
 function einladung(roh: ApiEinladung): Einladung {
@@ -506,6 +510,7 @@ function einladung(roh: ApiEinladung): Einladung {
     teilnehmer: roh.teilnehmer,
     antwort: roh.antwort,
     antwortAm: roh.antwort_am,
+    imKalender: Boolean(roh.im_kalender),
   }
 }
 
@@ -609,4 +614,376 @@ export async function exportVorschau(ordnerId: number): Promise<Exportvorschau> 
     `/api/austausch/vorschau/${ordnerId}`,
   )
   return { bekannt: roh.bekannt, gesamt: roh.gesamt, zipGrenze: roh.zip_grenze }
+}
+
+/* --- Kalender ---------------------------------------------------------- */
+
+export interface KalenderZeile {
+  id: string
+  name: string
+  farbe: Postfachfarbe
+  sichtbar: boolean
+  /** "" (nur hier) | "caldav" | "ics" */
+  art: string
+  herkunft: string
+  nurLesen: boolean
+  letzterFehler: string
+}
+
+/** Organisator oder Teilnehmer eines Termins. */
+export interface Beteiligter {
+  name: string
+  adresse: string
+  /** `NEEDS-ACTION` | `ACCEPTED` | `DECLINED` | `TENTATIVE` | … */
+  antwort: string
+  rolle: string
+}
+
+type ApiBeteiligter = Beteiligter
+
+export interface TerminZeile {
+  id: number
+  kalenderId: string
+  titel: string
+  /** Minuten vor dem Beginn, **-1 heißt keine**. */
+  erinnerung: number
+  /** Der Beginn **dieses Vorkommens**, nicht der der Reihe. */
+  beginn: string
+  ende: string
+  ganztaegig: boolean
+  ort: string
+  beschreibung: string
+  ausReihe: boolean
+  /** Kennung für die Übersetzung: `taeglich`, `woechentlich`, … */
+  wiederholung: string
+  /** Wochentage als `MO`/`TU`/… — die Oberfläche macht daraus Namen. */
+  wiederholungTage: string[]
+  wiederholungIntervall: number
+  /** Dieselbe Regel, zerlegt für das **Formular**.
+   *
+   * ⚠️ **Nicht `wiederholung*` dafür nehmen.** Die Felder darüber sind für
+   * einen SATZ gedacht: Bei „jedem ersten Donnerstag" melden sie `allgemein`
+   * und **keine** Wochentage, weil „donnerstags" gelogen wäre. Ein Formular,
+   * das damit gefüllt wird, zeigt „Keine" — und nimmt die Wiederholung beim
+   * Speichern mit. */
+  regel: Wiederholung
+  /** ⚠️ Die Regel enthält etwas, das die Maske nicht abbildet — dann wird sie
+   *  als Ganzes gehalten, nicht zerlegt angeboten. */
+  regelFremd: boolean
+  /** ⚠️ **Nur zum Anzeigen.** Beim Zurückschreiben bleiben sie unangetastet;
+   *  wer sie ändern könnte, müsste auch einladen können. */
+  organisator: Beteiligter | null
+  teilnehmer: Beteiligter[]
+  rrule: string
+  ausEinladung: boolean
+}
+
+/** ``dieser`` gilt nur für dieses Vorkommen, ``folgende`` ab hier, ``alle``. */
+export type Umfang = 'dieser' | 'folgende' | 'alle'
+
+interface ApiKalender {
+  id: string
+  name: string
+  farbe: number
+  sichtbar: boolean
+  art: string
+  herkunft: string
+  nur_lesen: boolean
+  letzter_fehler: string
+}
+
+interface ApiTermin {
+  id: number
+  kalender_id: string
+  titel: string
+  beginn: string
+  ende: string
+  ganztaegig: boolean
+  ort: string
+  beschreibung: string
+  aus_reihe: boolean
+  wiederholung: string
+  wiederholung_tage: string[]
+  wiederholung_intervall: number
+  regel_freq: string
+  regel_intervall: number
+  regel_tage: string[]
+  regel_monatsart: string
+  regel_ordinal: number
+  regel_ende: string
+  regel_anzahl: number
+  regel_bis: string
+  regel_fremd: boolean
+  organisator: ApiBeteiligter | null
+  teilnehmer: ApiBeteiligter[]
+  rrule: string
+  aus_einladung: boolean
+  erinnerung: number
+}
+
+function kalenderZeile(k: ApiKalender): KalenderZeile {
+  return {
+    id: k.id,
+    name: k.name,
+    farbe: (k.farbe as Postfachfarbe) ?? 1,
+    sichtbar: k.sichtbar,
+    art: k.art,
+    herkunft: k.herkunft,
+    nurLesen: k.nur_lesen,
+    letzterFehler: k.letzter_fehler,
+  }
+}
+
+function terminZeile(t: ApiTermin): TerminZeile {
+  return {
+    id: t.id,
+    kalenderId: t.kalender_id,
+    titel: t.titel,
+    beginn: t.beginn,
+    ende: t.ende,
+    ganztaegig: t.ganztaegig,
+    ort: t.ort,
+    beschreibung: t.beschreibung,
+    ausReihe: t.aus_reihe,
+    wiederholung: t.wiederholung,
+    wiederholungTage: t.wiederholung_tage ?? [],
+    wiederholungIntervall: t.wiederholung_intervall ?? 1,
+    regel: {
+      freq: t.regel_freq ?? '',
+      intervall: t.regel_intervall ?? 1,
+      tage: t.regel_tage ?? [],
+      monatsart: t.regel_monatsart ?? 'tag',
+      ordinal: t.regel_ordinal ?? 1,
+      endeArt: t.regel_ende ?? 'nie',
+      anzahl: t.regel_anzahl || 10,
+      bis: t.regel_bis ?? '',
+    },
+    regelFremd: t.regel_fremd ?? false,
+    organisator: t.organisator ?? null,
+    teilnehmer: t.teilnehmer ?? [],
+    rrule: t.rrule,
+    ausEinladung: t.aus_einladung,
+    erinnerung: t.erinnerung ?? -1,
+  }
+}
+
+export async function kalenderLaden(): Promise<KalenderZeile[]> {
+  return (await api.holen<ApiKalender[]>('/api/kalender')).map(kalenderZeile)
+}
+
+export async function kalenderAnlegen(name: string, farbe = 0): Promise<KalenderZeile> {
+  return kalenderZeile(await api.senden<ApiKalender>('/api/kalender', { name, farbe }))
+}
+
+export async function kalenderAendern(
+  id: string,
+  aenderung: { name?: string; farbe?: number; sichtbar?: boolean },
+): Promise<KalenderZeile> {
+  return kalenderZeile(await api.flicken<ApiKalender>(`/api/kalender/${id}`, aenderung))
+}
+
+export async function kalenderEntfernen(id: string): Promise<number> {
+  const weg = await api.loeschen<{ termine: number }>(`/api/kalender/${id}`)
+  return weg?.termine ?? 0
+}
+
+export async function termineLaden(
+  von: Date,
+  bis: Date,
+  nurKalender?: string[],
+): Promise<TerminZeile[]> {
+  const frage = new URLSearchParams({ von: von.toISOString(), bis: bis.toISOString() })
+  for (const id of nurKalender ?? []) frage.append('kalender', id)
+  return (await api.holen<ApiTermin[]>(`/api/kalender/termine?${frage}`)).map(terminZeile)
+}
+
+export interface Terminwunsch {
+  kalenderId: string
+  titel: string
+  beginn: string
+  ende?: string
+  ganztaegig?: boolean
+  ort?: string
+  beschreibung?: string
+  rrule?: string
+  /** Minuten vor dem Beginn, **-1 heißt keine**. */
+  erinnerung?: number
+}
+
+/** Eine fällige Erinnerung, wie das Sammelfenster sie zeigt. */
+export interface FaelligeErinnerung {
+  id: number
+  terminId: number
+  titel: string
+  ort: string
+  kalender: string
+  farbe: Postfachfarbe
+  beginn: string
+  ganztaegig: boolean
+  vorlauf: number
+}
+
+interface ApiErinnerung {
+  id: number
+  termin_id: number
+  titel: string
+  ort: string
+  kalender: string
+  farbe: number
+  beginn: string
+  ganztaegig: boolean
+  vorlauf: number
+}
+
+export async function erinnerungenLaden(): Promise<FaelligeErinnerung[]> {
+  return (await api.holen<ApiErinnerung[]>('/api/erinnerungen/faellig')).map((e) => ({
+    id: e.id,
+    terminId: e.termin_id,
+    titel: e.titel,
+    ort: e.ort,
+    kalender: e.kalender,
+    farbe: (e.farbe as Postfachfarbe) ?? 1,
+    beginn: e.beginn,
+    ganztaegig: e.ganztaegig,
+    vorlauf: e.vorlauf,
+  }))
+}
+
+export async function erinnerungErledigt(id: number): Promise<void> {
+  await api.senden(`/api/erinnerungen/${id}/erledigt`, {})
+}
+
+export async function erinnerungSchlummern(id: number, minuten: number): Promise<void> {
+  await api.senden(`/api/erinnerungen/${id}/schlummern`, { minuten })
+}
+
+export async function terminAnlegen(wunsch: Terminwunsch): Promise<TerminZeile> {
+  return terminZeile(
+    await api.senden<ApiTermin>('/api/kalender/termine', {
+      kalender_id: wunsch.kalenderId,
+      titel: wunsch.titel,
+      beginn: wunsch.beginn,
+      ende: wunsch.ende ?? null,
+      ganztaegig: wunsch.ganztaegig ?? false,
+      ort: wunsch.ort ?? '',
+      beschreibung: wunsch.beschreibung ?? '',
+      rrule: wunsch.rrule ?? '',
+      erinnerung: wunsch.erinnerung ?? -1,
+    }),
+  )
+}
+
+export async function terminAendern(
+  id: number,
+  aenderung: Partial<Omit<Terminwunsch, 'kalenderId'>> & {
+    umfang?: Umfang
+    /** Der Beginn des angeklickten Vorkommens — ohne ihn geht „nur dieser" nicht. */
+    vorkommen?: string
+  },
+): Promise<TerminZeile> {
+  return terminZeile(
+    await api.flicken<ApiTermin>(`/api/kalender/termine/${id}`, {
+      titel: aenderung.titel ?? null,
+      beginn: aenderung.beginn ?? null,
+      ende: aenderung.ende ?? null,
+      ganztaegig: aenderung.ganztaegig ?? null,
+      ort: aenderung.ort ?? null,
+      beschreibung: aenderung.beschreibung ?? null,
+      rrule: aenderung.rrule ?? null,
+      // ⚠️ `null` heißt **unverändert** — nur ein wirklich mitgeschickter
+      // Wert ersetzt den `VALARM` im Original. Sonst bliebe von einem fremden
+      // Alarm nichts übrig, sobald jemand den Titel ändert.
+      erinnerung: aenderung.erinnerung ?? null,
+      umfang: aenderung.umfang ?? 'alle',
+      vorkommen: aenderung.vorkommen ?? null,
+    }),
+  )
+}
+
+export async function terminEntfernen(
+  id: number,
+  umfang: Umfang = 'alle',
+  vorkommen?: string,
+): Promise<void> {
+  const frage = new URLSearchParams({ umfang })
+  if (vorkommen) frage.set('vorkommen', vorkommen)
+  await api.loeschen(`/api/kalender/termine/${id}?${frage}`)
+}
+
+export interface GefundenerKalender {
+  url: string
+  name: string
+  /** Steht schon in der Spalte. ⚠️ Ein zweites Mal verbinden hiesse: jeder
+   *  Termin doppelt, und beim Entfernen einer der beiden Zeilen verschwindet
+   *  ein Termin, den man gerade offen hatte. */
+  schon_verbunden?: boolean
+}
+
+export async function kalenderPruefen(zugang: {
+  art: string
+  adresse?: string
+  benutzer: string
+  passwort: string
+  /** Statt eines Passworts: eine erteilte Zustimmung (Google). */
+  oauthZugangId?: string
+}): Promise<GefundenerKalender[]> {
+  return api.senden<GefundenerKalender[]>('/api/kalender/pruefen', {
+    art: zugang.art,
+    adresse: zugang.adresse ?? '',
+    benutzer: zugang.benutzer,
+    passwort: zugang.passwort,
+    oauth_zugang_id: zugang.oauthZugangId ?? '',
+  })
+}
+
+export async function kalenderVerbinden(wunsch: {
+  art: string
+  adresse?: string
+  benutzer: string
+  passwort: string
+  oauthZugangId?: string
+  auswahl: GefundenerKalender[]
+}): Promise<KalenderZeile[]> {
+  const roh = await api.senden<ApiKalender[]>('/api/kalender/verbinden', {
+    art: wunsch.art,
+    adresse: wunsch.adresse ?? '',
+    benutzer: wunsch.benutzer,
+    passwort: wunsch.passwort,
+    oauth_zugang_id: wunsch.oauthZugangId ?? '',
+    auswahl: wunsch.auswahl,
+  })
+  return roh.map(kalenderZeile)
+}
+
+export async function kalenderAbonnieren(
+  url: string,
+  name: string,
+  farbe = 0,
+): Promise<KalenderZeile> {
+  return kalenderZeile(await api.senden<ApiKalender>('/api/kalender/abo', { url, name, farbe }))
+}
+
+export interface Abgleichbericht {
+  neu: number
+  geaendert: number
+  entfernt: number
+  hochgeladen: number
+  /** Je Kalender eine Kennung — die Oberfläche übersetzt sie. */
+  fehler: Record<string, string>
+}
+
+export async function kalenderAbgleichen(): Promise<Abgleichbericht> {
+  return api.senden<Abgleichbericht>('/api/kalender/abgleichen', {})
+}
+
+/** Den Termin einer Einladung in einen Kalender übernehmen. */
+export async function terminUebernehmen(
+  nachrichtId: string,
+  kalenderId = '',
+): Promise<Einladung> {
+  return einladung(
+    await api.senden<ApiEinladung>(`/api/termine/${nachrichtId}/uebernehmen`, {
+      kalender_id: kalenderId,
+    }),
+  )
 }

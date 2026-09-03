@@ -206,7 +206,10 @@ test('Absendername und Bezeichnung sind zwei Felder', async ({ page }) => {
     'Der Absendername fehlt — er landet im From jeder Mail.',
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Abbrechen' }).click()
+  /* ⚠️ **Im Fenster gibt es kein „Abbrechen“.** Seit dem 03.09.2026
+     wohnt das Postfach-Formular in einem Dialog, und dessen einziger Ausgang
+     ist das Kreuz — zwei Wege hinaus, die dasselbe tun, sind einer zu viel. */
+  await page.getByRole('button', { name: 'Schließen' }).click()
 })
 
 

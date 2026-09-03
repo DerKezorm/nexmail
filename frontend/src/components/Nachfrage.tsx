@@ -13,7 +13,7 @@
  */
 import { useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Dialog, Input } from '../ds'
+import { Button, Checkbox, Dialog, Input, Select } from '../ds'
 
 interface Frage {
   titel: string
@@ -25,21 +25,42 @@ interface Frage {
   eingabe?: { beschriftung: string; vorgabe?: string; platzhalter?: string; typ?: string }
   /** Beschriftung der bestätigenden Schaltfläche. */
   knopf?: string
+  /** Ein Haken in der Rückfrage — für eine Nebenentscheidung, die zur
+   *  Handlung gehört („Kalender mit entfernen"). ⚠️ **Vorbelegt mit aus:**
+   *  Was zusätzlich gelöscht wird, soll man anhaken, nicht abwählen. */
+  haken?: { beschriftung: string; vorgabe?: boolean }
+  /** Eine Auswahl in der Rückfrage — wohin die Handlung gehen soll
+   *  („In welchen Kalender?"). ⚠️ **Nur anbieten, wenn es etwas zu wählen
+   *  gibt**; eine Liste mit einem Eintrag ist Zierde. */
+  auswahl?: { beschriftung: string; werte: Array<{ wert: string; text: string }>; vorgabe?: string }
   /** Rot einfärben — für alles ohne Rückweg. */
   gefaehrlich?: boolean
 }
 
-type Antwort = string | boolean | null
+/** Mit `haken` oder `auswahl` kommt statt `true` ein Objekt zurück — die
+ *  Zustimmung **und** was nebenbei entschieden wurde. Rückfragen ohne beides
+ *  bleiben, wie sie waren. */
+export interface Zusage {
+  ja: true
+  haken: boolean
+  wert: string
+}
+
+type Antwort = string | boolean | null | Zusage
 
 export function useNachfrage() {
   const { t } = useTranslation()
   const [frage, setFrage] = useState<Frage | null>(null)
   const [wert, setWert] = useState('')
+  const [hakenAn, setHakenAn] = useState(false)
+  const [gewaehlt, setGewaehlt] = useState('')
   const aufloesen = useRef<((a: Antwort) => void) | null>(null)
 
   const fragen = useCallback((f: Frage): Promise<Antwort> => {
     setFrage(f)
     setWert(f.eingabe?.vorgabe ?? '')
+    setHakenAn(f.haken?.vorgabe ?? false)
+    setGewaehlt(f.auswahl?.vorgabe ?? f.auswahl?.werte[0]?.wert ?? '')
     return new Promise<Antwort>((fertig) => {
       aufloesen.current = fertig
     })
@@ -69,13 +90,43 @@ export function useNachfrage() {
           <Button
             variant={frage?.gefaehrlich ? 'danger' : 'primary'}
             disabled={Boolean(frage?.eingabe) && !wert.trim()}
-            onClick={() => schliessen(frage?.eingabe ? wert.trim() : true)}
+            onClick={() =>
+              schliessen(
+                frage?.eingabe
+                  ? wert.trim()
+                  : frage?.haken || frage?.auswahl
+                    ? { ja: true, haken: hakenAn, wert: gewaehlt }
+                    : true,
+              )
+            }
           >
             {frage?.knopf ?? t('aktion.weiter')}
           </Button>
         </>
       }
     >
+      {frage?.auswahl && (
+        <Select
+          label={frage.auswahl.beschriftung}
+          value={gewaehlt}
+          onChange={(e) => setGewaehlt(e.target.value)}
+        >
+          {frage.auswahl.werte.map((w) => (
+            <option key={w.wert} value={w.wert}>
+              {w.text}
+            </option>
+          ))}
+        </Select>
+      )}
+
+      {frage?.haken && (
+        <Checkbox
+          label={frage.haken.beschriftung}
+          checked={hakenAn}
+          onCheckedChange={setHakenAn}
+        />
+      )}
+
       {frage?.eingabe && (
         <Input
           label={frage.eingabe.beschriftung}

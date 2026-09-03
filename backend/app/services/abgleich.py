@@ -508,7 +508,7 @@ GANZE_MAIL = "BODY.PEEK[]"
 GANZE_MAIL_SCHLUESSEL = b"BODY[]"
 
 
-def roh_holen(konto: Konto, nachricht: Nachricht) -> bytes | None:
+def roh_holen(db: Session, konto: Konto, nachricht: Nachricht) -> bytes | None:
     """Die eine Roh-Mail einer Nachricht beim Anbieter abholen.
 
     Der gemeinsame Abruf für den ``.eml``-Download, die Antwort-Vorlage und
@@ -524,13 +524,7 @@ def roh_holen(konto: Konto, nachricht: Nachricht) -> bytes | None:
     """
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     with HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             klient.select_folder(nachricht.ordner.pfad, readonly=True)
             antwort = klient.fetch([nachricht.uid], [GANZE_MAIL])
@@ -642,13 +636,7 @@ def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -
     ergebnis: dict[str, Runde] = {}
     with HALTER.schloss(konto.id):
         try:
-            klient = imapdienst.verbinden(
-                konto.imap_server,
-                konto.imap_port,
-                konto.imap_sicherheit,
-                konto.imap_benutzer,
-                imap_pw,
-            )
+            klient = imapdienst.fuer_konto(db, konto)
         except imapdienst.Verbindungsfehler as fehler:
             _stoerung_merken(db, konto, fehler.art)
             raise

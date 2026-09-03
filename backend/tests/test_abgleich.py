@@ -635,7 +635,7 @@ def test_abgewiesene_zugangsdaten_setzen_die_stoerungsmarke(klient, db, monkeypa
     from test_konten import _eingabe, _guter_befund
 
     monkeypatch.setattr(anbieter, "_holen", lambda url: None)
-    monkeypatch.setattr(kontendienst, "pruefen", lambda daten, wo="": _guter_befund())
+    monkeypatch.setattr(kontendienst, "pruefen", lambda daten, wo="", token="": _guter_befund())
     einrichten(klient)
     konto_id = klient.post("/api/konten", json=_eingabe()).json()["id"]
 
@@ -666,7 +666,7 @@ def test_eine_gelingende_anmeldung_raeumt_die_marke_weg(klient, db, monkeypatch)
     from test_konten import _eingabe, _guter_befund
 
     monkeypatch.setattr(anbieter, "_holen", lambda url: None)
-    monkeypatch.setattr(kontendienst, "pruefen", lambda daten, wo="": _guter_befund())
+    monkeypatch.setattr(kontendienst, "pruefen", lambda daten, wo="", token="": _guter_befund())
     einrichten(klient)
     konto_id = klient.post("/api/konten", json=_eingabe()).json()["id"]
 
@@ -700,7 +700,7 @@ def test_ein_toter_server_loescht_die_marke_nicht(klient, db, monkeypatch):
     from test_konten import _eingabe, _guter_befund
 
     monkeypatch.setattr(anbieter, "_holen", lambda url: None)
-    monkeypatch.setattr(kontendienst, "pruefen", lambda daten, wo="": _guter_befund())
+    monkeypatch.setattr(kontendienst, "pruefen", lambda daten, wo="", token="": _guter_befund())
     einrichten(klient)
     konto_id = klient.post("/api/konten", json=_eingabe()).json()["id"]
 
@@ -730,7 +730,7 @@ def test_neue_zugangsdaten_raeumen_die_marke_sofort(klient, db, monkeypatch):
     from test_konten import _eingabe, _guter_befund
 
     monkeypatch.setattr(anbieter, "_holen", lambda url: None)
-    monkeypatch.setattr(kontendienst, "pruefen", lambda daten, wo="": _guter_befund())
+    monkeypatch.setattr(kontendienst, "pruefen", lambda daten, wo="", token="": _guter_befund())
     einrichten(klient)
     eingabe = _eingabe()
     konto_id = klient.post("/api/konten", json=eingabe).json()["id"]

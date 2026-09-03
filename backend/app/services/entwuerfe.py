@@ -61,13 +61,7 @@ def ablegen(
 
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             # ⚠️ ``\Draft`` ist das, woran jeder andere Client erkennt, dass
             # das kein fertiger Brief ist. Ohne die Kennzeichnung zeigt
@@ -130,13 +124,7 @@ def roh_ablegen(db: Session, konto: Konto, roh: bytes) -> int:
     ordner = _ordner(konto)
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             # ⚠️ ``\Draft`` wie beim gewoehnlichen Ablegen - siehe oben: Ohne
             # die Kennzeichnung bietet kein anderer Client Weiterschreiben an.
@@ -167,13 +155,7 @@ def wegwerfen(db: Session, konto: Konto, uid: int) -> None:
     ordner = _ordner(konto)
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             _alte_fassung_wegwerfen(klient, ordner, uid)
             abgleich.ordner_abgleichen(klient, db, konto, ordner)

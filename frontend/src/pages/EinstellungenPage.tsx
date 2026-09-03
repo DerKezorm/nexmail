@@ -10,10 +10,11 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Inbox, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
-import { Badge, Button, EmptyState, IconButton, Tabs } from '../ds'
+import { RefreshCw } from 'lucide-react'
+import { Button, Dialog, Tabs } from '../ds'
 import type { Ich } from '../api/client'
-import { useNachfrage } from '../components/Nachfrage'
+import { Postfachkacheln } from '../components/Postfachkacheln'
+import { PostfachHinzufuegen } from '../components/PostfachHinzufuegen'
 import { Darstellung } from './Darstellung'
 import { KontoFormular } from './KontoFormular'
 import { Schlagworte } from './Schlagworte'
@@ -22,7 +23,6 @@ import { Regeln } from './Regeln'
 import { Abwesenheit } from './Abwesenheit'
 import { Signaturen } from './Signaturen'
 import { Textvorlagen } from './Textvorlagen'
-import { PUNKT_KLASSE } from '../lib/farben'
 import { api } from '../api/client'
 import type { KontoZeile } from '../api/client'
 
@@ -40,6 +40,10 @@ interface Props {
   aufReiter: (r: Reiter) => void
   formularOffen: boolean
   aufFormular: (offen: boolean) => void
+  /** Das Fenster hinter der (+)-Kachel. Es steht in `App`, weil auch die
+   *  Ordnerspalte dorthin führt („Postfach hinzufügen"). */
+  wahlOffen: boolean
+  aufWahl: (offen: boolean) => void
   /** Für den Reiter „Sicherheit": Zweiter Faktor und übrige Codes. */
   ich: Ich | null
   ichNeuLaden?: () => void
@@ -55,6 +59,8 @@ export function EinstellungenPage({
   aufReiter,
   formularOffen,
   aufFormular,
+  wahlOffen,
+  aufWahl,
   ich,
   ichNeuLaden,
   aufKontenGeaendert,
@@ -113,41 +119,25 @@ export function EinstellungenPage({
 
         <div className="pt-5">
           {reiter === 'postfaecher' ? (
-            formularOffen ? (
-              <KontoFormular
-                key={bearbeitet?.id ?? 'neu'}
-                naechsteFarbe={naechste}
-                bestehend={bearbeitet}
-                /* Was schon vergeben ist, wird angeboten — sonst entstehen
-                   „Arbeit" und „arbeit" nebeneinander. */
-                bekannteTags={[...new Set((konten ?? []).flatMap((k) => k.tags ?? []))]}
-                aufAbbrechen={() => {
-                  aufFormular(false)
-                  setBearbeitet(null)
-                }}
-                aufAngelegt={() => {
-                  aufFormular(false)
-                  setBearbeitet(null)
-                  laden()
-                }}
-              />
-            ) : (
-              <Postfachliste
-                konten={konten}
-                aufHinzufuegen={() => {
-                  setBearbeitet(null)
-                  aufFormular(true)
-                }}
-                aufBearbeiten={(k) => {
-                  setBearbeitet(k)
-                  aufFormular(true)
-                }}
-                aufNeuLaden={() => {
-                  laden()
-                  aufKontenGeaendert?.()
-                }}
-              />
-            )
+            /* ⚠️ **Die Kacheln bleiben stehen, auch wenn ein Formular offen
+               ist.** Vorher tauschte der Reiter seinen ganzen Inhalt aus; wer
+               ein Postfach anlegte, sah den Bestand nicht mehr und danach
+               eine Liste, von der er nicht wusste, ob sie neu geladen war. */
+            <Postfaecher
+              konten={konten}
+              aufHinzufuegen={() => {
+                setBearbeitet(null)
+                aufWahl(true)
+              }}
+              aufBearbeiten={(k) => {
+                setBearbeitet(k)
+                aufFormular(true)
+              }}
+              aufNeuLaden={() => {
+                laden()
+                aufKontenGeaendert?.()
+              }}
+            />
           ) : reiter === 'regeln' ? (
             <Regeln />
           ) : reiter === 'abwesenheit' ? (
@@ -177,6 +167,56 @@ export function EinstellungenPage({
           )}
         </div>
       </div>
+
+      {/* ⚠️ **Ein Fenster, nicht eine zweite Seite.** Anlegen und Bearbeiten
+          gehen durch dieselbe Maske; sie einmal als Seite und einmal als
+          Fenster zu zeigen wären zwei Anwendungen. */}
+      <Dialog
+        open={formularOffen}
+        width={720}
+        title={bearbeitet ? t('konto.bearbeiten_titel') : t('konto.hinzufuegen')}
+        onClose={() => {
+          aufFormular(false)
+          setBearbeitet(null)
+        }}
+      >
+        <KontoFormular
+          key={bearbeitet?.id ?? 'neu'}
+          imFenster
+          naechsteFarbe={naechste}
+          bestehend={bearbeitet}
+          /* Was schon vergeben ist, wird angeboten — sonst entstehen
+             „Arbeit" und „arbeit" nebeneinander. */
+          bekannteTags={[...new Set((konten ?? []).flatMap((k) => k.tags ?? []))]}
+          aufAbbrechen={() => {
+            aufFormular(false)
+            setBearbeitet(null)
+          }}
+          aufAngelegt={() => {
+            aufFormular(false)
+            setBearbeitet(null)
+            laden()
+            aufKontenGeaendert?.()
+          }}
+        />
+      </Dialog>
+
+      {/* ⚠️ **Über der Seite, nicht im Reiter.** Der Rückweg von Google landet
+          auf der Startseite; das Fenster muss auch dann aufgehen, wenn gerade
+          ein anderer Reiter zuletzt offen war. */}
+      <PostfachHinzufuegen
+        offen={wahlOffen}
+        konten={konten ?? []}
+        aufSchliessen={() => aufWahl(false)}
+        aufImap={() => {
+          setBearbeitet(null)
+          aufFormular(true)
+        }}
+        aufAngelegt={() => {
+          laden()
+          aufKontenGeaendert?.()
+        }}
+      />
     </div>
   )
 }
@@ -188,138 +228,37 @@ interface ListenProps {
   aufNeuLaden: () => void
 }
 
-function Postfachliste({ konten, aufHinzufuegen, aufBearbeiten, aufNeuLaden }: ListenProps) {
-  const { t, i18n } = useTranslation()
-  const { fragen, fenster: nachfrage } = useNachfrage()
-  const [entfernt, setEntfernt] = useState<string | null>(null)
+function Postfaecher({ konten, aufHinzufuegen, aufBearbeiten, aufNeuLaden }: ListenProps) {
+  const { t } = useTranslation()
 
+  // ⚠️ **Drei Zustände, nicht zwei** — noch nicht geladen sieht sonst aus wie
+  // „da ist nichts", und genau so sieht ein Datenverlust aus.
   if (konten === null) {
     return <div className="h-24" />
   }
 
-  if (konten.length === 0) {
-    return (
-      <EmptyState
-        icon={<Inbox />}
-        title={t('konto.kein_postfach')}
-        description={t('konto.kein_postfach_text')}
-        action={
-          <Button variant="primary" iconLeft={<Plus className="size-4" />} onClick={aufHinzufuegen}>
-            {t('konto.hinzufuegen')}
-          </Button>
-        }
-      />
-    )
-  }
-
-  async function entfernen(konto: KontoZeile) {
-    const ja = await fragen({
-      titel: t('konto.entfernen'),
-      text: t('konto.entfernen_sicher', { name: konto.anzeigename }),
-      knopf: t('konto.entfernen'),
-      gefaehrlich: true,
-    })
-    if (ja !== true) return
-    setEntfernt(konto.id)
-    try {
-      await api.loeschen(`/api/konten/${konto.id}`)
-      aufNeuLaden()
-    } finally {
-      setEntfernt(null)
-    }
-  }
-
   return (
     <div className="flex flex-col gap-3">
-      <ul className="flex list-none flex-col gap-2 p-0">
-        {konten.map((k) => (
-          <li
-            key={k.id}
-            className="flex items-center gap-3 rounded-lg border border-line bg-surface-1 px-4 py-3"
-          >
-            <span
-              aria-hidden
-              className={`size-3 shrink-0 rounded-full ${PUNKT_KLASSE[k.farbe as 1 | 2 | 3 | 4 | 5 | 6]}`}
-            />
-            <div className="min-w-0 flex-1">
-              {/* ⚠️ **Die Schlagworte gehören neben den Namen, nicht unter
-                  die Serverzeile.** Wer hier steht, will wissen, welches
-                  Postfach zu welcher Welt gehört — das ist eine Eigenschaft
-                  des Postfachs, keine Fußnote zur Technik. */}
-              <div className="mb-0 flex min-w-0 items-center gap-2">
-                <p className="mb-0 truncate text-sm font-medium text-fg-1">{k.anzeigename}</p>
-                {(k.tags ?? []).map((w) => (
-                  <span
-                    key={w}
-                    className="shrink-0 rounded-pill bg-accent-soft px-2 py-0.5 text-[11px] text-accent-text"
-                  >
-                    {w}
-                  </span>
-                ))}
-              </div>
-              <p className="mb-0 truncate font-mono text-[12px] text-fg-4">{k.adresse}</p>
-              <p className="mb-0 truncate text-[11px] text-fg-4">
-                {k.imap_server} · {k.anzahl_ordner}{' '}
-                {t('konto.ordner_gefunden', { count: k.anzahl_ordner }).replace(/^\d+\s/, '')}
-                {' · '}
-                {k.zuletzt_geprueft
-                  ? t('konto.geprueft_am', {
-                      wann: new Date(k.zuletzt_geprueft).toLocaleString(i18n.language, {
-                        dateStyle: 'short',
-                        timeStyle: 'short',
-                      }),
-                    })
-                  : t('konto.nie_geprueft')}
-              </p>
-            </div>
+      <Postfachkacheln
+        konten={konten}
+        aufHinzufuegen={aufHinzufuegen}
+        aufBearbeiten={aufBearbeiten}
+        aufNeuLaden={aufNeuLaden}
+      />
 
-            {k.letzter_fehler ? (
-              /* ⚠️ **Übersetzt über die Kennung, ganzer Satz als title.**
-                 Vorher stand hier der deutsche Server-Satz wörtlich — auf
-                 Englisch blieb er deutsch — und `slice(0, 40)` schnitt ihn
-                 mitten im Wort ab („abgewie"). Der Kennung-Weg ist derselbe
-                 wie bei OIDC: Der Server benennt, die Oberfläche formuliert. */
-              <Badge tone="danger" dot title={k.letzter_fehler}>
-                <span className="max-w-56 truncate">
-                  {k.letzter_fehler_art
-                    ? t(`konto.fehler_${k.letzter_fehler_art}`, {
-                        defaultValue: k.letzter_fehler,
-                      })
-                    : k.letzter_fehler}
-                </span>
-              </Badge>
-            ) : (
-              <Badge tone="success" dot>
-                {t('einstellungen.aktiv')}
-              </Badge>
-            )}
+      {/* Beim ersten Mal steht neben der einen Kachel sonst nichts, was sagt,
+          was hier passieren soll. */}
+      {konten.length === 0 && (
+        <p className="mb-0 text-[13px] text-fg-3">{t('konto.kein_postfach_text')}</p>
+      )}
 
-            <IconButton
-              icon={<Pencil />}
-              label={t('einstellungen.bearbeiten')}
-              size="sm"
-              onClick={() => aufBearbeiten(k)}
-            />
-            <IconButton
-              icon={<Trash2 />}
-              label={t('einstellungen.entfernen')}
-              size="sm"
-              disabled={entfernt === k.id}
-              onClick={() => void entfernen(k)}
-            />
-          </li>
-        ))}
-      </ul>
-
-      <div className="flex gap-2">
-        <Button iconLeft={<Plus className="size-4" />} onClick={aufHinzufuegen}>
-          {t('konto.hinzufuegen')}
-        </Button>
-        <Button variant="ghost" iconLeft={<RefreshCw className="size-4" />} onClick={aufNeuLaden}>
-          {t('aktion.aktualisieren')}
-        </Button>
-      </div>
-      {nachfrage}
+      {konten.length > 0 && (
+        <div>
+          <Button variant="ghost" iconLeft={<RefreshCw className="size-4" />} onClick={aufNeuLaden}>
+            {t('aktion.aktualisieren')}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

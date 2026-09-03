@@ -45,11 +45,21 @@ test('Die Einladung steht als Karte da, nicht als Anhang', async ({ page }) => {
   await anmelden(page)
   await ersteMailOeffnen(page)
 
-  await expect(page.getByText('Quartalsbesprechung mit dem Team')).toBeVisible()
-  await expect(page.getByText('Halle 3, Eingang Nord')).toBeVisible()
-  await expect(page.getByText(/Eingeladen von Chefin Beispiel/)).toBeVisible()
-  // ⚠️ Der Satz, der die Erwartung geradezieht.
-  await expect(page.getByText(/Einen Kalender hat es nicht/)).toBeVisible()
+  /* ⚠️ **Auf der Karte suchen, nicht auf der Seite.** Derselbe Ort steht auch
+     im Anreißer der Zeile in der Liste; `getByText` traf dann zwei Elemente
+     und der Test scheiterte an seiner eigenen Ungenauigkeit, nicht an der
+     Oberfläche. Am 03.09.2026 aufgefallen, als eine zweite Einladung im
+     Testpostfach lag. */
+  const karte = page.locator('section').filter({ hasText: /Eingeladen von/ }).last()
+
+  await expect(karte.getByText('Quartalsbesprechung mit dem Team')).toBeVisible()
+  await expect(karte.getByText('Halle 3, Eingang Nord')).toBeVisible()
+  await expect(karte.getByText(/Eingeladen von Chefin Beispiel/)).toBeVisible()
+  /* ⚠️ **Der Satz, der die Erwartung geradezieht.** Er hieß bis zum Kalender
+     „Einen Kalender hat es nicht"; seit es einen gibt, trennt er Zusagen vom
+     Übernehmen. Der Test hing an der alten Formulierung und war danach rot,
+     ohne dass etwas kaputt war. */
+  await expect(page.getByText(/erst, wenn du ihn übernimmst/)).toBeVisible()
   await keinTextLaeuftUeber(page)
   await jederKnopfHatEinenNamen(page)
 })

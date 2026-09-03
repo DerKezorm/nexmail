@@ -21,11 +21,18 @@ import { api, ApiFehler } from '../api/client'
 import type { Ich } from '../api/client'
 import { Button, EmptyState, Input, Select, Tabs } from '../ds'
 import { Benutzerverwaltung } from './Benutzerverwaltung'
+import { OauthVerwaltung } from './OauthVerwaltung'
 import { OidcVerwaltung } from './OidcVerwaltung'
 import { Protokoll } from './Protokoll'
 import { Sicherungen } from './Sicherungen'
 
-export type VerwaltungsReiter = 'protokoll' | 'server' | 'benutzer' | 'oidc' | 'sicherungen'
+export type VerwaltungsReiter =
+  | 'protokoll'
+  | 'server'
+  | 'benutzer'
+  | 'oidc'
+  | 'oauth'
+  | 'sicherungen'
 
 interface Props {
   reiter: VerwaltungsReiter
@@ -64,6 +71,7 @@ export function Verwaltung({ reiter, aufReiter, ich }: Props) {
             { id: 'server', label: t('verwaltung.server') },
             { id: 'benutzer', label: t('verwaltung.benutzer') },
             { id: 'oidc', label: t('verwaltung.oidc') },
+            { id: 'oauth', label: t('verwaltung.oauth') },
             { id: 'sicherungen', label: t('verwaltung.sicherungen') },
           ]}
         />
@@ -77,6 +85,8 @@ export function Verwaltung({ reiter, aufReiter, ich }: Props) {
             <Benutzerverwaltung />
           ) : reiter === 'oidc' ? (
             <OidcVerwaltung />
+          ) : reiter === 'oauth' ? (
+            <OauthVerwaltung />
           ) : (
             <Sicherungen />
           )}

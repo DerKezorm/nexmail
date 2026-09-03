@@ -296,6 +296,13 @@ class Konto(Base):
     smtp_benutzer: Mapped[str] = mapped_column(String(320))
     smtp_passwort: Mapped[str] = mapped_column(Text, default="")
 
+    #: Leer heisst Passwort. ⚠️ **Der Anmeldeweg gehoert ans Postfach, nicht an
+    #: den Anbieter:** Dasselbe Google-Konto laesst sich mit App-Passwort ODER
+    #: mit OAuth anbinden, und wer umstellt, soll nicht alles neu eintragen.
+    oauth_zugang_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("oauth_zugang.id", ondelete="SET NULL"), default=None
+    )
+
     #: 1 bis 6 - der Punkt in der Liste. Wird zugeteilt, nicht gewaehlt.
     #: Freie Schlagworte, kommagetrennt — „privat,verein".
     #:
@@ -323,6 +330,11 @@ class Konto(Base):
     ordner: Mapped[list["Ordner"]] = relationship(
         back_populates="konto", cascade="all, delete-orphan"
     )
+    #: Nur zum Anzeigen: Die Kachel in den Einstellungen sagt damit, ob dieses
+    #: Postfach ueber Google, ueber Microsoft oder ueber IMAP angebunden ist —
+    #: und wie viele Kalender an derselben Zustimmung haengen.
+    #: ``selectin``, damit die Kontenliste nicht je Postfach nachfragt.
+    oauth_zugang: Mapped["OauthZugang | None"] = relationship(lazy="selectin")
 
 
 class Ordner(Base):
@@ -1012,3 +1024,283 @@ class Terminantwort(Base):
     antwort: Mapped[str] = mapped_column(String(16))
     gesendet: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
+
+
+class Kalender(Base):
+    """Ein Kalender — entweder nexmails eigener oder eine Gegenstelle.
+
+    ⚠️ **CalDAV-foermig von Anfang an.** ``art`` leer heisst: Er lebt nur hier.
+    Sonst traegt er Adresse, Zugangsdaten und ``ctag``. So wird aus „diesem
+    Kalender eine Adresse geben" spaeter eine Zeile und keine Umstellung —
+    dasselbe Muster wie „fuer OIDC vorbereitet" in Stufe 0.
+
+    ⚠️ **Der Primaerschluessel ist eine uuid4-Zeichenkette**, nicht eine Zahl —
+    genau wie beim Postfach, und aus demselben Grund: Er steht vor dem
+    Einfuegen fest und wandert als Zusatzdaten in die Verschluesselung des
+    Passworts (``kalender:<id>:passwort``). Ohne das liesse sich ein
+    verschluesseltes Passwort von einem Kalender auf einen anderen kopieren.
+
+    ⚠️ **Ein CalDAV-Zugang ergibt MEHRERE Zeilen hier, nicht eine.** Eine
+    Apple-ID liefert „Privat", „Arbeit", „Geburtstage" — jeder davon ist ein
+    eigener Kalender mit eigener Adresse, eigener Farbe und eigenem Haken. Die
+    Zugangsdaten stehen deshalb an jeder Zeile; sie zu teilen hiesse, eine
+    zweite Tabelle einzufuehren, und ein geloeschter Kalender riesse dann die
+    anderen mit.
+    """
+
+    __tablename__ = "kalender"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+
+    name: Mapped[str] = mapped_column(String(120))
+    #: 1 bis 6 — dieselbe gepruefte Palette wie beim Postfach-Punkt.
+    farbe: Mapped[int] = mapped_column(Integer, default=1)
+    #: Der Haken in der Spalte. ⚠️ Ein unsichtbarer Kalender wird trotzdem
+    #: abgeglichen — sonst waere „kurz ausblenden" ein stiller Datenverlust.
+    sichtbar: Mapped[bool] = mapped_column(Boolean, default=True)
+    reihenfolge: Mapped[int] = mapped_column(Integer, default=0)
+
+    #: "" (nur hier) | "caldav" | "ics"
+    art: Mapped[str] = mapped_column(String(16), default="")
+    #: Was in der Oberflaeche als Herkunft dasteht — „iCloud", „Nextcloud".
+    herkunft: Mapped[str] = mapped_column(String(120), default="")
+    #: Die Adresse der Sammlung (CalDAV) bzw. der Datei (ICS).
+    url: Mapped[str] = mapped_column(Text, default="")
+    benutzer_name: Mapped[str] = mapped_column(String(320), default="")
+    passwort: Mapped[str] = mapped_column(Text, default="")
+    #: Gesetzt heisst: angemeldet wird mit einem Zugriffstoken statt mit dem
+    #: Passwort. Derselbe Zugang wie beim Postfach — eine Zustimmung reicht.
+    oauth_zugang_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("oauth_zugang.id", ondelete="SET NULL"), default=None
+    )
+
+    #: ⚠️ **Das Sammel-ETag der Sammlung.** Aendert es sich nicht, hat sich in
+    #: dem Kalender nichts getan — dann spart der Abgleich den ganzen Abruf.
+    #: Bei einem Postfach macht das die ``UIDNEXT``; hier ist es der ``ctag``.
+    ctag: Mapped[str] = mapped_column(String(255), default="")
+    #: RFC 6578, wenn der Server es kann: nur das Geaenderte holen.
+    sync_token: Mapped[str] = mapped_column(Text, default="")
+
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    zuletzt_geprueft: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    letzter_fehler: Mapped[str] = mapped_column(Text, default="")
+
+    termine: Mapped[list["Termin"]] = relationship(
+        back_populates="kalender", cascade="all, delete-orphan"
+    )
+
+    @property
+    def nur_lesen(self) -> bool:
+        """⚠️ **Gilt nur fuer ICS-Abos, und dort liegt es am Format:** Ein
+        veroeffentlichter Link bietet keinen Weg zurueck. In CalDAV schreibt
+        nexmail sehr wohl."""
+        return self.art == "ics"
+
+
+class Termin(Base):
+    """Ein Termin. Eine Reihe steht **einmal** hier, nicht als viele Zeilen.
+
+    ⚠️ **``roh`` ist kein Beiwerk, sondern die Rueckfahrkarte.** Darin steht
+    das ``VEVENT``, wie es kam — samt allem, was nexmail nicht versteht:
+    Teilnehmer, Erinnerungen, ``X-APPLE-…``. Wer beim Zurueckschreiben nur die
+    Felder ausgibt, die er kennt, loescht dem Besitzer stillschweigend seine
+    Alarme und die halbe Teilnehmerliste. Geschrieben wird deshalb **auf dem
+    Original**, nicht daneben. Dieselbe Ueberlegung wie bei mboxrd: Das Format
+    muss verlustfrei durch nexmail hindurchgehen.
+
+    ⚠️ **``uid`` ist der Schluessel des Termins, ``href`` der seiner Datei.**
+    Auf dem Server liegt jeder Termin als eigene ``.ics`` unter einer Adresse;
+    die UID steht drin. Beides wird gebraucht: die UID, um denselben Termin
+    wiederzuerkennen, die Adresse, um ihn zu ueberschreiben.
+
+    ⚠️ **``etag`` ist der Konfliktschutz.** Beim Schreiben faehrt es als
+    ``If-Match`` mit. Antwortet der Server 412, hat jemand denselben Termin
+    woanders geaendert — dann wird gefragt, nicht ueberschrieben.
+    """
+
+    __tablename__ = "termin"
+    __table_args__ = (
+        UniqueConstraint("kalender_id", "uid", "recurrence_id", name="uq_termin_uid"),
+        Index("ix_termin_fenster", "kalender_id", "beginn"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kalender_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("kalender.id", ondelete="CASCADE"), index=True
+    )
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+
+    uid: Mapped[str] = mapped_column(String(500))
+    #: Die Adresse der ``.ics`` auf dem Server. Leer bei einem eigenen Kalender.
+    href: Mapped[str] = mapped_column(Text, default="")
+    etag: Mapped[str] = mapped_column(String(255), default="")
+    #: Das ganze ``VEVENT``, wie es kam. Siehe oben.
+    roh: Mapped[str] = mapped_column(Text, default="")
+
+    titel: Mapped[str] = mapped_column(Text, default="")
+    beschreibung: Mapped[str] = mapped_column(Text, default="")
+    ort: Mapped[str] = mapped_column(Text, default="")
+
+    beginn: Mapped[datetime] = mapped_column(UtcDateTime)
+    ende: Mapped[datetime] = mapped_column(UtcDateTime)
+    ganztaegig: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Die Zone, in der die Reihe gerechnet wird. ⚠️ **Nicht die des
+    #: Betreibers**, sondern die des Termins: „jeden Montag um 9" heisst neun
+    #: Uhr dort, wo der Termin hingehoert.
+    zeitzone: Mapped[str] = mapped_column(String(64), default="UTC")
+
+    rrule: Mapped[str] = mapped_column(Text, default="")
+    #: Die abgesagten Einzeltermine einer Reihe, kommagetrennt als ISO.
+    exdate: Mapped[str] = mapped_column(Text, default="")
+    #: Gesetzt heisst: Diese Zeile ueberschreibt EIN Vorkommen der Reihe mit
+    #: derselben ``uid`` — „der Montag naechste Woche faellt auf 10 Uhr".
+    recurrence_id: Mapped[str] = mapped_column(String(64), default="")
+
+    sequenz: Mapped[int] = mapped_column(Integer, default=0)
+
+    #: Minuten vor dem Beginn, **-1 heisst keine**. Kommt aus dem ersten
+    #: relativen ``VALARM`` des Termins und geht als solcher wieder hinaus.
+    #:
+    #: ⚠️ **Der Alarm gehoert zum Termin, nicht zur Anzeige.** Er faehrt ueber
+    #: CalDAV mit; wer ihn hier einstellt, wird auch auf dem Telefon erinnert.
+    #: Umgekehrt zeigt nexmail einen Alarm an, den jemand anders gesetzt hat.
+    erinnerung: Mapped[int] = mapped_column(Integer, default=-1)
+
+    #: Organisator und Teilnehmer als JSON — **nur zum Anzeigen**.
+    #:
+    #: ⚠️ **Sie stehen nicht in ``EIGENE``.** Beim Zurueckschreiben bleiben sie
+    #: unangetastet in ``roh``; nexmail liest sie, aendert sie aber nicht. Wer
+    #: sie aendern koennte, muesste auch einladen koennen — und dazu gehoert
+    #: der ganze Rueckkanal (``METHOD:REPLY``, ``SEQUENCE``, ``CANCEL``).
+    organisator: Mapped[str] = mapped_column(Text, default="")
+    teilnehmer: Mapped[str] = mapped_column(Text, default="")
+    #: ``CONFIRMED`` | ``TENTATIVE`` | ``CANCELLED``
+    status: Mapped[str] = mapped_column(String(16), default="CONFIRMED")
+
+    #: ⚠️ **Hier geaendert, dort noch nicht angekommen.** Solange das steht,
+    #: darf der Abgleich die Zeile nicht mit der Serverfassung ueberbuegeln.
+    schmutzig: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Aus einer Mail uebernommen. Die Karte im Lesebereich sagt es dann, und
+    #: der Termin weiss, dass eine Aenderung hier den Einladenden nicht
+    #: erreicht.
+    aus_einladung: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    geaendert: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+    kalender: Mapped[Kalender] = relationship(back_populates="termine")
+
+
+class OauthAnbieter(Base):
+    """Die App-Anmeldung, die der Betreiber bei Google oder Microsoft anlegt.
+
+    ⚠️ **nexmail kann kein Geheimnis mitliefern.** Das Repo ist oeffentlich;
+    ein eingebauter Client-Schluessel stuende darin, und Google wie Microsoft
+    ziehen ihn zurueck, sobald sie ihn finden. Jeder Betreiber legt deshalb
+    seine eigene App an — dieselbe Wand wie bei „OAuth fuer Postfaecher" in
+    SPAETER.md, nur ist sie jetzt durchschritten statt umgangen.
+
+    ⚠️ **Ab Werk ist diese Tabelle leer, und dann aendert sich nichts.** Wer nie
+    einen Anbieter eintraegt, sieht in der Postfach-Einrichtung keinen Knopf
+    dafuer.
+    """
+
+    __tablename__ = "oauth_anbieter"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    #: ``google`` oder ``microsoft`` — mehr kennt nexmail nicht, und das ist
+    #: Absicht: Die Endpunkte und Bereiche stehen im Code, nicht in der
+    #: Datenbank. Wer sie eintippen liesse, baut eine Fehlerquelle ohne Gewinn.
+    art: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    client_id: Mapped[str] = mapped_column(String(300))
+    client_secret: Mapped[str] = mapped_column(Text, default="")
+    #: Nur Microsoft: ``common`` (jeder), ``organizations``, oder eine
+    #: Mandanten-Kennung. ⚠️ Wer hier den falschen Wert setzt, bekommt eine
+    #: Fehlermeldung erst auf der Anmeldeseite von Microsoft.
+    mandant: Mapped[str] = mapped_column(String(120), default="common")
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Erinnerungszustellung(Base):
+    """Dass diese Erinnerung schon herausgegangen ist.
+
+    ⚠️ **Der Schluessel traegt den Kanal.** Heute gibt es genau einen („in der
+    App"); die Zeile ist trotzdem je Kanal eindeutig, damit ein zweiter Kanal
+    spaeter zustellen darf, obwohl der erste es schon getan hat. Ohne das
+    muesste man beim ersten Web-Push umbauen — dieselbe Vorsorge wie „fuer OIDC
+    vorbereitet" in Stufe 0.
+
+    ⚠️ **Und je VORKOMMEN, nicht je Termin.** Eine woechentliche Besprechung
+    erinnerte sonst genau einmal.
+    """
+
+    __tablename__ = "erinnerungszustellung"
+    __table_args__ = (
+        UniqueConstraint("termin_id", "vorkommen", "kanal", name="uq_erinnerung"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    termin_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("termin.id", ondelete="CASCADE"), index=True
+    )
+    benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
+    #: Der Beginn genau dieses Vorkommens.
+    vorkommen: Mapped[datetime] = mapped_column(UtcDateTime)
+    #: 'app' — spaeter 'push', 'mail', 'webhook'.
+    kanal: Mapped[str] = mapped_column(String(20), default="app")
+
+    zugestellt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    #: Gesetzt heisst: nicht vor diesem Zeitpunkt wieder zeigen.
+    schlummert_bis: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    #: Weggeklickt. ⚠️ Die Zeile bleibt stehen — geloescht kaeme die
+    #: Erinnerung beim naechsten Abruf sofort wieder.
+    erledigt: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class OauthZugang(Base):
+    """Eine erteilte Erlaubnis — ein Google- oder Microsoft-Konto.
+
+    ⚠️ **Eine Erlaubnis, mehrere Nutzungen.** Wer sein Google-Konto einmal
+    freigibt, soll nicht fuer den Kalender ein zweites Mal durch dieselbe
+    Zustimmung laufen. Postfach und Kalender zeigen deshalb beide hierher.
+
+    ⚠️ **Das Auffrischungs-Token ist das eigentliche Geheimnis.** Es oeffnet
+    das Postfach dauerhaft und liegt deshalb verschluesselt (Kontext
+    ``oauth:<id>:refresh``). Das kurzlebige Zugriffstoken ebenso — es waere
+    sonst der eine Klartext-Schluessel in einer Datenbank voller Chiffren.
+    """
+
+    __tablename__ = "oauth_zugang"
+    __table_args__ = (
+        UniqueConstraint("benutzer_id", "art", "adresse", name="uq_oauth_zugang"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    art: Mapped[str] = mapped_column(String(20))
+    #: Die Adresse des freigegebenen Kontos — sie steht in der Oberflaeche.
+    adresse: Mapped[str] = mapped_column(String(320), default="")
+
+    refresh: Mapped[str] = mapped_column(Text, default="")
+    zugriff: Mapped[str] = mapped_column(Text, default="")
+    #: Wann das Zugriffstoken ablaeuft. ⚠️ **Mit Vorlauf erneuern**, nicht erst
+    #: beim Ablauf: Zwischen Pruefung und IMAP-Anmeldung liegen Sekunden, und
+    #: ein abgelaufenes Token sieht aus wie ein falsches Passwort.
+    ablauf: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    #: Was zugestanden wurde — zum Nachsehen, wenn etwas fehlt.
+    bereich: Mapped[str] = mapped_column(Text, default="")
+
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    #: Gesetzt, wenn die Erlaubnis nicht mehr gilt (widerrufen, Passwort
+    #: geaendert, sieben Tage im Testbetrieb). ⚠️ **Das muss man sehen**, sonst
+    #: sieht ein toter Zugang aus wie ein kaputter Mailserver.
+    letzter_fehler: Mapped[str] = mapped_column(Text, default="")
+
+    #: Die Kalender, die ueber diese Zustimmung laufen. Nur zum Zaehlen —
+    #: geloescht wird ueber die Dienste, damit die Reihenfolge stimmt.
+    kalender: Mapped[list["Kalender"]] = relationship(lazy="selectin", viewonly=True)

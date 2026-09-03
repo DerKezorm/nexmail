@@ -411,13 +411,7 @@ def importieren(
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
 
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             bekannt = vorhandene_kennungen(klient, ordner.pfad)
             hintereinander = 0
@@ -477,7 +471,9 @@ def importieren(
     return bericht
 
 
-def roh_stroemen(konto: Konto, pfad: str, uids: list[int]) -> Iterator[tuple[int, bytes, tuple]]:
+def roh_stroemen(
+    db: Session, konto: Konto, pfad: str, uids: list[int]
+) -> Iterator[tuple[int, bytes, tuple]]:
     """Die Rohfassungen eines Ordners, blockweise beim Anbieter geholt.
 
     ⚠️ **nexmail hebt keine ganzen Mails auf** — nur Kopfdaten, und Texte erst
@@ -494,13 +490,7 @@ def roh_stroemen(konto: Konto, pfad: str, uids: list[int]) -> Iterator[tuple[int
     """
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             klient.select_folder(pfad, readonly=True)
             for i in range(0, len(uids), BLOCK_MAILS):

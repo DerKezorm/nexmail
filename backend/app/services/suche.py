@@ -271,13 +271,7 @@ def beim_anbieter_suchen(
         imap_pw, _ = kontendienst.passwoerter_lesen(konto)
         try:
             with abgleich.HALTER.schloss(konto.id):
-                klient = imapdienst.verbinden(
-                    konto.imap_server,
-                    konto.imap_port,
-                    konto.imap_sicherheit,
-                    konto.imap_benutzer,
-                    imap_pw,
-                )
+                klient = imapdienst.fuer_konto(db, konto)
                 try:
                     for o in seine:
                         gefunden.extend(_ordner_absuchen(db, klient, o, begriffe, grenze))

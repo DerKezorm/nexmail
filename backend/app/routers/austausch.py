@@ -274,7 +274,7 @@ def ausgeben(
         # nicht hinein — anders als in die mbox, die ein Postfach ist.
         daten = dienst.als_zip(
             (betreffe.get(uid, ""), roh)
-            for uid, roh, _ in dienst.roh_stroemen(konto, ordner.pfad, uids)
+            for uid, roh, _ in dienst.roh_stroemen(db, konto, ordner.pfad, uids)
         )
         return StreamingResponse(
             iter([daten]),
@@ -291,7 +291,7 @@ def ausgeben(
         # nur schrieb sie niemand.
         yield from dienst.als_mbox(
             dienst.status_einsetzen(roh, flags)
-            for _, roh, flags in dienst.roh_stroemen(konto, ordner.pfad, uids)
+            for _, roh, flags in dienst.roh_stroemen(db, konto, ordner.pfad, uids)
         )
 
     return StreamingResponse(

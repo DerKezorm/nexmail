@@ -58,13 +58,7 @@ def anlegen(db: Session, konto: Konto, name: str, eltern: Ordner | None = None) 
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
 
     with HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             trenner = _trenner(klient)
             sauber = name_pruefen(name, trenner)
@@ -164,13 +158,7 @@ def entfernen(db: Session, konto: Konto, ordner: Ordner) -> int:
 
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     with HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             try:
                 klient.unsubscribe_folder(pfad)
@@ -215,13 +203,7 @@ def umbenennen(db: Session, konto: Konto, ordner: Ordner, name: str) -> Ordner:
 
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     with HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             trenner = _trenner(klient)
             sauber = name_pruefen(name, trenner)

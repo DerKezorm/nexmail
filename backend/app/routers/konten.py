@@ -61,14 +61,19 @@ class Eingabe(BaseModel):
     imap_port: int = 993
     imap_sicherheit: str = "ssl"
     imap_benutzer: str = Field(min_length=1, max_length=320)
-    imap_passwort: str = Field(min_length=1, max_length=500)
+    #: ⚠️ **Leer ist erlaubt, wenn eine Zustimmung mitkommt.** Google und
+    #: Microsoft nehmen ueber IMAP kein Passwort mehr an; ein Pflichtfeld hier
+    #: hiesse, dort ein erfundenes einzutippen.
+    imap_passwort: str = Field(default="", max_length=500)
     smtp_server: str = Field(min_length=1, max_length=255)
     smtp_port: int = 587
     smtp_sicherheit: str = "starttls"
     smtp_benutzer: str = Field(min_length=1, max_length=320)
-    smtp_passwort: str = Field(min_length=1, max_length=500)
+    smtp_passwort: str = Field(default="", max_length=500)
     #: Freie Schlagworte zum Gruppieren der Postfächer in der Ordnerspalte.
     tags: list[str] | None = None
+    #: Statt der Passwoerter: eine erteilte Zustimmung (OAuth).
+    oauth_zugang_id: str = Field(default="", max_length=32)
 
     def als_zugangsdaten(self) -> Zugangsdaten:
         return Zugangsdaten(**self.model_dump())
@@ -155,6 +160,15 @@ class KontoAntwort(BaseModel):
     letzter_fehler_art: str = ""
     anzahl_ordner: int
     tags: list[str]
+    #: 'google', 'microsoft' — oder leer bei einem gewoehnlichen
+    #: IMAP-Postfach. Die Kachel zeigt daran, woher das Postfach kommt; ohne
+    #: das saehe ein Google-Postfach aus wie jedes andere und niemand wuesste,
+    #: warum dort keine Passwortfelder stehen.
+    oauth_art: str = ""
+    #: Wie viele Kalender an derselben Zustimmung haengen. ⚠️ **Die Zahl
+    #: gehoert in die Rueckfrage**, sonst hakt man „Kalender mit entfernen" an,
+    #: ohne zu wissen, wie viele das sind.
+    oauth_kalender: int = 0
 
 
 def _antwort(konto) -> KontoAntwort:
@@ -179,6 +193,8 @@ def _antwort(konto) -> KontoAntwort:
         letzter_fehler_art=konto.letzter_fehler_art or "",
         anzahl_ordner=len(konto.ordner),
         tags=kontendienst.tags_lesen(konto),
+        oauth_art=konto.oauth_zugang.art if konto.oauth_zugang else "",
+        oauth_kalender=len(konto.oauth_zugang.kalender) if konto.oauth_zugang else 0,
     )
 
 
@@ -245,11 +261,50 @@ def vorschlag(eingabe: NurAdresse, _: AngemeldeterBenutzer) -> VorschlagAntwort:
 
 
 @router.post("/pruefen", response_model=BefundAntwort)
-def pruefen(eingabe: Eingabe, _: AngemeldeterBenutzer) -> BefundAntwort:
-    """Beide Wege prüfen, ohne etwas zu speichern."""
+def pruefen(
+    eingabe: Eingabe, person: AngemeldeterBenutzer, db: DbSession
+) -> BefundAntwort:
+    """Beide Wege prüfen, ohne etwas zu speichern.
+
+    ⚠️ **Mit einer Zustimmung wird der Token geprueft, nicht ein Passwort.**
+    Ohne das scheitert der Test bei Google und Microsoft zwangslaeufig — und
+    weil er beim Anlegen Pflicht ist, liesse sich dort gar kein Postfach
+    einrichten.
+    """
+    wo, token = _wie_anmelden(db, person, eingabe)
+    return _befund_antwort(kontendienst.pruefen(eingabe.als_zugangsdaten(), wo, token))
+
+
+def _wie_anmelden(db, person, eingabe: Eingabe) -> tuple[str, str]:
+    """Wo das App-Passwort steht — und, bei OAuth, das Zugriffstoken.
+
+    ⚠️ **Eine Stelle, nicht zwei.** Der Verbindungstest laeuft an zwei Orten:
+    beim Pruefen **und** beim Anlegen (das der Oberflaeche bewusst nicht
+    glaubt). Am 03.09.2026 hatte nur der erste den Token bekommen — der Test
+    wurde gruen, das Anlegen scheiterte danach mit „app-spezifisches Passwort
+    noetig". Dieselbe Lehre wie bei den sechsundzwanzig IMAP-Verbindungen: Wer
+    denselben Griff zweimal schreibt, vergisst ihn einmal.
+    """
+    from ..models import OauthZugang
+    from ..services import mailoauth
+
     vorschlag_ = kontendienst.vorschlag_fuer(eingabe.adresse)
     wo = vorschlag_.app_passwort_wo if vorschlag_ else ""
-    return _befund_antwort(kontendienst.pruefen(eingabe.als_zugangsdaten(), wo))
+    if not eingabe.oauth_zugang_id:
+        return wo, ""
+
+    zugang = db.get(OauthZugang, eingabe.oauth_zugang_id)
+    if zugang is None or zugang.benutzer_id != person.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="oauth_zugang_unbekannt"
+        )
+    try:
+        token = mailoauth.zugriffstoken(db, zugang)
+    except mailoauth.OauthFehler as f:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(f)) from f
+    # ⚠️ Mit Zustimmung ist der App-Passwort-Hinweis falsch: Er schickt den
+    # Betreiber ein Passwort erzeugen, das hier gar nicht gebraucht wird.
+    return "", token
 
 
 @router.get("", response_model=list[KontoAntwort])
@@ -265,9 +320,8 @@ def anlegen(eingabe: Eingabe, person: AngemeldeterBenutzer, db: DbSession) -> Ko
     schon gemacht hat. Ein Aufruf, der der Oberfläche glaubt, legt bei jedem
     zweiten Werkzeug ein kaputtes Postfach an.
     """
-    vorschlag_ = kontendienst.vorschlag_fuer(eingabe.adresse)
-    wo = vorschlag_.app_passwort_wo if vorschlag_ else ""
-    befund = kontendienst.pruefen(eingabe.als_zugangsdaten(), wo)
+    wo, token = _wie_anmelden(db, person, eingabe)
+    befund = kontendienst.pruefen(eingabe.als_zugangsdaten(), wo, token)
 
     if not befund.ok:
         schlimm = befund.imap if not befund.imap.ok else befund.smtp
@@ -476,8 +530,21 @@ def ordner_entfernen(
 
 
 @router.delete("/{konto_id}", status_code=status.HTTP_204_NO_CONTENT)
-def entfernen(konto_id: str, person: AngemeldeterBenutzer, db: DbSession) -> None:
+def entfernen(
+    konto_id: str,
+    person: AngemeldeterBenutzer,
+    db: DbSession,
+    kalender_mit: bool = False,
+) -> None:
+    """⚠️ **Die Kalender gehen nur mit, wenn es jemand ausdrücklich will.**
+
+    Sie hängen an der **Zustimmung**, nicht am Postfach — ein Postfach zu
+    entfernen könnte sie also stehen lassen, und das wäre auch verteidigbar.
+    Nur weiß das niemand, der beides in einem Zug angelegt hat: Für ihn ist der
+    Kalender danach ein Waisenkind. Deshalb fragt die Oberfläche mit einem
+    Haken, vorbelegt mit **aus** — nichts wird still gelöscht.
+    """
     try:
-        kontendienst.entfernen(db, person, konto_id)
+        kontendienst.entfernen(db, person, konto_id, kalender_mit=kalender_mit)
     except kontendienst.KontoFehler as fehler:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler

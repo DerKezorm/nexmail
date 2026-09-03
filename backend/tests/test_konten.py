@@ -255,7 +255,7 @@ def _eingabe(adresse="anna@icloud.example"):
 @pytest.fixture
 def ohne_netz(monkeypatch):
     monkeypatch.setattr(anbieter, "_holen", lambda url: None)
-    monkeypatch.setattr(konten, "pruefen", lambda daten, wo="": _guter_befund())
+    monkeypatch.setattr(konten, "pruefen", lambda daten, wo="", token="": _guter_befund())
     yield
 
 
@@ -317,7 +317,7 @@ def test_kaputtes_postfach_wird_nicht_angelegt(klient, monkeypatch):
     monkeypatch.setattr(
         konten,
         "pruefen",
-        lambda daten, wo="": konten.Befund(
+        lambda daten, wo="", token="": konten.Befund(
             imap=konten.Teilbefund(ok=False, art="anmeldung", text="Passwort abgewiesen."),
             smtp=konten.Teilbefund(ok=True),
             ordner=[],
@@ -627,3 +627,78 @@ def test_der_ordnerzaehler_wird_gezaehlt_nicht_abgelesen(klient, ohne_netz):
     assert eingang["ungelesen"] == 2, "Die Antwort trägt die veraltete Spalte"
     assert eingang["anzahl"] == 3
 
+
+
+# --- Kalender beim Entfernen ---------------------------------------------- #
+
+
+def _mit_zustimmung(db, person):
+    """Ein Postfach und ein Kalender an derselben Google-Zustimmung."""
+    from app.models import Kalender, Konto, OauthZugang
+
+    zugang = OauthZugang(benutzer_id=person.id, art="google", adresse="anja@gmail.com")
+    db.add(zugang)
+    db.flush()
+    konto = Konto(
+        benutzer_id=person.id,
+        anzeigename="Anja",
+        adresse="anja@gmail.com",
+        imap_server="imap.gmail.com",
+        imap_benutzer="anja@gmail.com",
+        smtp_server="smtp.gmail.com",
+        smtp_benutzer="anja@gmail.com",
+        oauth_zugang_id=zugang.id,
+    )
+    kalender = Kalender(
+        benutzer_id=person.id, name="Privat", art="caldav",
+        url="https://example.com/dav/privat/", oauth_zugang_id=zugang.id,
+    )
+    db.add_all([konto, kalender])
+    db.commit()
+    return konto, kalender
+
+
+def test_ein_postfach_entfernen_laesst_den_kalender_stehen(db, klient):
+    """⚠️ **Der Kalender hängt an der Zustimmung, nicht am Postfach.**
+
+    Ihn stillschweigend mitzunehmen wäre ein Datenverlust, den niemand
+    angeordnet hat. Die Vorgabe ist deshalb: stehen lassen.
+    """
+    from app.models import Benutzer, Kalender
+
+    einrichten(klient)
+    person = db.query(Benutzer).one()
+    konto, _ = _mit_zustimmung(db, person)
+
+    konten.entfernen(db, person, konto.id)
+
+    assert db.query(Kalender).count() == 1
+
+
+def test_mit_haken_geht_der_kalender_mit(db, klient):
+    """Wer beides in einem Zug angelegt hat, hält den Kalender sonst für ein
+    Waisenkind — deshalb der Haken, vorbelegt mit aus. Am 03.09.2026 so
+    entschieden."""
+    from app.models import Benutzer, Kalender
+
+    einrichten(klient)
+    person = db.query(Benutzer).one()
+    konto, _ = _mit_zustimmung(db, person)
+
+    konten.entfernen(db, person, konto.id, kalender_mit=True)
+
+    assert db.query(Kalender).count() == 0
+
+
+def test_die_zahl_steht_an_der_kachel(db, klient):
+    """⚠️ Ohne sie hakt man „Kalender mit entfernen" an, ohne zu wissen, wie
+    viele das sind."""
+    from app.models import Benutzer
+
+    einrichten(klient)
+    person = db.query(Benutzer).one()
+    _mit_zustimmung(db, person)
+
+    zeile = klient.get("/api/konten").json()[0]
+    assert zeile["oauth_art"] == "google"
+    assert zeile["oauth_kalender"] == 1

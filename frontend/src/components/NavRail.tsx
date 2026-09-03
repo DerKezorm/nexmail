@@ -1,6 +1,6 @@
 /* Die schmale Leiste ganz links.
  *
- * Wenige Ziele: Mail, Aufgaben, Kontakte. Regeln und Signaturen wohnen in den
+ * Wenige Ziele: Mail, Kalender, Aufgaben, Kontakte. Regeln und Signaturen wohnen in den
  * Einstellungen — sie sind Einrichtung, keine taegliche Ansicht, und ein
  * Symbol, das man zweimal im Jahr drueckt, verbraucht hier nur
  * Aufmerksamkeit.
@@ -15,10 +15,11 @@
  * saessen Zeichen und Wortmarke sonst zweimal innerhalb von sechzig Pixeln.
  */
 import { useTranslation } from 'react-i18next'
-import { HelpCircle, ListChecks, Mail, Settings, Users } from 'lucide-react'
+import { CalendarDays, HelpCircle, ListChecks, Mail, Settings, Users } from 'lucide-react'
 
 export type Ansicht =
   | 'mail'
+  | 'kalender'
   | 'aufgaben'
   | 'kontakte'
   | 'einstellungen'
@@ -44,6 +45,7 @@ export function NavRail({
 
   const ziele: Array<{ id: Ansicht; symbol: React.ReactNode; text: string; zahl?: number }> = [
     { id: 'mail', symbol: <Mail />, text: t('nav.mail') },
+    { id: 'kalender', symbol: <CalendarDays />, text: t('nav.kalender') },
     { id: 'aufgaben', symbol: <ListChecks />, text: t('nav.aufgaben'), zahl: offeneAufgaben },
     { id: 'kontakte', symbol: <Users />, text: t('nav.kontakte') },
   ]

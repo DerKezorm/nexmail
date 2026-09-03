@@ -24,6 +24,15 @@ export interface DialogProps {
   width?: number | string
   onClose?: () => void
   closeLabel?: string
+  /** Schliesst ein Klick daneben oder Escape das Fenster?
+   *
+   * ⚠️ **Waehrend etwas laeuft: nein.** Ein Fenster, das gerade ein Postfach
+   * anlegt, darf nicht auf einen Klick daneben verschwinden — die Arbeit laeuft
+   * weiter, und der naechste Schritt, den es haette zeigen sollen, kommt nie.
+   * Der sichtbare Ausgang bleibt davon unberuehrt; es geht nur um das
+   * versehentliche Wegklicken.
+   */
+  abweisbar?: boolean
 }
 
 export function Dialog({
@@ -35,17 +44,18 @@ export function Dialog({
   width = 560,
   onClose,
   closeLabel = 'Schließen',
+  abweisbar = true,
 }: DialogProps) {
   const platte = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!open) return
     function beiTaste(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose?.()
+      if (e.key === 'Escape' && abweisbar) onClose?.()
     }
     document.addEventListener('keydown', beiTaste)
     return () => document.removeEventListener('keydown', beiTaste)
-  }, [open, onClose])
+  }, [open, onClose, abweisbar])
 
   if (!open) return null
 
@@ -56,7 +66,7 @@ export function Dialog({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--surface-overlay)] p-4 backdrop-blur-[2px]"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose?.()
+        if (abweisbar && e.target === e.currentTarget) onClose?.()
       }}
     >
       <div

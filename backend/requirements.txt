@@ -94,3 +94,17 @@ pyjwt==2.13.0
 # Im Abbild liegt die Datenbank ohnehin im System; das Paket kostet dort
 # nichts und macht beide Umgebungen gleich.
 tzdata==2026.1
+
+# Wiederholungen ausrechnen (RRULE nach RFC 5545).
+#
+# ⚠️ **Bewusst eine Bibliothek, anders als beim ICS-Lesen.** Der Leser in
+# services/kalender.py ist von Hand geschrieben, weil er einen kleinen,
+# abgeschlossenen Ausschnitt braucht. Eine Wiederholungsregel ist das
+# Gegenteil: „jeden letzten Freitag im Monat", COUNT gegen UNTIL, Ausnahmen
+# einzelner Termine, und ein Wechsel der Sommerzeit mittendrin. Wer das selbst
+# schreibt, rechnet still falsch — und ein Termin, der um eine Stunde oder
+# einen Tag daneben liegt, faellt erst auf, wenn man zu spaet kommt.
+#
+# dateutil ist die Umsetzung, gegen die alle anderen geprueft werden, und
+# bringt ausser six nichts mit.
+python-dateutil==2.9.0.post0

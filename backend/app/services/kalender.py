@@ -215,6 +215,13 @@ def lesen(roh: bytes | str, zeitzone: str = "UTC") -> Termin | None:
 
     termin = Termin()
     im_event = False
+    #: ⚠️ **Ein ``VEVENT`` enthaelt andere Bestandteile.** Ein ``VALARM`` traegt
+    #: ein eigenes ``DESCRIPTION`` („Erinnerung"), oft auch ein ``SUMMARY`` und
+    #: eine ``DURATION``. Wer die Verschachtelung nicht verfolgt, schreibt die
+    #: Erinnerung als Beschreibung des Termins in die Karte — am 03.09.2026 an
+    #: einer echten Einladung gesehen. Dieselbe Falle steht fuer ``vevent.py``
+    #: schon in CLAUDE.md; hier ist der zweite Leser.
+    tiefer = 0
     dauer = ""
     for zeile in _entfalten(text):
         name, parameter, wert = _zeile_zerlegen(zeile)
@@ -224,9 +231,19 @@ def lesen(roh: bytes | str, zeitzone: str = "UTC") -> Termin | None:
         if name == "BEGIN" and wert.strip().upper() == "VEVENT":
             im_event = True
             continue
-        if name == "END" and wert.strip().upper() == "VEVENT":
+        if name == "END" and wert.strip().upper() == "VEVENT" and not tiefer:
             break
         if not im_event:
+            continue
+
+        # Alles zwischen einem inneren BEGIN und seinem END gehoert dorthin.
+        if name == "BEGIN":
+            tiefer += 1
+            continue
+        if name == "END":
+            tiefer = max(0, tiefer - 1)
+            continue
+        if tiefer:
             continue
 
         if name == "UID":

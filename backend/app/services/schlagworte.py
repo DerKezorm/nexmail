@@ -374,13 +374,7 @@ def zuweisen(
         konto = db.get(Konto, konto_id)
         imap_pw, _ = kontendienst.passwoerter_lesen(konto)
         with abgleich.HALTER.schloss(konto.id):
-            klient = imapdienst.verbinden(
-                konto.imap_server,
-                konto.imap_port,
-                konto.imap_sicherheit,
-                konto.imap_benutzer,
-                imap_pw,
-            )
+            klient = imapdienst.fuer_konto(db, konto)
             try:
                 for _ordner_id, zeilen in je_ordner.items():
                     pfad = zeilen[0].ordner.pfad
@@ -475,13 +469,7 @@ def loeschen(db: Session, benutzer: Benutzer, schlagwort_id: int) -> int:
         konto = db.get(Konto, konto_id)
         imap_pw, _ = kontendienst.passwoerter_lesen(konto)
         with abgleich.HALTER.schloss(konto.id):
-            klient = imapdienst.verbinden(
-                konto.imap_server,
-                konto.imap_port,
-                konto.imap_sicherheit,
-                konto.imap_benutzer,
-                imap_pw,
-            )
+            klient = imapdienst.fuer_konto(db, konto)
             try:
                 for _ordner_id, zeilen in je_ordner.items():
                     zustand = klient.select_folder(zeilen[0].ordner.pfad, readonly=False)

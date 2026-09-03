@@ -136,13 +136,7 @@ def _in_gesendet_ablegen(db: Session, konto: Konto, roh: bytes) -> bool:
 
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     with abgleich.HALTER.schloss(konto.id):
-        klient = imapdienst.verbinden(
-            konto.imap_server,
-            konto.imap_port,
-            konto.imap_sicherheit,
-            konto.imap_benutzer,
-            imap_pw,
-        )
+        klient = imapdienst.fuer_konto(db, konto)
         try:
             klient.append(gesendet.pfad, roh, [rb"\Seen"], datetime.now(timezone.utc))
             abgleich.ordner_abgleichen(klient, db, konto, gesendet)
@@ -230,7 +224,33 @@ def versenden(db: Session, zeile: Ausgang) -> None:
     datei.unlink(missing_ok=True)
 
 
-def _smtp_senden(konto: Konto, passwort: str, empfaenger: list[str], roh: bytes) -> None:
+def _xoauth2_anmelden(verbindung, benutzer: str, token: str) -> None:
+    """``AUTH XOAUTH2`` von Hand — ``smtplib`` kennt das Verfahren nicht.
+
+    ⚠️ **Base64 ohne Zeilenumbrueche.** ``encodebytes`` haengt alle 76 Zeichen
+    ein ``
+`` an; ein Zugriffstoken ist laenger als das, und der Server sieht
+    dann eine abgeschnittene Zeile und meldet „Anmeldung fehlgeschlagen".
+    """
+    import base64
+
+    from .mailoauth import xoauth2
+
+    roh = base64.b64encode(xoauth2(benutzer, token).encode("utf-8")).decode("ascii")
+    code, antwort = verbindung.docmd("AUTH", f"XOAUTH2 {roh}")
+    if code not in (235, 503):
+        # ⚠️ Der Server erwartet nach einer Absage noch eine leere Zeile,
+        # sonst haengt die Verbindung.
+        verbindung.docmd("")
+        raise smtplib.SMTPAuthenticationError(code, antwort)
+
+
+def _smtp_senden(
+    konto: Konto, passwort: str, empfaenger: list[str], roh: bytes, token: str = ""
+) -> None:
+    """⚠️ **Mit ``token`` wird XOAUTH2 gesprochen.** Microsoft weist Basic Auth
+    beim Senden seit Fruehjahr 2026 ab, Google laengst; ein ``login()`` mit
+    Zugriffstoken bekaeme dieselbe Absage wie ein falsches Passwort."""
     import ssl
 
     if konto.smtp_sicherheit == "ssl":
@@ -239,7 +259,10 @@ def _smtp_senden(konto: Konto, passwort: str, empfaenger: list[str], roh: bytes)
         verbindung = smtplib.SMTP(konto.smtp_server, konto.smtp_port, timeout=30)
         verbindung.starttls(context=ssl.create_default_context())
     try:
-        verbindung.login(konto.smtp_benutzer, passwort)
+        if token:
+            _xoauth2_anmelden(verbindung, konto.smtp_benutzer, token)
+        else:
+            verbindung.login(konto.smtp_benutzer, passwort)
         # ⚠️ Die Empfängerliste kommt hier her, nicht aus den Kopfzeilen -
         # sonst bekäme eine Blindkopie nie etwas.
         verbindung.sendmail(konto.adresse, empfaenger, roh)

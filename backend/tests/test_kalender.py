@@ -20,7 +20,7 @@ from test_konten import _guter_befund
 @pytest.fixture
 def ohne_netz(monkeypatch):
     monkeypatch.setattr(anbieter, "_holen", lambda url: None)
-    monkeypatch.setattr(konten, "pruefen", lambda daten, wo="": _guter_befund())
+    monkeypatch.setattr(konten, "pruefen", lambda daten, wo="", token="": _guter_befund())
     yield
 
 
@@ -391,3 +391,53 @@ def test_fremde_post_bleibt_zu(klient, zweiter_klient, db, ohne_netz):
     anmelden(zweiter_klient, person.benutzername, "auch-geheim-456", geheimnis)
     assert zweiter_klient.get(f"/api/termine/{kennung}").status_code == 404
 
+
+def test_ein_alarm_ueberschreibt_die_beschreibung_nicht():
+    """⚠️ **Ein ``VEVENT`` enthält andere Bestandteile.**
+
+    Ein ``VALARM`` trägt ein eigenes ``DESCRIPTION`` („Erinnerung"), oft auch
+    ein ``SUMMARY``. Wer die Verschachtelung nicht verfolgt, schreibt die
+    Erinnerung als Beschreibung des Termins in die Karte — am 03.09.2026 an
+    einer echten Einladung gesehen. Dieselbe Falle wie in ``vevent.py``, nur
+    im zweiten Leser.
+    """
+    roh = _ics(
+        "UID:a@example.com",
+        "SUMMARY:Quartalsbesprechung",
+        "DESCRIPTION:Zahlen zum dritten Quartal.",
+        "DTSTART:20260917T120000Z",
+        "DTEND:20260917T133000Z",
+        "BEGIN:VALARM",
+        "TRIGGER:-PT15M",
+        "ACTION:DISPLAY",
+        "SUMMARY:Gleich geht es los",
+        "DESCRIPTION:Erinnerung",
+        "END:VALARM",
+    )
+
+    termin = kalender.lesen(roh)
+
+    assert termin is not None
+    assert termin.titel == "Quartalsbesprechung"
+    assert termin.beschreibung == "Zahlen zum dritten Quartal."
+
+
+def test_nach_dem_alarm_wird_weitergelesen():
+    """Die Gegenprobe: Das Überspringen darf nicht den Rest verschlucken —
+    sonst fehlten Ort und Teilnehmer, die hinter dem Alarm stehen."""
+    roh = _ics(
+        "UID:a@example.com",
+        "SUMMARY:Quartalsbesprechung",
+        "DTSTART:20260917T120000Z",
+        "BEGIN:VALARM",
+        "TRIGGER:-PT15M",
+        "END:VALARM",
+        "LOCATION:Halle 3",
+        "ATTENDEE;CN=Jan:mailto:jan@example.com",
+    )
+
+    termin = kalender.lesen(roh)
+
+    assert termin is not None
+    assert termin.ort == "Halle 3"
+    assert [t.adresse for t in termin.teilnehmer] == ["jan@example.com"]

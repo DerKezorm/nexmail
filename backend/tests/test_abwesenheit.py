@@ -27,7 +27,7 @@ from test_konten import _eingabe, _guter_befund
 @pytest.fixture
 def ohne_netz(monkeypatch):
     monkeypatch.setattr(anbieter, "_holen", lambda url: None)
-    monkeypatch.setattr(konten, "pruefen", lambda daten, wo="": _guter_befund())
+    monkeypatch.setattr(konten, "pruefen", lambda daten, wo="", token="": _guter_befund())
     yield
 
 

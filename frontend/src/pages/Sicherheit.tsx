@@ -14,6 +14,7 @@ import { KeyRound, LogOut, Monitor, ShieldAlert, ShieldCheck } from 'lucide-reac
 import { api, ApiFehler } from '../api/client'
 import type { Ich } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
+import { Oauthzugaenge } from '../components/Oauthzugaenge'
 import { Badge, Button, Dialog, IconButton, Input } from '../ds'
 import { ZweiterFaktor } from '../components/ZweiterFaktor'
 import { appPfad } from '../lib/basis'
@@ -249,6 +250,12 @@ export function Sicherheit({
           </ul>
         </section>
       )}
+
+      {/* --- Google und Microsoft ---------------------------------------- */}
+      {/* ⚠️ **Hier, nicht beim Postfach.** Eine Zustimmung gilt fuer Postfach
+          UND Kalender; sie an einem der beiden aufzuhaengen hiesse, sie beim
+          anderen zu verstecken. */}
+      <Oauthzugaenge istBetreiber={Boolean(ich?.ist_betreiber)} />
 
       {/* --- Angemeldete Geräte ------------------------------------------ */}
       <section className="flex flex-col gap-3">

@@ -44,10 +44,20 @@ _aufraeumen_halt = threading.Event()
 _wiedervorlagefaden: threading.Thread | None = None
 _wiedervorlage_halt = threading.Event()
 
+_kalenderfaden: threading.Thread | None = None
+_kalender_halt = threading.Event()
+
 #: Wie oft nach faelligen geplanten Sendungen gesehen wird. Eine Minute:
 #: Der Zeitpunkt wird auf die Minute eingestellt - viel spaeter als eine
 #: Minute darf „18:00" nicht hinausgehen.
 VERSANDPLAN_NACHSEHEN_SEKUNDEN = 60
+
+#: Wie oft die verbundenen Kalender nachgesehen werden.
+#: ⚠️ **Seltener als die Post.** Ein Termin, der zehn Minuten spaeter
+#: erscheint, faellt niemandem auf; eine Mail schon. Und das ``ctag`` macht
+#: einen Lauf ohne Aenderung fast kostenlos — aber „fast" mal sechzig
+#: Kalender waere trotzdem dauernde Last fuer nichts.
+KALENDER_TAKT_SEKUNDEN = 600
 
 
 def laeuft() -> bool:
@@ -199,7 +209,42 @@ def wiedervorlage_starten() -> None:
     _wiedervorlagefaden.start()
 
 
+def kalender_starten() -> None:
+    """Die verbundenen Kalender im Takt nachsehen.
+
+    ⚠️ **Ein eigener Faden, nicht am Post-Takt.** Wer den mit
+    ``NEXMAIL_TAKT_SEKUNDEN=0`` abschaltet, meint „nicht dauernd Post holen",
+    nicht „meine Kalender einfrieren" — dieselbe Ueberlegung wie beim
+    Sicherungsplan.
+    """
+    global _kalenderfaden
+
+    if _kalenderfaden is not None and _kalenderfaden.is_alive():
+        return
+    _kalender_halt.clear()
+    _kalenderfaden = threading.Thread(
+        target=_kalenderschleife, name="nexmail-kalender", daemon=True
+    )
+    _kalenderfaden.start()
+
+
+def _kalenderschleife() -> None:
+    from ..models import Benutzer
+    from .kalenderabgleich import alle_abgleichen
+
+    while not _kalender_halt.wait(KALENDER_TAKT_SEKUNDEN):
+        try:
+            with SessionLocal() as db:
+                for person in db.scalars(select(Benutzer)):
+                    alle_abgleichen(db, person)
+        except Exception as fehler:  # noqa: BLE001
+            # Der Faden darf nie sterben — sonst hoert nexmail still auf,
+            # nach Terminen zu sehen, und niemand merkt es.
+            logger.warning("A calendar sync round failed: %s", fehler)
+
+
 def anhalten() -> None:
+    _kalender_halt.set()
     _wiedervorlage_halt.set()
     _aufraeumen_halt.set()
     _versand_halt.set()
@@ -238,12 +283,22 @@ def einmal() -> dict[str, int]:
             if _halt.is_set():
                 break
             stand["postfaecher"] += 1
+            # ⚠️ **Die Adresse VOR der Arbeit merken.** Wird das Postfach
+            # waehrenddessen entfernt, ist die Sitzung nach dem gescheiterten
+            # Schreibvorgang gesperrt — und dann wirft schon ``konto.adresse``
+            # erneut, mitten im ``except``. Die Ausnahme reisst die ganze Runde
+            # mit, samt aller uebrigen Postfaecher. Am 03.09.2026 aus dem
+            # Betrieb gemeldet.
+            adresse = konto.adresse
             try:
                 runden = abgleich.konto_abgleichen(db, konto, nur_posteingang=True)
                 stand["neu"] += sum(r.neu for r in runden.values())
             except Exception as fehler:  # noqa: BLE001
                 stand["gescheitert"] += 1
-                logger.info("Background sync skipped %s: %s", konto.adresse, fehler)
+                # Erst zurueckrollen, dann berichten: Sonst laeuft schon die
+                # naechste Abfrage in dieselbe gesperrte Sitzung.
+                db.rollback()
+                logger.info("Background sync skipped %s: %s", adresse, fehler)
     if stand["neu"]:
         logger.info("Background sync brought %s new message(s).", stand["neu"])
     return stand

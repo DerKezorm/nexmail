@@ -7,6 +7,7 @@ damit die Einladung beim zweiten Öffnen nicht aussieht wie beim ersten.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -53,6 +54,9 @@ class Einladung(BaseModel):
     #: Was zuletzt geantwortet wurde: ``zusage`` | ``vorbehalt`` | ``absage``.
     antwort: str = ""
     antwort_am: datetime | None = None
+    #: Gesetzt, wenn dieser Termin schon in einem Kalender liegt — dann
+    #: bietet die Karte das Uebernehmen nicht noch einmal an.
+    im_kalender: bool = False
 
 
 class AntwortEingabe(BaseModel):
@@ -115,7 +119,106 @@ def _einladung(db, person, nachricht: Nachricht) -> tuple[kalender.Termin, Einla
         teilnehmer=[PersonZeile(name=t.name, adresse=t.adresse) for t in termin.teilnehmer],
         antwort=gemerkt.antwort if gemerkt else "",
         antwort_am=gemerkt.gesendet if gemerkt else None,
+        im_kalender=_liegt_im_kalender(db, person, termin.uid),
     )
+
+
+def _liegt_im_kalender(db, person, uid: str) -> bool:
+    from ..models import Kalender, Termin as Kalendertermin
+
+    if not uid:
+        return False
+    return db.scalar(
+        select(Kalendertermin.id)
+        .join(Kalender)
+        .where(Kalender.benutzer_id == person.id, Kalendertermin.uid == uid)
+        .limit(1)
+    ) is not None
+
+
+class Uebernahme(BaseModel):
+    kalender_id: str = ""
+
+
+@router.post("/{nachricht_id}/uebernehmen", response_model=Einladung)
+def uebernehmen(
+    nachricht_id: int, eingabe: Uebernahme, person: AngemeldeterBenutzer, db: DbSession
+) -> Einladung:
+    """Den Termin aus der Einladung in einen Kalender übernehmen.
+
+    ⚠️ **Auf Klick, nicht automatisch beim Zusagen.** So entschieden am
+    02.09.2026: Wer zusagt, ohne den Termin wirklich zu wollen, soll ihn nicht
+    im Kalender wiederfinden.
+
+    ⚠️ **Der Termin behält die ``UID`` der Einladung.** Daran erkennt jeder
+    andere Client denselben Termin wieder — und daran sieht die Karte beim
+    zweiten Öffnen, dass er schon drin ist.
+    """
+    from ..services import termine as kalenderdienst
+
+    nachricht = _meine(db, person, nachricht_id)
+    gefunden = _einladung(db, person, nachricht)
+    if gefunden is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="termin_unbekannt")
+    termin, sicht = gefunden
+
+    kalender_id = eingabe.kalender_id
+    if not kalender_id:
+        # Der erste beschreibbare Kalender. ⚠️ Ein Abo kann nichts aufnehmen.
+        offene = [k for k in kalenderdienst.liste(db, person) if not k.nur_lesen]
+        if not offene:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="kalender_fehlt"
+            )
+        kalender_id = offene[0].id
+
+    try:
+        neu = kalenderdienst.anlegen(
+            db, person, kalender_id,
+            titel=termin.titel or "",
+            beginn=_als_zeit(termin.beginn, termin.ganztaegig),
+            ende=_als_zeit(termin.ende, termin.ganztaegig) if termin.ende else None,
+            ganztaegig=termin.ganztaegig,
+            ort=termin.ort or "",
+            beschreibung=termin.beschreibung or "",
+            aus_einladung=True,
+            # ⚠️ **Was die Einladung ausmacht, geht mit.** Ohne den
+            # Organisator und die Teilnehmer waere der uebernommene Termin ein
+            # Titel mit Uhrzeit — und im Kalender saehe niemand mehr, mit wem.
+            organisator=(
+                json.dumps({
+                    "name": termin.organisator.name,
+                    "adresse": termin.organisator.adresse,
+                    "antwort": "", "rolle": "",
+                })
+                if termin.organisator
+                else ""
+            ),
+            teilnehmer=(
+                json.dumps([
+                    {"name": t.name, "adresse": t.adresse, "antwort": "", "rolle": ""}
+                    for t in termin.teilnehmer
+                ])
+                if termin.teilnehmer
+                else ""
+            ),
+        )
+        # ⚠️ Die UID der Einladung uebernehmen, nicht eine neue erfinden.
+        neu.uid = termin.uid or neu.uid
+        db.commit()
+    except kalenderdienst.TerminFehler as f:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(f)) from f
+
+    sicht.im_kalender = True
+    return sicht
+
+
+def _als_zeit(wert: str, ganztaegig: bool) -> datetime:
+    """Die ISO-Zeichenkette der Einladung als Zeitpunkt."""
+    if ganztaegig and len(wert) == 10:
+        return datetime.fromisoformat(f"{wert}T00:00:00+00:00")
+    wann = datetime.fromisoformat(wert)
+    return wann if wann.tzinfo else wann.replace(tzinfo=timezone.utc)
 
 
 @router.get("/{nachricht_id}", response_model=Einladung | None)

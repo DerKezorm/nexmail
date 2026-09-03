@@ -31,6 +31,10 @@ interface Props {
   bestehend?: KontoZeile | null
   /** Schlagworte, die an anderen Postfächern schon hängen. */
   bekannteTags?: string[]
+  /** ⚠️ **Im Fenster gibt es kein „Abbrechen".** Das Kreuz oben ist dort der
+   *  Ausgang, und zwei Wege hinaus, die dasselbe tun, sind einer zu viel —
+   *  dieselbe Regel, die `Dialog` selbst durchsetzt. */
+  imFenster?: boolean
 }
 
 interface Felder {
@@ -74,6 +78,7 @@ export function KontoFormular({
   naechsteFarbe,
   aufAbbrechen,
   aufAngelegt,
+  imFenster = false,
   bestehend = null,
   bekannteTags = [],
 }: Props) {
@@ -121,6 +126,21 @@ export function KontoFormular({
   const [testet, setTestet] = useState(false)
   const [legtAn, setLegtAn] = useState(false)
   const [fehler, setFehler] = useState('')
+
+  /* ⚠️ **Google und Microsoft nehmen ueber IMAP kein Passwort mehr an.** Statt
+     eines erfundenen Eintrags im Passwortfeld steht hier die Liste der
+     erteilten Zustimmungen — leer, solange keine da ist, und dann sieht man
+     das Feld gar nicht. */
+  const [zugaenge, setZugaenge] = useState<
+    Array<{ id: string; art: string; adresse: string }>
+  >([])
+  const [zugangId, setZugangId] = useState('')
+  useEffect(() => {
+    void api
+      .holen<Array<{ id: string; art: string; adresse: string }>>('/api/mailoauth/zugaenge')
+      .then(setZugaenge)
+      .catch(() => setZugaenge([]))
+  }, [])
 
   const uhr = useRef<number | undefined>(undefined)
 
@@ -206,12 +226,13 @@ export function KontoFormular({
       imap_port: felder.imap_port,
       imap_sicherheit: felder.imap_sicherheit,
       imap_benutzer: felder.imap_benutzer.trim(),
-      imap_passwort: felder.passwort,
+      imap_passwort: zugangId ? '' : felder.passwort,
       smtp_server: felder.smtp_server.trim(),
       smtp_port: felder.smtp_port,
       smtp_sicherheit: felder.smtp_sicherheit,
       smtp_benutzer: felder.smtp_benutzer.trim(),
-      smtp_passwort: felder.passwort,
+      smtp_passwort: zugangId ? '' : felder.passwort,
+      oauth_zugang_id: zugangId,
     }
   }
 
@@ -246,8 +267,8 @@ export function KontoFormular({
   const vollstaendig =
     felder.adresse.includes('@') &&
     // Beim Bearbeiten ist ein leeres Passwortfeld erlaubt: Es heißt
-    // „unverändert", nicht „leer".
-    (Boolean(bestehend) || felder.passwort.length > 0) &&
+    // „unverändert", nicht „leer". Mit einer Zustimmung gibt es gar keines.
+    (Boolean(bestehend) || Boolean(zugangId) || felder.passwort.length > 0) &&
     felder.imap_server &&
     felder.smtp_server &&
     felder.imap_benutzer &&
@@ -259,7 +280,7 @@ export function KontoFormular({
     felder.imap_benutzer !== felder.smtp_benutzer
 
   return (
-    <div className="flex max-w-[640px] flex-col gap-4">
+    <div className={`flex flex-col gap-4 ${imFenster ? '' : 'max-w-[640px]'}`}>
       <Input
         label={t('konto.adresse')}
         placeholder={t('konto.adresse_platzhalter')}
@@ -319,6 +340,23 @@ export function KontoFormular({
         vorschlaege={bekannteTags}
       />
 
+      {zugaenge.length > 0 && (
+        <Select
+          label={t('konto.anmeldung')}
+          value={zugangId}
+          onChange={(e) => setZugangId(e.target.value)}
+          hint={zugangId ? t('konto.anmeldung_oauth_hinweis') : undefined}
+        >
+          <option value="">{t('konto.anmeldung_passwort')}</option>
+          {zugaenge.map((z) => (
+            <option key={z.id} value={z.id}>
+              {z.adresse || z.art}
+            </option>
+          ))}
+        </Select>
+      )}
+
+      {!zugangId && (
       <Input
         label={t('konto.passwort')}
         type="password"
@@ -336,8 +374,9 @@ export function KontoFormular({
           setzen({ passwort: e.target.value })
         }}
       />
+      )}
 
-      {vorschlag?.app_passwort_noetig && (
+      {vorschlag?.app_passwort_noetig && !zugangId && (
         <div className="flex gap-3 rounded-lg border border-info/40 bg-info-soft px-4 py-3">
           <Info className="mt-0.5 size-4 shrink-0 text-info" />
           <div className="min-w-0">
@@ -459,9 +498,11 @@ export function KontoFormular({
               ? t('konto.speichern')
               : t('konto.hinzufuegen')}
         </Button>
-        <Button variant="ghost" onClick={aufAbbrechen}>
-          {t('aktion.abbrechen')}
-        </Button>
+        {!imFenster && (
+          <Button variant="ghost" onClick={aufAbbrechen}>
+            {t('aktion.abbrechen')}
+          </Button>
+        )}
       </div>
     </div>
   )

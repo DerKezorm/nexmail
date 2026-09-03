@@ -95,6 +95,10 @@ class Zugangsdaten:
     absendername: str = ""
     #: Freie Schlagworte. ``None`` heißt beim Ändern „unverändert lassen".
     tags: list[str] | None = None
+    #: Statt der beiden Passwoerter: eine erteilte Zustimmung.
+    #: ⚠️ **Google und Microsoft lassen nichts anderes mehr zu** — Basic Auth
+    #: ueber IMAP und SMTP wird dort abgewiesen.
+    oauth_zugang_id: str = ""
 
 
 #: Mehr als das braucht niemand, und es hält die Pillenreihe lesbar.
@@ -132,6 +136,9 @@ def tags_lesen(konto: Konto) -> list[str]:
 
 
 def _pruefen_regeln(daten: Zugangsdaten, passwort_noetig: bool = True) -> None:
+    # ⚠️ Mit Zustimmung gibt es kein Passwort — und es darf auch keines geben.
+    if daten.oauth_zugang_id:
+        passwort_noetig = False
     if passwort_noetig and not (daten.imap_passwort and daten.smtp_passwort):
         # ⚠️ Beim Ändern ist ein leeres Feld erlaubt und heißt „unverändert" —
         # beim Anlegen wäre es ein Postfach ohne Zugang.
@@ -179,6 +186,7 @@ def anlegen(db: Session, benutzer: Benutzer, daten: Zugangsdaten) -> Konto:
         imap_port=daten.imap_port,
         imap_sicherheit=daten.imap_sicherheit,
         imap_benutzer=daten.imap_benutzer.strip(),
+        oauth_zugang_id=daten.oauth_zugang_id or None,
         smtp_server=daten.smtp_server.strip(),
         smtp_port=daten.smtp_port,
         smtp_sicherheit=daten.smtp_sicherheit,
@@ -276,11 +284,31 @@ def passwoerter_lesen(konto: Konto) -> tuple[str, str]:
     )
 
 
-def entfernen(db: Session, benutzer: Benutzer, konto_id: str) -> None:
+def entfernen(
+    db: Session, benutzer: Benutzer, konto_id: str, *, kalender_mit: bool = False
+) -> None:
+    """⚠️ **Die Kalender haengen an der Zustimmung, nicht am Postfach.**
+
+    Sie hier immer mitzunehmen waere falsch — dieselbe Zustimmung kann ein
+    zweites Postfach tragen, und ein Kalender mit eigenen Terminen ist nichts,
+    was nebenbei verschwindet. Sie immer stehen zu lassen ist aber auch falsch:
+    Wer beides in einem Zug angelegt hat, haelt den Kalender danach fuer ein
+    Waisenkind — genau so am 03.09.2026 gemeldet. Also entscheidet es der
+    Mensch beim Entfernen, und die Vorgabe ist **stehen lassen**.
+    """
     konto = eines(db, benutzer, konto_id)
+    wie_viele = 0
+    if kalender_mit and konto.oauth_zugang_id:
+        from ..models import Kalender
+
+        for kalender in db.scalars(
+            select(Kalender).where(Kalender.oauth_zugang_id == konto.oauth_zugang_id)
+        ):
+            db.delete(kalender)
+            wie_viele += 1
     db.delete(konto)
     db.commit()
-    logger.info("A mailbox was removed.")
+    logger.info("A mailbox was removed, along with %d calendar(s).", wie_viele)
 
 
 # --- Verbindung prüfen --------------------------------------------------- #
@@ -305,7 +333,7 @@ class Befund:
         return self.imap.ok and self.smtp.ok
 
 
-def pruefen(daten: Zugangsdaten, app_passwort_wo: str = "") -> Befund:
+def pruefen(daten: Zugangsdaten, app_passwort_wo: str = "", token: str = "") -> Befund:
     """Beide Wege prüfen — **und beide melden**, nicht nur den ersten Fehler.
 
     ⚠️ Wer beim ersten Fehler abbricht, schickt den Betreiber durch zwei
@@ -317,13 +345,11 @@ def pruefen(daten: Zugangsdaten, app_passwort_wo: str = "") -> Befund:
     koennen: list[str] = []
 
     try:
+        # ⚠️ Hier gibt es noch kein Postfach — der Verbindungstest laeuft
+        # vor dem Anlegen, mit den Daten aus dem Formular.
         klient = imapdienst.verbinden(
-            daten.imap_server,
-            daten.imap_port,
-            daten.imap_sicherheit,
-            daten.imap_benutzer,
-            daten.imap_passwort,
-            app_passwort_wo,
+            daten.imap_server, daten.imap_port, daten.imap_sicherheit,
+            daten.imap_benutzer, daten.imap_passwort, app_passwort_wo, token=token,
         )
         try:
             koennen = imapdienst.faehigkeiten(klient)
@@ -345,6 +371,7 @@ def pruefen(daten: Zugangsdaten, app_passwort_wo: str = "") -> Befund:
             daten.smtp_benutzer,
             daten.smtp_passwort,
             app_passwort_wo,
+            token=token,
         )
         smtp_befund = Teilbefund(ok=True)
     except imapdienst.Verbindungsfehler as fehler:
