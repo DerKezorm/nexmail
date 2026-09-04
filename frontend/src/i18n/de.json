@@ -577,7 +577,9 @@
     "bilder_immer_hinweis": "Bilder aller Absender ohne Nachfrage laden. Damit erfährt jeder Absender, wann du seine Mail geöffnet hast. Die Bilder holt nexmails Server, nicht dein Browser — deine Adresse bleibt also verborgen.",
     "bilder_absender": "Immer geladen von",
     "bilder_absender_leer": "Noch kein Absender freigegeben.",
-    "bilder_absender_entfernen": "Freigabe für {{adresse}} zurücknehmen"
+    "bilder_absender_entfernen": "Freigabe für {{adresse}} zurücknehmen",
+    "eindunkeln": "Fremde Mails eindunkeln",
+    "eindunkeln_hinweis": "Newsletter bringen fast immer ihr eigenes Weiß mit und stehen als helle Platte im dunklen Fenster. Eingeschaltet werden sie umgekehrt statt umgefärbt: Der Abstand zwischen Schrift und Grund bleibt genau erhalten, Bilder werden zurückgedreht. Geht es bei einer Mail daneben, schaltet das Menü über der Mail sie einzeln zurück. Wirkt nur im dunklen Modus."
   },
   "protokoll": {
     "stufe": "Ausführlichkeit",

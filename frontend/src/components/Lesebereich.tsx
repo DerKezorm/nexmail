@@ -46,6 +46,10 @@ import { Kontextmenue } from './Kontextmenue'
 import type { MenueEintrag } from './Kontextmenue'
 import { appPfad } from '../lib/basis'
 import { nachrichtDrucken } from '../lib/drucken'
+import { lesegrund } from '../lib/lesegrund'
+import type { Lesegrund } from '../lib/lesegrund'
+import { leseseite } from '../lib/leserahmen'
+import { useGemerkt } from '../lib/haken'
 
 interface Props {
   nachricht: VolleNachricht | null
@@ -69,6 +73,16 @@ interface Props {
    *  der Liste, aus derselben Quelle in `App` gebaut. Fehlt der Rückruf
    *  (eigenes Fenster), gibt es den Eintrag nicht. */
   wiedervorlageMenue?: (n: Nachricht) => MenueEintrag[]
+  /** Steht die Anwendung dunkel?
+   *
+   * ⚠️ **Als Eigenschaft, nicht aus dem DOM.** Der Modus wohnt als Zustand in
+   * `Start` und wird von dort in einer Wirkung als `data-theme` ans Dokument
+   * geschrieben — also NACH dem Rendern. Wer das Attribut beim Rendern liest,
+   * bekommt beim Umschalten den vorigen Wert und danach keinen neuen mehr:
+   * Am 04.09.2026 blieb die Mail deshalb umgekehrt, obwohl die Anwendung
+   * schon hell stand. Ohne Vorgabewert, damit eine vergessene Stelle im Bau
+   * auffällt und nicht im Betrieb. */
+  dunkelmodus: boolean
 }
 
 export function Lesebereich({
@@ -81,6 +95,7 @@ export function Lesebereich({
   aufSchlagwort,
   aufNeuesSchlagwort,
   wiedervorlageMenue,
+  dunkelmodus,
 }: Props) {
   const { t, i18n } = useTranslation()
   const [freigegeben, setFreigegeben] = useState<string | null>(null)
@@ -92,11 +107,11 @@ export function Lesebereich({
      danebenliegt, soll man es von Hand richten können — und zwar nur für diese
      eine Mail, nicht als Einstellung, die man später nicht mehr findet. */
   const [eigenerGrund, setEigenerGrund] = useState(false)
-  /* Ob die Anwendung selbst dunkel steht. Nur dann macht der Umschalter
-     überhaupt einen Unterschied. */
-  const dunkelmodus =
-    typeof document !== 'undefined' &&
-    document.documentElement.getAttribute('data-theme') !== 'light'
+  /* ⚠️ **Im Browser, nicht im Server.** Ob eine fremde Mail eingedunkelt
+     wird, ist eine Frage des Bildschirms — dieselbe Familie wie Dichte und
+     Anreißer. „Bilder immer laden" liegt daneben im Server, weil der Server
+     danach handelt; hier handelt niemand als der Browser. */
+  const [eindunkeln] = useGemerkt<boolean>('nexmail.mails_eindunkeln', false)
   /* Die Termin-Einladung dieser Nachricht, falls eine darin steckt.
      ⚠️ Nachgeladen, nicht mitgeliefert: Die allermeisten Mails tragen keine,
      und der Lesebereich soll nicht bei jeder Mail eine .ics zerlegen. */
@@ -165,12 +180,17 @@ export function Lesebereich({
   }
 
   const inhalt = freigegeben ?? nachricht?.koerper ?? ''
-  /* Hell wird der Rahmen, wenn die Mail eigene Farben setzt — es sei denn,
-     man hat für diese eine Mail das Gegenteil verlangt. */
-  const hell = (nachricht?.faerbtSichSelbst ?? false) !== eigenerGrund
+  /* Auf welchem Grund die Mail steht — die Entscheidung liegt in
+     `lib/lesegrund.ts`, damit sie ohne Browser prüfbar ist. */
+  const grund = lesegrund({
+    faerbtSichSelbst: nachricht?.faerbtSichSelbst ?? false,
+    umgeschaltet: eigenerGrund,
+    dunkelmodus,
+    eindunkeln,
+  })
   const seite = useMemo(
-    () => (nachricht ? rahmenInhalt(inhalt, hell) : ''),
-    [nachricht, inhalt, hell],
+    () => (nachricht ? rahmenInhalt(inhalt, grund) : ''),
+    [nachricht, inhalt, grund],
   )
 
   /* Die Höhe des Rahmens folgt der Mail.
@@ -328,8 +348,11 @@ export function Lesebereich({
                 ? [
                     {
                       id: 'grund',
-                      text: hell ? t('lesen.dunkel_zeigen') : t('lesen.hell_zeigen'),
-                      symbol: hell ? <Moon /> : <Sun />,
+                      /* ⚠️ Der Knopf nennt das ZIEL, nicht den Zustand. Steht
+                         die Mail hell, führt er ins Dunkle — und umgekehrt. */
+                      text:
+                        grund === 'hell' ? t('lesen.dunkel_zeigen') : t('lesen.hell_zeigen'),
+                      symbol: grund === 'hell' ? <Moon /> : <Sun />,
                       tun: () => setEigenerGrund((v) => !v),
                     } satisfies MenueEintrag,
                   ]
@@ -580,53 +603,20 @@ export function Lesebereich({
 
 /* Die Seite im Rahmen.
  *
- * Nur noch das Stylesheet — das Ausklinken der Bilder hat der Server erledigt.
- * Die vier Farbwerte werden hereingereicht, weil der Rahmen keine Variablen
- * des Elternfensters sieht.
+ * ⚠️ **Der Bau selbst wohnt in `lib/leserahmen.ts`, ohne Browser.** Hier
+ * bleibt nur das Ablesen der vier Farbwerte — ein `<iframe srcdoc>` sieht die
+ * Variablen des Elternfensters nicht, also müssen sie hineingeschrieben
+ * werden. Getrennt ist es, damit die schnelle Prüfebene den Bau überhaupt
+ * laden kann; siehe den Kopf jener Datei.
  */
-function rahmenInhalt(koerper: string, aufHell: boolean): string {
-  /* ⚠️ **Ganz oder gar nicht, je Mail.** Sagt die Mail irgendetwas über Farbe,
-     rechnet sie mit hellem Grund und bekommt ihn — sonst trägt sie die Farben
-     der Anwendung. Halb umzufärben ist der Fehler: Am 02.09.2026 gemessen
-     stand eine Mail mit `color:#333` und ohne eigenen Grund als Dunkelgrau auf
-     Fast-Schwarz da: Kontrast 1,53:1, auf hellem Grund sind es 12,63:1.
-
-     ⚠️ **`Canvas` und `CanvasText`, keine erfundene Farbe.** Unter
-     `color-scheme: light` fragt das die Systemfarben ab — genau den hellen
-     Grund, mit dem die Mail rechnet. Ein hier eingetipptes `#ffffff` wäre eine
-     Farbe, die in keinem Token steht. */
-  const stil = `
-    :root { color-scheme: ${aufHell ? 'light' : 'light dark'}; }
-    body {
-      margin: 0; padding: 16px 24px;
-      font: 400 14px/1.6 var(--nm-sans);
-      color: ${aufHell ? 'CanvasText' : 'var(--nm-text)'};
-      background: ${aufHell ? 'Canvas' : 'transparent'};
-      overflow-wrap: break-word;
-    }
-    p { margin: 0 0 12px; }
-    ${aufHell ? '' : 'a { color: var(--nm-accent); }'}
-    ${aufHell ? '' : 'b, strong { color: var(--nm-strong); }'}
-    code, pre { font-family: var(--nm-mono); font-size: .92em; }
-    pre { white-space: pre-wrap; }
-    img { max-width: 100%; height: auto; }
-    /* ⚠️ Auch das leere src. Ein Bild ohne Adresse ist für den Browser kein
-       fehlendes, sondern ein kaputtes — er malt das Bruchsymbol. Der Server
-       lässt das Attribut inzwischen ganz weg; die Regel hier steht daneben,
-       weil ein älterer Bestand noch leere Adressen tragen kann. */
-    img:not([src]), img[src=""] { display: none; }
-    table { max-width: 100%; }
-  `
-
+function rahmenInhalt(koerper: string, grund: Lesegrund): string {
   const wurzel = getComputedStyle(document.documentElement)
-  const vars = [
-    `--nm-sans:${wurzel.getPropertyValue('--font-sans')}`,
-    `--nm-mono:${wurzel.getPropertyValue('--font-mono')}`,
-    `--nm-text:${wurzel.getPropertyValue('--text-2')}`,
-    `--nm-strong:${wurzel.getPropertyValue('--text-1')}`,
-    `--nm-accent:${wurzel.getPropertyValue('--text-accent')}`,
-  ].join(';')
-
-  return `<!doctype html><html><head><meta charset="utf-8">
-<style>:root{${vars}}${stil}</style></head><body>${koerper}</body></html>`
+  return leseseite(koerper, grund, {
+    sans: wurzel.getPropertyValue('--font-sans'),
+    mono: wurzel.getPropertyValue('--font-mono'),
+    text: wurzel.getPropertyValue('--text-2'),
+    stark: wurzel.getPropertyValue('--text-1'),
+    akzent: wurzel.getPropertyValue('--text-accent'),
+  })
 }
+

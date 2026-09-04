@@ -52,6 +52,12 @@ export function Darstellung() {
   const [dichte, setDichte] = useGemerkt<Dichte>('nexmail.dichte', 'normal')
   const [anreisser, setAnreisser] = useGemerkt<boolean>('nexmail.anreisser', true)
   const [punkte, setPunkte] = useGemerkt<boolean>('nexmail.punkte', true)
+  /* ⚠️ **Im Browser, nicht im Server — anders als „Bilder immer laden"
+     weiter unten.** Ob eine fremde Mail eingedunkelt wird, entscheidet der
+     Bildschirm, vor dem man sitzt: am hellen Arbeitsplatz will man das weiße
+     Blatt, abends nicht. Bilder dagegen holt der **Server**, und der muss
+     wissen, ob er darf. */
+  const [eindunkeln, setEindunkeln] = useGemerkt<boolean>('nexmail.mails_eindunkeln', false)
   /* Wann eine offene Nachricht als gelesen gilt — in Sekunden.
      `0` heißt sofort, `-1` heißt: nur von Hand.
      ⚠️ **Outlooks Auswahl, nicht eine eigene.** „Wer Outlook bedienen kann,
@@ -224,6 +230,13 @@ export function Darstellung() {
         label={t('darstellung.punkte')}
         description={t('darstellung.punkte_hinweis')}
         onCheckedChange={setPunkte}
+      />
+
+      <Switch
+        checked={eindunkeln}
+        label={t('darstellung.eindunkeln')}
+        description={t('darstellung.eindunkeln_hinweis')}
+        onCheckedChange={setEindunkeln}
       />
 
       <section className="mt-2 flex flex-col gap-4 border-t border-line-subtle pt-5">

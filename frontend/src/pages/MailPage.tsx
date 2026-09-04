@@ -22,6 +22,8 @@ import type { VolleNachricht } from '../api/laden'
 import type { Verfassart } from '../components/VerfassenFenster'
 
 interface Props {
+  /** Steht die Anwendung dunkel? Nur durchgereicht — siehe `Lesebereich`. */
+  dunkelmodus: boolean
   konten: Konto[]
   ordner: Ordner[]
   nachrichten: Nachricht[]
@@ -231,6 +233,7 @@ export function MailPage(p: Props) {
             </div>
             <div className="min-h-0 flex-1">
               <Lesebereich
+                dunkelmodus={p.dunkelmodus}
                 nachricht={offene}
                 laedt={p.offeneLaedt}
                 aufVerfassen={(art, n) => p.aufVerfassen(art, n)}
@@ -311,6 +314,7 @@ export function MailPage(p: Props) {
 
       <div className="min-w-0 flex-1">
         <Lesebereich
+          dunkelmodus={p.dunkelmodus}
           nachricht={offene}
           laedt={p.offeneLaedt}
           aufVerfassen={(art, n) => p.aufVerfassen(art, n)}

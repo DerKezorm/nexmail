@@ -577,7 +577,9 @@
     "bilder_immer_hinweis": "Load images from every sender without asking. Every sender then learns when you opened their message. The images are fetched by nexmail's server, not by your browser, so your address stays hidden.",
     "bilder_absender": "Always loaded from",
     "bilder_absender_leer": "No sender allowed yet.",
-    "bilder_absender_entfernen": "Withdraw the permission for {{adresse}}"
+    "bilder_absender_entfernen": "Withdraw the permission for {{adresse}}",
+    "eindunkeln": "Darken foreign mail",
+    "eindunkeln_hinweis": "Newsletters almost always bring their own white and sit as a bright slab in a dark window. Switched on, they are inverted rather than recoloured: the distance between text and background stays exactly as it was, and images are turned back. If it goes wrong on one mail, the menu above it switches that one back. Only takes effect in dark mode."
   },
   "protokoll": {
     "stufe": "Detail",

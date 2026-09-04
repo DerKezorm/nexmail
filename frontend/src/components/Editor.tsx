@@ -63,6 +63,24 @@ interface Props {
 
 export function Editor({ inhalt, aufAendern, aufBild, aufEditor }: Props) {
   const editor = useEditor({
+    /* ⚠️ **Nicht schon beim Rendern bauen, sondern in der Wirkung.**
+       `useEditor` legt den Editor sonst mitten im Rendern an und plant im
+       selben Atemzug seine Zerstörung in einer Millisekunde
+       (`EditorInstanceManager`: `setEditor(getInitialEditor()); scheduleDestroy()`).
+       Abbestellt wird die erst von der Mount-Wirkung. Damit gilt eine
+       stillschweigende Annahme: Zwischen Rendern und Festschreiben liegt
+       weniger als eine Millisekunde.
+
+       Am 04.09.2026 gebrochen, als der Editor per `lazy()` nachgeladen wurde:
+       Er entsteht dann in demselben Festschreibe-Vorgang wie das ganze
+       Verfassen-Fenster, und der dauert länger. Der Editor war tot, bevor
+       seine eigene Wirkung lief — `getHTML()` fiel über `schema === null`,
+       und die Anwendung war weiß. Mit `false` entsteht er in der Wirkung, und
+       die Frist läuft gar nicht erst.
+
+       ⚠️ Der Preis ist ein Durchgang mit `editor === null`. Den gab es vorher
+       auch schon (unten `if (!editor)`), er ist nur jetzt der Normalfall. */
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({ heading: false }),
       Underline,
@@ -111,11 +129,18 @@ export function Editor({ inhalt, aufAendern, aufBild, aufEditor }: Props) {
   // Wenn von außen ein anderer Startinhalt kommt (andere Nachricht), muss der
   // Editor ihn übernehmen — sonst steht die vorige Antwort noch drin.
   useEffect(() => {
-    if (editor && inhalt !== editor.getHTML()) {
+    /* ⚠️ **Ein zerstörter Editor ist immer noch wahr.** `editor` allein zu
+       prüfen genügt nicht: Nach `destroy()` steht das Objekt weiter da, aber
+       `schema` ist null, und `getHTML()` wirft. Genau daran ist die Anwendung
+       am 04.09.2026 gestorben. */
+    if (!editor || editor.isDestroyed) return
+    if (inhalt !== editor.getHTML()) {
       editor.commands.setContent(inhalt, { emitUpdate: false })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inhalt])
+    /* ⚠️ **`editor` gehört in die Liste.** Wird er ausgetauscht, muss der
+       Inhalt mitkommen — sonst öffnet sich das Fenster ohne Zitat und ohne
+       Signatur, und das sagt niemand. */
+  }, [inhalt, editor])
 
   if (!editor) return <div className="min-h-0 flex-1" />
 

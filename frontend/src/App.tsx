@@ -13,7 +13,7 @@
  * gehen als IMAP-Befehl hinaus, und erst danach verschwindet die Zeile hier.
  * Geht es auf dem Server nicht, ändert sich auch hier nichts.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Archive,
@@ -51,16 +51,39 @@ import type { Suchbereich } from './components/Kopfleiste'
 import { Kontextmenue } from './components/Kontextmenue'
 import { useNachfrage } from './components/Nachfrage'
 import type { MenueEintrag } from './components/Kontextmenue'
-import { VerfassenFenster } from './components/VerfassenFenster'
+/* ⚠️ **Editor und Kalenderseite kommen erst auf Klick.** Zusammen wiegen sie
+   439 kB, also gut ein Drittel des JavaScript, und beide hingen fest am
+   Einstieg — auch bei jemandem, der nur Post liest. Am 04.09.2026 nachgeholt,
+   als die Waage in `tools/gewicht-pruefen.mjs` das zweite Mal anschlug.
+
+   ⚠️ **Das Verfassen-Fenster hing IMMER im Baum** und schaltete über `offen`.
+   Bedingt zu zeichnen ändert, **wann** es seinen Zustand aufbaut — genau davor
+   warnt SPAETER.md. Der Ausweg ist ein Riegel statt einer Bedingung: Einmal
+   geöffnet, bleibt es hängen. Vorher tut es ohnehin nichts; alle vier seiner
+   Effekte beginnen mit `if (!offen) return`. */
+const VerfassenFenster = lazy(() =>
+  import('./components/VerfassenFenster').then((m) => ({ default: m.VerfassenFenster })),
+)
 import type { Sendedaten, Verfassart } from './components/VerfassenFenster'
 import type { Ziel } from './components/Ordnerspalte'
 import { Lesebereich } from './components/Lesebereich'
 import { MailPage } from './pages/MailPage'
 import { AufgabenPage } from './pages/AufgabenPage'
-import { KalenderPage } from './pages/KalenderPage'
+const KalenderPage = lazy(() =>
+  import('./pages/KalenderPage').then((m) => ({ default: m.KalenderPage })),
+)
 import { KontaktePage } from './pages/KontaktePage'
-import { EinstellungenPage } from './pages/EinstellungenPage'
-import { Verwaltung } from './pages/Verwaltung'
+/* ⚠️ **Die Einstellungsseite hält den Editor am Einstieg fest.** Signaturen
+   und Textvorlagen benutzen denselben `Editor` wie das Verfassen-Fenster; so
+   lange sie fest eingebunden sind, hilft ein `lazy()` am Fenster gar nichts —
+   Tiptap bleibt im ersten Besuch. Am 04.09.2026 gemessen: erst mit dieser
+   Zeile fällt der 380-kB-Block wirklich heraus. */
+const EinstellungenPage = lazy(() =>
+  import('./pages/EinstellungenPage').then((m) => ({ default: m.EinstellungenPage })),
+)
+const Verwaltung = lazy(() =>
+  import('./pages/Verwaltung').then((m) => ({ default: m.Verwaltung })),
+)
 import type { VerwaltungsReiter } from './pages/Verwaltung'
 import type { Reiter } from './pages/EinstellungenPage'
 import type { Ich } from './api/client'
@@ -329,6 +352,26 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
      *  Inhalt aus dem Speicher, statt eine Vorlage zu holen. */
     wiederauf?: Sendedaten | null
   }>({ offen: false, art: 'neu', bezug: null })
+
+  /* ⚠️ **Ein Riegel, keine Bedingung.** Sobald das Fenster einmal offen war,
+     bleibt es im Baum — von da an verhält sich alles wie vorher, samt „Senden
+     rückgängig". Vorher ist es nicht da, und das kostet nichts: Alle seine
+     Effekte steigen bei `!offen` sofort aus. */
+  const [verfassenGebraucht, setVerfassenGebraucht] = useState(false)
+  useEffect(() => {
+    if (verfassen.offen) setVerfassenGebraucht(true)
+  }, [verfassen.offen])
+
+  /* ⚠️ **Vorgeholt, sobald der Browser Luft hat.** Ohne das wäre der erste
+     Klick auf „Neue Nachricht" eine Wartezeit von 380 kB — das Gewicht wäre
+     gespart und die Bedienung schlechter. So ist der Brocken meist schon da,
+     bevor ihn jemand braucht. */
+  useEffect(() => {
+    const holen = () => void import('./components/VerfassenFenster')
+    const w = window as Window & { requestIdleCallback?: (cb: () => void) => number }
+    if (w.requestIdleCallback) w.requestIdleCallback(holen)
+    else setTimeout(holen, 2000)
+  }, [])
 
   const [reiter, setReiter] = useState<Reiter>('postfaecher')
   const [formularOffen, setFormularOffen] = useState(false)
@@ -1620,6 +1663,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           </div>
         ) : (
           <Lesebereich
+            dunkelmodus={modus === 'dark'}
             nachricht={soloNachricht}
             laedt={soloStand === 'laedt'}
             imEigenenFenster
@@ -1627,6 +1671,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           />
         )}
 
+        {verfassenGebraucht && (
+        <Suspense fallback={null}>
         <VerfassenFenster
           offen={verfassen.offen}
           art={verfassen.art}
@@ -1636,6 +1682,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           aufRueckholbar={(ausgangId, bis, daten) => setSendeRueck({ ausgangId, bis, daten })}
           aufSchliessen={() => setVerfassen((v) => ({ ...v, offen: false }))}
         />
+        </Suspense>
+        )}
         {sendeRueck && (
           <div
             role="status"
@@ -1724,6 +1772,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
               />
 
               <MailPage
+                dunkelmodus={modus === 'dark'}
                 konten={konten}
                 ordner={ordnerMitZaehlern}
                 nachrichten={nachrichten}
@@ -1805,7 +1854,11 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           {/* ⚠️ **Noch eine Attrappe** — erfundene Termine, kein Backend. Wie
             Stufe A der Mail-Ansicht: erst die Ansicht abstimmen, dann die
             Datenquelle tauschen. */}
-          {ansicht === 'kalender' && <KalenderPage />}
+          {ansicht === 'kalender' && (
+            <Suspense fallback={null}>
+              <KalenderPage />
+            </Suspense>
+          )}
 
           {ansicht === 'aufgaben' && (
             <AufgabenPage
@@ -1825,6 +1878,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           {ansicht === 'ueber' && <UeberPage />}
 
           {ansicht === 'einstellungen' && (
+            <Suspense fallback={null}>
             <EinstellungenPage
               ich={ich}
               ichNeuLaden={ichNeuLaden}
@@ -1852,14 +1906,17 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 void listeLaden()
               }}
             />
+            </Suspense>
           )}
 
           {ansicht === 'verwaltung' && (
+            <Suspense fallback={null}>
             <Verwaltung
               reiter={verwaltungsReiter}
               aufReiter={setVerwaltungsReiter}
               ich={ich}
             />
+            </Suspense>
           )}
         </div>
       </div>
@@ -1998,6 +2055,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
 
       {nachfrage}
 
+      {verfassenGebraucht && (
+      <Suspense fallback={null}>
       <VerfassenFenster
         offen={verfassen.offen}
         art={verfassen.art}
@@ -2015,6 +2074,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           void ausgangLaden()
         }}
       />
+      </Suspense>
+      )}
     </div>
   )
 }

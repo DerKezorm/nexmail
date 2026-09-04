@@ -82,12 +82,10 @@ export default defineConfig({
          * Kalenderseite, 43,9 kB i18next. Jede Zeile Anwendungscode machte
          * bisher alles davon ungueltig.
          *
-         * ⚠️ **Was hier NICHT steht, ist ein ``lazy()`` auf den Editor.**
-         * Das waere der eigentliche Gewinn beim ersten Besuch (35 Prozent des
-         * JavaScript), aendert aber, WANN das Verfassen-Fenster seinen Zustand
-         * aufbaut: Es haengt heute immer im Baum und schaltet ueber ``offen``.
-         * Der Weg nach „Senden rueckgaengig“ verlaesst sich darauf. Das
-         * gehoert einzeln gebaut und einzeln geprueft, nicht nebenbei.
+         * ⚠️ **Der Editor haengt seit dem 04.09.2026 nicht mehr am Einstieg.**
+         * ``lazy()`` in ``App.tsx`` holt ihn erst auf Klick; dieser Block
+         * bestimmt nur noch, in welche Datei die Fremdbibliotheken wandern.
+         * Der erste Besuch faellt damit von 1074 auf 528 kB.
          */
         manualChunks(id: string) {
           if (!id.includes('node_modules')) return undefined
