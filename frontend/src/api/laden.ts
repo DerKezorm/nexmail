@@ -829,6 +829,9 @@ export interface Terminwunsch {
    *  **unverändert** — nur eine wirklich mitgeschickte Liste lässt den Server
    *  die Teilnehmer im Original ersetzen. */
   teilnehmer?: { adresse: string; name: string }[]
+  /** Unter welcher Adresse eingeladen wird. Der Server prüft sie gegen die
+   *  Postfächer; ein Kalender gehört zu keinem. */
+  absender?: string
 }
 
 /** Eine fällige Erinnerung, wie das Sammelfenster sie zeigt. */
@@ -878,6 +881,20 @@ export async function erinnerungSchlummern(id: number, minuten: number): Promise
   await api.senden(`/api/erinnerungen/${id}/schlummern`, { minuten })
 }
 
+/** Die Einladung zu einem Termin verschicken.
+ *
+ * ⚠️ **Ein eigener Aufruf, kein Nebeneffekt des Speicherns.** Es ist die
+ * zweite Stelle, an der nexmail von sich aus Post an Fremde schickt; sie
+ * gehoert hinter eine ausdrueckliche Handlung.
+ */
+export async function einladungVersenden(terminId: number): Promise<number> {
+  const antwort = await api.senden<{ empfaenger: number }>(
+    `/api/kalender/termine/${terminId}/einladen`,
+    {},
+  )
+  return antwort.empfaenger
+}
+
 /** Termine nach Titel, Ort und Beschreibung suchen.
  *
  * ⚠️ **Gesucht wird im Server.** Wer alles holt und dann aussiebt, findet nur,
@@ -909,6 +926,7 @@ export async function terminAnlegen(wunsch: Terminwunsch): Promise<TerminZeile> 
       rrule: wunsch.rrule ?? '',
       erinnerung: wunsch.erinnerung ?? -1,
       teilnehmer: wunsch.teilnehmer ?? [],
+      absender: wunsch.absender ?? '',
     }),
   )
 }
@@ -936,6 +954,7 @@ export async function terminAendern(
       erinnerung: aenderung.erinnerung ?? null,
       // ⚠️ ``null`` heisst hier **unveraendert** — siehe oben.
       teilnehmer: aenderung.teilnehmer ?? null,
+      absender: aenderung.absender ?? null,
       umfang: aenderung.umfang ?? 'alle',
       vorkommen: aenderung.vorkommen ?? null,
     }),

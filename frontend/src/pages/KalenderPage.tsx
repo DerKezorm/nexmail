@@ -37,7 +37,9 @@ import {
   kalenderAbgleichen,
   kalenderAendern,
   kalenderEntfernen,
+  einladungVersenden,
   kalenderLaden,
+  kontenLaden,
   terminAendern,
   terminAnlegen,
   terminEntfernen,
@@ -45,6 +47,7 @@ import {
   termineSuchen,
 } from '../api/laden'
 import type { Beteiligter, KalenderZeile, TerminZeile, Umfang } from '../api/laden'
+import type { Konto } from '../daten/typen'
 import { Button, Checkbox, Dialog, EmptyState, Input, Select } from '../ds'
 import { PUNKT_KLASSE } from '../lib/farben'
 import type { Wiederholung } from '../components/Wiederholungsfeld'
@@ -224,6 +227,10 @@ export function KalenderPage() {
   const [sicht, setSicht] = useState<Sicht>('monat')
   const [anker, setAnker] = useState(() => new Date())
   const [kalender, setKalender] = useState<KalenderZeile[] | null>(null)
+  /* Die Postfächer — nur für die Absenderwahl der Einladung.
+     ⚠️ **Ein Kalender gehört zu keinem Postfach.** Die Adresse, unter der
+     eingeladen wird, muss deshalb gewählt werden; der Server prüft sie. */
+  const [postfaecher, setPostfaecher] = useState<Konto[]>([])
   const [termine, setTermine] = useState<TerminZeile[]>([])
   const [fehler, setFehler] = useState('')
   const [offen, setOffen] = useState<TerminZeile | null>(null)
@@ -268,6 +275,9 @@ export function KalenderPage() {
 
   const stammLaden = useCallback(async () => {
     try {
+      // ⚠️ Ein Fehlschlag bei den Postfächern darf den Kalender nicht kosten;
+      // ohne sie fehlt nur die Absenderwahl.
+      void kontenLaden().then(setPostfaecher).catch(() => undefined)
       setKalender(await kalenderLaden())
     } catch {
       setKalender([])
@@ -406,6 +416,27 @@ export function KalenderPage() {
         await termineHolen()
       })()
     })
+  }
+
+  /** Nach dem Speichern fragen, ob die Einladung wirklich hinausgeht.
+   *
+   * ⚠️ **Auch beim Ändern gefragt.** Wer einen Tippfehler in der Notiz
+   * ausbessert, schickt sonst allen eine neue Einladung — und das merkt er
+   * erst an den Rückfragen. Der Termin ist zu diesem Zeitpunkt schon
+   * gespeichert; „Nur speichern" verliert also nichts.
+   */
+  async function einladenFragen(terminId: number, anzahl: number, von: string) {
+    const ja = await fragen({
+      titel: t('kalender.einladen_frage'),
+      text: t('kalender.einladen_text', { count: anzahl, von }),
+      knopf: t('kalender.einladen_knopf'),
+    })
+    if (!ja) return
+    try {
+      await einladungVersenden(terminId)
+    } catch (f) {
+      melden(f)
+    }
   }
 
   function kalenderMenue(k: KalenderZeile): MenueEintrag[] {
@@ -714,6 +745,8 @@ export function KalenderPage() {
           kalender={(kalender ?? []).filter((k) => !k.nurLesen)}
           gesperrt={Boolean(offen && nachId.get(offen.kalenderId)?.nurLesen)}
           herkunft={offen ? (nachId.get(offen.kalenderId)?.herkunft ?? '') : ''}
+          postfaecher={postfaecher}
+          aufEinladen={einladenFragen}
           aufFehler={melden}
           aufUmfang={mitUmfang}
           onClose={() => {
@@ -1294,6 +1327,8 @@ function Terminfenster({
   kalender,
   gesperrt,
   herkunft,
+  postfaecher,
+  aufEinladen,
   aufFehler,
   aufUmfang,
   onClose,
@@ -1304,6 +1339,8 @@ function Terminfenster({
   kalender: KalenderZeile[]
   gesperrt: boolean
   herkunft: string
+  postfaecher: Konto[]
+  aufEinladen: (terminId: number, anzahl: number, von: string) => Promise<void>
   aufFehler: (f: unknown) => void
   aufUmfang: (t: TerminZeile, was: 'aendern' | 'loeschen', tun: (u: Umfang) => void) => void
   onClose: () => void
@@ -1359,6 +1396,15 @@ function Terminfenster({
   const leuteBeruehrt = useRef(false)
   const [neueAdresse, setNeueAdresse] = useState('')
 
+  /** Alle Adressen, unter denen eingeladen werden kann — Postfach und Aliasse. */
+  const absenderWahl = postfaecher.flatMap((k) => [
+    { adresse: k.adresse, wer: k.anzeigename },
+    ...(k.aliase ?? []).map((a) => ({ adresse: a.adresse, wer: a.name || k.anzeigename })),
+  ])
+  const [absender, setAbsender] = useState(
+    termin?.organisator?.adresse || absenderWahl[0]?.adresse || '',
+  )
+
   function personDazu(roh: string) {
     const adresse = roh.trim().toLowerCase()
     setNeueAdresse('')
@@ -1382,7 +1428,7 @@ function Terminfenster({
     setLaeuft(true)
     try {
       if (!termin) {
-        await terminAnlegen({
+        const neu = await terminAnlegen({
           kalenderId,
           titel,
           beginn: ausFeld(beginn, ganztaegig),
@@ -1393,7 +1439,9 @@ function Terminfenster({
           rrule,
           erinnerung,
           teilnehmer: leute.map((p) => ({ adresse: p.adresse, name: p.name })),
+          absender: leute.length ? absender : '',
         })
+        if (leute.length) await aufEinladen(neu.id, leute.length, absender)
         onFertig()
         return
       }
@@ -1413,11 +1461,13 @@ function Terminfenster({
               teilnehmer: leuteBeruehrt.current
                 ? leute.map((p) => ({ adresse: p.adresse, name: p.name }))
                 : undefined,
+              absender: leuteBeruehrt.current && leute.length ? absender : undefined,
               // Die Regel gehört der Reihe: Bei „nur dieser" bleibt sie außen vor.
               rrule: umfang === 'dieser' ? undefined : rrule,
               umfang,
               vorkommen: termin.beginn,
             })
+            if (leute.length) await aufEinladen(termin.id, leute.length, absender)
             onFertig()
           } catch (f) {
             aufFehler(f)
@@ -1652,6 +1702,23 @@ function Terminfenster({
                 </li>
               ))}
             </ul>
+            {!gesperrt && leute.length > 0 && absenderWahl.length > 0 && (
+              /* ⚠️ **Je Termin gewählt, nicht am Kalender hinterlegt.** Ein
+                 Kalender gehört zu keinem Postfach; wer den Vereinstermin aus
+                 dem privaten Kalender heraus anlegt, soll trotzdem als Verein
+                 einladen können. */
+              <Select
+                label={t('kalender.einladung_von')}
+                value={absender}
+                onChange={(e) => setAbsender(e.target.value)}
+              >
+                {absenderWahl.map((a) => (
+                  <option key={a.adresse} value={a.adresse}>
+                    {a.wer} — {a.adresse}
+                  </option>
+                ))}
+              </Select>
+            )}
             {!gesperrt && (
               <Input
                 type="email"
