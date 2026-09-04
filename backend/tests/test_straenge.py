@@ -251,6 +251,42 @@ def test_neu_aufbauen_repariert_zerrissene_straenge(welt, db):
     assert a.thread_key == b.thread_key
 
 
+def test_neu_aufbauen_traegt_eine_kette_ueber_drei_stufen(welt, db):
+    """⚠️ **Zwei Nachrichten beweisen den Neuaufbau nicht.**
+
+    Bei zwei Stufen trifft die Antwort die Wurzel unmittelbar; die Zeile, die
+    sich den Strang **je Kennung** merkt, wird gar nicht gebraucht, und
+    „aeltestes zuerst" auch nicht. Beide Mutationen liefen am 04.09.2026
+    durch — die Reihe war gruen, waehrend die Funktion halb ausgebaut war.
+
+    Hier antwortet C auf B und B auf A, und C nennt **nur** B. Damit muss der
+    Aufbau wissen, zu welchem Strang B gehoert — und dafuer muss er A vorher
+    gesehen haben.
+
+    ⚠️ **Angelegt wird verkehrt herum**, damit die Reihenfolge in der Tabelle
+    nicht zufaellig schon die richtige ist.
+    """
+    konto, ordner = welt
+    c = _legen(db, konto, ordner["posteingang"], kennung="<c@x>", betreff="Ganz anders",
+               references=["<b@x>"], tage=2)
+    b = _legen(db, konto, ordner["posteingang"], kennung="<b@x>", betreff="Anderer Betreff",
+               references=["<a@x>"], tage=1)
+    a = _legen(db, konto, ordner["posteingang"], kennung="<a@x>", betreff="Angebot")
+
+    for zeile in (a, b, c):
+        zeile.thread_key = "kaputt"
+    db.commit()
+
+    straenge.neu_aufbauen(db, konto.benutzer_id)
+    for zeile in (a, b, c):
+        db.refresh(zeile)
+
+    assert a.thread_key == b.thread_key == c.thread_key, (
+        f"Die Kette zerfaellt: A={a.thread_key} B={b.thread_key} C={c.thread_key}"
+    )
+    assert a.thread_key == "<a@x>", "Der Strang haengt nicht an seiner Wurzel."
+
+
 def test_die_kette_traegt_auch_ohne_gleichen_betreff(welt, db):
     """⚠️ **Der Test, der die Antwortkette wirklich prueft.**
 
