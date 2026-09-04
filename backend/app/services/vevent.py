@@ -427,13 +427,22 @@ def _falten(zeile: str) -> list[str]:
     return raus
 
 
-def bauen(termin, jetzt: datetime) -> str:
+def bauen(termin, jetzt: datetime, methode: str = "") -> str:
     """Eine vollständige ``.ics`` mit genau einem ``VEVENT``.
 
     Für Termine, die in nexmail entstanden sind — dort gibt es kein Original,
     auf dem man schreiben könnte.
+
+    ⚠️ **``methode`` gehoert in den Kalender, nicht in den Termin.** Ohne
+    ``METHOD:REQUEST`` halten Outlook und Google eine Einladung fuer einen
+    beliebigen Anhang und zeigen keine Zusagen-Knoepfe. Fuer den Weg zum
+    CalDAV-Server bleibt sie leer: Dort ist die Datei der Termin selbst, keine
+    Nachricht ueber ihn, und manche Server weisen eine ``METHOD`` sogar ab.
     """
-    zeilen = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//nexapps//nexmail//DE", "BEGIN:VEVENT"]
+    zeilen = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//nexapps//nexmail//DE"]
+    if methode:
+        zeilen.append(f"METHOD:{methode}")
+    zeilen.append("BEGIN:VEVENT")
     zeilen += _zeilen_fuer(termin, jetzt)
     # ⚠️ Ein hier gebauter Termin ist unserer — seine Teilnehmer duerfen mit.
     zeilen += _personen_zeilen(termin)

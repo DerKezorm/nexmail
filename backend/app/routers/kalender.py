@@ -18,11 +18,15 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
+from ..models import Termin
 from ..deps import AngemeldeterBenutzer, DbSession
 from ..services import caldav
 from ..services import kalenderabgleich
 from ..services import termine as dienst
 from ..services import wiederholung
+from ..services import konten as kontendienst
+from ..services import termineinladung as einladungsdienst
+from ..services.aliase import lesen as aliase_lesen
 from ..services.kontakte import _ADRESSE
 from ..meldung import MeldungHttp
 
@@ -52,6 +56,25 @@ def _leute_json(eingaben) -> str:
         gesehen.add(adresse)
         raus.append({"name": e.name.strip(), "adresse": adresse, "antwort": "NEEDS-ACTION"})
     return json.dumps(raus, ensure_ascii=False) if raus else ""
+
+
+def _absender_json(db, person, adresse: str) -> str:
+    """Der Organisator als JSON — geprueft, nicht uebernommen.
+
+    ⚠️ Leer heisst „kein Organisator", nicht „irgendeiner". Ein Termin ohne
+    Teilnehmer braucht keinen.
+    """
+    if not adresse.strip():
+        return ""
+    konto = einladungsdienst.postfach_fuer(db, person, adresse)
+    name = kontendienst.absendername(konto)
+    for alias in aliase_lesen(konto):
+        if alias.adresse == adresse.strip().lower():
+            name = alias.name or name
+    return json.dumps(
+        {"name": name, "adresse": adresse.strip().lower(), "antwort": "", "rolle": "CHAIR"},
+        ensure_ascii=False,
+    )
 
 
 def _fehler(f: Exception) -> HTTPException:
@@ -179,6 +202,10 @@ class TerminWunsch(BaseModel):
     erinnerung: int = -1
     #: Wer eingeladen werden soll. Leer heisst: niemand.
     teilnehmer: list[TeilnehmerEingabe] = Field(default_factory=list)
+    #: Unter welcher Adresse eingeladen wird. ⚠️ Ein Kalender gehoert zu keinem
+    #: Postfach; die Adresse wird gegen die Postfaecher geprueft, nicht
+    #: uebernommen.
+    absender: str = Field(default="", max_length=320)
 
 
 class TerminAenderung(BaseModel):
@@ -199,6 +226,7 @@ class TerminAenderung(BaseModel):
     #: selbst eingeladen wurde, wuerde das sonst die Zusagen der anderen
     #: wegwerfen — siehe ``vevent.aktualisieren``.
     teilnehmer: list[TeilnehmerEingabe] | None = None
+    absender: str | None = Field(default=None, max_length=320)
     #: ``dieser`` | ``folgende`` | ``alle``
     umfang: str = "alle"
     #: Der Beginn des angeklickten Vorkommens. Ohne ihn laesst sich „nur
@@ -341,6 +369,7 @@ def termin_anlegen(
             beschreibung=wunsch.beschreibung, rrule=wunsch.rrule,
             erinnerung=wunsch.erinnerung,
             teilnehmer=_leute_json(wunsch.teilnehmer),
+            organisator=_absender_json(db, person, wunsch.absender),
         )
     except dienst.TerminFehler as f:
         raise _fehler(f) from f
@@ -362,10 +391,40 @@ def termin_aendern(
             teilnehmer=(
                 None if aenderung.teilnehmer is None else _leute_json(aenderung.teilnehmer)
             ),
+            organisator=(
+                None
+                if aenderung.absender is None
+                else _absender_json(db, person, aenderung.absender)
+            ),
         )
     except dienst.TerminFehler as f:
         raise _fehler(f) from f
     return _sicht(dienst.Sicht(termin, termin.beginn, termin.ende, bool(termin.rrule)))
+
+
+class Einladungsstand(BaseModel):
+    #: An wie viele Personen die Einladung ging.
+    empfaenger: int
+
+
+@router.post("/termine/{termin_id}/einladen", response_model=Einladungsstand)
+def einladen(termin_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Einladungsstand:
+    """Die Einladung zu diesem Termin verschicken.
+
+    ⚠️ **Ein eigener Aufruf, nicht ein Nebeneffekt des Speicherns.** Das ist
+    die zweite Stelle, an der nexmail von sich aus Post an Fremde schickt; sie
+    gehoert hinter eine ausdrueckliche Handlung. Die Oberflaeche fragt davor,
+    auch beim Aendern — wer einen Tippfehler in der Notiz ausbessert, soll
+    nicht allen eine neue Einladung schicken.
+    """
+    termin = db.get(Termin, termin_id)
+    if termin is None or termin.benutzer_id != person.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    try:
+        anzahl = einladungsdienst.versenden(db, person, termin)
+    except einladungsdienst.EinladungFehler as f:
+        raise MeldungHttp.aus(f, status.HTTP_400_BAD_REQUEST) from f
+    return Einladungsstand(empfaenger=anzahl)
 
 
 @router.delete("/termine/{termin_id}", status_code=status.HTTP_204_NO_CONTENT)

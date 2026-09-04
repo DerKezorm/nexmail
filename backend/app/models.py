@@ -1261,6 +1261,15 @@ class Termin(Base):
     #: der ganze Rueckkanal (``METHOD:REPLY``, ``SEQUENCE``, ``CANCEL``).
     organisator: Mapped[str] = mapped_column(Text, default="")
     teilnehmer: Mapped[str] = mapped_column(Text, default="")
+    #: Wann zuletzt eine Einladung zu diesem Termin hinausging.
+    #:
+    #: ⚠️ **Daran haengt die ``SEQUENCE``.** Die erste Einladung geht mit der
+    #: Nummer hinaus, die der Termin hat; jede weitere zaehlt hoch. Ohne das
+    #: Hochzaehlen halten Outlook und Google die zweite Einladung fuer eine
+    #: Wiederholung der ersten und zeigen die Aenderung gar nicht an — mit
+    #: Hochzaehlen bei JEDEM Versand waere dagegen schon die erste eine
+    #: „Aktualisierung" eines Termins, den niemand kennt.
+    eingeladen_am: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
     #: ``CONFIRMED`` | ``TENTATIVE`` | ``CANCELLED``
     status: Mapped[str] = mapped_column(String(16), default="CONFIRMED")
 
