@@ -19,6 +19,7 @@ import { Benachrichtigungen } from './Benachrichtigungen'
 import { Darstellung } from './Darstellung'
 import { KontoFormular } from './KontoFormular'
 import { Schlagworte } from './Schlagworte'
+import { KiDienst } from './KiDienst'
 import { Sicherheit } from './Sicherheit'
 import { Regeln } from './Regeln'
 import { Abwesenheit } from './Abwesenheit'
@@ -35,6 +36,7 @@ export type Reiter =
   | 'schlagworte'
   | 'sicherheit'
   | 'benachrichtigungen'
+  | 'ki'
   | 'darstellung'
 
 interface Props {
@@ -116,6 +118,7 @@ export function EinstellungenPage({
             { id: 'schlagworte', label: t('einstellungen.schlagworte') },
             { id: 'sicherheit', label: t('einstellungen.sicherheit') },
             { id: 'benachrichtigungen', label: t('einstellungen.benachrichtigungen') },
+            { id: 'ki', label: t('einstellungen.ki') },
             { id: 'darstellung', label: t('einstellungen.darstellung') },
           ]}
         />
@@ -164,6 +167,8 @@ export function EinstellungenPage({
             <Schlagworte aufGeaendert={aufSchlagworteGeaendert} />
           ) : reiter === 'sicherheit' ? (
             <Sicherheit ich={ich} ichNeuLaden={ichNeuLaden} />
+          ) : reiter === 'ki' ? (
+            <KiDienst />
           ) : reiter === 'benachrichtigungen' ? (
             <Benachrichtigungen />
           ) : (

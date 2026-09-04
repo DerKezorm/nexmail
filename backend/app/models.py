@@ -111,6 +111,25 @@ class Benutzer(Base):
     #: Sicherheitsseite sagt deutlich, wenn keine dasteht.
     kontaktadresse: Mapped[str] = mapped_column(String(320), default="")
 
+    # --- Der KI-Dienst dieses Menschen ---------------------------------- #
+    #
+    # ⚠️ **Je Benutzer, nicht je Installation.** Wer umformulieren lassen will,
+    # bringt seinen eigenen Zugang mit — dann zahlt jeder seinen eigenen
+    # Schluessel, und der Betreiber muss niemandem etwas vorgeben. Dieselbe
+    # Ueberlegung wie beim OAuth-Zugang, der auch am Benutzer haengt.
+    #
+    # ⚠️ **Ab Werk aus.** nexmail blockt Zaehlpixel, liefert Schriften mit und
+    # holt Bilder ueber den eigenen Server; hier geht Text nach draussen. Das
+    # ist eine Entscheidung, die ein Mensch trifft, kein Vorgabewert.
+    ki_aktiv: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Die Basisadresse, OpenAI-foermig. Mit Schraegstrich am Ende, damit
+    #: ``urljoin`` daraus ``…/models`` und ``…/chat/completions`` macht.
+    ki_url: Mapped[str] = mapped_column(String(500), default="")
+    ki_modell: Mapped[str] = mapped_column(String(200), default="")
+    #: Verschluesselt, Kontext ``benutzer:<id>:ki``. Er oeffnet ein fremdes
+    #: Konto mit einer Rechnung daran — also ein Passwort.
+    ki_schluessel: Mapped[str] = mapped_column(Text, default="")
+
     #: TOTP-Geheimnis, verschluesselt (Kontext ``benutzer:<id>:totp``).
     totp_geheimnis: Mapped[str] = mapped_column(Text, default="")
     totp_bestaetigt: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -45,6 +45,7 @@ from .routers import (
     erinnerungen as erinnerungen_router,
     kalender as kalender_router,
     health,
+    ki as ki_router,
     kontakte,
     konten,
     nachrichten,
@@ -390,6 +391,7 @@ app.include_router(setup.router)
 app.include_router(auth.router)
 app.include_router(sitzungen.router, dependencies=NUR_ANGEMELDET)
 app.include_router(einstellungen.router, dependencies=NUR_ANGEMELDET)
+app.include_router(ki_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(abwesenheit_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(konten.router, dependencies=NUR_ANGEMELDET)
 app.include_router(kontakte.router, dependencies=NUR_ANGEMELDET)
