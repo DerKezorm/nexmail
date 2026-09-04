@@ -26,8 +26,16 @@ from datetime import datetime, timezone
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from ..models import Benutzer, Kontakt, Kontaktgruppe, KontaktgruppeMitglied, Nachricht, Ordner
+from ..models import (
+    Benutzer,
+    Kontakt,
+    Kontaktgruppe,
+    KontaktgruppeMitglied,
+    Nachricht,
+    Ordner,
+)
 from ..meldung import Meldung
+from . import adressbuecher
 
 logger = logging.getLogger("nexmail.kontakte")
 
@@ -114,6 +122,7 @@ def anlegen(
         telefon=telefon.strip(),
         notiz=notiz,
         quelle=quelle,
+        adressbuch_id=adressbuecher.lokales(db, person).id,
     )
     db.add(eintrag)
     db.commit()
@@ -206,6 +215,12 @@ def einsammeln(db: Session, person: Benutzer) -> dict[str, int]:
     if not ordner:
         return {"neu": 0, "gesehen": 0}
 
+    # ⚠️ **Einmal geholt, nicht je Kontakt.** Aufgeschnapptes landet immer im
+    # lokalen Buch und geht nie von selbst zu einem Anbieter hinaus — sonst
+    # stuenden nach zwei Monaten dreihundert ungepflegte Eintraege auf dem
+    # Telefon. Der Weg dorthin ist „In ein Buch uebernehmen", von Hand.
+    lokal_id = adressbuecher.lokales(db, person).id
+
     bekannt = {
         k.adresse: k
         for k in db.execute(select(Kontakt).where(Kontakt.benutzer_id == person.id))
@@ -242,6 +257,7 @@ def einsammeln(db: Session, person: Benutzer) -> dict[str, int]:
                 name=name,
                 quelle="gesammelt",
                 verwendet=1,
+                adressbuch_id=lokal_id,
             )
             db.add(eintrag)
             bekannt[adresse] = eintrag
@@ -574,6 +590,7 @@ def _uebernehmen(db: Session, person: Benutzer, felder: dict[str, str]) -> str:
             telefon=felder.get("telefon", ""),
             notiz=felder.get("notiz", ""),
             quelle="hand",
+            adressbuch_id=adressbuecher.lokales(db, person).id,
         )
     )
     return "neu"

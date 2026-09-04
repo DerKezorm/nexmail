@@ -219,6 +219,20 @@ async def lebenslauf(_: FastAPI):
                 straengedienst.neu_aufbauen(db, person.id)
             einstellung_schreiben(db, "straenge_aufgebaut", "1")
 
+        # ⚠️ **Jeder Benutzer braucht sein lokales Adressbuch**, und jeder
+        # Kontakt einen Ort darin. Ein Kontakt ohne Buch ist einer, den die
+        # Buecherspalte gar nicht zeigen kann — unsichtbar, ohne geloescht zu
+        # sein, und das sieht aus wie Datenverlust. Muss deshalb laufen, bevor
+        # jemand die Kontaktseite oeffnet.
+        #
+        # ⚠️ **Einmal, gemerkt an einem Schluessel** — wie darueber. Sonst
+        # liefe bei jedem Start ein UPDATE ueber die ganze Kontakttabelle.
+        if einstellung_lesen(db, "buecher_nachgetragen") != "1":
+            from .services import adressbuecher as buchdienst
+
+            buchdienst.nachtragen(db)
+            einstellung_schreiben(db, "buecher_nachgetragen", "1")
+
         # ⚠️ **``angekommen`` fuer den Bestand einmal auf „jetzt" setzen.**
         # Die Spalte kam nach den ersten Abgleichen dazu; Zeilen davor stehen
         # auf NULL. Das Papierkorb-Aufraeumen misst daran die Verweildauer —

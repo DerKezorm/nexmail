@@ -735,6 +735,59 @@ class Geheimnis(Base):
     wert: Mapped[str] = mapped_column(Text)
 
 
+class Adressbuch(Base):
+    """Ein Adressbuch — lokal oder bei einem Anbieter.
+
+    ⚠️ **Ein Buch ist keine Gruppe.** Gruppen (``Kontaktgruppe``) sind quer:
+    Ein Mensch kann in „Familie" und in „Verein" stehen. Ein Buch ist, **wo er
+    liegt** — davon genau eines. Wer beides vermengt, macht „löschen"
+    mehrdeutig: mal lokal, mal beim Anbieter, und man sieht es dem Eintrag
+    nicht an.
+
+    ⚠️ **CardDAV-förmig von Anfang an**, dasselbe Muster wie ``Kalender``:
+    ``art`` leer heisst „lebt nur hier". Sonst trägt die Zeile Adresse,
+    Zugangsdaten und ``ctag``. So wird aus „diesem Buch eine Adresse geben"
+    später eine Zeile und keine Umstellung.
+
+    ⚠️ **Jeder Benutzer hat mindestens eines**, angelegt beim Start
+    (``buecher_nachgetragen``). Ein Kontakt ohne Buch waere ein Kontakt, den
+    die Spalte links nicht zeigen kann.
+    """
+
+    __tablename__ = "adressbuch"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    farbe: Mapped[int] = mapped_column(Integer, default=1)
+    sichtbar: Mapped[bool] = mapped_column(Boolean, default=True)
+    reihenfolge: Mapped[int] = mapped_column(Integer, default=0)
+    #: ⚠️ **Das eine Buch, das nicht wegkann.** Es haelt die Kontakte, die nur
+    #: hier leben, und die aufgeschnappten. Ohne es haette ein geloeschtes
+    #: Buch heimatlose Kontakte hinterlassen.
+    ist_lokal: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    #: Leer = lebt nur hier. Sonst ``carddav``.
+    art: Mapped[str] = mapped_column(String(16), default="")
+    herkunft: Mapped[str] = mapped_column(String(120), default="")
+    url: Mapped[str] = mapped_column(Text, default="")
+    benutzer_name: Mapped[str] = mapped_column(String(320), default="")
+    passwort: Mapped[str] = mapped_column(Text, default="")
+    oauth_zugang_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("oauth_zugang.id", ondelete="SET NULL"), default=None
+    )
+    ctag: Mapped[str] = mapped_column(String(255), default="")
+    sync_token: Mapped[str] = mapped_column(Text, default="")
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    zuletzt_geprueft: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    #: ⚠️ **Je Buch, nicht als Banner.** Bei vier verbundenen Buechern sagt
+    #: „Abgleich fehlgeschlagen" oben nicht, welches klemmt. Dieselbe Lehre
+    #: wie beim Kalender.
+    letzter_fehler: Mapped[str] = mapped_column(Text, default="")
+
+
 class Kontakt(Base):
     """Ein Eintrag im Adressbuch.
 
@@ -768,6 +821,31 @@ class Kontakt(Base):
     notiz: Mapped[str] = mapped_column(Text, default="")
 
     #: ``hand`` oder ``gesammelt``.
+    #: In welchem Buch er liegt. ⚠️ **Nie leer** — ``buecher_nachgetragen``
+    #: sorgt beim Start dafuer, und neue Kontakte bekommen das lokale Buch.
+    adressbuch_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("adressbuch.id", ondelete="CASCADE"), index=True, default=None
+    )
+
+    #: --- Was von einem Anbieter kommt ------------------------------------ #
+    #: Die Kennung der Karte beim Anbieter.
+    uid: Mapped[str] = mapped_column(String(255), default="", index=True)
+    #: Der Pfad der Karte. Verglichen wird ueber ``carddav.ortsschluessel`` —
+    #: dieselbe Falle wie bei Google und ``%40`` im Kalender.
+    href: Mapped[str] = mapped_column(Text, default="")
+    etag: Mapped[str] = mapped_column(String(255), default="")
+    #: ⚠️ **Die Rückfahrkarte, und sie ist kein Beiwerk.** Eine vCard von
+    #: iCloud traegt Foto, Geburtstag, mehrere Anschriften und ein Dutzend
+    #: ``X-APPLE-…``. nexmail kennt acht Felder. Wer beim Zurueckschreiben nur
+    #: die ausgibt, die er kennt, loescht dem Besitzer den Rest — und merkt es
+    #: erst, wenn das Foto weg ist. Dieselbe Ueberlegung wie ``termin.roh``
+    #: und wie mboxrd bei der Post: Das Format muss verlustfrei durch nexmail
+    #: hindurchgehen.
+    roh: Mapped[str] = mapped_column(Text, default="")
+    #: Wartet auf das Hochschieben. Bleibt in Lieferung 1 immer False —
+    #: geschrieben wird noch nicht.
+    schmutzig: Mapped[bool] = mapped_column(Boolean, default=False)
+
     quelle: Mapped[str] = mapped_column(String(16), default="hand")
     #: Wie oft an diese Adresse geschrieben wurde - die Reihenfolge der
     #: Vorschlaege beim Tippen haengt daran.
