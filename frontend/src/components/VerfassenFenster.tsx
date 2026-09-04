@@ -22,6 +22,9 @@ import type { Editor as TiptapEditor } from '@tiptap/react'
 import { Button, IconButton } from '../ds'
 import { Adressfeld } from './Adressfeld'
 import { Editor } from './Editor'
+import { KiFenster } from './KiFenster'
+import type { KiAuswahl } from './KiFenster'
+import { eigenesHtml } from '../lib/eigenerteil'
 import type { TextvorlagenZeile } from '../pages/Textvorlagen'
 import { useNachfrage } from './Nachfrage'
 import { api } from '../api/client'
@@ -82,6 +85,9 @@ interface Vorlage {
   anlagen?: Array<{ dateiname: string; mime_typ: string; inhalt_b64: string; cid?: string }>
 }
 
+/** Absatztrenner beim Auslesen der Markierung aus dem Editor. */
+const NN_TRENNER = '\n\n'
+
 interface Props {
   offen: boolean
   art: Verfassart
@@ -95,6 +101,9 @@ interface Props {
   /** Die Nachricht ist mit Aufschub eingereiht — bis `bis` (ms-Zeitstempel)
    *  lässt sie sich über den Ausgangseintrag `ausgangId` zurückholen. */
   aufRueckholbar?: (ausgangId: string, bis: number, daten: Sendedaten) => void
+  /** Ob der KI-Dienst dieses Benutzers eingeschaltet ist. Kommt aus `ich`,
+   *  nicht aus einem eigenen Abruf — siehe `Ich.ki_aktiv`. */
+  kiAktiv?: boolean
 }
 
 /** Base64 zurück in Bytes — für die Anzeige wieder eingefügter Bilder. */
@@ -114,6 +123,7 @@ export function VerfassenFenster({
   aufSchliessen,
   aufGesendet,
   aufRueckholbar,
+  kiAktiv = false,
 }: Props) {
   const { t } = useTranslation()
 
@@ -150,6 +160,58 @@ export function VerfassenFenster({
      eines Entwurfs bleibt sie leer; die Signatur steckt dort schon im Text
      und lässt sich nicht mehr sicher vom eigenen unterscheiden. */
   const [signaturHtml, setSignaturHtml] = useState('')
+  /* Was beim Öffnen des KI-Fensters gerade dastand. ⚠️ **Beim Öffnen
+     eingefroren**, nicht laufend gelesen: Der Editor verliert seine Markierung,
+     sobald der Fokus ins Fenster wandert. */
+  const [kiAuswahl, setKiAuswahl] = useState<KiAuswahl | null>(null)
+
+  /** Das KI-Fenster öffnen — mit dem, was gerade markiert ist.
+   *
+   *  ⚠️ **Zitat und Signatur bleiben hier** (`eigenesHtml`). Das Zitat ist
+   *  fremde Post, die niemand zu einem Anbieter geschickt hat, und eine
+   *  umgeschriebene Signatur trägt Namen und Anschrift dorthin.
+   *
+   *  ⚠️ **Die Markierung wird JETZT gelesen.** Sobald der Fokus ins Fenster
+   *  wandert, ist sie weg — wer sie erst beim Losschicken abfragt, bekommt
+   *  eine leere. */
+  function kiOeffnen() {
+    const editor = editorRef.current
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    const markiert =
+      from === to
+        ? ''
+        : eigenesHtml(
+            /* ⚠️ **Als Absätze, nicht als Rohtext.** Der Server bekommt HTML
+               und antwortet mit HTML; ein nackter Textblock käme als eine
+               einzige Zeile zurück und risse die Absätze der Markierung
+               ein. Maskiert wird dabei, was sonst Auszeichnung würde. */
+            editor.state.doc
+              .textBetween(from, to, NN_TRENNER)
+              .split(NN_TRENNER)
+              .filter(Boolean)
+              .map((z) => `<p>${z.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p>`)
+              .join(''),
+          )
+    setKiAuswahl({ markiert, ganz: eigenesHtml(html, signaturHtml) })
+  }
+
+  /** Das Ergebnis in den Entwurf setzen — erst hier wird etwas angefasst. */
+  function kiUebernehmen(neuerText: string, aufMarkierung: boolean) {
+    const editor = editorRef.current
+    if (!editor) return
+    if (aufMarkierung) {
+      editor.chain().focus().deleteSelection().insertContent(neuerText).run()
+      return
+    }
+    /* ⚠️ **Der ganze Entwurf heißt: eigener Teil neu, Rest unangetastet.**
+       Zitat und Signatur standen nie im Auftrag; sie zu verlieren, weil man
+       einen Absatz glätten wollte, wäre der teuerste Fehler dieses Knopfes. */
+    const rest = html.slice(eigenesHtml(html, signaturHtml).length)
+    const zusammen = neuerText + rest
+    setHtml(zusammen)
+    editor.commands.setContent(zusammen)
+  }
   /* Die Wichtigkeit der Nachricht. Ein Knopf, drei Stufen im Kreis —
      Vorgabe normal, und normal erzeugt beim Senden keine Kopfzeile. */
   const [wichtigkeit, setWichtigkeit] = useState<'hoch' | 'normal' | 'niedrig'>('normal')
@@ -787,6 +849,7 @@ export function VerfassenFenster({
             aufEditor={(e) => {
               editorRef.current = e
             }}
+            aufKi={kiAktiv ? kiOeffnen : undefined}
           />
         )}
 
@@ -1009,6 +1072,14 @@ export function VerfassenFenster({
       {/* Die Anhang-Nachfrage legt sich über das Fenster; ihr eigener Schleier
           fängt jeden Klick ab, bevor er das Verfassen-Fenster schlösse. */}
       {nachfrage}
+
+      {kiAuswahl && (
+        <KiFenster
+          auswahl={kiAuswahl}
+          aufUebernehmen={kiUebernehmen}
+          aufSchliessen={() => setKiAuswahl(null)}
+        />
+      )}
     </div>
   )
 }

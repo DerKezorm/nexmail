@@ -683,20 +683,27 @@ def test_die_disposition_uebersteht_emoji_und_cjk():
 
 
 def test_die_trennzeile_ist_ein_vertrag_mit_der_oberflaeche():
-    """⚠️ ``frontend/src/lib/anhang.ts`` (``ZITAT_MARKEN``) schneidet den
-    eigenen Text an genau dieser Zeichenkette ab, bevor die Anhang-Erinnerung
-    prüft. Wer eine Seite umformuliert oder übersetzt, ohne die andere
-    nachzuziehen, macht die Erinnerung bei jeder Weiterleitung zur
-    Falschnachfrage — dieser Test hält beide Seiten wörtlich aneinander."""
+    """⚠️ ``frontend/src/lib/eigenerteil.ts`` (``ZITAT_MARKEN``) schneidet den
+    eigenen Text an genau dieser Zeichenkette ab. Daran hängen **zwei** Dinge:
+    die Anhang-Erinnerung, und seit dem 04.09.2026 der KI-Knopf — was hinter
+    der Marke steht, geht nicht zu einem KI-Anbieter hinaus. Wer eine Seite
+    umformuliert, ohne die andere nachzuziehen, macht die Erinnerung zur
+    Falschnachfrage **und** schickt fremde Post nach draußen.
+
+    ⚠️ **Die Datei hiess bis zum 04.09.2026 ``anhang.ts``.** Die Marken sind in
+    ein eigenes Modul gewandert, weil zwei Stellen dieselbe Antwort in
+    verschiedenen Formen brauchen. Dieser Test war der Einzige, der die
+    Verschiebung gemeldet hat — genau dafür steht er da."""
     from pathlib import Path
 
     marke = "---------- Weitergeleitete Nachricht ----------"
     assert marke in verfassen.weiterleitung_html(_eingehend())
 
-    anhang_ts = Path(__file__).resolve().parents[2] / "frontend" / "src" / "lib" / "anhang.ts"
-    assert marke in anhang_ts.read_text(encoding="utf-8"), (
-        "Die Marke in anhang.ts weicht vom Server ab — die Anhang-Erinnerung "
-        "sähe den weitergeleiteten Text als eigenen."
+    quelle = Path(__file__).resolve().parents[2] / "frontend" / "src" / "lib" / "eigenerteil.ts"
+    assert marke in quelle.read_text(encoding="utf-8"), (
+        "Die Marke in eigenerteil.ts weicht vom Server ab — die "
+        "Anhang-Erinnerung saehe den weitergeleiteten Text als eigenen, und "
+        "der KI-Knopf schickte ihn mit hinaus."
     )
 
 

@@ -63,6 +63,12 @@ class Ich(BaseModel):
     #: Wohin ein Ruecksetz-Link ginge. Leer heisst: **kein Weg zurueck**, und
     #: die Sicherheitsseite sagt das auch so.
     kontaktadresse: str = ""
+    #: ⚠️ **Hier und nicht ueber einen eigenen Abruf.** Der KI-Knopf im Editor
+    #: darf nur dastehen, wenn der Dienst wirklich eingeschaltet ist; ein Knopf,
+    #: der beim Druecken „ist gar nicht an" sagt, ist ein Fehler. Am `ich` zu
+    #: haengen erspart eine Anfrage je Verfassen-Fenster und laesst den Knopf
+    #: ueber `ichNeuLaden` sofort erscheinen, wenn jemand den Schalter umlegt.
+    ki_aktiv: bool = False
 
 
 @router.post("/anmelden", response_model=Schritt)
@@ -399,6 +405,7 @@ def ich(person: AngemeldeterBenutzer) -> Ich:
         zwei_faktor_aktiv=person.totp_bestaetigt,
         offene_codes=zwei_faktor.offene_codes(person),
         kontaktadresse=person.kontaktadresse,
+        ki_aktiv=person.ki_aktiv,
     )
 
 

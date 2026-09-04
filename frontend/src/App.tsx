@@ -1680,6 +1680,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           konten={konten}
           wiederauf={verfassen.wiederauf ?? null}
           aufRueckholbar={(ausgangId, bis, daten) => setSendeRueck({ ausgangId, bis, daten })}
+          kiAktiv={ich?.ki_aktiv ?? false}
           aufSchliessen={() => setVerfassen((v) => ({ ...v, offen: false }))}
         />
         </Suspense>
@@ -2065,6 +2066,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         konten={konten}
         wiederauf={verfassen.wiederauf ?? null}
         aufRueckholbar={(ausgangId, bis, daten) => setSendeRueck({ ausgangId, bis, daten })}
+        kiAktiv={ich?.ki_aktiv ?? false}
         aufSchliessen={() => setVerfassen((v) => ({ ...v, offen: false }))}
         aufGesendet={() => {
           // Die gesendete Mail liegt jetzt in „Gesendet" - der Ordner soll

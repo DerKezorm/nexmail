@@ -42,6 +42,7 @@ import {
   ListOrdered,
   Quote,
   RemoveFormatting,
+  Sparkles,
   Underline as UnterstrichenSymbol,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -59,9 +60,15 @@ interface Props {
   /** Reicht die Editor-Instanz nach draußen — für Befehle an der
    *  Schreibmarke (Textvorlage einfügen). `null`, sobald sie weg ist. */
   aufEditor?: (editor: TiptapEditor | null) => void
+  /** Öffnet das KI-Fenster. ⚠️ **Fehlt sie, fehlt der Knopf** — und zwar
+   *  bewusst nicht als gesperrter Knopf: Wer den KI-Dienst nicht eingeschaltet
+   *  hat, soll kein Werkzeug sehen, das ihn nur auf eine Einstellung
+   *  verweist. Das ist dieselbe Regel wie bei „eine Seite mit einem einzigen
+   *  Knopf ist ein Klick, der nichts entscheidet". */
+  aufKi?: () => void
 }
 
-export function Editor({ inhalt, aufAendern, aufBild, aufEditor }: Props) {
+export function Editor({ inhalt, aufAendern, aufBild, aufEditor, aufKi }: Props) {
   const editor = useEditor({
     /* ⚠️ **Nicht schon beim Rendern bauen, sondern in der Wirkung.**
        `useEditor` legt den Editor sonst mitten im Rendern an und plant im
@@ -146,7 +153,7 @@ export function Editor({ inhalt, aufAendern, aufBild, aufEditor }: Props) {
 
   return (
     <>
-      <Leiste editor={editor} aufBild={aufBild} />
+      <Leiste editor={editor} aufBild={aufBild} aufKi={aufKi} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <EditorContent editor={editor} className="h-full" />
       </div>
@@ -154,7 +161,15 @@ export function Editor({ inhalt, aufAendern, aufBild, aufEditor }: Props) {
   )
 }
 
-function Leiste({ editor, aufBild }: { editor: TiptapEditor; aufBild: Props['aufBild'] }) {
+function Leiste({
+  editor,
+  aufBild,
+  aufKi,
+}: {
+  editor: TiptapEditor
+  aufBild: Props['aufBild']
+  aufKi: Props['aufKi']
+}) {
   const { t } = useTranslation()
   const { fragen, fenster: nachfrage } = useNachfrage()
 
@@ -275,6 +290,16 @@ function Leiste({ editor, aufBild }: { editor: TiptapEditor; aufBild: Props['auf
       <Knopf symbol={<BildSymbol />} text={t('format.bild')} tun={bildWaehlen} />
       <Knopf symbol={<RemoveFormatting />} text={t('format.entfernen')}
         tun={() => editor.chain().focus().unsetAllMarks().clearNodes().run()} />
+
+      {/* ⚠️ **Ganz rechts hinter einem Trenner, nicht zwischen fett und
+          kursiv.** Die anderen Knöpfe ändern die Auszeichnung; dieser schickt
+          Text aus dem Haus. Der Abstand sagt, dass er etwas anderes tut. */}
+      {aufKi && (
+        <>
+          <Trenner />
+          <Knopf symbol={<Sparkles />} text={t('ki.knopf')} tun={aufKi} />
+        </>
+      )}
       {nachfrage}
     </div>
   )

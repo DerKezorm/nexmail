@@ -17,6 +17,8 @@
  *  bedient, schreibt trotzdem englische Mails. Die ae/ue-Schreibweisen stehen
  *  mit drin, weil sie auf einer Tastatur ohne Umlaute genau so getippt werden.
  */
+import { zitatBeginn } from './eigenerteil'
+
 export const ANHANG_SIGNALWOERTER: readonly string[] = [
   'im anhang',
   'angehängt',
@@ -29,12 +31,10 @@ export const ANHANG_SIGNALWOERTER: readonly string[] = [
   'enclosed',
 ]
 
-/* Woran Zitat und Weiterleitung im Editor-HTML zu erkennen sind. Beide baut
- * der Server (services/verfassen.py): das Zitat als ``<blockquote>`` hinter
- * seiner „Am … schrieb …"-Zeile, die Weiterleitung mit dieser Trennzeile.
- * Der eigene Text steht immer **davor** — abgeschnitten wird ab der ersten
- * Marke, alles danach ist fremder Text. */
-const ZITAT_MARKEN = ['<blockquote', '---------- Weitergeleitete Nachricht ----------']
+/* ⚠️ **Die Marken stehen in `lib/eigenerteil.ts`, nicht hier.** Zwei Stellen
+ * brauchen dieselbe Antwort in verschiedenen Formen — diese als Text, der
+ * KI-Knopf als HTML. Zwei Listen, die auseinanderlaufen, hiessen: Die
+ * Erinnerung liest ein Zitat mit, das die KI nicht sieht. */
 
 /** HTML zu schlichtem Text: Auszeichnung raus, die üblichen Entitäten zurück,
  *  Weißraum zusammengezogen. Mehr braucht der Wortvergleich nicht. */
@@ -60,12 +60,7 @@ function alsText(html: string): string {
  *  mitgeprüft; das ist dann eben selbst geschriebener Text.
  */
 export function eigenerText(html: string, signaturHtml: string): string {
-  let schnitt = html.length
-  for (const marke of ZITAT_MARKEN) {
-    const stelle = html.indexOf(marke)
-    if (stelle !== -1 && stelle < schnitt) schnitt = stelle
-  }
-  let text = alsText(html.slice(0, schnitt))
+  let text = alsText(html.slice(0, zitatBeginn(html)))
 
   const signatur = alsText(signaturHtml)
   if (signatur) {

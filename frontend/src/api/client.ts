@@ -158,6 +158,8 @@ export interface Ich {
   offene_codes: number
   /** Wohin ein Rücksetz-Link ginge. Leer heißt: **kein Weg zurück**. */
   kontaktadresse: string
+  /** Ob der KI-Dienst eingeschaltet ist — daran hängt der Knopf im Editor. */
+  ki_aktiv: boolean
 }
 
 export interface Schritt {

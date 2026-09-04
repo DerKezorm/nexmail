@@ -111,3 +111,50 @@ def modelle(
     except kidienst.KiFehler as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     return [Modell(**m) for m in gefunden]
+
+
+class Textauftrag(BaseModel):
+    """Was mit dem Text geschehen soll.
+
+    ⚠️ **Der Text kommt aus dem Editor, nicht aus der Datenbank.** Er ist noch
+    nirgends gespeichert — genau das ist der Fall: Man lässt einen Entwurf
+    umformulieren, bevor man ihn abschickt.
+    """
+
+    #: Der markierte Bereich oder der ganze Entwurf, als HTML.
+    #: ⚠️ **Ohne Zitat und ohne Signatur** — das schneidet die Oberfläche ab,
+    #: bevor sie sendet. Fremde Post gehört nicht zum Anbieter geschickt, und
+    #: umgeschrieben werden soll sie erst recht nicht.
+    text: str = Field(max_length=kidienst.MAX_ZEICHEN)
+    auftrag: str = Field(max_length=40)
+    #: Ton beim Umformulieren, Sprache beim Übersetzen, sonst leer.
+    ziel: str = Field(default="", max_length=40)
+
+
+class Textergebnis(BaseModel):
+    #: ⚠️ **Nur das Ergebnis, nicht der Ersatz.** Was damit geschieht,
+    #: entscheidet ein Mensch im Fenster davor — der Server schreibt nichts in
+    #: den Entwurf.
+    text: str
+
+
+@router.post("/text", response_model=Textergebnis)
+def text(
+    eingabe: Textauftrag, person: AngemeldeterBenutzer, request: Request
+) -> Textergebnis:
+    """Einen Entwurf bearbeiten lassen.
+
+    ⚠️ **Die Bremse hängt davor, und wieder ohne ``geschafft()``.** Der
+    gelungene Aufruf ist der, der hinausgeht und kostet — er ist das, was
+    begrenzt werden soll. Dieselbe Begründung wie beim Modellabruf.
+    """
+    wache = anmeldebremse.torwaechter(request, "ki-text", person.benutzername)
+    wache.fehlgeschlagen()
+
+    try:
+        raus = kidienst.text_bearbeiten(
+            person, eingabe.text, auftrag=eingabe.auftrag, ziel=eingabe.ziel
+        )
+    except kidienst.KiFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    return Textergebnis(text=raus)
