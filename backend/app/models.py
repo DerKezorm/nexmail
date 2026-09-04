@@ -1276,6 +1276,17 @@ class Termin(Base):
     #: Hochzaehlen bei JEDEM Versand waere dagegen schon die erste eine
     #: „Aktualisierung" eines Termins, den niemand kennt.
     eingeladen_am: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    #: Antworten, die zu diesem Termin kamen, aber von einer **nicht
+    #: eingeladenen** Adresse. JSON-Liste aus ``adresse``, ``antwort``, ``am``.
+    #:
+    #: ⚠️ **Nur wer eingeladen wurde, kann antworten** — sonst traegt sich ein
+    #: Fremder in eine Teilnehmerliste ein, indem er eine Antwort schickt.
+    #: Aber lautlos verwerfen ist auch falsch: Am 04.09.2026 antwortete
+    #: Outlook unter der eigenen Absenderidentitaet statt unter der
+    #: eingeladenen Adresse, und von aussen sah es aus, als sei der Rueckkanal
+    #: kaputt. Was hier steht, zeigt die Oberflaeche am Termin; entscheiden
+    #: muss ein Mensch.
+    fremde_antworten: Mapped[str] = mapped_column(Text, default="[]")
     #: ``CONFIRMED`` | ``TENTATIVE`` | ``CANCELLED``
     status: Mapped[str] = mapped_column(String(16), default="CONFIRMED")
 

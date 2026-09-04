@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -26,7 +26,9 @@ from . import konten as kontendienst
 from . import senden as sendedienst
 from . import verfassen
 from . import vevent
+from . import zeit
 from .aliase import lesen as aliase_lesen
+from .zeit import zonenname_der_anwendung
 
 logger = logging.getLogger("nexmail.einladung")
 
@@ -70,7 +72,49 @@ def postfach_fuer(db: Session, benutzer: Benutzer, adresse: str) -> Konto:
     raise EinladungFehler("einladung_absender_unbekannt", adresse=gesucht)
 
 
-def _text(termin: Termin, sprache_egal: None = None) -> str:
+def _wann(db: Session, termin: Termin) -> str:
+    """Der Zeitpunkt, wie ein Mensch ihn liest — in der richtigen Zone.
+
+    ⚠️ **Der Kalenderteil daneben genuegt nicht.** Wer keine Kalender-App hat,
+    liest nur diese Zeile. Bis zum 04.09.2026 stand hier ``termin.beginn`` roh,
+    also **UTC**, dazu ``termin.zeitzone`` — und die ist bei einem in nexmail
+    angelegten Termin leer. Aus „10:30 (Europe/Berlin)" wurde „08:30 ()".
+    Genau der Fall, vor dem ``services/zeit.py`` in seinem eigenen Kopf warnt.
+
+    ⚠️ **Ein ganztaegiger Termin hat keine Uhrzeit.** Sonst stuende dort
+    „00:00 - 00:00".
+    """
+    name = (termin.zeitzone or "").strip() or zonenname_der_anwendung(db)
+    wo = zeit.zone(name)
+    # ⚠️ **Die Beschriftung kommt aus der aufgeloesten Zone, nicht aus dem
+    # Namen.** Outlook schickt Windows-Namen wie „W. Europe Standard Time";
+    # ``zeit.zone`` kennt die nicht und weicht auf UTC aus. Stuende dann der
+    # Name in der Klammer, naennte die Zeile eine Zone und zeigte eine andere.
+    name = getattr(wo, "key", "") or "UTC"
+
+    def hier(wert: datetime) -> datetime:
+        # Naiv gespeicherte Werte sind UTC — so schreibt sie ``vevent``.
+        if wert.tzinfo is None:
+            wert = wert.replace(tzinfo=timezone.utc)
+        return wert.astimezone(wo)
+
+    beginn = hier(termin.beginn)
+    if termin.ganztaegig:
+        ende = hier(termin.ende) if termin.ende else beginn
+        # Ein Kalendertag endet um Mitternacht des Folgetags; genannt wird der
+        # letzte Tag, an dem etwas ist.
+        letzter = (ende - timedelta(seconds=1)).date()
+        if letzter <= beginn.date():
+            return f"{beginn:%Y-%m-%d} (all day)"
+        return f"{beginn:%Y-%m-%d} - {letzter:%Y-%m-%d} (all day)"
+
+    gezeigt = name or "UTC"
+    if termin.ende:
+        return f"{beginn:%Y-%m-%d %H:%M} - {hier(termin.ende):%H:%M} ({gezeigt})"
+    return f"{beginn:%Y-%m-%d %H:%M} ({gezeigt})"
+
+
+def _text(db: Session, termin: Termin) -> str:
     """Der lesbare Teil der Mail.
 
     ⚠️ **Ohne ihn sieht ein Empfaenger ohne Kalender eine leere Mail.** Es
@@ -81,8 +125,7 @@ def _text(termin: Termin, sprache_egal: None = None) -> str:
     Sprache des Empfaengers kennt niemand, und die des Absenders ist nicht
     seine.
     """
-    zeilen = [termin.titel, ""]
-    zeilen.append(f"When: {termin.beginn:%Y-%m-%d %H:%M} - {termin.ende:%H:%M} ({termin.zeitzone})")
+    zeilen = [termin.titel, "", f"When: {_wann(db, termin)}"]
     if termin.ort:
         zeilen.append(f"Where: {termin.ort}")
     if termin.beschreibung:
@@ -120,7 +163,7 @@ def versenden(db: Session, benutzer: Benutzer, termin: Termin) -> int:
     jetzt = datetime.now(timezone.utc)
     ics = vevent.bauen(termin, jetzt, methode="REQUEST")
 
-    sendedienst.einreihen(
+    zeile = sendedienst.einreihen(
         db,
         konto,
         verfassen.Entwurf(
@@ -128,15 +171,35 @@ def versenden(db: Session, benutzer: Benutzer, termin: Termin) -> int:
             von_adresse=absender.get("adresse", ""),
             an=[p["adresse"] for p in leute],
             betreff=f"Invitation: {termin.titel}".strip(),
-            text=_text(termin),
+            text=_text(db, termin),
             kalender=ics,
             kalender_methode="REQUEST",
         ),
     )
     termin.eingeladen_am = jetzt
     db.commit()
+    _hinausschicken(db, zeile)
     logger.info("An invitation was queued for %s recipient(s).", len(leute))
     return len(leute)
+
+
+def _hinausschicken(db: Session, zeile) -> None:
+    """Den eingereihten Eintrag gleich versuchen.
+
+    ⚠️ **Einreihen allein verschickt nichts.** Bis zum 04.09.2026 endete der
+    Versand hier — und die Mail lag im Ausgang, bis jemand nexmail neu
+    startete: ``faellige_geplante`` sieht nur Eintraege mit ``senden_ab``, und
+    das hat eine Einladung nicht. Die Oberflaeche meldete „1 Person bekommt
+    eine Mail", und niemand bekam eine. Aufgefallen ist es erst an einer echten
+    Einladung, nicht im Testlauf.
+
+    ⚠️ **Ein Fehlschlag ist kein Fehler.** Die Mail liegt dann im Ausgang und
+    geht beim naechsten Versuch hinaus — dieselbe Zusage wie beim Verfassen.
+    """
+    try:
+        sendedienst.versenden(db, zeile)
+    except sendedienst.SendeFehler as fehler:
+        logger.warning("The invitation stays in the outbox for now: %s", fehler)
 
 
 def absagen(db: Session, benutzer: Benutzer, termin: Termin) -> int:
@@ -170,7 +233,7 @@ def absagen(db: Session, benutzer: Benutzer, termin: Termin) -> int:
     jetzt = datetime.now(timezone.utc)
     ics = vevent.bauen(termin, jetzt, methode="CANCEL", status="CANCELLED")
 
-    sendedienst.einreihen(
+    zeile = sendedienst.einreihen(
         db,
         konto,
         verfassen.Entwurf(
@@ -178,19 +241,20 @@ def absagen(db: Session, benutzer: Benutzer, termin: Termin) -> int:
             von_adresse=absender.get("adresse", ""),
             an=[p["adresse"] for p in leute],
             betreff=f"Cancelled: {termin.titel}".strip(),
-            text=_absagetext(termin),
+            text=_absagetext(db, termin),
             kalender=ics,
             kalender_methode="CANCEL",
         ),
     )
     db.commit()
+    _hinausschicken(db, zeile)
     logger.info("A cancellation was queued for %s recipient(s).", len(leute))
     return len(leute)
 
 
-def _absagetext(termin: Termin) -> str:
+def _absagetext(db: Session, termin: Termin) -> str:
     """Der lesbare Teil der Absage — englisch, aus demselben Grund wie oben."""
     return (
         f"{termin.titel} has been cancelled.\n\n"
-        f"It was scheduled for {termin.beginn:%Y-%m-%d %H:%M} ({termin.zeitzone}).\n"
+        f"It was scheduled for {_wann(db, termin)}.\n"
     )

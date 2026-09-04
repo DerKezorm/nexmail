@@ -175,12 +175,29 @@ class TerminZeile(BaseModel):
     teilnehmer: list[Beteiligter] = Field(default_factory=list)
     rrule: str
     aus_einladung: bool
+    #: Antworten von Adressen, die nicht eingeladen waren. ⚠️ **Verworfen,
+    #: aber nicht verschwiegen** — entscheiden muss ein Mensch.
+    fremde_antworten: list[FremdeAntwort] = Field(default_factory=list)
     #: ⚠️ **Wahr, sobald eine Einladung hinausgegangen ist.** Nur dann fragt
     #: die Oberflaeche beim Loeschen nach einer Absage — wer nie eingeladen
     #: wurde, soll von dem Termin nicht durch seinen Ausfall erfahren.
     eingeladen: bool = False
     #: Minuten vor dem Beginn, **-1 heisst keine**.
     erinnerung: int = -1
+
+
+class FremdeAntwort(BaseModel):
+    """Eine Antwort, die zu einem Termin kam, aber von einer fremden Adresse.
+
+    ⚠️ **Nur wer eingeladen wurde, kann antworten.** Was hier steht, ist genau
+    das, was deshalb nicht uebernommen wurde.
+    """
+
+    adresse: str = ""
+    #: ``ACCEPTED`` | ``DECLINED`` | ``TENTATIVE`` …
+    antwort: str = ""
+    #: ISO-8601 in UTC.
+    am: str = ""
 
 
 class TeilnehmerEingabe(BaseModel):
@@ -305,6 +322,10 @@ def _sicht(s: dienst.Sicht) -> TerminZeile:
         rrule=t.rrule,
         aus_einladung=t.aus_einladung, erinnerung=t.erinnerung,
         eingeladen=t.eingeladen_am is not None,
+        fremde_antworten=[
+            FremdeAntwort(**{k: str(e.get(k, "")) for k in ("adresse", "antwort", "am")})
+            for e in _liste(t.fremde_antworten)
+        ],
     )
 
 

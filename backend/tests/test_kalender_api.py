@@ -471,3 +471,26 @@ def test_ein_fremder_termin_wird_auch_hier_nicht_abgesagt(klient, db, welt, monk
 
     klient.delete(f"/api/kalender/termine/{neu['id']}?absagen=true")
     assert gerufen == []
+
+
+def test_eine_fremde_antwort_steht_in_der_termin_zeile(klient, db, welt):
+    """⚠️ Ohne den Weg nach oben sieht der Betreiber sie nur im Protokoll —
+    und dort sieht niemand nach, der einen Termin ansieht."""
+    import json as _json
+
+    from app.models import Termin
+
+    neu = klient.post(
+        "/api/kalender/termine",
+        json={"kalender_id": welt["id"], "titel": "Runde", "beginn": _wann(20)},
+    ).json()
+    termin = db.get(Termin, neu["id"])
+    termin.fremde_antworten = _json.dumps(
+        [{"adresse": "fremd@example.net", "antwort": "ACCEPTED", "am": "2026-09-04T10:00:00+00:00"}]
+    )
+    db.commit()
+
+    zeile = [t for t in _fenster(klient) if t["id"] == neu["id"]][0]
+    assert zeile["fremde_antworten"] == [
+        {"adresse": "fremd@example.net", "antwort": "ACCEPTED", "am": "2026-09-04T10:00:00+00:00"}
+    ]

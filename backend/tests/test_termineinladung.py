@@ -279,3 +279,198 @@ def test_eine_fremde_absenderadresse_wird_auch_bei_der_absage_abgewiesen(db, wel
 
     with pytest.raises(dienst.EinladungFehler):
         dienst.absagen(db, person, termin)
+
+
+# --- Die Zeitangabe im Textteil ---------------------------------------- #
+#
+# ⚠️ **Am 04.09.2026 an einer echten Einladung aufgefallen**, nicht hier: In
+# der Mail stand „When: 2026-09-08 08:30 - 09:15 ()" — die Zeit in UTC und
+# eine leere Klammer, wo die Zone stehen sollte. Der Kalenderteil daneben war
+# richtig; nur wer keine Kalender-App hat, las die falsche Uhrzeit.
+
+
+def _zone_setzen(db, name: str) -> None:
+    from app.db import einstellung_schreiben
+    from app.routers.einstellungen import SCHLUESSEL_ZEITZONE
+
+    einstellung_schreiben(db, SCHLUESSEL_ZEITZONE, name)
+
+
+def _textteil(db) -> str:
+    from email import message_from_bytes
+    from email.policy import default as regelwerk
+
+    zeile = db.query(Ausgang).one()
+    mail = message_from_bytes(
+        dienst.sendedienst._datei(zeile.id).read_bytes(), policy=regelwerk
+    )
+    for teil in mail.walk():
+        if teil.get_content_type() == "text/plain":
+            return teil.get_content()
+    return ""
+
+
+def test_die_zeit_steht_in_der_eingestellten_zone(db, welt):
+    person, kalender, _ = welt
+    _zone_setzen(db, "Europe/Berlin")
+    # 08:30 UTC ist 10:30 in Berlin — die Uhrzeit, die jemand eingetragen hat.
+    termin = _termin(
+        db,
+        person,
+        kalender,
+        beginn=datetime(2026, 9, 8, 8, 30, tzinfo=timezone.utc),
+        ende=datetime(2026, 9, 8, 9, 15, tzinfo=timezone.utc),
+        zeitzone="",
+    )
+    dienst.versenden(db, person, termin)
+
+    text = _textteil(db)
+    assert "When: 2026-09-08 10:30 - 11:15 (Europe/Berlin)" in text
+    # ⚠️ Und die rohe UTC-Zeit steht nirgends mehr da.
+    assert "08:30" not in text
+
+
+def test_ohne_zone_steht_nicht_eine_leere_klammer_da(db, welt):
+    """⚠️ „(…)" ohne Inhalt ist schlimmer als „(UTC)": Es sieht aus, als sei
+    die Zone die des Lesers."""
+    person, kalender, _ = welt
+    _zone_setzen(db, "")
+    termin = _termin(db, person, kalender, zeitzone="")
+    dienst.versenden(db, person, termin)
+
+    text = _textteil(db)
+    assert "()" not in text
+    assert "(UTC)" in text
+
+
+def test_die_zone_des_termins_geht_vor(db, welt):
+    """Ein uebernommener Termin bringt seine eigene Zone mit."""
+    person, kalender, _ = welt
+    _zone_setzen(db, "Europe/Berlin")
+    termin = _termin(
+        db,
+        person,
+        kalender,
+        beginn=datetime(2026, 9, 8, 8, 30, tzinfo=timezone.utc),
+        ende=datetime(2026, 9, 8, 9, 15, tzinfo=timezone.utc),
+        zeitzone="America/New_York",
+    )
+    dienst.versenden(db, person, termin)
+    assert "When: 2026-09-08 04:30 - 05:15 (America/New_York)" in _textteil(db)
+
+
+def test_ein_ganztaegiger_termin_nennt_keine_uhrzeit(db, welt):
+    """⚠️ Sonst stuende dort „00:00 - 00:00"."""
+    person, kalender, _ = welt
+    _zone_setzen(db, "Europe/Berlin")
+    termin = _termin(
+        db,
+        person,
+        kalender,
+        ganztaegig=True,
+        beginn=datetime(2026, 9, 8, tzinfo=timezone.utc),
+        ende=datetime(2026, 9, 9, tzinfo=timezone.utc),
+        zeitzone="UTC",
+    )
+    dienst.versenden(db, person, termin)
+
+    text = _textteil(db)
+    assert "When: 2026-09-08 (all day)" in text
+    assert "00:00" not in text
+
+
+def test_die_absage_nennt_die_zeit_genauso(db, welt):
+    person, kalender, _ = welt
+    _zone_setzen(db, "Europe/Berlin")
+    termin = _termin(
+        db,
+        person,
+        kalender,
+        beginn=datetime(2026, 9, 8, 8, 30, tzinfo=timezone.utc),
+        ende=datetime(2026, 9, 8, 9, 15, tzinfo=timezone.utc),
+        zeitzone="",
+        eingeladen_am=datetime(2026, 9, 5, tzinfo=timezone.utc),
+    )
+    dienst.absagen(db, person, termin)
+
+    text = _textteil(db)
+    assert "2026-09-08 10:30" in text
+    assert "()" not in text
+
+
+# --- Wird sie auch abgeschickt? ---------------------------------------- #
+#
+# ⚠️ **Am 04.09.2026 an einer echten Einladung aufgefallen.** Der Dienst
+# reihte nur ein. ``faellige_geplante`` sieht nur Eintraege mit ``senden_ab``,
+# und das hat eine Einladung nicht — die Mail lag im Ausgang, bis jemand
+# nexmail neu startete. Die Oberflaeche meldete „1 Person bekommt eine Mail",
+# und niemand bekam eine. Zwanzig gruene Tests haben das nicht gemerkt, weil
+# keiner ueber das Einreihen hinaussah.
+
+
+def test_die_einladung_wird_gleich_hinausgeschickt(db, welt, monkeypatch):
+    person, kalender, _ = welt
+    termin = _termin(db, person, kalender)
+
+    versucht = []
+    monkeypatch.setattr(
+        dienst.sendedienst, "versenden", lambda db_, zeile: versucht.append(zeile.id)
+    )
+
+    dienst.versenden(db, person, termin)
+
+    assert versucht == [db.query(Ausgang).one().id]
+
+
+def test_die_absage_genauso_gleich(db, welt, monkeypatch):
+    person, kalender, _ = welt
+    termin = _termin(
+        db, person, kalender, eingeladen_am=datetime(2026, 9, 5, tzinfo=timezone.utc)
+    )
+
+    versucht = []
+    monkeypatch.setattr(
+        dienst.sendedienst, "versenden", lambda db_, zeile: versucht.append(zeile.id)
+    )
+
+    dienst.absagen(db, person, termin)
+
+    assert versucht == [db.query(Ausgang).one().id]
+
+
+def test_ein_stummer_mailserver_kostet_die_einladung_nicht(db, welt, monkeypatch):
+    """⚠️ Sie liegt dann im Ausgang und geht beim naechsten Versuch hinaus —
+    dieselbe Zusage wie beim Verfassen."""
+    person, kalender, _ = welt
+    termin = _termin(db, person, kalender)
+
+    def streikt(db_, zeile):
+        raise dienst.sendedienst.SendeFehler("postausgang_nicht_erreichbar")
+
+    monkeypatch.setattr(dienst.sendedienst, "versenden", streikt)
+
+    # Kein Fehler nach oben, und der Termin gilt als eingeladen.
+    assert dienst.versenden(db, person, termin) == 1
+    assert termin.eingeladen_am is not None
+    assert db.query(Ausgang).one().stand == "wartet"
+
+
+def test_eine_unbekannte_zone_wird_nicht_als_zone_ausgegeben(db, welt):
+    """⚠️ Outlook schickt Windows-Namen wie „W. Europe Standard Time".
+    ``zeit.zone`` kennt die nicht und weicht auf UTC aus — stuende der Name
+    trotzdem in der Klammer, naennte die Zeile eine Zone und zeigte eine
+    andere."""
+    person, kalender, _ = welt
+    termin = _termin(
+        db,
+        person,
+        kalender,
+        beginn=datetime(2026, 9, 8, 8, 30, tzinfo=timezone.utc),
+        ende=datetime(2026, 9, 8, 9, 15, tzinfo=timezone.utc),
+        zeitzone="W. Europe Standard Time",
+    )
+    dienst.versenden(db, person, termin)
+
+    text = _textteil(db)
+    assert "W. Europe Standard Time" not in text
+    assert "When: 2026-09-08 08:30 - 09:15 (UTC)" in text

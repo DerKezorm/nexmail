@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 from email import message_from_bytes
 from email.policy import default as regelwerk
 
@@ -110,6 +111,23 @@ def verarbeiten(db: Session, konto: Konto, nachricht: Nachricht, roh: bytes) -> 
     if not isinstance(leute, list):
         return False
 
+    # ⚠️ **Eine verworfene Antwort darf nicht lautlos verschwinden.** Am
+    # 04.09.2026 an einer echten Zusage gesehen: Outlook antwortete unter der
+    # eigenen Absenderidentitaet, nicht unter der eingeladenen Adresse. Die
+    # Antwort war einwandfrei — UID, PARTSTAT, SEQUENCE —, nur die Adresse
+    # stand nicht auf der Liste. nexmail tat nichts und sagte nichts, und von
+    # aussen sah es aus, als sei der Rueckkanal kaputt.
+    bekannt = {(p.get("adresse") or "").strip().lower() for p in leute if isinstance(p, dict)}
+    if adresse not in bekannt:
+        logger.info(
+            "A reply came from %s, but the invitation went to %s; it was ignored. "
+            "Only somebody who was invited can answer.",
+            adresse,
+            ", ".join(sorted(a for a in bekannt if a)) or "nobody",
+        )
+        _fremde_antwort_merken(db, termin, adresse, partstat)
+        return False
+
     geaendert = False
     for person in leute:
         if not isinstance(person, dict):
@@ -130,3 +148,36 @@ def verarbeiten(db: Session, konto: Konto, nachricht: Nachricht, roh: bytes) -> 
     db.commit()
     logger.info("A reply to an invitation was recorded.")
     return True
+
+
+#: Wie viele fremde Antworten je Termin aufgehoben werden.
+#:
+#: ⚠️ **Eine Grenze, weil die Liste sonst waechst, solange jemand schickt.**
+#: Fuenf reichen, um zu sehen, was los ist; wer mehr braucht, sieht ins
+#: Protokoll.
+FREMDE_HOECHSTENS = 5
+
+
+def _fremde_antwort_merken(db: Session, termin: Termin, adresse: str, stand: str) -> None:
+    """Eine verworfene Antwort am Termin vermerken, damit sie sichtbar wird.
+
+    ⚠️ **Je Adresse nur der letzte Stand.** Wer dreimal umentscheidet, soll
+    nicht dreimal dastehen.
+    """
+    try:
+        vorher = json.loads(termin.fremde_antworten or "[]")
+    except ValueError:
+        vorher = []
+    if not isinstance(vorher, list):
+        vorher = []
+
+    behalten = [
+        e
+        for e in vorher
+        if isinstance(e, dict) and (e.get("adresse") or "").strip().lower() != adresse
+    ]
+    behalten.append(
+        {"adresse": adresse, "antwort": stand, "am": datetime.now(timezone.utc).isoformat()}
+    )
+    termin.fremde_antworten = json.dumps(behalten[-FREMDE_HOECHSTENS:], ensure_ascii=False)
+    db.commit()

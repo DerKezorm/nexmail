@@ -259,3 +259,75 @@ def test_ein_fehlschlag_wirft_den_abgleich_nicht_um(db, welt, monkeypatch):
 
     ergebnis = abgleich.konto_abgleichen(db, konto)
     assert len(ergebnis["INBOX"].neue_ids) == 1
+
+
+def test_eine_verworfene_antwort_steht_im_protokoll(db, welt, caplog):
+    """⚠️ **Die Stille war das Schlimme.** Am 04.09.2026 antwortete Outlook
+    unter der eigenen Absenderidentitaet statt unter der eingeladenen Adresse.
+    Die Antwort war einwandfrei, nur die Adresse stand nicht auf der Liste —
+    und von aussen sah es aus, als sei der Rueckkanal kaputt."""
+    import logging
+
+    person, konto, termin = welt  # noqa: F811
+    nachricht = _nachricht(db, konto, konto.ordner[0].id)
+
+    with caplog.at_level(logging.INFO, logger="nexmail.terminantwort"):
+        assert dienst.verarbeiten(db, konto, nachricht, _antwortmail(wer="fremd@example.net")) is False
+
+    text = " ".join(r.getMessage() for r in caplog.records)
+    # Beide Adressen — sonst raet der Betreiber, welche gemeint war.
+    assert "fremd@example.net" in text
+    assert "anja@example.org" in text
+
+
+def test_eine_verworfene_antwort_steht_am_termin(db, welt):
+    """⚠️ **Verworfen, aber nicht verschwiegen.** Nur das Protokoll genuegt
+    nicht — dort sieht niemand nach, der einen Termin ansieht."""
+    person, konto, termin = welt  # noqa: F811
+    nachricht = _nachricht(db, konto, konto.ordner[0].id)
+
+    assert dienst.verarbeiten(db, konto, nachricht, _antwortmail(wer="fremd@example.net")) is False
+
+    vermerkt = json.loads(termin.fremde_antworten)
+    assert len(vermerkt) == 1
+    assert vermerkt[0]["adresse"] == "fremd@example.net"
+    assert vermerkt[0]["antwort"] == "ACCEPTED"
+    assert vermerkt[0]["am"]
+    # ⚠️ Und die Teilnehmerliste bleibt unberuehrt.
+    assert len(json.loads(termin.teilnehmer)) == 2
+
+
+def test_je_adresse_nur_der_letzte_stand(db, welt):
+    person, konto, termin = welt  # noqa: F811
+    nachricht = _nachricht(db, konto, konto.ordner[0].id)
+
+    dienst.verarbeiten(db, konto, nachricht, _antwortmail(wer="fremd@example.net"))
+    dienst.verarbeiten(
+        db, konto, nachricht, _antwortmail(wer="fremd@example.net", stand="DECLINED")
+    )
+
+    vermerkt = json.loads(termin.fremde_antworten)
+    assert len(vermerkt) == 1
+    assert vermerkt[0]["antwort"] == "DECLINED"
+
+
+def test_die_liste_waechst_nicht_unbegrenzt(db, welt):
+    """⚠️ Sonst waechst sie, solange jemand schickt."""
+    person, konto, termin = welt  # noqa: F811
+    nachricht = _nachricht(db, konto, konto.ordner[0].id)
+
+    for n in range(dienst.FREMDE_HOECHSTENS + 3):
+        dienst.verarbeiten(db, konto, nachricht, _antwortmail(wer=f"nr{n}@example.net"))
+
+    vermerkt = json.loads(termin.fremde_antworten)
+    assert len(vermerkt) == dienst.FREMDE_HOECHSTENS
+    # Die aeltesten sind weg, die neuesten da.
+    assert vermerkt[-1]["adresse"] == f"nr{dienst.FREMDE_HOECHSTENS + 2}@example.net"
+
+
+def test_eine_uebernommene_antwort_wird_nicht_als_fremd_vermerkt(db, welt):
+    person, konto, termin = welt  # noqa: F811
+    nachricht = _nachricht(db, konto, konto.ordner[0].id)
+
+    assert dienst.verarbeiten(db, konto, nachricht, _antwortmail()) is True
+    assert json.loads(termin.fremde_antworten) == []

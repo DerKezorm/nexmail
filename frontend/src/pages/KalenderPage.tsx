@@ -1776,6 +1776,34 @@ function Terminfenster({
               ))}
             </Select>
           )}
+          {/* ⚠️ **Verworfen, aber nicht verschwiegen.** Nur wer eingeladen
+              wurde, kann antworten — sonst trüge sich ein Fremder in eine
+              Teilnehmerliste ein, indem er eine Antwort schickt. Lautlos
+              wegwerfen ist aber genauso falsch: Am 04.09.2026 antwortete
+              Outlook unter der eigenen Absenderidentität statt unter der
+              eingeladenen Adresse, und von außen sah es aus, als sei der
+              Rückkanal kaputt. */}
+          {(termin?.fremdeAntworten?.length ?? 0) > 0 && (
+            <div className="flex flex-col gap-1 rounded-sm bg-surface-3 p-2">
+              <span className="text-[12px] font-medium text-fg-3">
+                {t('kalender.fremde_antwort_kopf', {
+                  count: termin!.fremdeAntworten.length,
+                })}
+              </span>
+              {termin!.fremdeAntworten.map((f) => (
+                <p key={f.adresse} className="mb-0 text-[12px] text-fg-3">
+                  <span className="text-fg-1">{f.adresse}</span>
+                  {' — '}
+                  {t(`kalender.antwort_${(f.antwort || '').toLowerCase()}`, {
+                    defaultValue: t('kalender.antwort_unbekannt'),
+                  })}
+                </p>
+              ))}
+              <p className="mb-0 text-[12px] text-fg-4">
+                {t('kalender.fremde_antwort_hinweis')}
+              </p>
+            </div>
+          )}
           {!gesperrt && (
             <Input
               type="email"

@@ -696,6 +696,10 @@ export interface TerminZeile {
   /** Ob schon eine Einladung hinausgegangen ist — davon haengt ab, ob beim
    *  Loeschen nach einer Absage gefragt wird. */
   eingeladen: boolean
+  /** Antworten von Adressen, die nicht eingeladen waren. ⚠️ **Verworfen, aber
+   *  nicht verschwiegen** — nur wer eingeladen wurde, kann antworten, und
+   *  entscheiden muss ein Mensch. */
+  fremdeAntworten: { adresse: string; antwort: string; am: string }[]
 }
 
 /** ``dieser`` gilt nur für dieses Vorkommen, ``folgende`` ab hier, ``alle``. */
@@ -739,6 +743,7 @@ interface ApiTermin {
   rrule: string
   aus_einladung: boolean
   eingeladen: boolean
+  fremde_antworten?: { adresse: string; antwort: string; am: string }[]
   erinnerung: number
 }
 
@@ -785,6 +790,7 @@ function terminZeile(t: ApiTermin): TerminZeile {
     rrule: t.rrule,
     ausEinladung: t.aus_einladung,
     eingeladen: t.eingeladen ?? false,
+    fremdeAntworten: t.fremde_antworten ?? [],
     erinnerung: t.erinnerung ?? -1,
   }
 }
