@@ -251,8 +251,31 @@ def test_die_suche_findet_den_titel(klient, welt):
 
 
 def test_gross_und_klein_trennt_nicht(klient, welt):
+    """⚠️ **Das leistet SQLites ``LIKE`` selbst — fuer ASCII.** Ein eigenes
+    ``lower()`` daneben aendert daran nichts; die Mutationsprobe laeuft
+    entsprechend durch. Der Test haelt trotzdem die Zusage fest."""
     _anlegen(klient, welt, "Zahnarzt")
     assert len(_suchen(klient, "ZAHNARZT")["treffer"]) == 1
+
+
+def test_ein_umlaut_wird_gefunden(klient, welt):
+    """⚠️ **Die erste Fassung fand ihn nicht.** Sie verglich
+    ``lower(Spalte) LIKE python-lower(Wort)``: Python faltet „Ü" zu „ü",
+    SQLites ``lower`` laesst es stehen — wer „Übung" richtig tippte, bekam
+    nichts. Gemessen am 04.09.2026.
+
+    ⚠️ **Was NICHT geht, steht in SPAETER.md:** „übung" findet „Übung" nicht.
+    SQLite faltet nur ASCII, und einen eigenen Zerleger gibt es hier nicht."""
+    _anlegen(klient, welt, "Übung Ernstfall")
+    assert [t["titel"] for t in _suchen(klient, "Übung")["treffer"]] == ["Übung Ernstfall"]
+
+
+def test_ein_prozentzeichen_sucht_nicht_alles(klient, welt):
+    """⚠️ Ohne Maskierung waere ``%`` ein Platzhalter und faende jeden Termin —
+    dieselbe Vorsicht wie in ``schlagworte.traegt_atom``."""
+    _anlegen(klient, welt, "Rabatt 20 Prozent")
+    _anlegen(klient, welt, "Etwas anderes", tag=11)
+    assert _suchen(klient, "%")["treffer"] == []
 
 
 def test_die_suche_findet_auch_ort_und_beschreibung(klient, welt):

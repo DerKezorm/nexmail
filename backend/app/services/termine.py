@@ -321,7 +321,22 @@ def suchen(
         return [], False
     jetzt = jetzt or datetime.now(timezone.utc)
 
-    muster = f"%{gesucht.lower()}%"
+    # ⚠️ **Kein ``lower()`` — SQLites ``LIKE`` faltet ASCII von sich aus.**
+    # Die erste Fassung schrieb ``lower(Spalte) LIKE python-lower(Wort)``, und
+    # das war schlechter als gar nichts: Python faltet „Ü" zu „ü", SQLites
+    # ``lower`` laesst es stehen. Gemessen am 04.09.2026:
+    # ``lower('Übung') LIKE '%übung%'`` ergibt 0 — wer „Übung" richtig tippte,
+    # fand seinen Termin nicht. Ohne beides trifft es.
+    #
+    # ⚠️ **Der Preis steht in SPAETER.md:** Umlaute bleiben gross/klein-genau.
+    # „übung" findet „Übung" nicht. Fuer die Post loest das der FTS5-Zerleger;
+    # hier gibt es keinen, und ein eigener waere ein Projekt fuer sich.
+    #
+    # ⚠️ **Die LIKE-Sonderzeichen werden maskiert.** Ein ``%`` im Suchwort
+    # traefe sonst alles, ein ``_`` jedes Zeichen — dieselbe Vorsicht wie in
+    # ``schlagworte.traegt_atom``.
+    sicher = gesucht.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+    muster = f"%{sicher}%"
     abfrage = (
         select(Termin)
         .join(Kalender)
@@ -329,9 +344,9 @@ def suchen(
         .where(Termin.status != "CANCELLED")
         .where(
             or_(
-                func.lower(Termin.titel).like(muster),
-                func.lower(Termin.ort).like(muster),
-                func.lower(Termin.beschreibung).like(muster),
+                Termin.titel.like(muster, escape="\\"),
+                Termin.ort.like(muster, escape="\\"),
+                Termin.beschreibung.like(muster, escape="\\"),
             )
         )
     )
