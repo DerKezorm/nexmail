@@ -133,7 +133,10 @@ events are stored once and worked out for the window on screen, so a *every
 Monday* does not fill the database to the year 2031; *this one, this and
 following, all* is asked the way every calendar asks it, because the format
 leaves no other answer. A published `.ics` link can be subscribed to
-read-only. What nexmail does not understand in a foreign event travels through
+read-only. A calendar can be downloaded as an `.ics` file and events read back
+in from one, so moving in or out does not mean retyping anything; events that
+are already there are skipped, so reading the same file twice is safe. What
+nexmail does not understand in a foreign event travels through
 untouched: alarms, attendees and a dozen `X-APPLE-` properties come back out
 the way they came in.
 

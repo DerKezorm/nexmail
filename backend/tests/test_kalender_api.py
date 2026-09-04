@@ -494,3 +494,70 @@ def test_eine_fremde_antwort_steht_in_der_termin_zeile(klient, db, welt):
     assert zeile["fremde_antworten"] == [
         {"adresse": "fremd@example.net", "antwort": "ACCEPTED", "am": "2026-09-04T10:00:00+00:00"}
     ]
+
+
+# --- .ics herunterladen und einspielen ------------------------------------ #
+
+
+def _ics(uid: str = "probe-1@example.org") -> bytes:
+    return (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\n"
+        f"UID:{uid}\r\nDTSTART:20260920T090000Z\r\nDTEND:20260920T100000Z\r\n"
+        "SUMMARY:Aus der Datei\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    ).encode("utf-8")
+
+
+def test_der_download_traegt_dateinamen_und_typ(klient, welt):
+    klient.post(
+        "/api/kalender/termine",
+        json={"kalender_id": welt["id"], "titel": "Zahnarzt", "beginn": _wann(20)},
+    )
+    antwort = klient.get(f"/api/kalender/{welt['id']}/ics")
+
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.headers["content-type"].startswith("text/calendar")
+    # ⚠️ Ohne den Dateinamen speichert der Browser sie als „ics" ohne Endung.
+    assert ".ics" in antwort.headers["content-disposition"]
+    assert antwort.text.startswith("BEGIN:VCALENDAR")
+    assert "SUMMARY:Zahnarzt" in antwort.text
+
+
+def test_eine_datei_wird_eingespielt(klient, welt):
+    antwort = klient.post(
+        f"/api/kalender/{welt['id']}/ics",
+        files={"datei": ("umzug.ics", _ics(), "text/calendar")},
+    )
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json()["angelegt"] == 1
+    assert any(t["titel"] == "Aus der Datei" for t in _fenster(klient))
+
+
+def test_eine_leere_datei_wird_benannt(klient, welt):
+    antwort = klient.post(
+        f"/api/kalender/{welt['id']}/ics",
+        files={"datei": ("leer.ics", b"", "text/calendar")},
+    )
+    assert antwort.status_code == 400
+    assert antwort.json()["detail"] == "datei_leer"
+
+
+def test_ein_fremder_kalender_gibt_nichts_heraus(klient, db, welt):
+    """⚠️ Ohne diese Prüfung lädt jeder Angemeldete jeden Kalender herunter."""
+    from app.models import Benutzer as Person
+    from app.models import Kalender
+
+    fremd = Person(benutzername="zweiter", passwort_hash="x")
+    db.add(fremd)
+    db.commit()
+    seiner = Kalender(benutzer_id=fremd.id, name="Fremd", farbe=1)
+    db.add(seiner)
+    db.commit()
+
+    assert klient.get(f"/api/kalender/{seiner.id}/ics").status_code == 404
+    assert (
+        klient.post(
+            f"/api/kalender/{seiner.id}/ics",
+            files={"datei": ("x.ics", _ics(), "text/calendar")},
+        ).status_code
+        == 404
+    )

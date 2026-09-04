@@ -15,16 +15,17 @@ import json
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile, status
 from pydantic import BaseModel, Field
 
-from ..models import Termin
+from ..models import Kalender, Termin
 from ..deps import AngemeldeterBenutzer, DbSession
 from ..services import caldav
 from ..services import kalenderabgleich
 from ..services import termine as dienst
 from ..services import wiederholung
 from ..services import konten as kontendienst
+from ..services import kalenderaustausch as austauschdienst
 from ..services import termineinladung as einladungsdienst
 from ..services.aliase import lesen as aliase_lesen
 from ..services.kontakte import _ADRESSE
@@ -658,6 +659,87 @@ def anlegen(
         return _kalender(dienst.kalender_anlegen(db, person, wunsch.name, wunsch.farbe))
     except dienst.TerminFehler as f:
         raise _fehler(f) from f
+
+
+class Einfuhrbericht(BaseModel):
+    angelegt: int
+    uebersprungen: int
+    unbrauchbar: int
+    abgeschnitten: bool
+    fehler: list[str]
+
+
+@router.get("/{kalender_id}/ics")
+def herunterladen(kalender_id: str, person: AngemeldeterBenutzer, db: DbSession) -> Response:
+    """Den ganzen Kalender als ``.ics``.
+
+    ⚠️ **Kein StreamingResponse.** Anders als eine mbox ist ein Kalender klein
+    — der grosse steht hier bei Kilobyte —, und die Datei entsteht ohnehin am
+    Stueck. Wer sie stroemt, gewinnt nichts und verliert die einfache Antwort.
+    """
+    kalender = db.get(Kalender, kalender_id)
+    if kalender is None or kalender.benutzer_id != person.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    try:
+        text = austauschdienst.ausgeben(db, person, kalender)
+    except austauschdienst.AustauschFehler as f:
+        raise MeldungHttp.aus(f, status.HTTP_400_BAD_REQUEST) from f
+
+    name = austauschdienst.dateiname(kalender)
+    return Response(
+        content=text.encode("utf-8"),
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@router.post("/{kalender_id}/ics", response_model=Einfuhrbericht)
+async def einspielen(
+    kalender_id: str,
+    person: AngemeldeterBenutzer,
+    db: DbSession,
+    datei: UploadFile = File(...),
+) -> Einfuhrbericht:
+    """Eine ``.ics`` in diesen Kalender einlesen.
+
+    ⚠️ **Waehrend des Lesens gezaehlt, nicht danach.** Wer erst liest und dann
+    vergleicht, hat die Datei schon im Speicher — dieselbe Lehre wie beim
+    Sicherungs-Upload am 03.09.2026.
+    """
+    kalender = db.get(Kalender, kalender_id)
+    if kalender is None or kalender.benutzer_id != person.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    teile: list[bytes] = []
+    groesse = 0
+    while block := await datei.read(1024 * 1024):
+        groesse += len(block)
+        if groesse > austauschdienst.MAX_BYTES:
+            raise MeldungHttp(
+                status.HTTP_413_CONTENT_TOO_LARGE,
+                "ics_zu_gross",
+                {"max_mb": austauschdienst.MAX_BYTES // (1024 * 1024)},
+            )
+        teile.append(block)
+
+    if not groesse:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="datei_leer")
+
+    # ⚠️ **``replace``, nicht ``strict``.** Eine Datei aus einem alten Programm
+    # kann Latin-1-Reste tragen; daran soll kein Umzug scheitern.
+    text = b"".join(teile).decode("utf-8", "replace")
+    try:
+        bericht = austauschdienst.einlesen(db, person, kalender, text)
+    except austauschdienst.AustauschFehler as f:
+        raise MeldungHttp.aus(f, status.HTTP_400_BAD_REQUEST) from f
+
+    return Einfuhrbericht(
+        angelegt=bericht.angelegt,
+        uebersprungen=bericht.uebersprungen,
+        unbrauchbar=bericht.unbrauchbar,
+        abgeschnitten=bericht.abgeschnitten,
+        fehler=bericht.fehler[:20],
+    )
 
 
 @router.patch("/{kalender_id}", response_model=KalenderZeile)

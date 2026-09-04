@@ -23,12 +23,14 @@ import {
   CalendarPlus,
   ChevronLeft,
   ChevronRight,
+  Download,
   Link2,
   Palette,
   PenLine,
   RefreshCw,
   Search,
   Trash2,
+  Upload,
   Unlink,
   X,
 } from 'lucide-react'
@@ -56,10 +58,12 @@ import {
   Wiederholungsfeld,
   alsRrule,
 } from '../components/Wiederholungsfeld'
+import { Kalendereinfuhr } from '../components/Kalendereinfuhr'
 import { Kalenderfenster } from '../components/Kalenderfenster'
 import { Kontextmenue } from '../components/Kontextmenue'
 import type { MenueEintrag } from '../components/Kontextmenue'
 import { useNachfrage } from '../components/Nachfrage'
+import { appPfad } from '../lib/basis'
 import {
   endeGezogen,
   minutenAusPixeln,
@@ -240,6 +244,7 @@ export function KalenderPage() {
     null,
   )
   const [gleichtAb, setGleichtAb] = useState(false)
+  const [einspielenIn, setEinspielenIn] = useState<KalenderZeile | null>(null)
   /* Die Suche. `wort` ist, was im Feld steht; `suche` ist das Ergebnis —
      `null` heißt „es wird gerade nicht gesucht", die Ansicht bleibt das
      Raster. */
@@ -513,6 +518,32 @@ export function KalenderPage() {
           })(),
       },
       {
+        id: 'herunterladen',
+        trennerDavor: true,
+        text: t('kalender.ics_herunterladen'),
+        symbol: <Download />,
+        /* ⚠️ **Über `window.location`, nicht über `fetch`.** Sonst läge die
+           Datei erst als Blob im Speicher des Browsers, und der Weg zum
+           Speichern-Dialog wäre selbst gebaut — dieselbe Entscheidung wie beim
+           mbox-Download. */
+        tun: () => {
+          window.location.href = appPfad(`/api/kalender/${k.id}/ics`)
+        },
+      },
+      /* ⚠️ **Einspielen nur, wo es auch ankommt.** Bei einem CalDAV-Kalender
+         gilt „erst der Server, dann die eigene Datenbank"; ein Eintrag, der zu
+         einer Absage führt, ist schlechter als keiner. */
+      ...(k.art
+        ? []
+        : [
+            {
+              id: 'einspielen',
+              text: t('kalender.ics_einspielen'),
+              symbol: <Upload />,
+              tun: () => setEinspielenIn(k),
+            },
+          ]),
+      {
         id: 'entfernen',
         trennerDavor: true,
         text: k.art ? t('kalender.trennen') : t('kalender.entfernen'),
@@ -761,6 +792,15 @@ export function KalenderPage() {
           y={menue.y}
           eintraege={menue.eintraege}
           aufSchliessen={() => setMenue(null)}
+        />
+      )}
+
+      {einspielenIn && (
+        <Kalendereinfuhr
+          kalenderId={einspielenIn.id}
+          kalenderName={einspielenIn.name}
+          aufFertig={() => void termineHolen()}
+          aufSchliessen={() => setEinspielenIn(null)}
         />
       )}
 
