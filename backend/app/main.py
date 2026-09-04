@@ -514,6 +514,27 @@ def _css_mit_vorbau(ordner: Path, basis: str | None = None) -> dict[str, str]:
     return heraus
 
 
+#: ⚠️ **Die ``index.html`` muss jedes Mal nachgefragt werden.**
+#:
+#: Sie ging bisher nur mit ``ETag`` und ``Last-Modified`` hinaus, ohne
+#: ``Cache-Control``. Ein Browser rechnet sich die Haltbarkeit dann selbst aus
+#: (ueblich: ein Zehntel des Alters seit ``Last-Modified``) und fragt bis dahin
+#: gar nicht nach. Nach einem Update zeigt er also die alte ``index.html`` —
+#: und die verweist auf ``assets/index-<hash>.js``, die es nicht mehr gibt.
+#: Ergebnis: **eine weisse Seite**, bis jemand von Hand hart neu laedt.
+#:
+#: Am 04.09.2026 genau so passiert, beim Pruefen einer neuen Funktion an einem
+#: frisch gebauten Stand: Der Browser lud eine Stunde alte Stuecke, die auf der
+#: Platte gar nicht mehr lagen.
+#:
+#: ⚠️ ``no-cache`` heisst **nicht** „nicht speichern", sondern „vor dem
+#: Benutzen nachfragen". Mit dem ``ETag`` ist das ein 304 und kostet nichts.
+#:
+#: ⚠️ **Die Stuecke unter ``/assets`` brauchen das nicht.** Ihr Name traegt die
+#: Pruefsumme des Inhalts; eine geaenderte Datei heisst anders und wird schon
+#: deshalb neu geholt.
+_INDEX_KOPF = {"Cache-Control": "no-cache"}
+
 _frontend = _statisches_verzeichnis()
 if _frontend is not None:
     # ⚠️ Einmal aufgeloest. ``_datei_im_haus`` vergleicht dagegen, und ein
@@ -549,8 +570,8 @@ if _frontend is not None:
         if datei is not None:
             return FileResponse(datei)
         if _index is not None:
-            return HTMLResponse(_index)
-        return FileResponse(_frontend / "index.html")
+            return HTMLResponse(_index, headers=_INDEX_KOPF)
+        return FileResponse(_frontend / "index.html", headers=_INDEX_KOPF)
 
 
 # --- Ganz außen ---------------------------------------------------------- #
