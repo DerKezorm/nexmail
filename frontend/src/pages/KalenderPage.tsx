@@ -30,6 +30,7 @@ import {
   Search,
   Trash2,
   Unlink,
+  X,
 } from 'lucide-react'
 import { ApiFehler } from '../api/client'
 import {
@@ -43,7 +44,7 @@ import {
   termineLaden,
   termineSuchen,
 } from '../api/laden'
-import type { KalenderZeile, TerminZeile, Umfang } from '../api/laden'
+import type { Beteiligter, KalenderZeile, TerminZeile, Umfang } from '../api/laden'
 import { Button, Checkbox, Dialog, EmptyState, Input, Select } from '../ds'
 import { PUNKT_KLASSE } from '../lib/farben'
 import type { Wiederholung } from '../components/Wiederholungsfeld'
@@ -1349,6 +1350,29 @@ function Terminfenster({
      den `VALARM` im Original nur dann — sonst verlöre ein fremder Termin
      seinen Alarm, bloß weil hier der Titel geändert wurde. */
   const erinnerungBeruehrt = useRef(false)
+  /* Die Teilnehmer dieses Termins.
+     ⚠️ **Nur mitschicken, wenn jemand sie angefasst hat** — dieselbe Regel wie
+     bei der Erinnerung, und aus dem schwereren Grund: Bei einem Termin, zu dem
+     man eingeladen wurde, würfe ein Mitschicken die Zusagen der anderen weg
+     und machte einen zum Organisator. */
+  const [leute, setLeute] = useState<Beteiligter[]>(termin?.teilnehmer ?? [])
+  const leuteBeruehrt = useRef(false)
+  const [neueAdresse, setNeueAdresse] = useState('')
+
+  function personDazu(roh: string) {
+    const adresse = roh.trim().toLowerCase()
+    setNeueAdresse('')
+    if (!adresse) return
+    // Groß/klein trennt niemanden — dieselbe Regel wie im Server.
+    if (leute.some((p) => p.adresse.toLowerCase() === adresse)) return
+    leuteBeruehrt.current = true
+    setLeute([...leute, { name: '', adresse, antwort: 'NEEDS-ACTION', rolle: '' }])
+  }
+
+  function personWeg(adresse: string) {
+    leuteBeruehrt.current = true
+    setLeute(leute.filter((p) => p.adresse !== adresse))
+  }
   const [kalenderId, setKalenderId] = useState(termin?.kalenderId ?? kalender[0]?.id ?? '')
   /** Der Kalender, in dem dieser Termin liegt — für die Zeile ganz oben. */
   const dieser = termin ? kalender.find((k) => k.id === termin.kalenderId) : undefined
@@ -1368,6 +1392,7 @@ function Terminfenster({
           beschreibung: notiz,
           rrule,
           erinnerung,
+          teilnehmer: leute.map((p) => ({ adresse: p.adresse, name: p.name })),
         })
         onFertig()
         return
@@ -1385,6 +1410,9 @@ function Terminfenster({
               ort,
               beschreibung: notiz,
               erinnerung: erinnerungBeruehrt.current ? erinnerung : undefined,
+              teilnehmer: leuteBeruehrt.current
+                ? leute.map((p) => ({ adresse: p.adresse, name: p.name }))
+                : undefined,
               // Die Regel gehört der Reihe: Bei „nur dieser" bleibt sie außen vor.
               rrule: umfang === 'dieser' ? undefined : rrule,
               umfang,
@@ -1578,15 +1606,16 @@ function Terminfenster({
           onChange={(e) => setNotiz(e.target.value)}
         />
 
-        {/* ⚠️ **Gezeigt, nicht bearbeitbar.** Wer Teilnehmer ändern könnte,
-            müsste auch einladen können — und dazu gehört der ganze Rückkanal.
-            Sie bleiben beim Speichern unangetastet in der Rückfahrkarte. */}
-        {termin && (termin.teilnehmer.length > 0 || termin.organisator) && (
+        {/* ⚠️ **Bearbeitbar, seit nexmail einladen kann.** Angefasst wird die
+            Liste im Original aber nur, wenn hier wirklich jemand dazukam oder
+            wegfiel — sonst bliebe von den Zusagen eines fremden Termins
+            nichts übrig. Den Riegel dafür hält `leuteBeruehrt`. */}
+        {true && (
           <div className="flex flex-col gap-1.5 border-t border-line-subtle pt-3">
             <span className="text-[12px] font-medium text-fg-3">
-              {t('kalender.teilnehmer', { count: termin.teilnehmer.length })}
+              {t('kalender.teilnehmer', { count: leute.length })}
             </span>
-            {termin.organisator && (
+            {termin?.organisator && (
               <p className="mb-0 truncate text-[12px] text-fg-3">
                 {t('kalender.organisator', {
                   wer: termin.organisator.name || termin.organisator.adresse,
@@ -1594,7 +1623,7 @@ function Terminfenster({
               </p>
             )}
             <ul className="flex list-none flex-col gap-1 p-0">
-              {termin.teilnehmer.map((b) => (
+              {leute.map((b) => (
                 <li key={b.adresse || b.name} className="flex items-center gap-2 text-[12px]">
                   <span
                     aria-hidden
@@ -1610,9 +1639,38 @@ function Terminfenster({
                       defaultValue: t('kalender.antwort_unbekannt'),
                     })}
                   </span>
+                  {!gesperrt && (
+                    <button
+                      type="button"
+                      aria-label={t('kalender.teilnehmer_entfernen', { wer: b.adresse })}
+                      onClick={() => personWeg(b.adresse)}
+                      className="shrink-0 rounded-sm p-0.5 text-fg-4 hover:bg-surface-3 hover:text-fg-1"
+                    >
+                      <X className="size-3.5" aria-hidden />
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
+            {!gesperrt && (
+              <Input
+                type="email"
+                value={neueAdresse}
+                onChange={(e) => setNeueAdresse(e.target.value)}
+                onKeyDown={(e) => {
+                  /* ⚠️ **Enter fügt hinzu und schickt das Formular nicht ab.**
+                     Ohne das Abfangen speichert der erste Enter den Termin,
+                     bevor der Teilnehmer überhaupt in der Liste steht. */
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    personDazu(neueAdresse)
+                  }
+                }}
+                onBlur={() => personDazu(neueAdresse)}
+                placeholder={t('kalender.teilnehmer_platzhalter')}
+                hint={t('kalender.teilnehmer_hinweis')}
+              />
+            )}
           </div>
         )}
 

@@ -825,6 +825,10 @@ export interface Terminwunsch {
   rrule?: string
   /** Minuten vor dem Beginn, **-1 heißt keine**. */
   erinnerung?: number
+  /** Wer eingeladen werden soll. ⚠️ Beim Ändern heißt `undefined`
+   *  **unverändert** — nur eine wirklich mitgeschickte Liste lässt den Server
+   *  die Teilnehmer im Original ersetzen. */
+  teilnehmer?: { adresse: string; name: string }[]
 }
 
 /** Eine fällige Erinnerung, wie das Sammelfenster sie zeigt. */
@@ -904,6 +908,7 @@ export async function terminAnlegen(wunsch: Terminwunsch): Promise<TerminZeile> 
       beschreibung: wunsch.beschreibung ?? '',
       rrule: wunsch.rrule ?? '',
       erinnerung: wunsch.erinnerung ?? -1,
+      teilnehmer: wunsch.teilnehmer ?? [],
     }),
   )
 }
@@ -929,6 +934,8 @@ export async function terminAendern(
       // Wert ersetzt den `VALARM` im Original. Sonst bliebe von einem fremden
       // Alarm nichts übrig, sobald jemand den Titel ändert.
       erinnerung: aenderung.erinnerung ?? null,
+      // ⚠️ ``null`` heisst hier **unveraendert** — siehe oben.
+      teilnehmer: aenderung.teilnehmer ?? null,
       umfang: aenderung.umfang ?? 'alle',
       vorkommen: aenderung.vorkommen ?? null,
     }),
