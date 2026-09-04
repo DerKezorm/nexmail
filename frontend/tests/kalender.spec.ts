@@ -597,3 +597,69 @@ test('Zwei gleichzeitige Termine verdecken einander nicht', async ({ page }) => 
   expect(erster.width).toBeGreaterThan(60)
   expect(zweiter.width).toBeGreaterThan(60)
 })
+
+
+test('Ein Konflikt zeigt beide Fassungen statt einer Absage', async ({ page }) => {
+  /* ⚠️ **Die Server-Antwort wird untergeschoben.** Einen echten 412
+     herbeizuführen hieße, einen zweiten CalDAV-Client zu betreiben; geprüft
+     wird hier die Oberfläche, und die kennt nur die Antwort. */
+  await page.getByRole('button', { name: /Neuer Termin/ }).click()
+  const neu = page.getByRole('dialog')
+  await neu.getByLabel('Titel').fill(`${PROBE} Konflikt`)
+  await neu.getByRole('button', { name: 'Speichern' }).click()
+  await expect(neu).toBeHidden()
+
+  await page.route('**/api/kalender/termine/*', async (weg) => {
+    if (weg.request().method() !== 'PATCH') return weg.continue()
+    await weg.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'termin_konflikt' }),
+    })
+  })
+  await page.route('**/api/kalender/termine/*/konflikt', async (weg) =>
+    weg.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        vorhanden: true,
+        fremd: {
+          id: 1,
+          kalender_id: 'x',
+          titel: 'Woanders geaendert',
+          beginn: '2026-09-20T09:00:00+00:00',
+          ende: '2026-09-20T10:00:00+00:00',
+          ganztaegig: false,
+          ort: 'Anderswo',
+          beschreibung: '',
+          aus_reihe: false,
+          wiederholung: 'keine',
+          regel_freq: '',
+          regel_fremd: false,
+          organisator: null,
+          teilnehmer: [],
+          rrule: '',
+          aus_einladung: false,
+          eingeladen: false,
+          erinnerung: -1,
+        },
+      }),
+    }),
+  )
+
+  await page.getByText(`${PROBE} Konflikt`).first().click()
+  const fenster = page.getByRole('dialog')
+  await fenster.getByLabel('Titel').fill(`${PROBE} Meine Fassung`)
+  await fenster.getByRole('button', { name: 'Speichern' }).click()
+
+  /* ⚠️ **Beide Fassungen, nicht eine Absage.** Genau das war bis zum
+     04.09.2026 der ganze Ausgang eines Konflikts. */
+  const konflikt = page.getByRole('dialog')
+  await expect(konflikt.getByText(/Zweimal geändert|Changed twice/)).toBeVisible()
+  await expect(konflikt.getByText(`${PROBE} Meine Fassung`)).toBeVisible()
+  await expect(konflikt.getByText('Woanders geaendert')).toBeVisible()
+  /* Drei Ausgänge, nicht zwei. */
+  await expect(konflikt.getByRole('button', { name: /Meine Fassung behalten|Keep my version/ })).toBeVisible()
+  await expect(konflikt.getByRole('button', { name: /Die andere übernehmen|Take the other one/ })).toBeVisible()
+  await expect(konflikt.getByRole('button', { name: /Abbrechen|Cancel/ })).toBeVisible()
+})

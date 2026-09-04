@@ -642,3 +642,156 @@ def test_teilnehmer_ueberleben_eine_aenderung(db, welt):
     assert "SUMMARY:Planung B" in hinaus
     assert "ORGANIZER;CN=Vera Beispiel" in hinaus
     assert hinaus.count("ATTENDEE") == 2
+
+
+# --- Der Konflikt: beide Fassungen zeigen --------------------------------- #
+#
+# ⚠️ **„Bitte erst abgleichen" ist keine Auskunft.** Es sagt nicht, was drüben
+# steht, und wer es befolgt, wirft seine eigene Änderung weg, ohne sie mit der
+# anderen verglichen zu haben. Bis zum 04.09.2026 war das der ganze Ausgang
+# eines 412.
+
+
+def _mit_konflikt(db, welt):
+    """Ein Termin, den jemand woanders geändert hat — das ETag stimmt nicht."""
+    person, kalender, server = welt
+    server.termine["/dav/anja/kalender/privat/a.ics"] = ("e1", TERMIN_ICS)
+    kalenderabgleich.abgleichen(db, kalender)
+    zeile = db.query(Termin).one()
+
+    # Jemand am Telefon: neuer Titel, neues ETag.
+    server.termine["/dav/anja/kalender/privat/a.ics"] = (
+        "e2",
+        TERMIN_ICS.replace("SUMMARY:Elternabend", "SUMMARY:Am Telefon geaendert"),
+    )
+    return person, kalender, server, zeile
+
+
+def test_ein_konflikt_ueberbuegelt_nichts(db, welt):
+    person, kalender, server, zeile = _mit_konflikt(db, welt)
+
+    zeile.titel = "Hier geaendert"
+    with pytest.raises(caldav.Konflikt):
+        kalenderabgleich.hochschieben(db, zeile)
+
+    # Beim Server steht unverändert die fremde Fassung.
+    assert "Am Telefon geaendert" in server.termine["/dav/anja/kalender/privat/a.ics"][1]
+
+
+def test_die_fremde_fassung_laesst_sich_ansehen(db, welt):
+    """⚠️ **Ohne etwas zu ändern.** Ansehen ist keine Entscheidung."""
+    person, kalender, server, zeile = _mit_konflikt(db, welt)
+    zeile.titel = "Hier geaendert"
+
+    fremd = kalenderabgleich.fremde_fassung(db, zeile)
+
+    assert fremd is not None
+    assert fremd["titel"] == "Am Telefon geaendert"
+    assert fremd["_etag"] == "e2"
+    # ⚠️ Die eigene Zeile ist unberührt — sonst wäre Ansehen schon Übernehmen.
+    assert zeile.titel == "Hier geaendert"
+
+
+def test_ein_drueben_geloeschter_termin_ist_ein_anderer_fall(db, welt):
+    """⚠️ Sonst sähe „gelöscht" aus wie „unverändert", und die Oberfläche böte
+    an, eine Fassung zu übernehmen, die es nicht gibt."""
+    person, kalender, server, zeile = _mit_konflikt(db, welt)
+    server.termine.clear()
+
+    assert kalenderabgleich.fremde_fassung(db, zeile) is None
+
+
+def test_die_fremde_fassung_uebernehmen_wirft_die_eigene_weg(db, welt):
+    person, kalender, server, zeile = _mit_konflikt(db, welt)
+    zeile.titel = "Hier geaendert"
+    # ⚠️ **Wirklich schmutzig, nicht nur behauptet.** So steht die Zeile nach
+    # einem gescheiterten Hochschieben da; ohne das prüft der Test einen Wert,
+    # der ohnehin schon falsch ist, und die Mutationsprobe läuft durch.
+    zeile.schmutzig = True
+    db.commit()
+
+    assert kalenderabgleich.fremde_fassung_uebernehmen(db, zeile) is True
+
+    db.refresh(zeile)
+    assert zeile.titel == "Am Telefon geaendert"
+    assert zeile.etag == "e2"
+    # ⚠️ Und sie gilt als sauber — sonst schöbe der nächste Takt sie hoch.
+    assert zeile.schmutzig is False
+
+
+def test_meine_fassung_gewinnt_erst_nach_dem_frischmachen(db, welt):
+    """⚠️ **Die Kette, auf der Punkt 6 steht.** Ohne das frische ETag scheitert
+    auch der zweite Anlauf mit 412 — und der Mensch hat entschieden, ohne dass
+    es etwas ändert."""
+    person, kalender, server, zeile = _mit_konflikt(db, welt)
+    zeile.titel = "Hier geaendert"
+
+    assert kalenderabgleich.frisch_machen(db, zeile) is True
+    kalenderabgleich.hochschieben(db, zeile)
+
+    beim_server = server.termine["/dav/anja/kalender/privat/a.ics"][1]
+    assert "SUMMARY:Hier geaendert" in beim_server
+
+
+def test_frischmachen_holt_die_fremden_zeilen_mit(db, welt):
+    """⚠️ **Nicht die alte Fassung überbügeln.** Was drüben dazukam und nexmail
+    nicht verwaltet — Alarme, Teilnehmer, `X-APPLE-…` —, muss stehen bleiben;
+    sonst trifft „meine Fassung gewinnt" mehr, als der Mensch entschieden hat."""
+    person, kalender, server, zeile = _mit_konflikt(db, welt)
+    server.termine["/dav/anja/kalender/privat/a.ics"] = (
+        "e3",
+        TERMIN_ICS.replace(
+            "BEGIN:VALARM", "X-APPLE-SPUR:drueben-dazugekommen\r\nBEGIN:VALARM"
+        ),
+    )
+    zeile.titel = "Hier geaendert"
+
+    kalenderabgleich.frisch_machen(db, zeile)
+    kalenderabgleich.hochschieben(db, zeile)
+
+    beim_server = server.termine["/dav/anja/kalender/privat/a.ics"][1]
+    assert "SUMMARY:Hier geaendert" in beim_server
+    assert "X-APPLE-SPUR:drueben-dazugekommen" in beim_server
+
+
+def test_aus_einer_reihe_wird_der_richtige_termin_gelesen(db, welt):
+    """⚠️ **Eine Datei kann mehrere ``VEVENT`` enthalten** — eine Reihe samt
+    ihren Ausnahmen. Wer den ersten nimmt, zeigt beim Konflikt die falsche
+    Fassung, und der Mensch entscheidet über etwas anderes, als er sieht."""
+    person, kalender, server = welt
+    server.termine["/dav/anja/kalender/privat/r.ics"] = ("e1", REIHE_ICS)
+    kalenderabgleich.abgleichen(db, kalender)
+
+    ausnahme = db.query(Termin).filter(Termin.recurrence_id != "").one()
+    assert ausnahme.titel == "Ausnahme"
+
+    fremd = kalenderabgleich.fremde_fassung(db, ausnahme)
+
+    assert fremd is not None
+    assert fremd["titel"] == "Ausnahme"
+    assert fremd["recurrence_id"] == ausnahme.recurrence_id
+
+
+def test_erzwingen_macht_die_fassung_erst_frisch(db, welt):
+    """⚠️ **Der ganze Weg, nicht nur sein Baustein.** ``frisch_machen`` allein
+    zu prüfen sagt nichts darüber, ob ``erzwingen`` es auch ruft — und genau
+    daran lief die erste Mutationsprobe vorbei."""
+    person, kalender, server, zeile = _mit_konflikt(db, welt)
+
+    raus = termine.aendern(
+        db, person, zeile.id, titel="Meine Fassung gewinnt", erzwingen=True
+    )
+
+    assert raus.titel == "Meine Fassung gewinnt"
+    beim_server = server.termine["/dav/anja/kalender/privat/a.ics"][1]
+    assert "SUMMARY:Meine Fassung gewinnt" in beim_server
+
+
+def test_ohne_erzwingen_bleibt_der_konflikt_stehen(db, welt):
+    """Die Gegenprobe: Ohne die Entscheidung wird nichts überbügelt."""
+    person, kalender, server, zeile = _mit_konflikt(db, welt)
+
+    with pytest.raises(termine.TerminFehler) as f:
+        termine.aendern(db, person, zeile.id, titel="Heimlich")
+    assert f.value.kennung == "termin_konflikt"
+    assert "Am Telefon geaendert" in server.termine["/dav/anja/kalender/privat/a.ics"][1]

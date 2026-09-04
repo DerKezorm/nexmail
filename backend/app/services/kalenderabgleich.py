@@ -354,6 +354,75 @@ def hochschieben(
     termin.schmutzig = False
 
 
+def fremde_fassung(db: Session, termin: Termin) -> dict | None:
+    """Was gerade beim Anbieter unter dieser Adresse steht — **ohne** zu ändern.
+
+    ⚠️ **Der ganze Sinn von Punkt 6.** Bei einem 412 wusste bisher niemand,
+    was auf der anderen Seite steht; „bitte erst abgleichen" ist keine
+    Auskunft, sondern eine Aufforderung, die eigene Änderung wegzuwerfen.
+
+    Gibt ``None``, wenn dort nichts (mehr) liegt — dann hat jemand den Termin
+    drüben gelöscht, und das ist ein anderer Fall als „woanders geändert".
+    """
+    kalender = termin.kalender
+    if kalender is None or kalender.art != "caldav" or not termin.href:
+        return None
+    treffer = caldav.inhalte_holen(zugang(kalender, db), [termin.href])
+    if not treffer:
+        return None
+    eintrag = treffer[0]
+    for daten in vevent.lesen(eintrag.roh):
+        if daten["uid"] == termin.uid and daten["recurrence_id"] == (termin.recurrence_id or ""):
+            daten["_etag"] = eintrag.etag
+            daten["_roh"] = eintrag.roh
+            return daten
+    return None
+
+
+def fremde_fassung_uebernehmen(db: Session, termin: Termin) -> bool:
+    """Die Fassung des Anbieters gewinnt: eigene Änderung fällt weg.
+
+    ⚠️ **Nur diesen einen Termin, nicht den ganzen Kalender.** Ein voller
+    Abgleich dauert und fasst alles an; wer einen Konflikt auflöst, meint
+    genau diese eine Zeile.
+    """
+    daten = fremde_fassung(db, termin)
+    if daten is None:
+        return False
+    for feld in (
+        "titel", "beschreibung", "ort", "beginn", "ende", "ganztaegig",
+        "zeitzone", "rrule", "exdate", "sequenz", "status", "erinnerung",
+    ):
+        setattr(termin, feld, daten[feld])
+    termin.organisator = json.dumps(daten["organisator"]) if daten["organisator"] else ""
+    termin.teilnehmer = json.dumps(daten["teilnehmer"]) if daten["teilnehmer"] else ""
+    termin.roh = daten["_roh"]
+    termin.etag = daten["_etag"]
+    termin.schmutzig = False
+    termin.geaendert = utcnow()
+    db.commit()
+    logger.info("A conflict was resolved in favour of the server.")
+    return True
+
+
+def frisch_machen(db: Session, termin: Termin) -> bool:
+    """Nur ``roh`` und ``etag`` nachziehen — für „meine Fassung gewinnt".
+
+    ⚠️ **Die eigenen Felder bleiben, wie sie sind.** Genau das heißt „meine
+    Fassung": Was nexmail verwaltet, gewinnt; alles andere aus der fremden
+    Fassung — Alarme, Teilnehmer, ``X-APPLE-…`` — bleibt stehen, statt
+    überbügelt zu werden. Ohne das frische ``roh`` würde die Änderung auf einem
+    veralteten Original sitzen und fremde Zeilen zurückholen, die drüben längst
+    weg sind.
+    """
+    daten = fremde_fassung(db, termin)
+    if daten is None:
+        return False
+    termin.roh = daten["_roh"]
+    termin.etag = daten["_etag"]
+    return True
+
+
 def wegnehmen(db: Session, kalender: Kalender, href: str, etag: str) -> None:
     """Einen Termin beim Server löschen. ⚠️ Erst dort, dann hier."""
     if kalender.art != "caldav" or not href:

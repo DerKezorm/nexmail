@@ -25,6 +25,7 @@ from ..services import kalenderabgleich
 from ..services import termine as dienst
 from ..services import wiederholung
 from ..services import konten as kontendienst
+from ..services import kalenderabgleich as abgleichdienst
 from ..services import kalenderaustausch as austauschdienst
 from ..services import termineinladung as einladungsdienst
 from ..services.aliase import lesen as aliase_lesen
@@ -249,6 +250,10 @@ class TerminAenderung(BaseModel):
     #: wegwerfen — siehe ``vevent.aktualisieren``.
     teilnehmer: list[TeilnehmerEingabe] | None = None
     absender: str | None = Field(default=None, max_length=320)
+    #: ⚠️ **Die Antwort auf eine Rueckfrage, kein Schalter.** Wahr heisst:
+    #: „Ich habe die andere Fassung gesehen und will meine." Ohne die Frage
+    #: davor waere es stillschweigendes Ueberbuegeln.
+    erzwingen: bool = False
     #: ``dieser`` | ``folgende`` | ``alle``
     umfang: str = "alle"
     #: Der Beginn des angeklickten Vorkommens. Ohne ihn laesst sich „nur
@@ -411,6 +416,7 @@ def termin_aendern(
         termin = dienst.aendern(
             db, person, termin_id,
             vorkommen=aenderung.vorkommen, umfang=aenderung.umfang,
+            erzwingen=aenderung.erzwingen,
             titel=aenderung.titel, beginn=aenderung.beginn, ende=aenderung.ende,
             ganztaegig=aenderung.ganztaegig, ort=aenderung.ort,
             beschreibung=aenderung.beschreibung, rrule=aenderung.rrule,
@@ -432,6 +438,88 @@ def termin_aendern(
 class Einladungsstand(BaseModel):
     #: An wie viele Personen die Einladung ging.
     empfaenger: int
+
+
+class Konfliktbild(BaseModel):
+    """Was auf der anderen Seite steht — zum Ansehen, nicht zum Übernehmen."""
+
+    #: Falsch heisst: Dort liegt nichts mehr. Jemand hat den Termin geloescht.
+    vorhanden: bool
+    fremd: TerminZeile | None = None
+
+
+@router.get("/termine/{termin_id}/konflikt", response_model=Konfliktbild)
+def konflikt_ansehen(
+    termin_id: int, person: AngemeldeterBenutzer, db: DbSession
+) -> Konfliktbild:
+    """Die Fassung des Anbieters holen, ohne etwas zu ändern.
+
+    ⚠️ **Das ist der ganze Punkt.** „Bitte erst abgleichen" ist keine Auskunft:
+    Es sagt nicht, was drüben steht, und wer es befolgt, wirft seine eigene
+    Änderung weg, ohne sie mit der anderen verglichen zu haben.
+    """
+    termin = db.get(Termin, termin_id)
+    if termin is None or termin.benutzer_id != person.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    try:
+        daten = abgleichdienst.fremde_fassung(db, termin)
+    except Exception as fehler:  # noqa: BLE001
+        # ⚠️ Ein Netzfehler beim Nachsehen darf nicht wie „dort ist nichts"
+        # aussehen — das waere die Aufforderung zu loeschen.
+        logger.info("The other version could not be fetched: %s", type(fehler).__name__)
+        raise MeldungHttp(
+            status.HTTP_502_BAD_GATEWAY, "konflikt_nicht_abrufbar", {}
+        ) from fehler
+    if daten is None:
+        return Konfliktbild(vorhanden=False)
+
+    # ⚠️ **Eine Attrappe, keine Zeile in der Datenbank.** Angesehen wird die
+    # fremde Fassung; gespeichert ist sie erst, wenn jemand sie waehlt.
+    schatten = Termin(
+        id=termin.id,
+        kalender_id=termin.kalender_id,
+        benutzer_id=termin.benutzer_id,
+        uid=termin.uid,
+        recurrence_id=termin.recurrence_id,
+        **{
+            feld: daten[feld]
+            for feld in (
+                "titel", "beschreibung", "ort", "beginn", "ende", "ganztaegig",
+                "zeitzone", "rrule", "exdate", "sequenz", "status", "erinnerung",
+            )
+        },
+        organisator=json.dumps(daten["organisator"]) if daten["organisator"] else "",
+        teilnehmer=json.dumps(daten["teilnehmer"]) if daten["teilnehmer"] else "",
+    )
+    return Konfliktbild(
+        vorhanden=True,
+        fremd=_sicht(dienst.Sicht(schatten, schatten.beginn, schatten.ende, bool(schatten.rrule))),
+    )
+
+
+@router.post("/termine/{termin_id}/konflikt", response_model=TerminZeile)
+def konflikt_aufloesen(
+    termin_id: int, person: AngemeldeterBenutzer, db: DbSession
+) -> TerminZeile:
+    """Die fremde Fassung übernehmen — die eigene Änderung fällt weg.
+
+    ⚠️ **Der andere Ausgang braucht keine eigene Adresse.** „Meine Fassung
+    gewinnt" ist dasselbe Ändern wie vorher, nur mit ``erzwingen``; zwei Wege
+    für dieselbe Handlung liefen auseinander.
+    """
+    termin = db.get(Termin, termin_id)
+    if termin is None or termin.benutzer_id != person.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    try:
+        geklappt = abgleichdienst.fremde_fassung_uebernehmen(db, termin)
+    except Exception as fehler:  # noqa: BLE001
+        logger.info("The other version could not be taken: %s", type(fehler).__name__)
+        raise MeldungHttp(
+            status.HTTP_502_BAD_GATEWAY, "konflikt_nicht_abrufbar", {}
+        ) from fehler
+    if not geklappt:
+        raise MeldungHttp(status.HTTP_409_CONFLICT, "konflikt_drueben_geloescht", {})
+    return _sicht(dienst.Sicht(termin, termin.beginn, termin.ende, bool(termin.rrule)))
 
 
 @router.post("/termine/{termin_id}/einladen", response_model=Einladungsstand)

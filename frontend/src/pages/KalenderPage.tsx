@@ -42,6 +42,7 @@ import {
   einladungVersenden,
   kalenderLaden,
   kontenLaden,
+  konfliktAufloesen,
   terminAendern,
   terminAnlegen,
   terminEntfernen,
@@ -59,6 +60,7 @@ import {
   alsRrule,
 } from '../components/Wiederholungsfeld'
 import { Kalendereinfuhr } from '../components/Kalendereinfuhr'
+import { Konfliktfenster } from '../components/Konfliktfenster'
 import { Kalenderfenster } from '../components/Kalenderfenster'
 import { Kontextmenue } from '../components/Kontextmenue'
 import type { MenueEintrag } from '../components/Kontextmenue'
@@ -1506,6 +1508,12 @@ function Terminfenster({
   /** Der Kalender, in dem dieser Termin liegt — für die Zeile ganz oben. */
   const dieser = termin ? kalender.find((k) => k.id === termin.kalenderId) : undefined
   const [laeuft, setLaeuft] = useState(false)
+  /* Ein offener Konflikt: die eigene Fassung und der Weg, sie doch zu
+     schreiben. Solange er steht, ist nichts gespeichert. */
+  const [konflikt, setKonflikt] = useState<{
+    zeile: TerminZeile
+    nochmal: (erzwingen: boolean) => Promise<unknown>
+  } | null>(null)
 
   async function speichern() {
     setLaeuft(true)
@@ -1532,8 +1540,8 @@ function Terminfenster({
       // stillschweigend fünfzig Termine.
       aufUmfang(termin, 'aendern', (umfang) => {
         void (async () => {
-          try {
-            await terminAendern(termin.id, {
+          const schreiben = (erzwingen: boolean) =>
+            terminAendern(termin.id, {
               titel,
               beginn: ausFeld(beginn, ganztaegig),
               ende: ausEndeFeld(ende, ganztaegig),
@@ -1549,11 +1557,38 @@ function Terminfenster({
               rrule: umfang === 'dieser' ? undefined : rrule,
               umfang,
               vorkommen: termin.beginn,
+              erzwingen,
             })
+
+          try {
+            await schreiben(false)
             if (leute.length)
               await aufEinladen(termin.id, leute.length, absender, termin.eingeladen)
             onFertig()
           } catch (f) {
+            /* ⚠️ **Ein Konflikt ist keine Fehlermeldung, sondern eine Frage.**
+               Die eigene Änderung steht noch im Formular; sie wegzuwerfen, weil
+               jemand anders schneller war, wäre die schlechteste der drei
+               möglichen Antworten — und bis zum 04.09.2026 die einzige. */
+            if (f instanceof ApiFehler && f.detail === 'termin_konflikt') {
+              setKonflikt({
+                /* Die eigene Fassung, wie sie gespeichert werden sollte —
+                   nicht die gespeicherte: Verglichen wird, was der Mensch
+                   gerade eingetippt hat. */
+                zeile: {
+                  ...termin,
+                  titel,
+                  ort,
+                  beschreibung: notiz,
+                  beginn: ausFeld(beginn, ganztaegig),
+                  ende: ausEndeFeld(ende, ganztaegig) ?? termin.ende,
+                  ganztaegig,
+                },
+                nochmal: schreiben,
+              })
+              setLaeuft(false)
+              return
+            }
             aufFehler(f)
             setLaeuft(false)
           }
@@ -1586,6 +1621,34 @@ function Terminfenster({
         }
       })()
     })
+  }
+
+  /* ⚠️ **Das Konfliktfenster steht VOR dem Terminfenster, nicht darin.** Zwei
+     offene Fenster übereinander wären zwei Ausgänge, und der Mensch soll genau
+     eine Frage vor sich haben. Das Terminfenster ist so lange nicht sichtbar,
+     seine Eingaben bleiben aber stehen. */
+  if (konflikt) {
+    return (
+      <Konfliktfenster
+        termin={konflikt.zeile}
+        sprache={sprache}
+        aufSchliessen={() => setKonflikt(null)}
+        aufWahl={(wahl) =>
+          void (async () => {
+            setKonflikt(null)
+            setLaeuft(true)
+            try {
+              if (wahl === 'meine') await konflikt.nochmal(true)
+              else await konfliktAufloesen(konflikt.zeile.id)
+              onFertig()
+            } catch (f) {
+              aufFehler(f)
+              setLaeuft(false)
+            }
+          })()
+        }
+      />
+    )
   }
 
   return (

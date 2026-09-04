@@ -948,6 +948,9 @@ export async function terminAendern(
     umfang?: Umfang
     /** Der Beginn des angeklickten Vorkommens — ohne ihn geht „nur dieser" nicht. */
     vorkommen?: string
+    /** ⚠️ **Die Antwort auf die Konfliktfrage, kein Schalter.** Wahr heißt:
+     *  „Ich habe die andere Fassung gesehen und will meine." */
+    erzwingen?: boolean
   },
 ): Promise<TerminZeile> {
   return terminZeile(
@@ -968,8 +971,24 @@ export async function terminAendern(
       absender: aenderung.absender ?? null,
       umfang: aenderung.umfang ?? 'alle',
       vorkommen: aenderung.vorkommen ?? null,
+      erzwingen: aenderung.erzwingen ?? false,
     }),
   )
+}
+
+/** Was gerade beim Anbieter steht — zum Ansehen, nicht zum Übernehmen. */
+export async function konfliktAnsehen(
+  id: number,
+): Promise<{ vorhanden: boolean; fremd: TerminZeile | null }> {
+  const raus = await api.holen<{ vorhanden: boolean; fremd: ApiTermin | null }>(
+    `/api/kalender/termine/${id}/konflikt`,
+  )
+  return { vorhanden: raus.vorhanden, fremd: raus.fremd ? terminZeile(raus.fremd) : null }
+}
+
+/** Die fremde Fassung übernehmen — die eigene Änderung fällt weg. */
+export async function konfliktAufloesen(id: number): Promise<TerminZeile> {
+  return terminZeile(await api.senden<ApiTermin>(`/api/kalender/termine/${id}/konflikt`, {}))
 }
 
 export async function terminEntfernen(

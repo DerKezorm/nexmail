@@ -376,6 +376,7 @@ def _hinaus(
     termin: Termin,
     alarm_ersetzen: bool = False,
     teilnehmer_ersetzen: bool = False,
+    erzwingen: bool = False,
 ) -> None:
     """Einen geänderten Termin sofort zum Server bringen.
 
@@ -392,6 +393,13 @@ def _hinaus(
 
     if termin.kalender is None or termin.kalender.art != "caldav":
         return
+    if erzwingen:
+        # ⚠️ **„Meine Fassung gewinnt" heisst: auf der FRISCHEN fremden
+        # Fassung schreiben, nicht auf der alten.** Sonst saesse die eigene
+        # Aenderung auf einem veralteten Original und holte fremde Zeilen
+        # zurueck, die drueben laengst weg sind — ein Ueberbuegeln, das mehr
+        # trifft als das, was der Mensch entschieden hat.
+        kalenderabgleich.frisch_machen(db, termin)
     try:
         kalenderabgleich.hochschieben(
             db, termin, alarm_ersetzen=alarm_ersetzen, teilnehmer_ersetzen=teilnehmer_ersetzen
@@ -521,9 +529,15 @@ def aendern(
     *,
     vorkommen: datetime | None = None,
     umfang: str = "alle",
+    erzwingen: bool = False,
     **felder,
 ) -> Termin:
     """Einen Termin ändern. Bei einer Reihe entscheidet ``umfang``.
+
+    ⚠️ **``erzwingen`` ist die Antwort auf einen Konflikt, kein Schalter.** Es
+    kommt aus der Rückfrage „woanders auch geändert — welche Fassung gilt?"
+    und heißt: meine. Ohne die Frage davor wäre es das stillschweigende
+    Überbügeln, das ``_hinaus`` ausdrücklich nicht tut.
 
     ``vorkommen`` ist der Beginn des angeklickten Vorkommens — ohne ihn lässt
     sich „nur dieser" nicht sagen.
@@ -547,7 +561,13 @@ def aendern(
         _felder_setzen(termin, felder)
         termin.geaendert = utcnow()
         termin.schmutzig = bool(kalender.art)
-        _hinaus(db, termin, alarm_ersetzen=alarm_neu, teilnehmer_ersetzen=leute_neu)
+        _hinaus(
+            db,
+            termin,
+            alarm_ersetzen=alarm_neu,
+            teilnehmer_ersetzen=leute_neu,
+            erzwingen=erzwingen,
+        )
         db.commit()
         return termin
 

@@ -561,3 +561,45 @@ def test_ein_fremder_kalender_gibt_nichts_heraus(klient, db, welt):
         ).status_code
         == 404
     )
+
+
+# --- Der Konflikt über die Adressen --------------------------------------- #
+
+
+def test_die_fremde_fassung_gibt_es_nur_fuer_den_eigenen_termin(klient, db, welt):
+    """⚠️ Sonst sähe jeder Angemeldete in jeden fremden Kalender."""
+    from app.models import Benutzer as Person
+    from app.models import Kalender, Termin
+
+    fremd = Person(benutzername="zweiter", passwort_hash="x")
+    db.add(fremd)
+    db.commit()
+    seiner = Kalender(benutzer_id=fremd.id, name="Fremd", farbe=1)
+    db.add(seiner)
+    db.commit()
+    seinTermin = Termin(
+        kalender_id=seiner.id,
+        benutzer_id=fremd.id,
+        uid="fremd@example.org",
+        titel="Nicht meiner",
+        beginn=datetime(2026, 9, 20, 9, tzinfo=timezone.utc),
+        ende=datetime(2026, 9, 20, 10, tzinfo=timezone.utc),
+    )
+    db.add(seinTermin)
+    db.commit()
+
+    assert klient.get(f"/api/kalender/termine/{seinTermin.id}/konflikt").status_code == 404
+    assert klient.post(f"/api/kalender/termine/{seinTermin.id}/konflikt").status_code == 404
+
+
+def test_ohne_gegenstelle_gibt_es_keine_fremde_fassung(klient, welt):
+    """Ein Kalender, der nur hier lebt, kann nicht woanders geändert werden."""
+    neu = klient.post(
+        "/api/kalender/termine",
+        json={"kalender_id": welt["id"], "titel": "Nur hier", "beginn": _wann(20)},
+    ).json()
+
+    antwort = klient.get(f"/api/kalender/termine/{neu['id']}/konflikt")
+
+    assert antwort.status_code == 200
+    assert antwort.json()["vorhanden"] is False
