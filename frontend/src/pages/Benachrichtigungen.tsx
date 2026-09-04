@@ -192,6 +192,12 @@ export function Benachrichtigungen() {
             <Button variant="secondary" onClick={probe}>
               {probeGesagt ? t('push.probe_unterwegs') : t('push.probe')}
             </Button>
+          ) : lage === 'abgemeldet' ? (
+            /* ⚠️ Kein Nachfragen noetig — die Erlaubnis steht ja noch. Ein
+               Klick genuegt, und `anmelden()` loescht dabei den Merker. */
+            <Button onClick={erlauben} disabled={laeuft}>
+              {t('push.wieder_anmelden')}
+            </Button>
           ) : lage === 'erlaubt_ohne_anmeldung' ? (
             <Button onClick={nachholen} disabled={laeuft}>
               {t('push.anmelden_nachholen')}

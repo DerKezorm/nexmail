@@ -24,6 +24,7 @@ const GUT: Umstaende = {
   alsApp: false,
   erlaubnis: 'granted',
   angemeldet: true,
+  abgemeldet: false,
 }
 
 const mit = (teil: Partial<Umstaende>): Umstaende => ({ ...GUT, ...teil })
@@ -78,5 +79,36 @@ describe('lageAus', () => {
   it('verlangt den Home-Bildschirm NUR auf Apple', () => {
     // Ein Android-Browser in einem gewoehnlichen Reiter kann sehr wohl Push.
     expect(lageAus(mit({ istApple: false, alsApp: false }))).toBe('bereit')
+  })
+})
+
+
+describe('bewusst abgemeldet', () => {
+  it('ist eine eigene Lage, nicht „noch nicht angemeldet"', () => {
+    /* ⚠️ **Der Unterschied ist die Absicht, nicht der Zustand.** Beide Male
+       gibt es kein Abonnement. Beim einen soll die Anwendung still nachmelden
+       (Umzug, gelöschte Browserdaten), beim anderen soll sie es genau nicht —
+       sonst nimmt das Nachmelden die Abmeldung im selben Klick zurück. */
+    expect(lageAus(mit({ angemeldet: false, abgemeldet: false }))).toBe('erlaubt_ohne_anmeldung')
+    expect(lageAus(mit({ angemeldet: false, abgemeldet: true }))).toBe('abgemeldet')
+  })
+
+  it('wird von einer bestehenden Anmeldung überstimmt', () => {
+    /* Wer sich abmeldet und danach wieder anmeldet, ist angemeldet. Stünde
+       der Merker darüber, zeigte die Seite „abgemeldet" an einem Gerät, an
+       dem Meldungen ankommen. */
+    expect(lageAus(mit({ angemeldet: true, abgemeldet: true }))).toBe('bereit')
+  })
+
+  it('überstimmt nicht die Gründe, die davor stehen', () => {
+    /* ⚠️ Dieselbe Reihenfolge-Falle wie bei `kein_home`: Ein Gerät, das gar
+       kein Push kann, ist nicht „abgemeldet" — die Meldung schickte einen
+       sonst auf eine Fährte, die nie ankommt. */
+    expect(lageAus(mit({ angemeldet: false, abgemeldet: true, kannPush: false }))).toBe('unmoeglich')
+    expect(lageAus(mit({ angemeldet: false, abgemeldet: true, erlaubnis: 'denied' }))).toBe('abgelehnt')
+    expect(lageAus(mit({ angemeldet: false, abgemeldet: true, erlaubnis: 'default' }))).toBe('offen')
+    expect(
+      lageAus(mit({ angemeldet: false, abgemeldet: true, istApple: true, alsApp: false })),
+    ).toBe('kein_home')
   })
 })

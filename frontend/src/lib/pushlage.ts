@@ -18,6 +18,7 @@ export type PushLage =
   | 'abgelehnt' // der Browser hat Nein — nur in seinen Einstellungen zurückzunehmen
   | 'unmoeglich' // dieser Browser kann kein Push
   | 'kein_home' // iOS ohne Home-Bildschirm
+  | 'abgemeldet' // erlaubt, aber hier bewusst abgemeldet — kein stilles Nachmelden
 
 /** Woraus sich die Lage ergibt. Als Werte, damit sie prüfbar bleibt. */
 export interface Umstaende {
@@ -29,6 +30,11 @@ export interface Umstaende {
   erlaubnis: NotificationPermission
   /** Es gibt ein Abonnement für dieses Gerät. */
   angemeldet: boolean
+  /** Hier wurde bewusst abgemeldet. ⚠️ **Eigener Wert, nicht aus
+   *  `angemeldet` abzuleiten:** „nicht angemeldet" heißt sonst zweierlei —
+   *  „der Server kennt mich nicht (heile das)" und „ich will das nicht
+   *  (lass es)" —, und genau diese Vermengung ist der Fehler. */
+  abgemeldet: boolean
 }
 
 /** Die Entscheidung, ohne Browser.
@@ -53,5 +59,31 @@ export function lageAus(u: Umstaende): PushLage {
   if (u.istApple && !u.alsApp) return 'kein_home'
   if (u.erlaubnis === 'denied') return 'abgelehnt'
   if (u.erlaubnis !== 'granted') return 'offen'
-  return u.angemeldet ? 'bereit' : 'erlaubt_ohne_anmeldung'
+  if (u.angemeldet) return 'bereit'
+  /* ⚠️ **Erst hier, nach `angemeldet`.** Wer sich abmeldet und danach von
+     einem anderen Gerät aus wieder anmeldet, ist angemeldet — der Merker
+     dieses Browsers darf das nicht überstimmen. */
+  return u.abgemeldet ? 'abgemeldet' : 'erlaubt_ohne_anmeldung'
 }
+
+
+/** Der Schlüssel des Merkers im `localStorage`.
+ *
+ * ⚠️ **Warum es ihn überhaupt braucht.** `abmelden()` nimmt das Abonnement weg
+ * (`unsubscribe`), aber **nicht die Erlaubnis** — die kann eine Seite gar nicht
+ * zurückgeben. `sicherstellen()` prüft nur die Erlaubnis und legt danach ein
+ * neues Abonnement an. Wer sein eigenes Gerät aus der Liste entfernte, bekam es
+ * deshalb im selben Klick zurück: Die Seite lädt danach neu, und das Nachmelden
+ * ist der erste Schritt beim Laden.
+ *
+ * ⚠️ **Die Selbstheilung bleibt, und sie ist gewollt.** Nach einem Umzug, einem
+ * gelöschten Browserzustand oder einer frisch aufgesetzten Installation soll
+ * ein erlaubtes Gerät stillschweigend nachgemeldet werden — ohne den Merker
+ * wüsste niemand, warum plötzlich nichts mehr ankommt. Unterschieden wird
+ * deshalb nach der **Absicht**, nicht nach dem Zustand.
+ *
+ * ⚠️ **Je Browser, nicht je Konto.** Die Abmeldung gilt diesem Gerät; wer sich
+ * woanders anmeldet, hat damit nichts zu tun. `localStorage` ist genau die
+ * richtige Reichweite — dieselbe wie die der Erlaubnis, um die es geht.
+ */
+export const ABGEMELDET_SCHLUESSEL = 'nexmail.push.abgemeldet'

@@ -6,6 +6,7 @@
  * passiert nichts — deshalb gibt jede Funktion hier einen benannten Grund
  * zurück und nicht `false`.
  */
+import { ABGEMELDET_SCHLUESSEL } from './pushlage'
 import { api } from '../api/client'
 import { appPfad } from './basis'
 
@@ -53,6 +54,7 @@ export async function lage(): Promise<PushLage> {
     alsApp: alsAppGestartet(),
     erlaubnis: kannPush ? Notification.permission : 'default',
     angemeldet: (await vorhandene()) !== null,
+    abgemeldet: abgemeldet(),
   })
 }
 
@@ -111,6 +113,12 @@ export async function anmelden(): Promise<Anmeldung> {
      verbuchen hiesse: Der Knopf tut nichts und sagt nichts. */
   if (erlaubnis !== 'granted') throw new Error('push_keine_antwort')
 
+  /* ⚠️ **Der Merker faellt hier, vor `sicherstellen()`.** Eine bewusste
+     Neuanmeldung hebt eine bewusste Abmeldung auf — sonst gaebe der Knopf
+     „Wieder anmelden" ohne jede Meldung auf, weil `sicherstellen()` den
+     Merker sieht und null liefert. */
+  merken(false)
+
   const daten = await sicherstellen()
   if (daten === null) throw new Error('push_anmeldung_gescheitert')
   return daten
@@ -128,6 +136,10 @@ export async function anmelden(): Promise<Anmeldung> {
  */
 export async function sicherstellen(): Promise<Anmeldung | null> {
   if (!moeglich() || Notification.permission !== 'granted') return null
+  /* ⚠️ **Wer sich hier abgemeldet hat, wird nicht nachgemeldet.** Sonst
+     macht das Nachmelden die Abmeldung im selben Klick wieder rückgängig —
+     die Seite lädt danach neu, und dies ist der erste Schritt beim Laden. */
+  if (abgemeldet()) return null
 
   const reg = await arbeiter()
   await navigator.serviceWorker.ready
@@ -159,9 +171,34 @@ export async function sicherstellen(): Promise<Anmeldung | null> {
  * stehen, meldet er sich beim nächsten Öffnen sofort wieder an, und der
  * Schalter wirkt kaputt.
  */
+/** Steht der Merker, dass hier bewusst abgemeldet wurde? */
+export function abgemeldet(): boolean {
+  try {
+    return localStorage.getItem(ABGEMELDET_SCHLUESSEL) === '1'
+  } catch {
+    /* Privater Modus, gesperrter Speicher: Dann gilt „nicht abgemeldet", also
+       die Selbstheilung. Der schlechtere der beiden Fälle wäre, ein Gerät
+       stumm zu lassen, dessen Besitzer nie abgemeldet hat. */
+    return false
+  }
+}
+
+function merken(wert: boolean): void {
+  try {
+    if (wert) localStorage.setItem(ABGEMELDET_SCHLUESSEL, '1')
+    else localStorage.removeItem(ABGEMELDET_SCHLUESSEL)
+  } catch {
+    /* siehe oben */
+  }
+}
+
 export async function abmelden(anmeldungId: number): Promise<void> {
   const reg = await navigator.serviceWorker.getRegistration(appPfad('/sw.js'))
   const abo = await reg?.pushManager.getSubscription()
   await abo?.unsubscribe()
   await api.loeschen(`/api/push/geraete/${anmeldungId}`)
+  /* ⚠️ **Zuletzt, nicht zuerst.** Bricht das Abmelden ab, soll der Merker
+     nicht stehen — sonst wäre das Gerät angemeldet und meldete sich nie
+     wieder nach. */
+  merken(true)
 }
