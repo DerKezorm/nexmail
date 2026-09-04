@@ -288,6 +288,25 @@ def erlaubt(db: Session) -> bool:
     return wert == "1"
 
 
+def erlaubt_fuer(db: Session, person: Benutzer) -> bool:
+    """Darf **dieser** Benutzer einen KI-Dienst benutzen?
+
+    ⚠️ **Zwei Schlösser in Reihe, und beide gehören dem Betreiber.** Die
+    Installation muss es erlauben, und dieses Konto auch. Was der Benutzer
+    selbst entscheidet, ist ``ki_aktiv`` — das ist die dritte Frage und steht
+    darunter.
+    """
+    return erlaubt(db) and bool(person.ki_erlaubt)
+
+
+def erlauben_fuer(db: Session, person: Benutzer, ja: bool) -> bool:
+    """Einen einzelnen Benutzer aussperren oder wieder hereinlassen."""
+    person.ki_erlaubt = ja
+    db.commit()
+    logger.info("The operator %s AI services for one account.", "allowed" if ja else "blocked")
+    return ja
+
+
 def erlauben(db: Session, ja: bool) -> bool:
     """Den Riegel umlegen. Nur der Betreiber kommt an diese Adresse.
 
@@ -458,7 +477,7 @@ def text_bearbeiten(
     # ⚠️ **Der Riegel des Betreibers zuerst.** Er steht ueber der Wahl des
     # Benutzers: Verantwortlich fuer die Installation ist der Betreiber, und
     # ein Riegel, den man nach dem eigenen Schalter prueft, waere keiner.
-    if db is not None and not erlaubt(db):
+    if db is not None and not erlaubt_fuer(db, person):
         raise KiFehler("ki_vom_betreiber_gesperrt")
     if not person.ki_aktiv:
         raise KiFehler("ki_nicht_eingeschaltet")

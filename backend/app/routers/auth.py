@@ -74,6 +74,9 @@ class Ich(BaseModel):
     #: fuer die ganze Installation sperren, und dann darf der Knopf nicht
     #: dastehen.
     ki_aktiv: bool = False
+    #: Ob dieses Konto KI-Dienste ueberhaupt benutzen darf (Installation
+    #: UND Konto). Daran haengt der Punkt in der Leiste.
+    ki_erlaubt: bool = False
 
 
 @router.post("/anmelden", response_model=Schritt)
@@ -410,7 +413,8 @@ def ich(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
         zwei_faktor_aktiv=person.totp_bestaetigt,
         offene_codes=zwei_faktor.offene_codes(person),
         kontaktadresse=person.kontaktadresse,
-        ki_aktiv=person.ki_aktiv and kidienst.erlaubt(db),
+        ki_aktiv=person.ki_aktiv and kidienst.erlaubt_fuer(db, person),
+        ki_erlaubt=kidienst.erlaubt_fuer(db, person),
     )
 
 

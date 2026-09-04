@@ -924,3 +924,41 @@ def test_der_riegel_wird_VOR_dem_eigenen_schalter_geprueft(db, person):
         )
     assert str(f.value) == "ki_vom_betreiber_gesperrt"
     assert server.anfragen == []
+
+
+def test_der_riegel_je_konto_sperrt_einzeln(db, person):
+    """⚠️ **Zwei Schlösser in Reihe.** Die Installation erlaubt es, dieses
+    Konto nicht — dann geht nichts. Das ist der Fall, für den es die Spalte
+    gibt: eine Behörde, in der nicht jeder das darf."""
+    dienst.erlauben(db, True)
+    dienst.einstellung_schreiben(
+        db, person, url="https://api.example.com/v1/", modell="m-1", schluessel=SCHLUESSEL
+    )
+    dienst.einstellung_schreiben(db, person, aktiv=True)
+    assert dienst.erlaubt_fuer(db, person) is True
+
+    dienst.erlauben_fuer(db, person, False)
+    assert dienst.erlaubt_fuer(db, person) is False
+
+    server = TextDoppelgaenger()
+    with pytest.raises(dienst.KiFehler) as f:
+        dienst.text_bearbeiten(
+            person, "<p>x y z</p>", auftrag="rechtschreibung",
+            transport=server.transport(), db=db,
+        )
+    assert str(f.value) == "ki_vom_betreiber_gesperrt"
+    assert server.anfragen == []
+
+
+def test_ab_werk_darf_jedes_konto(db, person):
+    """⚠️ **Die Spalte ist die Ausnahmeliste, nicht die Einladungsliste.** Wer
+    den Riegel der Installation aufsperrt und danach niemandem etwas erlaubt
+    hätte, hätte einen Schalter gebaut, der nichts tut."""
+    assert person.ki_erlaubt is True
+
+
+def test_das_konto_allein_genuegt_nicht(db, person):
+    """Die andere Richtung: Konto erlaubt, Installation zu."""
+    dienst.erlauben(db, False)
+    assert person.ki_erlaubt is True
+    assert dienst.erlaubt_fuer(db, person) is False

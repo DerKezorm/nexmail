@@ -72,6 +72,7 @@ import { AufgabenPage } from './pages/AufgabenPage'
 const KalenderPage = lazy(() =>
   import('./pages/KalenderPage').then((m) => ({ default: m.KalenderPage })),
 )
+import { KiSeite } from './pages/KiSeite'
 import { KontaktePage } from './pages/KontaktePage'
 /* ⚠️ **Die Einstellungsseite hält den Editor am Einstieg fest.** Signaturen
    und Textvorlagen benutzen denselben `Editor` wie das Verfassen-Fenster; so
@@ -1752,6 +1753,10 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           ansicht={ansicht}
           aufAnsicht={setAnsicht}
           istBetreiber={Boolean(ich?.ist_betreiber)}
+          /* ⚠️ Der Betreiber sieht den Punkt immer — er muss den Riegel
+             finden, bevor irgendetwas eingeschaltet ist. Alle anderen nur,
+             wenn die Installation es erlaubt. */
+          kiSichtbar={Boolean(ich?.ist_betreiber) || Boolean(ich?.ki_erlaubt)}
           offeneAufgaben={offeneAufgaben}
         />
 
@@ -1875,6 +1880,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           )}
 
           {ansicht === 'kontakte' && <KontaktePage />}
+          {ansicht === 'ki' && <KiSeite istBetreiber={ich?.ist_betreiber ?? false} />}
 
           {ansicht === 'ueber' && <UeberPage />}
 

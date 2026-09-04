@@ -158,8 +158,14 @@ export interface Ich {
   offene_codes: number
   /** Wohin ein Rücksetz-Link ginge. Leer heißt: **kein Weg zurück**. */
   kontaktadresse: string
-  /** Ob der KI-Dienst eingeschaltet ist — daran hängt der Knopf im Editor. */
+  /** Ob der KI-Dienst eingeschaltet ist — daran hängt der Knopf im Editor.
+   *  Enthält den Riegel des Betreibers schon: Der Server gibt hier `false`,
+   *  wenn die Installation oder das Konto gesperrt ist. */
   ki_aktiv: boolean
+  /** Ob dieses Konto KI-Dienste überhaupt benutzen darf. Daran hängt der
+   *  Punkt in der Leiste — er muss auch dastehen, wenn noch nichts
+   *  eingeschaltet ist. */
+  ki_erlaubt: boolean
 }
 
 export interface Schritt {

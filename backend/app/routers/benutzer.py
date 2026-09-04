@@ -18,13 +18,14 @@ from sqlalchemy import select
 
 from ..db import einstellung_lesen
 from ..deps import Betreiber, DbSession
+from ..meldung import Meldung, MeldungHttp
 from ..models import Benutzer, Einladung
 from ..routers.einstellungen import SCHLUESSEL_OEFFENTLICHE_ADRESSE
 from ..services import anmeldebremse
 from ..services import benutzer as benutzerdienst
+from ..services import kidienst
 from ..services import einladung as einladungsdienst
 from ..services import systempost
-from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.benutzer")
 
@@ -40,6 +41,10 @@ class BenutzerZeile(BaseModel):
     angelegt: datetime
     #: Wie viele Postfaecher an ihm haengen — die Liste soll etwas aussagen.
     postfaecher: int
+    #: ⚠️ **Der Riegel des Betreibers je Konto**, nicht die Wahl des Benutzers.
+    #: Ab Werk erlaubt: Die Spalte ist die Ausnahmeliste, nicht die
+    #: Einladungsliste — der bewusste Akt ist der Riegel der Installation.
+    ki_erlaubt: bool
 
 
 class EinladungsZeile(BaseModel):
@@ -88,6 +93,7 @@ def _zeile(db, person: Benutzer) -> BenutzerZeile:
         zwei_faktor_aktiv=person.totp_bestaetigt,
         angelegt=person.angelegt,
         postfaecher=anzahl,
+        ki_erlaubt=person.ki_erlaubt,
     )
 
 
@@ -240,3 +246,25 @@ def entfernen(benutzer_id: str, ich: Betreiber, db: DbSession) -> None:
             detail="betreiber_entfernen",
         )
     benutzerdienst.entfernen(db, person)
+
+
+class KiErlaubnis(BaseModel):
+    erlaubt: bool
+
+
+@router.put("/{benutzer_id}/ki", response_model=BenutzerZeile)
+def ki_erlaubnis(
+    benutzer_id: str, eingabe: KiErlaubnis, ich: Betreiber, db: DbSession
+) -> BenutzerZeile:
+    """Einem einzelnen Konto KI-Dienste erlauben oder verbieten.
+
+    ⚠️ **Kein Kennwort davor, anders als beim Uebergeben des Betreibers.** Das
+    hier ist umkehrbar mit demselben Klick und kostet niemandem seinen Zugang —
+    die Schluessel bleiben stehen. Eine Bremse fuer jede Verwaltungsaenderung
+    macht die Verwaltung unbenutzbar, und dann wird sie umgangen.
+    """
+    person = db.get(Benutzer, benutzer_id)
+    if person is None:
+        raise MeldungHttp.aus(Meldung("benutzer_nicht_gefunden"), status.HTTP_404_NOT_FOUND)
+    kidienst.erlauben_fuer(db, person, eingabe.erlaubt)
+    return _zeile(db, person)

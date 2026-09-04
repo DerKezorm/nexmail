@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next'
 import { KeyRound, ScrollText, Server } from 'lucide-react'
 import { api } from '../api/client'
 import type { Ich } from '../api/client'
-import { Button, EmptyState, Input, Select, Switch, Tabs } from '../ds'
+import { Button, EmptyState, Input, Select, Tabs } from '../ds'
 import { Benutzerverwaltung } from './Benutzerverwaltung'
 import { OauthVerwaltung } from './OauthVerwaltung'
 import { OidcVerwaltung } from './OidcVerwaltung'
@@ -167,64 +167,7 @@ function Serverdaten() {
       </p>
 
       <Postausgang />
-      <KiRiegel />
     </div>
-  )
-}
-
-/** Ob in dieser Installation überhaupt ein KI-Dienst benutzt werden darf.
- *
- * ⚠️ **Ab Werk zu.** Ohne diesen Riegel entscheidet jeder Benutzer für sich,
- * ob Text aus seinen Mails an einen fremden Dienst geht — und der Betreiber,
- * der dafür verantwortlich ist, kann es weder sehen noch verbieten. Für einen
- * Haushalt wäre das richtig, für jede Organisation das Gegenteil.
- *
- * ⚠️ **Zusperren löscht keinen Zugang.** Die Schlüssel der Benutzer bleiben
- * stehen; benutzt werden sie nur nicht. Sonst kostete ein versehentliches
- * Zumachen alle Zugänge.
- */
-function KiRiegel() {
-  const { t } = useTranslation()
-  const [erlaubt, setErlaubt] = useState<boolean | null>(null)
-  const [fehler, setFehler] = useState('')
-
-  useEffect(() => {
-    void api
-      .holen<{ erlaubt: boolean }>('/api/ki/erlaubt')
-      .then((r) => setErlaubt(r.erlaubt))
-      .catch(() => undefined)
-  }, [])
-
-  async function umlegen(an: boolean) {
-    setFehler('')
-    try {
-      const r = await api.aendern<{ erlaubt: boolean }>('/api/ki/erlaubt', { erlaubt: an })
-      setErlaubt(r.erlaubt)
-    } catch (f) {
-      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
-    }
-  }
-
-  return (
-    <section className="flex flex-col gap-3 border-t border-line-subtle pt-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <span className="text-[13px] font-semibold text-fg-1">{t('verwaltung.ki')}</span>
-          <p className="mb-0 text-[12px] text-fg-3">{t('verwaltung.ki_hinweis')}</p>
-        </div>
-        <Switch
-          label={t('verwaltung.ki_erlauben')}
-          checked={erlaubt ?? false}
-          disabled={erlaubt === null}
-          onCheckedChange={(an) => void umlegen(an)}
-        />
-      </div>
-      {fehler && (
-        <p role="alert" className="mb-0 text-[13px] text-danger">
-          {fehler}
-        </p>
-      )}
-    </section>
   )
 }
 

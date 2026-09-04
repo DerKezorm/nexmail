@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Crown, Mail, ShieldCheck, Trash2, UserPlus } from 'lucide-react'
+import { AlertTriangle, Crown, Mail, ShieldCheck, Sparkles, SparklesIcon, Trash2, UserPlus } from 'lucide-react'
 import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Badge, Button, Dialog, IconButton, Input } from '../ds'
@@ -24,6 +24,7 @@ interface BenutzerZeile {
   zwei_faktor_aktiv: boolean
   angelegt: string
   postfaecher: number
+  ki_erlaubt: boolean
 }
 
 interface EinladungsZeile {
@@ -92,6 +93,22 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
       ichNeuLaden?.()
     } catch (f) {
       setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    }
+  }
+
+  /** Einem einzelnen Konto KI-Dienste erlauben oder verbieten.
+   *
+   * ⚠️ **Ohne Rückfrage, anders als beim Entfernen und beim Übergeben.** Es
+   * ist mit demselben Klick umkehrbar und kostet niemandem seinen Zugang —
+   * die Schlüssel bleiben stehen. Eine Rückfrage für jeden Haken macht die
+   * Verwaltung unbenutzbar, und dann wird sie umgangen.
+   */
+  async function kiUmlegen(p: BenutzerZeile) {
+    try {
+      await api.aendern(`/api/benutzer/${p.id}/ki`, { erlaubt: !p.ki_erlaubt })
+      await laden()
+    } catch (e) {
+      setFehler(servermeldung(e))
     }
   }
 
@@ -206,6 +223,19 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
                   gibt die Verwaltung ab und kann sie sich nicht zurückholen.
                   Deshalb steht das eigene Kennwort davor — und deshalb ist er
                   ein stiller Knopf, kein bunter. */}
+              {/* ⚠️ **Die Ausnahmeliste, nicht die Einladungsliste.** Ab Werk
+                  darf jedes Konto; wer einzelne aussperren will, tut es hier.
+                  Der Riegel der Installation steht darüber und ist ab Werk zu —
+                  solange der nicht offen ist, ändert dieser Haken nichts, und
+                  die Zeile darunter sagt das auch. */}
+              <IconButton
+                icon={p.ki_erlaubt ? <Sparkles /> : <SparklesIcon className="opacity-40" />}
+                label={t(p.ki_erlaubt ? 'verwaltung.ki_konto_aus' : 'verwaltung.ki_konto_an', {
+                  wer: p.anzeigename || p.benutzername,
+                })}
+                onClick={() => void kiUmlegen(p)}
+              />
+
               {!p.ist_betreiber && (
                 <IconButton
                   icon={<Crown />}

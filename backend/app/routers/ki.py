@@ -73,14 +73,14 @@ class Modell(BaseModel):
 
 @router.get("", response_model=Stand)
 def stand(person: AngemeldeterBenutzer, db: DbSession) -> Stand:
-    return Stand(erlaubt=kidienst.erlaubt(db), **kidienst.einstellung_lesen(person))
+    return Stand(erlaubt=kidienst.erlaubt_fuer(db, person), **kidienst.einstellung_lesen(person))
 
 
 @router.put("", response_model=Stand)
 def aendern(eingabe: Aenderung, person: AngemeldeterBenutzer, db: DbSession) -> Stand:
     try:
         return Stand(
-            erlaubt=kidienst.erlaubt(db),
+            erlaubt=kidienst.erlaubt_fuer(db, person),
             **kidienst.einstellung_schreiben(
                 db,
                 person,
@@ -110,7 +110,7 @@ def modelle(
     begrenzt werden soll — er ist ja der, der hinausgeht. Der erste Anlauf
     setzte den Zähler nach jedem Erfolg zurück, und die Bremse griff nie.
     """
-    if not kidienst.erlaubt(db):
+    if not kidienst.erlaubt_fuer(db, person):
         raise MeldungHttp.aus(
             kidienst.KiFehler("ki_vom_betreiber_gesperrt"), status.HTTP_403_FORBIDDEN
         )

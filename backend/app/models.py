@@ -121,6 +121,16 @@ class Benutzer(Base):
     # ⚠️ **Ab Werk aus.** nexmail blockt Zaehlpixel, liefert Schriften mit und
     # holt Bilder ueber den eigenen Server; hier geht Text nach draussen. Das
     # ist eine Entscheidung, die ein Mensch trifft, kein Vorgabewert.
+    #: ⚠️ **Der Riegel des Betreibers JE BENUTZER**, nicht die Wahl des
+    #: Benutzers selbst — die ist ``ki_aktiv`` darunter. Zwei Schlösser in
+    #: Reihe: die Installation muss es erlauben, und dieses Konto auch.
+    #:
+    #: ⚠️ **Ab Werk erlaubt, anders als der Riegel der Installation.** Der ist
+    #: der bewusste Akt; wer ihn aufsperrt, meint „meine Leute dürfen". Ihn
+    #: aufzusperren und danach niemandem etwas zu erlauben wäre ein Schalter,
+    #: der nichts tut — und niemand fände heraus, warum. Diese Spalte ist die
+    #: **Ausnahmeliste**, nicht die Einladungsliste.
+    ki_erlaubt: Mapped[bool] = mapped_column(Boolean, default=True)
     ki_aktiv: Mapped[bool] = mapped_column(Boolean, default=False)
     #: Die Basisadresse, OpenAI-foermig. Mit Schraegstrich am Ende, damit
     #: ``urljoin`` daraus ``…/models`` und ``…/chat/completions`` macht.

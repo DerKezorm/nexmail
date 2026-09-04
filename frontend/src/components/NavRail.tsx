@@ -15,13 +15,14 @@
  * saessen Zeichen und Wortmarke sonst zweimal innerhalb von sechzig Pixeln.
  */
 import { useTranslation } from 'react-i18next'
-import { CalendarDays, HelpCircle, ListChecks, Mail, Settings, Users } from 'lucide-react'
+import { CalendarDays, HelpCircle, ListChecks, Mail, Settings, Sparkles, Users } from 'lucide-react'
 
 export type Ansicht =
   | 'mail'
   | 'kalender'
   | 'aufgaben'
   | 'kontakte'
+  | 'ki'
   | 'einstellungen'
   | 'verwaltung'
   | 'ueber'
@@ -30,6 +31,11 @@ interface Props {
   ansicht: Ansicht
   /** Nur der Betreiber sieht die Verwaltung. */
   istBetreiber?: boolean
+  /** Ob der KI-Punkt dasteht. ⚠️ **Nicht an `ki_aktiv` gehaengt:** Der
+   *  Betreiber muss den Riegel finden, BEVOR irgendjemand etwas
+   *  eingeschaltet hat — sonst ist der Punkt genau dann unsichtbar,
+   *  wenn man ihn sucht. */
+  kiSichtbar?: boolean
   /** Wie viele Aufgaben offen sind. 0 blendet die Zahl aus. */
   offeneAufgaben?: number
   aufAnsicht: (a: Ansicht) => void
@@ -39,6 +45,7 @@ export function NavRail({
   ansicht,
   aufAnsicht,
   istBetreiber = false,
+  kiSichtbar = false,
   offeneAufgaben = 0,
 }: Props) {
   const { t } = useTranslation()
@@ -49,6 +56,12 @@ export function NavRail({
     { id: 'aufgaben', symbol: <ListChecks />, text: t('nav.aufgaben'), zahl: offeneAufgaben },
     { id: 'kontakte', symbol: <Users />, text: t('nav.kontakte') },
   ]
+
+  /* ⚠️ **Widerspricht dem Kopf dieser Datei**, und zwar mit Anlass: Der
+     Betreiber-Riegel lag am 04.09.2026 unten im Reiter Server und wurde
+     gesucht und nicht gefunden. Was entscheidet, ob Mailtext das Haus
+     verlaesst, gehoert dorthin, wo man es vermutet. */
+  if (kiSichtbar) ziele.push({ id: 'ki', symbol: <Sparkles />, text: t('nav.ki') })
 
   return (
     <nav className="flex w-[var(--rail-w)] shrink-0 flex-col items-center gap-1 border-r border-line-subtle bg-surface-1 py-3">
