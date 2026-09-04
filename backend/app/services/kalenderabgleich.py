@@ -311,7 +311,12 @@ def _uebernehmen(db: Session, kalender: Kalender, roh: str, href: str, etag: str
     return neu, geaendert
 
 
-def hochschieben(db: Session, termin: Termin, alarm_ersetzen: bool = False) -> None:
+def hochschieben(
+    db: Session,
+    termin: Termin,
+    alarm_ersetzen: bool = False,
+    teilnehmer_ersetzen: bool = False,
+) -> None:
     """Einen geänderten Termin zum Server bringen.
 
     ⚠️ **Das passiert sofort, nicht später.** Erst der Server, dann die eigene
@@ -333,8 +338,15 @@ def hochschieben(db: Session, termin: Termin, alarm_ersetzen: bool = False) -> N
     # gilt die Rueckfahrkarte: nicht anfassen. Wer bei jedem Speichern die
     # Alarme neu schreibt, wirft einem fremden Termin seinen Alarm mit
     # E-Mail-Aktion oder festem Zeitpunkt weg.
+    # ⚠️ **Und die Teilnehmer genauso.** Ein Termin, zu dem man eingeladen
+    # wurde, gehoert dem Einladenden; wer dort bei jedem Speichern die Liste
+    # neu schreibt, wirft dessen Zusagen weg.
     ics = vevent.aktualisieren(
-        termin.roh, termin, datetime.now(timezone.utc), alarm_ersetzen=alarm_ersetzen
+        termin.roh,
+        termin,
+        datetime.now(timezone.utc),
+        alarm_ersetzen=alarm_ersetzen,
+        teilnehmer_ersetzen=teilnehmer_ersetzen,
     )
     neues_etag = caldav.schreiben(zugang(kalender, db), termin.href, ics, termin.etag)
     termin.roh = ics

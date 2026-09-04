@@ -1404,6 +1404,7 @@
     "stufe_aus_der_umgebung": "The level comes from NEXMAIL_LOG_STUFE and cannot be changed here. Remove it from the compose file.",
     "suchbereich_unbekannt": "There is no such search scope.",
     "takt_unbekannt": "Unknown schedule. Possible: {{moeglich}}.",
+    "teilnehmer_adresse_ungueltig": "“{{adresse}}” is not a valid email address.",
     "termin_antwort_unbekannt": "There is no such reply.",
     "termin_ende_vor_beginn": "The end lies before the start.",
     "termin_fehlt": "An event is required.",

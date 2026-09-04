@@ -371,7 +371,12 @@ def suchen(
 # --- Termine anlegen und ändern ------------------------------------------- #
 
 
-def _hinaus(db: Session, termin: Termin, alarm_ersetzen: bool = False) -> None:
+def _hinaus(
+    db: Session,
+    termin: Termin,
+    alarm_ersetzen: bool = False,
+    teilnehmer_ersetzen: bool = False,
+) -> None:
     """Einen geänderten Termin sofort zum Server bringen.
 
     ⚠️ **Erst der Server, dann die eigene Datenbank** — dieselbe Regel wie bei
@@ -388,7 +393,9 @@ def _hinaus(db: Session, termin: Termin, alarm_ersetzen: bool = False) -> None:
     if termin.kalender is None or termin.kalender.art != "caldav":
         return
     try:
-        kalenderabgleich.hochschieben(db, termin, alarm_ersetzen=alarm_ersetzen)
+        kalenderabgleich.hochschieben(
+            db, termin, alarm_ersetzen=alarm_ersetzen, teilnehmer_ersetzen=teilnehmer_ersetzen
+        )
     except caldav.Konflikt as f:
         db.rollback()
         raise TerminFehler("termin_konflikt") from f
@@ -530,13 +537,17 @@ def aendern(
     # ⚠️ Nur wenn die Erinnerung wirklich mitgeschickt wurde, wird der Alarm
     # im Original ersetzt — siehe ``_hinaus``.
     alarm_neu = felder.get("erinnerung") is not None
+    # ⚠️ Und nur, wenn jemand die Teilnehmerliste wirklich angefasst hat.
+    # Sonst schreibt nexmail einem fremden Termin die Zusagen weg und macht
+    # sich zum Organisator — siehe ``vevent.aktualisieren``.
+    leute_neu = felder.get("teilnehmer") is not None
 
     ist_reihe = bool(termin.rrule) and not termin.recurrence_id
     if not ist_reihe or umfang == "alle":
         _felder_setzen(termin, felder)
         termin.geaendert = utcnow()
         termin.schmutzig = bool(kalender.art)
-        _hinaus(db, termin, alarm_ersetzen=alarm_neu)
+        _hinaus(db, termin, alarm_ersetzen=alarm_neu, teilnehmer_ersetzen=leute_neu)
         db.commit()
         return termin
 

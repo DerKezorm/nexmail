@@ -334,3 +334,109 @@ def test_ohne_original_wird_gebaut():
 )
 def test_dauerformen(dauer, erwartet):
     assert vevent._dauer_lesen(dauer) == erwartet
+
+
+# --- Teilnehmer schreiben ------------------------------------------------- #
+
+
+def _mit_leuten(**kw):
+    return _termin(
+        organisator='{"name": "Vera Beispiel", "adresse": "vera@example.com"}',
+        teilnehmer=(
+            '[{"name": "Anja", "adresse": "anja@example.org", "antwort": "NEEDS-ACTION"},'
+            ' {"name": "Meier, Chef", "adresse": "chef@example.org", "antwort": ""}]'
+        ),
+        **kw,
+    )
+
+
+def test_ein_eigener_termin_traegt_seine_teilnehmer():
+    raus = vevent.bauen(_mit_leuten(), JETZT)
+    assert "ORGANIZER;CN=Vera Beispiel:mailto:vera@example.com" in raus
+    assert "ATTENDEE;CN=Anja;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:anja@example.org" in raus
+
+
+def test_ohne_rsvp_gibt_es_keine_zusagen_knoepfe():
+    """⚠️ Ohne ``RSVP=TRUE`` bitten wir nicht um Antwort, und viele Programme
+    zeigen dann gar keine Knöpfe zum Zusagen."""
+    assert "RSVP=TRUE" in vevent.bauen(_mit_leuten(), JETZT)
+
+
+def test_ein_komma_im_namen_macht_keinen_zweiten_teilnehmer():
+    """⚠️ Komma, Semikolon und Doppelpunkt trennen im Format Parameter
+    voneinander. „Meier, Chef" ohne Anführungszeichen wären zwei Personen."""
+    raus = vevent.bauen(_mit_leuten(), JETZT)
+
+    # ⚠️ **Geprüft wird die erzeugte Zeile, nicht der eigene Rückweg.** Unser
+    # Leser trennt Parameter am Semikolon und verzeiht das fehlende
+    # Anführungszeichen — die Mutationsprobe lief damit durch. Der Schaden
+    # entsteht bei fremden Programmen, und die sehen nur den Text.
+    ohne_faltung = raus.replace(chr(13)+chr(10)+chr(32), "")
+    assert 'CN="Meier, Chef"' in ohne_faltung
+
+    gelesen = vevent.lesen(raus)[0]
+    assert [t["adresse"] for t in gelesen["teilnehmer"]] == [
+        "anja@example.org",
+        "chef@example.org",
+    ]
+    assert gelesen["teilnehmer"][1]["name"] == "Meier, Chef"
+
+
+def test_ein_anfuehrungszeichen_im_namen_faellt_weg():
+    """⚠️ RFC 5545 kennt dafür keine Maskierung. Wer es stehen lässt, baut
+    eine Zeile, die manche Server gar nicht lesen."""
+    import json as _json
+
+    termin = _termin(
+        organisator="",
+        teilnehmer=_json.dumps([{"name": 'Anja "Ajo" Kessler', "adresse": "a@example.org"}]),
+    )
+    ohne_faltung = vevent.bauen(termin, JETZT).replace(chr(13)+chr(10)+chr(32), "")
+    assert "CN=Anja Ajo Kessler;" in ohne_faltung
+    assert chr(34) not in ohne_faltung.split("ATTENDEE")[1].split(chr(13))[0]
+
+
+def test_ein_fremder_termin_behaelt_seine_teilnehmer():
+    """⚠️ **Die wichtigste Zusicherung dieser Funktion.** Ein Termin, zu dem
+    man eingeladen wurde, gehört dem Einladenden. Wer dort beim Speichern die
+    Liste neu schreibt, wirft dessen Zusagen weg und macht sich nebenbei zum
+    Organisator."""
+    raus = vevent.aktualisieren(FREMD, _mit_leuten(titel="Neuer Titel"), JETZT)
+    assert "ATTENDEE;CN=Anja;PARTSTAT=ACCEPTED:mailto:anja@example.org" in raus
+    assert "vera@example.com" not in raus
+    assert "chef@example.org" not in raus
+
+
+def test_erst_auf_ausdruecklichen_wunsch_wird_ersetzt():
+    raus = vevent.aktualisieren(
+        FREMD, _mit_leuten(titel="Neuer Titel"), JETZT, teilnehmer_ersetzen=True
+    )
+    assert "chef@example.org" in raus
+    assert "ORGANIZER;CN=Vera Beispiel:mailto:vera@example.com" in raus
+    # Die alte Zeile ist weg, nicht daneben.
+    assert "PARTSTAT=ACCEPTED" not in raus
+    assert raus.count("ATTENDEE") == 2
+
+
+def test_das_ersetzen_laesst_alles_andere_stehen():
+    """Auch beim Ersetzen bleibt die Rückfahrkarte eine: Alarm und
+    Apple-Eigenheiten überleben."""
+    raus = vevent.aktualisieren(
+        FREMD, _mit_leuten(titel="Neuer Titel"), JETZT, teilnehmer_ersetzen=True
+    )
+    assert "X-APPLE-TRAVEL-ADVISORY-BEHAVIOR:AUTOMATIC" in raus
+    assert "BEGIN:VALARM" in raus
+
+
+def test_ohne_teilnehmer_steht_keine_leere_zeile():
+    raus = vevent.bauen(_termin(), JETZT)
+    assert "ATTENDEE" not in raus
+    assert "ORGANIZER" not in raus
+
+
+def test_kaputtes_json_kostet_nicht_den_termin():
+    """Es kommt aus der eigenen Datenbank, aber ein halb eingespieltes Archiv
+    ist denkbar. Dann eben ohne Teilnehmer."""
+    raus = vevent.bauen(_termin(organisator="{kaputt", teilnehmer="auch kaputt"), JETZT)
+    assert "ATTENDEE" not in raus
+    assert "BEGIN:VEVENT" in raus

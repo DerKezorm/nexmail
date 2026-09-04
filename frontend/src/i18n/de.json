@@ -1404,6 +1404,7 @@
     "stufe_aus_der_umgebung": "Die Stufe steht in NEXMAIL_LOG_STUFE und lässt sich hier nicht ändern. Nimm sie aus der compose-Datei heraus.",
     "suchbereich_unbekannt": "Diesen Suchbereich gibt es nicht.",
     "takt_unbekannt": "Unbekannter Takt. Möglich sind: {{moeglich}}.",
+    "teilnehmer_adresse_ungueltig": "„{{adresse}}“ ist keine gültige E-Mail-Adresse.",
     "termin_antwort_unbekannt": "Diese Antwort gibt es nicht.",
     "termin_ende_vor_beginn": "Das Ende liegt vor dem Beginn.",
     "termin_fehlt": "Ohne Termin geht es nicht.",

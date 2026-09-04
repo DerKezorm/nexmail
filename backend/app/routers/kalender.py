@@ -23,11 +23,35 @@ from ..services import caldav
 from ..services import kalenderabgleich
 from ..services import termine as dienst
 from ..services import wiederholung
+from ..services.kontakte import _ADRESSE
 from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.kalender")
 
 router = APIRouter(prefix="/api/kalender", tags=["kalender"])
+
+
+def _leute_json(eingaben) -> str:
+    """Die Teilnehmerliste als JSON, wie sie in ``Termin`` liegt.
+
+    ⚠️ **Klein gespeichert und ohne Doppel.** Zweimal dieselbe Adresse waeren
+    zwei ``ATTENDEE``-Zeilen fuer eine Person, und zwei Einladungen fuer
+    dieselbe Mail.
+
+    ⚠️ **Ohne Zusagestand.** Der gehoert der Person; ihn hier zu setzen hiesse,
+    fuer andere zuzusagen. Er kommt spaeter ueber die Antwort zurueck.
+    """
+    raus: list[dict[str, str]] = []
+    gesehen: set[str] = set()
+    for e in eingaben:
+        adresse = e.adresse.strip().lower()
+        if not _ADRESSE.match(adresse):
+            raise dienst.TerminFehler("teilnehmer_adresse_ungueltig", adresse=adresse)
+        if adresse in gesehen:
+            continue
+        gesehen.add(adresse)
+        raus.append({"name": e.name.strip(), "adresse": adresse, "antwort": "NEEDS-ACTION"})
+    return json.dumps(raus, ensure_ascii=False) if raus else ""
 
 
 def _fehler(f: Exception) -> HTTPException:
@@ -132,6 +156,17 @@ class TerminZeile(BaseModel):
     erinnerung: int = -1
 
 
+class TeilnehmerEingabe(BaseModel):
+    """Eine Person, die eingeladen werden soll.
+
+    ⚠️ **Der Zusagestand kommt NICHT von hier.** Er gehoert der Person, nicht
+    dem Einladenden; wer ihn setzen koennte, koennte fuer andere zusagen.
+    """
+
+    adresse: str = Field(max_length=320)
+    name: str = Field(default="", max_length=200)
+
+
 class TerminWunsch(BaseModel):
     kalender_id: str
     titel: str = Field(min_length=1)
@@ -142,6 +177,8 @@ class TerminWunsch(BaseModel):
     beschreibung: str = ""
     rrule: str = ""
     erinnerung: int = -1
+    #: Wer eingeladen werden soll. Leer heisst: niemand.
+    teilnehmer: list[TeilnehmerEingabe] = Field(default_factory=list)
 
 
 class TerminAenderung(BaseModel):
@@ -156,6 +193,12 @@ class TerminAenderung(BaseModel):
     #: Nur ein wirklich mitgeschickter Wert ersetzt den ``VALARM`` im
     #: Original; sonst bliebe von einem fremden Alarm nichts uebrig.
     erinnerung: int | None = None
+    #: ⚠️ ``None`` heisst auch hier **unveraendert**, und das ist mehr als
+    #: Bequemlichkeit: Nur ein mitgeschickter Wert laesst nexmail die
+    #: ``ATTENDEE``-Zeilen im Original ersetzen. Bei einem Termin, zu dem man
+    #: selbst eingeladen wurde, wuerde das sonst die Zusagen der anderen
+    #: wegwerfen — siehe ``vevent.aktualisieren``.
+    teilnehmer: list[TeilnehmerEingabe] | None = None
     #: ``dieser`` | ``folgende`` | ``alle``
     umfang: str = "alle"
     #: Der Beginn des angeklickten Vorkommens. Ohne ihn laesst sich „nur
@@ -297,6 +340,7 @@ def termin_anlegen(
             ganztaegig=wunsch.ganztaegig, ort=wunsch.ort,
             beschreibung=wunsch.beschreibung, rrule=wunsch.rrule,
             erinnerung=wunsch.erinnerung,
+            teilnehmer=_leute_json(wunsch.teilnehmer),
         )
     except dienst.TerminFehler as f:
         raise _fehler(f) from f
@@ -315,6 +359,9 @@ def termin_aendern(
             ganztaegig=aenderung.ganztaegig, ort=aenderung.ort,
             beschreibung=aenderung.beschreibung, rrule=aenderung.rrule,
             erinnerung=aenderung.erinnerung,
+            teilnehmer=(
+                None if aenderung.teilnehmer is None else _leute_json(aenderung.teilnehmer)
+            ),
         )
     except dienst.TerminFehler as f:
         raise _fehler(f) from f

@@ -17,6 +17,7 @@ hindurchgehen.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import date, datetime, timedelta, timezone
@@ -314,6 +315,70 @@ def _zeilen_fuer(termin, jetzt: datetime) -> list[str]:
     return zeilen
 
 
+def _person_zeile(name: str, person: dict, mit_rsvp: bool = False) -> str:
+    """Eine ``ORGANIZER``- oder ``ATTENDEE``-Zeile.
+
+    ⚠️ **Der Anzeigename kommt in Anfuehrungszeichen**, sobald er ein Komma,
+    ein Semikolon oder einen Doppelpunkt traegt: Alle drei trennen im Format
+    Parameter voneinander. „Meier, Chef" ohne Anfuehrungszeichen macht aus
+    einem Teilnehmer zwei.
+
+    ⚠️ **Ein Anfuehrungszeichen IM Namen faellt weg**, statt maskiert zu
+    werden. RFC 5545 kennt dafuer keine Maskierung; wer es stehen laesst,
+    baut eine Zeile, die manche Server gar nicht lesen.
+    """
+    teile = [name]
+    anzeigename = (person.get("name") or "").strip()
+    if anzeigename:
+        sauber = anzeigename.replace('"', "")
+        if any(z in sauber for z in ',;:'):
+            sauber = f'"{sauber}"'
+        teile.append(f"CN={sauber}")
+    rolle = (person.get("rolle") or "").strip().upper()
+    if rolle:
+        teile.append(f"ROLE={rolle}")
+    antwort = (person.get("antwort") or "").strip().upper()
+    if antwort:
+        teile.append(f"PARTSTAT={antwort}")
+    if mit_rsvp:
+        # ⚠️ Ohne ``RSVP=TRUE`` bitten wir nicht um Antwort, und viele
+        # Programme zeigen dann gar keine Zusagen-Knoepfe.
+        teile.append("RSVP=TRUE")
+    return ";".join(teile) + f":mailto:{(person.get('adresse') or '').strip()}"
+
+
+def _personen_zeilen(termin) -> list[str]:
+    """Organisator und Teilnehmer, wie nexmail sie kennt.
+
+    ⚠️ **Nur wenn jemand sie wirklich angefasst hat** — siehe
+    ``teilnehmer_ersetzen`` in ``aktualisieren``.
+    """
+    zeilen: list[str] = []
+    organisator = _json_person(getattr(termin, "organisator", ""))
+    if organisator and organisator.get("adresse"):
+        zeilen.append(_person_zeile("ORGANIZER", organisator))
+    for person in _json_liste(getattr(termin, "teilnehmer", "")):
+        if person.get("adresse"):
+            zeilen.append(_person_zeile("ATTENDEE", person, mit_rsvp=True))
+    return zeilen
+
+
+def _json_person(roh: str) -> dict:
+    try:
+        wert = json.loads(roh or "null")
+    except ValueError:
+        return {}
+    return wert if isinstance(wert, dict) else {}
+
+
+def _json_liste(roh: str) -> list[dict]:
+    try:
+        wert = json.loads(roh or "[]")
+    except ValueError:
+        return []
+    return [e for e in wert if isinstance(e, dict)] if isinstance(wert, list) else []
+
+
 def _alarm_zeilen(minuten: int) -> list[str]:
     """Ein ``VALARM``, wie ihn jeder Client versteht.
 
@@ -370,6 +435,8 @@ def bauen(termin, jetzt: datetime) -> str:
     """
     zeilen = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//nexapps//nexmail//DE", "BEGIN:VEVENT"]
     zeilen += _zeilen_fuer(termin, jetzt)
+    # ⚠️ Ein hier gebauter Termin ist unserer — seine Teilnehmer duerfen mit.
+    zeilen += _personen_zeilen(termin)
     if getattr(termin, "erinnerung", -1) >= 0:
         zeilen += _alarm_zeilen(termin.erinnerung)
     zeilen += ["END:VEVENT", "END:VCALENDAR"]
@@ -380,7 +447,13 @@ def bauen(termin, jetzt: datetime) -> str:
     return "\r\n".join(gefaltet) + "\r\n"
 
 
-def aktualisieren(roh: str, termin, jetzt: datetime, alarm_ersetzen: bool = False) -> str:
+def aktualisieren(
+    roh: str,
+    termin,
+    jetzt: datetime,
+    alarm_ersetzen: bool = False,
+    teilnehmer_ersetzen: bool = False,
+) -> str:
     """Die eigenen Zeilen in einem vorhandenen ``VEVENT`` ersetzen.
 
     ⚠️ **Das ist die Rückfahrkarte.** Alles, was nexmail nicht kennt — Alarme,
@@ -394,12 +467,22 @@ def aktualisieren(roh: str, termin, jetzt: datetime, alarm_ersetzen: bool = Fals
     fremden Termin seinen Alarm mit E-Mail-Aktion oder festem Zeitpunkt weg —
     und der Besitzer merkt es erst, wenn die Erinnerung ausbleibt.
 
+    ⚠️ **``teilnehmer_ersetzen`` genauso, und aus demselben Grund.** Bis zum
+    04.09.2026 standen ``ATTENDEE`` und ``ORGANIZER`` gar nicht in ``EIGENE``;
+    nexmail zeigte sie nur. Jetzt darf es sie schreiben — aber **nur**, wenn
+    jemand die Liste wirklich bearbeitet hat. Ein Termin, zu dem man selbst
+    eingeladen wurde, gehoert dem Einladenden: Wer dort bei jedem Speichern
+    die Teilnehmerliste neu schreibt, wirft dessen Zusagen weg und macht sich
+    nebenbei zum Organisator.
+
     Gibt es kein Original, wird eines gebaut.
     """
     if not roh or "BEGIN:VEVENT" not in roh.upper():
         return bauen(termin, jetzt)
 
     neue = _zeilen_fuer(termin, jetzt)
+    if teilnehmer_ersetzen:
+        neue += _personen_zeilen(termin)
     if alarm_ersetzen and getattr(termin, "erinnerung", -1) >= 0:
         neue += _alarm_zeilen(termin.erinnerung)
     raus: list[str] = []
@@ -440,6 +523,8 @@ def aktualisieren(roh: str, termin, jetzt: datetime, alarm_ersetzen: bool = Fals
         # ⚠️ Nur im VEVENT selbst filtern. Ein ``DTSTART`` in ``VALARM`` oder
         # ``VTIMEZONE`` gehoert dorthin und darf nicht verschwinden.
         if im_termin and name in EIGENE:
+            continue
+        if teilnehmer_ersetzen and im_termin and name in ("ATTENDEE", "ORGANIZER"):
             continue
         raus.append(zeile)
 
