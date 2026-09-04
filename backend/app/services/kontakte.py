@@ -508,12 +508,12 @@ def _felder_trennen(roh: str) -> list[str]:
     return teile
 
 
-def aus_vcard(db: Session, person: Benutzer, inhalt: str) -> dict[str, int]:
-    """vCard einlesen. Vorhandene Adressen werden ergänzt, nicht verdoppelt.
+def entfalten(inhalt: str) -> list[str]:
+    """Gefaltete Zeilen zusammensetzen.
 
-    ⚠️ **Gefaltete Zeilen zuerst zusammensetzen.** vCard bricht lange Werte
-    nach 75 Zeichen um und rückt die Fortsetzung ein — wer Zeile für Zeile
-    liest, bekommt abgeschnittene Namen und verliert lange Notizen.
+    ⚠️ **Zuerst, immer.** vCard bricht lange Werte nach 75 Zeichen um und
+    rückt die Fortsetzung ein — wer Zeile für Zeile liest, bekommt
+    abgeschnittene Namen und verliert lange Notizen.
     """
     zeilen: list[str] = []
     for roh in inhalt.replace("\r\n", "\n").split("\n"):
@@ -521,43 +521,75 @@ def aus_vcard(db: Session, person: Benutzer, inhalt: str) -> dict[str, int]:
             zeilen[-1] += roh[1:]
         else:
             zeilen.append(roh)
+    return zeilen
 
-    neu = 0
-    ergaenzt = 0
-    aktuell: dict[str, str] = {}
-    for zeile in zeilen:
+
+def felder_aus_vcard(inhalt: str) -> dict[str, str]:
+    """Die acht Felder, die nexmail kennt, aus **einer** Karte.
+
+    ⚠️ **Eine Karte, nicht eine Datei.** Für eine Datei mit mehreren gibt es
+    ``aus_vcard``; hier kommt genau das an, was CardDAV je Adresse liefert.
+
+    ⚠️ **Was nexmail nicht kennt, bleibt hier liegen — und muss anderswo
+    aufgehoben werden.** Foto, Geburtstag, weitere Anschriften, ``X-APPLE-…``:
+    Diese Funktion wirft sie weg, deshalb speichert der Abgleich die Karte
+    zusätzlich als ``kontakt.roh``. Wer sich auf diesen Rückgabewert allein
+    verlässt, hat beim ersten Zurückschreiben die Hälfte des Kontakts
+    gelöscht.
+    """
+    felder: dict[str, str] = {}
+    for zeile in entfalten(inhalt):
         oben = zeile.strip().upper()
-        if oben == "BEGIN:VCARD":
-            aktuell = {}
-            continue
-        if oben == "END:VCARD":
-            stand = _uebernehmen(db, person, aktuell)
-            neu += stand == "neu"
-            ergaenzt += stand == "ergaenzt"
-            aktuell = {}
-            continue
-        if ":" not in zeile:
+        if oben in ("BEGIN:VCARD", "END:VCARD") or ":" not in zeile:
             continue
         kopf, roh_wert = zeile.split(":", 1)
         # Parameter abtrennen: EMAIL;TYPE=INTERNET -> EMAIL
         feld = kopf.split(";")[0].strip().upper()
         roh_wert = roh_wert.strip()
-        if feld == "EMAIL" and "adresse" not in aktuell:
-            aktuell["adresse"] = _entmaskieren(roh_wert)
+        if feld == "EMAIL" and "adresse" not in felder:
+            felder["adresse"] = _entmaskieren(roh_wert)
         elif feld == "FN":
-            aktuell["name"] = _entmaskieren(roh_wert)
-        elif feld == "N" and "name" not in aktuell:
+            felder["name"] = _entmaskieren(roh_wert)
+        elif feld == "N" and "name" not in felder:
             # N ist Nachname;Vorname;… - hier zusammengesetzt als „Vorname
             # Nachname", weil FN gefehlt hat.
             teile = [t for t in _felder_trennen(roh_wert) if t]
-            aktuell["name"] = " ".join(reversed(teile[:2])).strip()
+            felder["name"] = " ".join(reversed(teile[:2])).strip()
         elif feld == "ORG":
             # ORG ist Firma;Abteilung - nur die Firma wird gebraucht.
-            aktuell["firma"] = _felder_trennen(roh_wert)[0]
-        elif feld == "TEL" and "telefon" not in aktuell:
-            aktuell["telefon"] = _entmaskieren(roh_wert)
+            felder["firma"] = _felder_trennen(roh_wert)[0]
+        elif feld == "TEL" and "telefon" not in felder:
+            felder["telefon"] = _entmaskieren(roh_wert)
         elif feld == "NOTE":
-            aktuell["notiz"] = _entmaskieren(roh_wert)
+            felder["notiz"] = _entmaskieren(roh_wert)
+        elif feld == "UID" and "uid" not in felder:
+            felder["uid"] = roh_wert
+    return felder
+
+
+def aus_vcard(db: Session, person: Benutzer, inhalt: str) -> dict[str, int]:
+    """Eine vCard-Datei einlesen. Vorhandene Adressen werden ergänzt, nicht
+    verdoppelt.
+
+    ⚠️ **Der Feldleser steht in ``felder_aus_vcard``**, nicht hier. Der
+    CardDAV-Abgleich braucht denselben; zwei Kopien liefen auseinander, und die
+    eine Seite läse dann ein Feld, das die andere übergeht.
+    """
+    neu = 0
+    ergaenzt = 0
+    karte: list[str] = []
+    for zeile in entfalten(inhalt):
+        oben = zeile.strip().upper()
+        if oben == "BEGIN:VCARD":
+            karte = []
+            continue
+        if oben == "END:VCARD":
+            stand = _uebernehmen(db, person, felder_aus_vcard("\n".join(karte)))
+            neu += stand == "neu"
+            ergaenzt += stand == "ergaenzt"
+            karte = []
+            continue
+        karte.append(zeile)
 
     db.commit()
     logger.info("vCard import: %s new, %s updated.", neu, ergaenzt)
