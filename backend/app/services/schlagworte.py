@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -432,6 +432,45 @@ def betroffene_zaehlen(db: Session, benutzer_id: str, atom: str) -> int:
         .filter(Nachricht.benutzer_id == benutzer_id, traegt_atom(atom))
         .count()
     )
+
+
+def alle_zaehlen(db: Session, benutzer_id: str) -> dict[str, int]:
+    """Wie oft jedes Atom vorkommt — in EINEM Durchgang.
+
+    ⚠️ **Vorher ein Vollscan je Schlagwort.** ``GET /api/schlagworte`` rief
+    ``betroffene_zaehlen`` je Zeile auf, und der ``LIKE`` auf die JSON-Spalte
+    kann keinen Index nutzen: gemessen 240 ms je Schlagwort bei 250.000
+    Nachrichten. Bei sechs Schlagworten war das eineinhalb Sekunden — fuer eine
+    Liste, die die Oberflaeche bei jedem Oeffnen der Seite holt.
+
+    ⚠️ **Eingeschraenkt wird in SQLite, nicht in Python.** Die allermeisten
+    Nachrichten tragen gar kein Schlagwort; ohne die Bedingung wanderten alle
+    250.000 Spaltenwerte herueber, nur damit Python sie verwirft.
+
+    ⚠️ **Klein verglichen** — IMAP-Keywords gelten ohne Gross/klein, und die
+    Zaehlung muss dieselbe Regel haben wie ``traegt_atom``, sonst zeigt die
+    Liste eine andere Zahl als die Rueckfrage beim Loeschen.
+    """
+    zaehler: Counter[str] = Counter()
+    zeilen = db.execute(
+        select(Nachricht.schlagworte)
+        .where(
+            Nachricht.benutzer_id == benutzer_id,
+            Nachricht.schlagworte.isnot(None),
+            Nachricht.schlagworte != "",
+            Nachricht.schlagworte != "[]",
+        )
+        .execution_options(yield_per=2_000)
+    )
+    for (roh,) in zeilen:
+        try:
+            werte = json.loads(roh or "[]")
+        except ValueError:
+            continue
+        for w in werte:
+            if isinstance(w, str):
+                zaehler[w.lower()] += 1
+    return dict(zaehler)
 
 
 def traegt_atom(atom: str):

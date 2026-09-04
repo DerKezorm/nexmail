@@ -542,3 +542,79 @@ def test_zwei_benutzer_koennen_dasselbe_atom_haben(klient, zweiter_klient, db, w
     antwort = zweiter_klient.post("/api/schlagworte", json={"name": "Wichtig"})
     assert antwort.status_code == 201, antwort.text
     assert antwort.json()["atom"] == "Wichtig"
+
+
+def test_die_liste_zaehlt_in_EINEM_durchgang(klient, db, welt):
+    """⚠️ **Vorher ein Vollscan je Schlagwort.**
+
+    Der ``LIKE`` auf die JSON-Spalte kann keinen Index nutzen: gemessen 240 ms
+    je Schlagwort bei 250.000 Nachrichten. Die Liste holt die Oberfläche bei
+    jedem Öffnen der Seite.
+
+    Gezählt werden **Abfragen**, nicht Sekunden — eine Zeit ist auf einem
+    geteilten Rechner keine Zusicherung.
+    """
+    from sqlalchemy import event
+
+    _definition_anlegen(klient, "Wichtig")
+    _definition_anlegen(klient, "Später")
+    _definition_anlegen(klient, "Rechnung")
+    ids = [_mail(db, "Erste").id, _mail(db, "Zweite").id]
+    klient.post("/api/nachrichten/schlagworte/Wichtig", json={"ids": ids})
+
+    gezaehlt: list[str] = []
+
+    def mitschreiben(conn, cursor, anweisung, *rest):  # noqa: ANN001, ARG001
+        if "nachricht" in anweisung.lower():
+            gezaehlt.append(anweisung)
+
+    event.listen(db.get_bind(), "before_cursor_execute", mitschreiben)
+    try:
+        liste = klient.get("/api/schlagworte").json()
+    finally:
+        event.remove(db.get_bind(), "before_cursor_execute", mitschreiben)
+
+    assert {z["name"]: z["anzahl"] for z in liste} == {
+        "Wichtig": 2,
+        "Später": 0,
+        "Rechnung": 0,
+    }
+    # Drei Schlagworte, aber nur EIN Blick in die Nachrichtentabelle.
+    assert len(gezaehlt) == 1, f"{len(gezaehlt)} Abfragen statt einer: {gezaehlt}"
+
+    # ⚠️ **Und eingeschränkt wird in SQLite, nicht in Python.** Die
+    # allermeisten Nachrichten tragen gar kein Schlagwort; ohne diese
+    # Bedingung wanderte jede Zeile herüber, nur damit Python sie verwirft.
+    # Das ist reine Sparsamkeit und ändert am Ergebnis nichts — deshalb kann
+    # nur der Blick auf die Abfrage selbst sie festhalten.
+    # ⚠️ Gesucht wird im WHERE-Teil, nicht irgendwo: „schlagworte" steht auch
+    # in der Spaltenliste, und ein Test, der nur dort hinsieht, ist gruen,
+    # egal was eingeschraenkt wird. Genau so lief die erste Fassung durch.
+    #
+    # ⚠️ **Was das NICHT haelt:** Faellt eine der drei Bedingungen einzeln weg,
+    # bleiben die anderen stehen und der Test ist gruen. Auf die genaue
+    # Bedingung zu prüfen hiesse, den SQL-Text buchstabengetreu festzuschreiben —
+    # das altert schneller, als es nutzt. Gehalten wird die Regel
+    # „eingeschraenkt wird in SQLite", nicht ihre Schreibweise.
+    _, _, bedingung = gezaehlt[0].lower().partition("where")
+    assert "schlagworte" in bedingung, (
+        "Die Abfrage schraenkt nicht auf Zeilen MIT Schlagwort ein: " + gezaehlt[0]
+    )
+
+
+def test_die_zahl_zaehlt_ohne_gross_und_klein(klient, db, welt):
+    """⚠️ IMAP-Keywords gelten ohne Groß/klein. Zählte die Liste anders als
+    ``traegt_atom``, zeigte sie eine andere Zahl als die Rückfrage beim
+    Löschen — und eine davon wäre gelogen."""
+    from app.models import Nachricht
+    from app.services import schlagworte as dienst
+
+    _definition_anlegen(klient, "Wichtig")
+    nachricht = _mail(db, "Erste")
+    nachricht.schlagworte = '["WICHTIG"]'
+    db.commit()
+
+    liste = klient.get("/api/schlagworte").json()
+    assert liste[0]["anzahl"] == 1
+    # Und die Rückfrage beim Löschen kommt auf dieselbe Zahl.
+    assert dienst.betroffene_zaehlen(db, nachricht.benutzer_id, "Wichtig") == 1

@@ -42,13 +42,23 @@ class Loeschstand(BaseModel):
     entfernt: int
 
 
-def _zeile(db, person, z: Schlagwort) -> Zeile:
+def _zeile(db, person, z: Schlagwort, zaehlung: dict[str, int] | None = None) -> Zeile:
+    """Eine Zeile fuer die Oberflaeche.
+
+    ⚠️ **Ohne ``zaehlung`` kostet das einen Vollscan.** Fuer eine einzelne
+    Zeile ist das richtig; fuer die Liste holt sie der Aufrufer **einmal** fuer
+    alle — siehe ``alle_zaehlen``.
+    """
     return Zeile(
         id=z.id,
         name=z.name,
         atom=z.atom,
         farbe=z.farbe,
-        anzahl=dienst.betroffene_zaehlen(db, person.id, z.atom),
+        anzahl=(
+            zaehlung.get(z.atom.lower(), 0)
+            if zaehlung is not None
+            else dienst.betroffene_zaehlen(db, person.id, z.atom)
+        ),
     )
 
 
@@ -64,7 +74,12 @@ def _fehler(fehler: dienst.SchlagwortFehler) -> HTTPException:
 
 @router.get("", response_model=list[Zeile])
 def liste(person: AngemeldeterBenutzer, db: DbSession) -> list[Zeile]:
-    return [_zeile(db, person, z) for z in dienst.meine(db, person.id)]
+    # ⚠️ **Eine Zaehlung fuer alle, nicht eine je Schlagwort.** Der ``LIKE`` auf
+    # die JSON-Spalte kann keinen Index nutzen; je Zeile einzeln zu zaehlen
+    # waren bei 250.000 Nachrichten 240 ms mal Anzahl der Schlagworte — fuer
+    # eine Liste, die die Oberflaeche bei jedem Oeffnen holt.
+    zaehlung = dienst.alle_zaehlen(db, person.id)
+    return [_zeile(db, person, z, zaehlung) for z in dienst.meine(db, person.id)]
 
 
 @router.post("", response_model=Zeile, status_code=status.HTTP_201_CREATED)
