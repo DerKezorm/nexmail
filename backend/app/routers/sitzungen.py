@@ -58,7 +58,7 @@ def beenden(
             if s.id == aktuelle.id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Diese Sitzung ist die aktuelle - dafür gibt es Abmelden.",
+                    detail="sitzung_ist_aktuell",
                 )
             db.delete(s)
             db.commit()

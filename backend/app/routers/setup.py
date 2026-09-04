@@ -25,6 +25,7 @@ from ..deps import DbSession
 from ..services import benutzer as benutzerdienst
 from ..services import sitzung as sitzungsdienst
 from ..services import zwei_faktor
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.setup")
 
@@ -92,7 +93,7 @@ def konto_anlegen(
             ist_betreiber=True,
         )
     except benutzerdienst.BenutzerFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
     sitzungsdienst.anlegen(db, neuer, request, response, bestaetigt=True)
     logger.info("Initial setup completed: the operator account was created.")

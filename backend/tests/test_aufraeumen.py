@@ -284,7 +284,7 @@ def test_nur_die_angebotenen_stufen(klient):
         "/api/einstellungen/aufraeumen", json={"papierkorb_tage": 1, "junk_tage": 0}
     )
     assert antwort.status_code == 400
-    assert "Aufbewahrung" in antwort.json()["detail"]
+    assert antwort.json()["detail"] == "aufbewahrung_ungueltig"
 
 
 def test_ein_gescheiterter_benutzer_haelt_die_runde_nicht_auf(db, welt, monkeypatch, caplog):

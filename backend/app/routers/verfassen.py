@@ -21,6 +21,7 @@ from ..services import (
     senden,
     verfassen,
 )
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.verfassen")
 
@@ -81,7 +82,7 @@ def vorlage(
     Anzeigen.
     """
     if art not in ("antwort", "allen", "weiter", "anhang", "entwurf"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unbekannte Art.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="art_unbekannt")
 
     nachricht = db.get(Nachricht, nachricht_id)
     if nachricht is None or nachricht.benutzer_id != person.id:
@@ -209,7 +210,7 @@ def _roh(db, konto: Konto, nachricht: Nachricht) -> bytes:
     if not roh:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Die Nachricht liegt nicht mehr im Postfach.",
+            detail="nachricht_weg",
         )
     return roh
 
@@ -271,12 +272,13 @@ def _entwurf_bauen(konto: Konto, wunsch: Sendewunsch) -> verfassen.Entwurf:
             inhalt = base64.b64decode(eintrag.inhalt_b64, validate=True)
         except Exception as fehler:  # noqa: BLE001
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Ein Anhang ist unlesbar."
+                status_code=status.HTTP_400_BAD_REQUEST, detail="anhang_unlesbar"
             ) from fehler
         if len(inhalt) > MAX_ANHANG:
-            raise HTTPException(
-                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                detail=f"„{eintrag.dateiname}“ ist größer als 25 MB.",
+            raise MeldungHttp(
+                status.HTTP_413_CONTENT_TOO_LARGE,
+                "anhang_zu_gross",
+                {"name": eintrag.dateiname, "max_mb": MAX_ANHANG // (1024 * 1024)},
             )
         anlagen.append(
             verfassen.Anlage(
@@ -333,7 +335,7 @@ def senden_(wunsch: Sendewunsch, person: AngemeldeterBenutzer, db: DbSession) ->
 
     if not [a for a in wunsch.an + wunsch.kopie + wunsch.blindkopie if a.strip()]:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Ohne Empfänger geht es nicht."
+            status_code=status.HTTP_400_BAD_REQUEST, detail="empfaenger_fehlt"
         )
 
     entwurf = _entwurf_bauen(konto, wunsch)
@@ -418,9 +420,7 @@ def entwurf_ablegen(
     try:
         uid = entwurfsdienst.ablegen(db, konto, entwurf, wunsch.entwurf_uid or None)
     except entwurfsdienst.EntwurfFehler as fehler:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(fehler)
-        ) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_409_CONFLICT) from fehler
     return Entwurfsergebnis(uid=uid)
 
 
@@ -438,14 +438,14 @@ def entwurf_wegwerfen(
     try:
         entwurfsdienst.wegwerfen(db, konto, uid)
     except entwurfsdienst.EntwurfFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_409_CONFLICT) from fehler
 
 
 def _mein_konto(db, person, konto_id: str) -> Konto:
     try:
         return kontendienst.eines(db, person, konto_id)
     except kontendienst.KontoFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
 
 class Ausgangszeile(BaseModel):
@@ -510,7 +510,7 @@ def ausgang_abbrechen(
     if zeile.stand not in ("wartet", "gescheitert"):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Die Nachricht ist schon unterwegs und lässt sich nicht mehr zurückholen.",
+            detail="schon_unterwegs",
         )
     # ⚠️ Vor dem Abbruch merken: Danach ist die Zeile gelöscht, und ein
     # Zugriff auf das verwaiste ORM-Objekt würfe erst hier den Fehler.
@@ -523,11 +523,11 @@ def ausgang_abbrechen(
         # Abbruch beanspruchen. Das bedingte UPDATE in ``abbrechen``
         # entscheidet — und dessen „nein" heißt: Die Mail geht hinaus, und
         # genau das muss die Antwort sagen statt „zurückgeholt".
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_409_CONFLICT) from fehler
     except entwurfsdienst.EntwurfFehler as fehler:
         # ⚠️ Ohne Entwurfsordner bleibt der Eintrag liegen. Ihn trotzdem zu
         # entfernen hieße, die Nachricht stillschweigend wegzuwerfen.
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_409_CONFLICT) from fehler
     return Abbruchergebnis(entwurf_uid=uid, konto_id=konto_id)
 
 

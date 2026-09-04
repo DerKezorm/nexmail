@@ -105,7 +105,7 @@ def test_ohne_oeffentliche_adresse_geht_keine_einladung(klient, postausgang):
         json={"benutzername": "anna", "adresse": "anna@example.com"},
     )
     assert antwort.status_code == 400
-    assert "Adresse" in antwort.json()["detail"]
+    assert antwort.json()["detail"] == "oeffentliche_adresse_fehlt"
 
 
 def test_einladen_verschickt_eine_mail_mit_link(klient, postausgang):
@@ -291,7 +291,7 @@ def test_ein_zu_kurzes_kennwort_wird_abgewiesen(klient, zweiter_klient, postausg
 
     antwort = zweiter_klient.post(f"/api/einladung/{schluessel}", json={"passwort": "kurz"})
     assert antwort.status_code == 400
-    assert "Zeichen" in antwort.json()["detail"]
+    assert "passwort_zu_kurz" == antwort.json()["detail"]
 
 
 def test_der_schluessel_ist_lang_genug_um_nicht_geraten_zu_werden(klient, postausgang):
@@ -451,7 +451,11 @@ def test_ein_abgelehnter_empfaenger_sagt_warum(klient, monkeypatch):
     )
     assert antwort.status_code == 502
     detail = antwort.json()["detail"]
-    assert "zz@example.com" in detail
-    assert "Recipient address rejected" in detail
+    # ⚠️ **Der Satz des Servers muss durchkommen.** Er steht jetzt als Wert
+    # neben der Kennung — „Der Postausgang hat den Empfänger abgelehnt"
+    # allein sagt nicht, welchen und warum.
+    assert antwort.json()["detail"] == "empfaenger_abgelehnt"
+    assert "zz@example.com" in antwort.json()["werte"]["an"]
+    assert "Recipient address rejected" in antwort.json()["werte"]["grund"]
     # Und keine Leiche in der Liste.
     assert klient.get("/api/benutzer").json()["einladungen"] == []

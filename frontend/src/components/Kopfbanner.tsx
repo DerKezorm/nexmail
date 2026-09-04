@@ -110,7 +110,7 @@ export function Kopfbanner({
             type="button"
             title={sp.name}
             aria-pressed={i18n.language === sp.code}
-            onClick={() => spracheSetzen(sp.code as Sprachcode)}
+            onClick={() => void spracheSetzen(sp.code as Sprachcode)}
             className={
               'rounded-pill px-2.5 py-1 text-[11px] font-semibold uppercase transition-colors ' +
               'duration-[var(--dur-fast)] ' +

@@ -23,6 +23,7 @@ from ..db import einstellung_lesen
 from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
 from ..models import OauthZugang
 from ..services import mailoauth as dienst
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.mailoauth")
 
@@ -109,7 +110,7 @@ def anbieter_setzen(
             db, art, wunsch.client_id, wunsch.client_secret, wunsch.mandant
         )
     except dienst.OauthFehler as f:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(f)) from f
+        raise MeldungHttp.aus(f, status.HTTP_400_BAD_REQUEST) from f
     return AnbieterZeile(
         art=art,
         name=dienst.ARTEN[art].name,
@@ -192,7 +193,7 @@ def zugang_entfernen(
     try:
         dienst.entfernen(db, person, zugang_id)
     except dienst.OauthFehler as f:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(f)) from f
+        raise MeldungHttp.aus(f, status.HTTP_404_NOT_FOUND) from f
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -246,7 +247,7 @@ def start(
     try:
         ziel = dienst.hinweg(db, art, _rueckkehr(db, art), zustand)
     except dienst.OauthFehler as f:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(f)) from f
+        raise MeldungHttp.aus(f, status.HTTP_400_BAD_REQUEST) from f
 
     from ..services import sitzung as sitzungsdienst
 

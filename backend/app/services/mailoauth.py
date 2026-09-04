@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session
 
 from .. import crypto
 from ..models import Benutzer, OauthAnbieter, OauthZugang, utcnow
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.mailoauth")
 
@@ -47,7 +48,7 @@ VORLAUF = timedelta(minutes=5)
 ZEITGRENZE = 30.0
 
 
-class OauthFehler(RuntimeError):
+class OauthFehler(Meldung, RuntimeError):
     """Traegt eine KENNUNG, keinen deutschen Satz."""
 
 

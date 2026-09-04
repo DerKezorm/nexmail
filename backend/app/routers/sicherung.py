@@ -22,6 +22,7 @@ from ..config import get_settings
 from ..db import einstellung_lesen, einstellung_schreiben, hat_benutzer
 from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
 from ..services import sicherung, sicherungsliste
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.sicherung")
 
@@ -119,7 +120,7 @@ def erstellen(eingabe: Passwort, _: AngemeldeterBenutzer) -> Response:
     try:
         daten = sicherung.archiv(eingabe.passwort)
     except sicherung.SicherungFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
     return Response(
         content=daten,
@@ -158,7 +159,7 @@ async def _gelesen(datei: UploadFile) -> bytes:
         if gelesen > MAX_BYTES:
             raise HTTPException(
                 status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                detail="Die Datei ist zu groß für eine nexmail-Sicherung.",
+                detail="archiv_zu_gross",
             )
         teile.append(block)
     return b"".join(teile)
@@ -169,7 +170,7 @@ async def _pruefen(request: Request, datei: UploadFile, passwort: str) -> Befund
     try:
         roh = sicherung.pruefen(daten, passwort, _adresse_aus_anfrage(request))
     except sicherung.SicherungFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     return _befund_bauen(roh)
 
 
@@ -178,7 +179,7 @@ async def _einspielen(datei: UploadFile, passwort: str, adresse: str | None) -> 
     try:
         ergebnis = sicherung.wiederherstellen(daten, passwort, adresse)
     except sicherung.SicherungFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     return Ergebnis(**ergebnis)
 
 
@@ -307,7 +308,7 @@ def entfernen(name: str, _: Betreiber) -> Response:
     try:
         sicherungsliste.entfernen(name)
     except sicherung.SicherungFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -321,7 +322,7 @@ def archiv_aus_punkt(name: str, eingabe: Passwort, _: Betreiber) -> Response:
     try:
         daten = sicherungsliste.archiv_aus(name, eingabe.passwort)
     except sicherung.SicherungFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
     return Response(
         content=daten,
@@ -333,9 +334,10 @@ def archiv_aus_punkt(name: str, eingabe: Passwort, _: Betreiber) -> Response:
 @router.put("/zeitplan", response_model=Zeitplan)
 def zeitplan_setzen(eingabe: Zeitplan, _: Betreiber, db: DbSession) -> Zeitplan:
     if eingabe.takt not in sicherungsliste.TAKTE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unbekannter Takt. Möglich sind: {', '.join(sicherungsliste.TAKTE)}.",
+        raise MeldungHttp(
+            status.HTTP_400_BAD_REQUEST,
+            "takt_unbekannt",
+            {"moeglich": list(sicherungsliste.TAKTE)},
         )
     einstellung_schreiben(db, sicherungsliste.SCHLUESSEL_TAKT, eingabe.takt)
     einstellung_schreiben(db, sicherungsliste.SCHLUESSEL_BEHALTEN, str(eingabe.behalten))

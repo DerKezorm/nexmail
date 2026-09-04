@@ -45,6 +45,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..models import Konto, Ordner
 from . import abgleich, imap as imapdienst, konten as kontendienst
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.austausch")
 
@@ -103,7 +104,7 @@ class Bericht:
     abgebrochen: bool = False
 
 
-class AustauschFehler(RuntimeError):
+class AustauschFehler(Meldung, RuntimeError):
     pass
 
 
@@ -441,8 +442,7 @@ def importieren(
                     hintereinander += 1
                     if hintereinander >= FEHLER_HINTEREINANDER:
                         raise AustauschFehler(
-                            "Der Server hat zehnmal hintereinander abgelehnt. Der Import "
-                            "wurde abgebrochen; was bis dahin ankam, liegt im Ordner."
+                            "import_abgebrochen", nach=FEHLER_HINTEREINANDER
                         ) from fehler
                     continue
 

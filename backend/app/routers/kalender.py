@@ -23,6 +23,7 @@ from ..services import caldav
 from ..services import kalenderabgleich
 from ..services import termine as dienst
 from ..services import wiederholung
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.kalender")
 
@@ -333,7 +334,7 @@ def _token(db, person, zugang_id: str) -> tuple[str, str]:
     try:
         return mailoauth.zugriffstoken(db, erlaubnis), erlaubnis.adresse
     except mailoauth.OauthFehler as f:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(f)) from f
+        raise MeldungHttp.aus(f, status.HTTP_400_BAD_REQUEST) from f
 
 
 class Gefunden(BaseModel):

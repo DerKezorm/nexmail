@@ -11,11 +11,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { KeyRound } from 'lucide-react'
-import { ApiFehler, api } from '../api/client'
+import { api } from '../api/client'
 import { appPfad } from '../lib/basis'
 import { Torbogen } from '../components/Torbogen'
 import { Button, Input } from '../ds'
 import { Meldung } from './EinrichtungPage'
+import { servermeldung } from '../lib/servermeldung'
 
 interface Vorschau {
   benutzername: string
@@ -57,7 +58,7 @@ export function EinladungPage({
       setVorschau(await api.holen<Vorschau>(`/api/einladung/${encodeURIComponent(schluessel)}`))
     } catch (f) {
       setHinfaellig(
-        f instanceof ApiFehler && f.detail ? f.detail : t('einladung.ungueltig_fallback'),
+        servermeldung(f, t('einladung.ungueltig_fallback')),
       )
     }
   }, [schluessel, t])
@@ -83,7 +84,7 @@ export function EinladungPage({
       window.history.replaceState(null, '', appPfad('/'))
       aufFertig()
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     } finally {
       setLaeuft(false)
     }

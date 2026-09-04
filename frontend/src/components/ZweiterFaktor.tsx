@@ -12,8 +12,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Check, Copy, Download } from 'lucide-react'
-import { ApiFehler, api } from '../api/client'
+import { api } from '../api/client'
 import { Button, Input } from '../ds'
+import { servermeldung } from '../lib/servermeldung'
 
 interface Start {
   geheimnis: string
@@ -43,7 +44,7 @@ export function ZweiterFaktor({
     try {
       setStart(await api.senden<Start>('/api/auth/zwei-faktor/starten', {}))
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     }
   }, [t])
 
@@ -62,7 +63,7 @@ export function ZweiterFaktor({
       )
       setCodes(antwort.codes)
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     } finally {
       setLaeuft(false)
     }

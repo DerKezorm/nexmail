@@ -11,9 +11,10 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { api, ApiFehler } from '../api/client'
+import { api } from '../api/client'
 import { Badge, Button, Switch } from '../ds'
 import { Logo } from '../components/Logo'
+import { servermeldung } from '../lib/servermeldung'
 
 interface Auskunft {
   version: string
@@ -64,7 +65,7 @@ export function UeberPage() {
         setDaten(a)
         setFehler('')
       })
-      .catch((e: unknown) => setFehler(e instanceof ApiFehler ? e.detail : String(e)))
+      .catch((e: unknown) => setFehler(servermeldung(e)))
   }, [])
 
   useEffect(laden, [laden])
@@ -75,7 +76,7 @@ export function UeberPage() {
       setDaten(await api.senden<Auskunft>('/api/ueber/pruefen', {}))
       setFehler('')
     } catch (e) {
-      setFehler(e instanceof ApiFehler ? e.detail : String(e))
+      setFehler(servermeldung(e))
     } finally {
       setLaeuft(false)
     }
@@ -86,7 +87,7 @@ export function UeberPage() {
     try {
       setDaten(await api.aendern<Auskunft>('/api/ueber/pruefen', { update_pruefen: an }))
     } catch (e) {
-      setFehler(e instanceof ApiFehler ? e.detail : String(e))
+      setFehler(servermeldung(e))
       laden()
     }
   }

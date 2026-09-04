@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from ..models import Konto, Nachricht, Ordner
 from . import imap as imapdienst, konten as kontendienst
 from .abgleich import HALTER
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.ordner")
 
@@ -26,7 +27,7 @@ logger = logging.getLogger("nexmail.ordner")
 MAX_NAME = 100
 
 
-class OrdnerFehler(RuntimeError):
+class OrdnerFehler(Meldung, RuntimeError):
     """Etwas, das der Betreiber lesen soll."""
 
 
@@ -40,15 +41,13 @@ def name_pruefen(name: str, trenner: str) -> str:
     """
     sauber = name.strip()
     if not sauber:
-        raise OrdnerFehler("Der Ordner braucht einen Namen.")
+        raise OrdnerFehler("ordner_name_fehlt")
     if len(sauber) > MAX_NAME:
-        raise OrdnerFehler(f"Der Name ist länger als {MAX_NAME} Zeichen.")
+        raise OrdnerFehler("ordner_name_zu_lang", max=MAX_NAME)
     for zeichen in (trenner, "/", "\\"):
         if zeichen and zeichen in sauber:
             raise OrdnerFehler(
-                f"„{zeichen}“ darf im Namen nicht vorkommen — der Server liest es "
-                "als Ebenentrenner. Für einen Unterordner wähle oben den "
-                "übergeordneten Ordner aus."
+                "ordner_name_trenner", zeichen=zeichen
             )
     return sauber
 
@@ -65,7 +64,7 @@ def anlegen(db: Session, konto: Konto, name: str, eltern: Ordner | None = None) 
             pfad = f"{eltern.pfad}{trenner}{sauber}" if eltern is not None else sauber
 
             if any(o.pfad == pfad for o in konto.ordner):
-                raise OrdnerFehler(f"„{sauber}“ gibt es in diesem Postfach schon.")
+                raise OrdnerFehler("ordner_gibt_es_schon", name=sauber)
 
             try:
                 klient.create_folder(pfad)
@@ -73,7 +72,7 @@ def anlegen(db: Session, konto: Konto, name: str, eltern: Ordner | None = None) 
                 # ⚠️ Die Meldung des Servers weiterreichen, nicht ersetzen.
                 # „Ging nicht" hilft niemandem; „Mailbox already exists" schon.
                 raise OrdnerFehler(
-                    f"Der Server hat den Ordner nicht angelegt: {str(fehler)[:200]}"
+                    "ordner_anlegen_abgewiesen", grund=str(fehler)[:200]
                 ) from fehler
 
             try:
@@ -101,10 +100,7 @@ def anlegen(db: Session, konto: Konto, name: str, eltern: Ordner | None = None) 
 
     neuer = next((o for o in konto.ordner if o.pfad == pfad), None)
     if neuer is None:
-        raise OrdnerFehler(
-            "Der Ordner wurde angelegt, taucht aber nicht in der Ordnerliste des "
-            "Servers auf. Ein Abgleich sollte ihn nachliefern."
-        )
+        raise OrdnerFehler("ordner_angelegt_aber_unsichtbar")
     logger.info("A folder was created.")
     return neuer
 
@@ -141,17 +137,11 @@ def entfernen(db: Session, konto: Konto, ordner: Ordner) -> int:
     Gibt zurück, wie viele Nachrichten mitgegangen sind.
     """
     if ordner.rolle in GESCHUETZTE_ROLLEN:
-        raise OrdnerFehler(
-            f"„{ordner.name}“ ist ein Ordner, den nexmail braucht. Er lässt sich "
-            "nicht entfernen."
-        )
+        raise OrdnerFehler("ordner_geschuetzt_entfernen", name=ordner.name)
 
     unterordner = [o for o in konto.ordner if o.pfad.startswith(ordner.pfad) and o.id != ordner.id]
     if unterordner:
-        raise OrdnerFehler(
-            f"„{ordner.name}“ hat noch Unterordner. Entferne die zuerst — sonst "
-            "verschwinden sie mit, ohne dass jemand danach gefragt hat."
-        )
+        raise OrdnerFehler("ordner_hat_unterordner", name=ordner.name)
 
     anzahl = db.query(Nachricht).filter(Nachricht.ordner_id == ordner.id).count()
     pfad = ordner.pfad
@@ -168,7 +158,7 @@ def entfernen(db: Session, konto: Konto, ordner: Ordner) -> int:
                 klient.delete_folder(pfad)
             except Exception as fehler:  # noqa: BLE001
                 raise OrdnerFehler(
-                    f"Der Server hat den Ordner nicht entfernt: {str(fehler)[:200]}"
+                    "ordner_entfernen_abgewiesen", grund=str(fehler)[:200]
                 ) from fehler
 
             kontendienst.ordner_uebernehmen(db, konto, imapdienst.ordner_lesen(klient))
@@ -197,9 +187,7 @@ def umbenennen(db: Session, konto: Konto, ordner: Ordner, name: str) -> Ordner:
     Löschen einer Mail fände sein Ziel nicht mehr.
     """
     if ordner.rolle in GESCHUETZTE_ROLLEN:
-        raise OrdnerFehler(
-            f"„{ordner.name}“ ist ein Ordner, den nexmail braucht. Sein Name liegt fest."
-        )
+        raise OrdnerFehler("ordner_geschuetzt_umbenennen", name=ordner.name)
 
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     with HALTER.schloss(konto.id):
@@ -216,13 +204,13 @@ def umbenennen(db: Session, konto: Konto, ordner: Ordner, name: str) -> Ordner:
             neuer_pfad = trenner.join([*teile[:-1], sauber]) if len(teile) > 1 else sauber
 
             if any(o.pfad == neuer_pfad for o in konto.ordner):
-                raise OrdnerFehler(f"„{sauber}“ gibt es an dieser Stelle schon.")
+                raise OrdnerFehler("ordner_gibt_es_hier_schon", name=sauber)
 
             try:
                 klient.rename_folder(ordner.pfad, neuer_pfad)
             except Exception as fehler:  # noqa: BLE001
                 raise OrdnerFehler(
-                    f"Der Server hat den Ordner nicht umbenannt: {str(fehler)[:200]}"
+                    "ordner_umbenennen_abgewiesen", grund=str(fehler)[:200]
                 ) from fehler
 
             try:
@@ -241,10 +229,7 @@ def umbenennen(db: Session, konto: Konto, ordner: Ordner, name: str) -> Ordner:
 
     neuer = next((o for o in konto.ordner if o.pfad == neuer_pfad), None)
     if neuer is None:
-        raise OrdnerFehler(
-            "Der Ordner wurde umbenannt, taucht aber nicht in der Ordnerliste des "
-            "Servers auf. Ein Abgleich sollte ihn nachliefern."
-        )
+        raise OrdnerFehler("ordner_umbenannt_aber_unsichtbar")
     logger.info("A folder was renamed.")
     return neuer
 

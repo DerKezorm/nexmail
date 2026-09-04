@@ -20,11 +20,12 @@ from sqlalchemy.orm import Session
 
 from ..models import Benutzer, Signatur
 from . import bereinigen
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.signaturen")
 
 
-class SignaturFehler(RuntimeError):
+class SignaturFehler(Meldung, RuntimeError):
     """Etwas, das der Betreiber lesen soll."""
 
 
@@ -64,7 +65,7 @@ def anlegen(
     standard: bool = False,
 ) -> Signatur:
     if not name.strip():
-        raise SignaturFehler("Die Signatur braucht einen Namen.")
+        raise SignaturFehler("signatur_name_fehlt")
 
     eintrag = Signatur(
         benutzer_id=person.id,
@@ -85,7 +86,7 @@ def aendern(db: Session, person: Benutzer, signatur_id: int, **felder) -> Signat
     eintrag = _meine(db, person, signatur_id)
     if "name" in felder and felder["name"] is not None:
         if not str(felder["name"]).strip():
-            raise SignaturFehler("Die Signatur braucht einen Namen.")
+            raise SignaturFehler("signatur_name_fehlt")
         eintrag.name = str(felder["name"]).strip()
     if "html" in felder and felder["html"] is not None:
         eintrag.html = bereinigen.fuer_versand(str(felder["html"]))
@@ -107,7 +108,7 @@ def entfernen(db: Session, person: Benutzer, signatur_id: int) -> None:
 def _meine(db: Session, person: Benutzer, signatur_id: int) -> Signatur:
     eintrag = db.get(Signatur, signatur_id)
     if eintrag is None or eintrag.benutzer_id != person.id:
-        raise SignaturFehler("Diese Signatur gibt es nicht.")
+        raise SignaturFehler("signatur_unbekannt")
     return eintrag
 
 

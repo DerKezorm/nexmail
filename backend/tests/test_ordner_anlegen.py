@@ -106,7 +106,10 @@ def test_ein_trenner_im_namen_wird_abgewiesen(db, welt):
     with pytest.raises(ordnerdienst.OrdnerFehler) as fehler:
         ordnerdienst.anlegen(db, konto, "Haus/Rechnungen")
 
-    assert "übergeordneten" in str(fehler.value)
+    # ⚠️ Die Kennung ist der Vertrag, nicht der Satz — der steht in de.json
+    # und en.json. Das Zeichen, an dem es lag, reist als Wert mit.
+    assert str(fehler.value) == "ordner_name_trenner"
+    assert fehler.value.werte["zeichen"] == "/"
 
 
 def test_derselbe_name_kommt_nicht_zweimal(db, welt):
@@ -132,7 +135,11 @@ def test_die_meldung_des_servers_kommt_durch(db, konto, monkeypatch):  # noqa: F
     with pytest.raises(ordnerdienst.OrdnerFehler) as fehler:
         ordnerdienst.anlegen(db, konto, "Verboten")
 
-    assert "Permission denied" in str(fehler.value)
+    # ⚠️ **Der Satz des Servers muss durchkommen.** Er steht jetzt als Wert
+    # neben der Kennung statt in einem deutschen Satz — „Der Server hat den
+    # Ordner nicht angelegt" allein sagt nicht, woran es lag.
+    assert str(fehler.value) == "ordner_anlegen_abgewiesen"
+    assert "Permission denied" in fehler.value.werte["grund"]
 
 
 def test_ein_gescheitertes_abonnement_wirft_den_ordner_nicht_weg(db, konto, monkeypatch):  # noqa: F811
@@ -200,7 +207,8 @@ def test_der_papierkorb_laesst_sich_nicht_entfernen(db, welt):
     with pytest.raises(ordnerdienst.OrdnerFehler) as fehler:
         ordnerdienst.entfernen(db, konto, papierkorb)
 
-    assert "braucht" in str(fehler.value)
+    assert str(fehler.value) == "ordner_geschuetzt_entfernen"
+    assert fehler.value.werte["name"]
     assert server.entfernt == []
 
 
@@ -214,7 +222,8 @@ def test_ein_ordner_mit_unterordnern_wird_nicht_stillschweigend_mitgenommen(db, 
     with pytest.raises(ordnerdienst.OrdnerFehler) as fehler:
         ordnerdienst.entfernen(db, konto, eltern)
 
-    assert "Unterordner" in str(fehler.value)
+    assert str(fehler.value) == "ordner_hat_unterordner"
+    assert fehler.value.werte["name"]
     assert server.entfernt == []
 
 

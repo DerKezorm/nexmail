@@ -23,6 +23,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from .kalender import _entfalten, _maskieren, _text_lesen, _zeile_zerlegen
 from . import zeit as zeitdienst
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.vevent")
 
@@ -44,7 +45,7 @@ EIGENE = (
 )
 
 
-class VeventFehler(ValueError):
+class VeventFehler(Meldung, ValueError):
     pass
 
 

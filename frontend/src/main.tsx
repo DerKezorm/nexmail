@@ -2,15 +2,21 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import './styles/index.css'
-import './i18n'
+import { spracheHochfahren } from './i18n'
 import Start from './Start'
 import { arbeiter, moeglich } from './lib/push'
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <Start />
-  </StrictMode>,
-)
+/* ⚠️ **Erst die Sprache, dann zeichnen.** Geladen wird nur die eine, die
+   gilt — beide zusammen wären die Hälfte umsonst. Wer trotzdem sofort
+   zeichnete, zeigte für einen Moment die rohen Schlüssel, und das sieht aus
+   wie eine kaputte Übersetzung statt wie eine langsame. */
+void spracheHochfahren().then(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <Start />
+    </StrictMode>,
+  )
+})
 
 /* Den Service Worker anmelden — nicht die Erlaubnis holen.
  *

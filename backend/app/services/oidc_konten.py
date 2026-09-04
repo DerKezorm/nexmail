@@ -45,7 +45,7 @@ def verknuepfen(db: Session, person: Benutzer, ident: Identitaet) -> OidcVerknue
         if vorhanden.benutzer_id != person.id:
             raise OidcFehler(
                 "oidc_fremd_verknuepft",
-                "Diese Identität gehört bereits zu einem anderen nexmail-Konto.",
+                "This identity already belongs to a different nexmail account.",
             )
         return vorhanden
 
@@ -94,9 +94,9 @@ def aufloesen(db: Session, ident: Identitaet) -> Benutzer:
     if einladung is None:
         raise OidcFehler(
             "oidc_kein_konto",
-            "Zu dieser Anmeldung gibt es kein nexmail-Konto. Melde dich mit "
-            "deinem Kennwort an und verknüpfe den Anbieter in den "
-            "Einstellungen — oder bitte den Betreiber um eine Einladung.",
+            "No nexmail account matches this sign-in. Sign in with a password and "
+            "link the provider in the settings, or ask the operator for an "
+            "invitation.",
         )
 
     from datetime import datetime, timezone

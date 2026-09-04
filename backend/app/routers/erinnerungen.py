@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from ..deps import AngemeldeterBenutzer, DbSession
 from ..services import erinnerungen as dienst
+from ..meldung import MeldungHttp
 
 router = APIRouter(prefix="/api/erinnerungen", tags=["erinnerungen"])
 
@@ -65,7 +66,7 @@ def erledigt(zustellung_id: int, person: AngemeldeterBenutzer, db: DbSession) ->
     try:
         dienst.erledigt(db, person, zustellung_id)
     except dienst.ErinnerungFehler as f:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(f)) from f
+        raise MeldungHttp.aus(f, status.HTTP_404_NOT_FOUND) from f
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

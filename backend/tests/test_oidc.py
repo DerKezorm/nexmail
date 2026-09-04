@@ -443,7 +443,7 @@ def test_die_letzte_verknuepfung_laesst_sich_nicht_loesen(klient, anbieter_da, m
     assert len(meine) == 1
     antwort = klient.delete(f"/api/oidc/meine/{meine[0]['id']}")
     assert antwort.status_code == 400
-    assert "Kennwort" in antwort.json()["detail"]
+    assert antwort.json()["detail"] == "letzter_anmeldeweg"
 
 
 def test_verknuepfen_ueberlebt_den_strengen_rueckweg(klient, anbieter_da, monkeypatch, db):

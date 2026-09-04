@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..deps import AngemeldeterBenutzer, DbSession
 from ..services import kontakte as kontaktdienst
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.kontakte")
 
@@ -98,7 +99,7 @@ def _gruppenzeile(db, person, gruppe_id: int) -> GruppenZeile:
     for g in kontaktdienst.gruppen(db, person):
         if g["id"] == gruppe_id:
             return GruppenZeile(**g)
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diese Gruppe gibt es nicht.")
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="gruppe_unbekannt")
 
 
 @router.get("/gruppen", response_model=list[GruppenZeile])
@@ -113,7 +114,7 @@ def gruppe_anlegen(
     try:
         gruppe = kontaktdienst.gruppe_anlegen(db, person, eingabe.name)
     except kontaktdienst.KontaktFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     return _gruppenzeile(db, person, gruppe.id)
 
 
@@ -124,7 +125,7 @@ def gruppe_umbenennen(
     try:
         kontaktdienst.gruppe_umbenennen(db, person, gruppe_id, eingabe.name)
     except kontaktdienst.KontaktFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     return _gruppenzeile(db, person, gruppe_id)
 
 
@@ -133,7 +134,7 @@ def gruppe_entfernen(gruppe_id: int, person: AngemeldeterBenutzer, db: DbSession
     try:
         kontaktdienst.gruppe_entfernen(db, person, gruppe_id)
     except kontaktdienst.KontaktFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
 
 @router.put("/gruppen/{gruppe_id}/mitglieder", response_model=GruppenZeile)
@@ -143,7 +144,7 @@ def mitglieder_setzen(
     try:
         kontaktdienst.mitglieder_setzen(db, person, gruppe_id, eingabe.kontakt_ids)
     except kontaktdienst.KontaktFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     return _gruppenzeile(db, person, gruppe_id)
 
 
@@ -162,7 +163,7 @@ def anlegen(eingabe: Eingabe, person: AngemeldeterBenutzer, db: DbSession) -> Ze
             )
         )
     except kontaktdienst.KontaktFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
 
 @router.patch("/{kontakt_id}", response_model=Zeile)
@@ -174,7 +175,7 @@ def aendern(
             kontaktdienst.aendern(db, person, kontakt_id, **wunsch.model_dump(exclude_none=True))
         )
     except kontaktdienst.KontaktFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
 
 # ⚠️ **Diese Regel muss vor ``/{kontakt_id}`` stehen.** FastAPI probiert die
@@ -192,7 +193,7 @@ def entfernen(kontakt_id: int, person: AngemeldeterBenutzer, db: DbSession) -> N
     try:
         kontaktdienst.entfernen(db, person, kontakt_id)
     except kontaktdienst.KontaktFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
 
 @router.post("/einsammeln")
@@ -220,7 +221,7 @@ async def einlesen(
     if len(roh) > MAX_VCARD:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail="Die Datei ist größer als 5 MB — das ist keine vCard.",
+            detail="vcard_zu_gross",
         )
     # ⚠️ **Nicht streng dekodieren.** vCards aus Outlook kommen oft in
     # Windows-1252 statt UTF-8, und ein Umlaut darf nicht den ganzen Import

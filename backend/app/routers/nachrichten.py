@@ -39,6 +39,7 @@ from ..services import (
     wiedervorlage as wiedervorlagedienst,
 )
 from .einstellungen import SCHLUESSEL_ZEITZONE
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.nachrichten")
 
@@ -256,7 +257,7 @@ def liste(
             # zeigt immer wieder dieselben Zeilen.
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Der Merkpunkt zum Weiterlesen ist unbrauchbar.",
+                detail="merkpunkt_unbrauchbar",
             ) from None
         if grenz_datum.tzinfo is None:
             grenz_datum = grenz_datum.replace(tzinfo=timezone.utc)
@@ -459,7 +460,7 @@ def wiedervorlage_anlegen(
         # KENNUNG, kein deutscher Satz — die Oberflaeche uebersetzt.
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=kennung) from fehler
     except handeln.HandelnFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     return _wiedervorlage_zeile(
         wiedervorlagedienst.Sicht(eintrag=eintrag, nachricht_id=None)
     )
@@ -700,7 +701,7 @@ def roh(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession):
     if not inhalt:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Der Server kennt diese Nachricht nicht mehr.",
+            detail="nachricht_weg",
         )
 
     return Response(
@@ -954,7 +955,7 @@ class Zugergebnis(BaseModel):
 
 def _auswahl(db, person, ids: list[int]) -> list[Nachricht]:
     if not ids:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nichts ausgewählt.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="nichts_ausgewaehlt")
     # ⚠️ Jede einzelne durch dieselbe Besitzprüfung. Eine Liste von Kennungen
     # ist der bequemste Weg, fremde Post mitzunehmen.
     return [_meine(db, person, kennung) for kennung in ids]
@@ -964,7 +965,7 @@ def _zug(db, tun) -> Zugergebnis:
     try:
         weg = tun()
     except handeln.HandelnFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     except imapdienst.Verbindungsfehler as fehler:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=fehler.text) from fehler
     return Zugergebnis(bewegt=len(weg.message_ids), rueckweg=weg.__dict__)
@@ -1031,7 +1032,7 @@ def zurueck(wunsch: Rueckwunsch, person: AngemeldeterBenutzer, db: DbSession) ->
     try:
         anzahl = handeln.zurueck(db, weg)
     except handeln.HandelnFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     return Zugergebnis(bewegt=anzahl)
 
 
@@ -1047,7 +1048,7 @@ def leeren(ordner_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Zuger
     try:
         return Zugergebnis(bewegt=handeln.ordner_leeren(db, ordner))
     except handeln.HandelnFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
 
 @router.post("/ordner/{ordner_id}/gelesen", response_model=Zugergebnis)
@@ -1066,7 +1067,7 @@ def ordner_gelesen(ordner_id: int, person: AngemeldeterBenutzer, db: DbSession) 
     try:
         return Zugergebnis(bewegt=handeln.ordner_als_gelesen(db, konto, ordner))
     except handeln.HandelnFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
 
 class Abgleichergebnis(BaseModel):

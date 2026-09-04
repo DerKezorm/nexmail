@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from ..db import SessionLocal
 from ..models import Benutzer, Konto, Nachricht, Ordner, Wiedervorlage, utcnow
 from . import abgleich, handeln, imap as imapdienst, konten as kontendienst
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.wiedervorlage")
 
@@ -72,7 +73,7 @@ def _suchbare_kennung(message_id: str) -> bool:
     )
 
 
-class WiedervorlageFehler(RuntimeError):
+class WiedervorlageFehler(Meldung, RuntimeError):
     """Mit einer KENNUNG als Text — die Oberflaeche uebersetzt."""
 
 

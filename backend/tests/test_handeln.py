@@ -253,7 +253,7 @@ def test_verschieben_zwischen_postfaechern_geht_einen_anderen_weg(db, welt, klie
 
 def test_nicht_in_denselben_ordner(db, welt):
     _, konto, posteingang = welt
-    with pytest.raises(handeln.HandelnFehler, match="schon dort"):
+    with pytest.raises(handeln.HandelnFehler, match="liegt_schon_dort"):
         handeln.verschieben(db, [_mail(db, "Erste")], posteingang)
 
 
@@ -265,14 +265,14 @@ def test_ohne_zielordner_klare_ansage(db, welt, konto):  # noqa: F811
     db.commit()
     db.refresh(konto_aus_welt)
 
-    with pytest.raises(handeln.HandelnFehler, match="keinen Ordner"):
+    with pytest.raises(handeln.HandelnFehler, match="rolle_ohne_ordner"):
         handeln.in_rolle(db, [_mail(db, "Erste")], "archiv")
 
 
 def test_leeren_nur_fuer_papierkorb_und_junk(db, welt):
     """⚠️ Der einzige Vorgang ohne Rückweg — deshalb eng begrenzt."""
     _, konto, posteingang = welt
-    with pytest.raises(handeln.HandelnFehler, match="Nur Papierkorb"):
+    with pytest.raises(handeln.HandelnFehler, match="nur_papierkorb_und_junk"):
         handeln.ordner_leeren(db, posteingang)
 
 

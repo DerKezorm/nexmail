@@ -35,9 +35,14 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from urllib.parse import unquote, urljoin, urlparse
 
+import html
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 import httpx
 
 from .bildvermittler import Abgelehnt, adresse_pruefen
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.caldav")
 
@@ -62,7 +67,7 @@ BLOCK = 50
 GEWOLLT = "VEVENT"
 
 
-class CaldavFehler(RuntimeError):
+class CaldavFehler(Meldung, RuntimeError):
     """Traegt eine KENNUNG, keinen deutschen Satz."""
 
 
@@ -195,6 +200,40 @@ def _klient(zugang: Zugang) -> httpx.Client:
     )
 
 
+@contextmanager
+def sitzung(zugang: Zugang) -> Iterator[httpx.Client]:
+    """Eine Verbindung fuer einen ganzen Abgleich statt einer je Aufruf.
+
+    ⚠️ **iCloud laesst je Konto nur eine Verbindung zu.** Fuer IMAP steht
+    das seit jeher in CLAUDE.md; bei CalDAV verhaelt es sich genauso. Bis zum
+    03.09.2026 baute jede einzelne Funktion hier ihren eigenen Klienten auf:
+    Der Erstabgleich von sechs iCloud-Kalendern mit zusammen 429 Terminen kam
+    so auf **25 TLS-Handschlaege in einem Schwung**. Apple beantwortet die
+    ueberzaehligen nicht mit einer Absage, sondern **gar nicht** — und das
+    sieht aus wie ein Lesetimeout nach 30 Sekunden.
+
+    Gemeldet wurde es als „er hat sie zwar gefunden, aber beim Verbinden kam
+    das": Alle sechs iCloud-Kalender scheiterten reihum, exakt 31 Sekunden
+    auseinander, waehrend der einzelne Google-Kalender durchlief.
+
+    ⚠️ **Wer eine Sitzung uebergibt, haelt sie auch offen.** Die Funktionen
+    hier schliessen einen uebergebenen Klienten nicht — sonst waere die zweite
+    Anfrage im selben Abgleich wieder eine neue Verbindung.
+    """
+    with _klient(zugang) as klient:
+        yield klient
+
+
+@contextmanager
+def _verbindung(zugang: Zugang, klient: httpx.Client | None) -> Iterator[httpx.Client]:
+    """Die uebergebene Sitzung, oder eine eigene fuer diesen einen Aufruf."""
+    if klient is not None:
+        yield klient
+        return
+    with _klient(zugang) as eigener:
+        yield eigener
+
+
 def _anfragen(klient: httpx.Client, verb: str, url: str, **kw) -> httpx.Response:
     try:
         antwort = klient.request(verb, url, **kw)
@@ -230,6 +269,26 @@ def _baum(antwort: httpx.Response) -> ET.Element:
 
 def _text(knoten: ET.Element | None) -> str:
     return (knoten.text or "").strip() if knoten is not None else ""
+
+
+def _anzeigename(knoten: ET.Element | None) -> str:
+    """Der Anzeigename einer Sammlung — einmal mehr entmaskiert als üblich.
+
+    ⚠️ **iCloud maskiert den Namen doppelt.** Ein Kalender, der „D&M"
+    heißt, steht im XML als ``D&amp;amp;M``; der XML-Leser löst die äußere
+    Maskierung auf, und übrig bleibt ``D&amp;M``. Genau so stand er am
+    03.09.2026 in der Oberfläche — gemessen mit nexmails Code **und** mit
+    httpx pur, es liegt also nicht an uns.
+
+    ⚠️ **Nur auf den Anzeigenamen, nie auf ``calendar-data``.** Das ICS ist
+    kein HTML; ein ``&`` in einer Beschreibung ist dort ein ``&``, und wer es
+    hier durchschickte, veränderte fremde Termininhalte.
+
+    ⚠️ **Der Preis ist benannt:** Ein Kalender, der wörtlich ``R&amp;D``
+    heißen soll, erscheint als ``R&D``. Das ist der seltenere Fall von beiden,
+    und der harmlosere.
+    """
+    return html.unescape(_text(knoten))
 
 
 # --- Finden --------------------------------------------------------------- #
@@ -274,7 +333,7 @@ def _propfind(klient: httpx.Client, url: str, koerper: str, tiefe: str) -> ET.El
     return _baum(antwort)
 
 
-def kalender_finden(zugang: Zugang) -> list[FernKalender]:
+def kalender_finden(zugang: Zugang, klient: httpx.Client | None = None) -> list[FernKalender]:
     """Von der eingetippten Adresse zu den Kalendern darunter.
 
     ⚠️ **Ein Zugang ist nicht EIN Kalender, sondern mehrere.** Eine Apple-ID
@@ -285,7 +344,7 @@ def kalender_finden(zugang: Zugang) -> list[FernKalender]:
     auch Aufgabenlisten (``VTODO``); sie als leere Kalender anzuzeigen waere
     eine Falschaussage.
     """
-    with _klient(zugang) as klient:
+    with _verbindung(zugang, klient) as klient:
         wurzel = zugang.url.rstrip("/")
         # Schritt 1: Wer bin ich — und wo liegen meine Kalender? ⚠️ Manche
         # Server antworten darauf nur unter ``/.well-known/caldav``, andere nur
@@ -344,7 +403,7 @@ def kalender_finden(zugang: Zugang) -> list[FernKalender]:
             raus.append(
                 FernKalender(
                     url=voll,
-                    name=_text(antwort.find(f".//{{{DAV}}}displayname")) or voll.rstrip("/").rsplit("/", 1)[-1],
+                    name=_anzeigename(antwort.find(f".//{{{DAV}}}displayname")) or voll.rstrip("/").rsplit("/", 1)[-1],
                     ctag=_text(antwort.find(f".//{{{CS}}}getctag")),
                     farbe=_text(antwort.find(f".//{{{APPLE}}}calendar-color")),
                 )
@@ -352,13 +411,13 @@ def kalender_finden(zugang: Zugang) -> list[FernKalender]:
         return raus
 
 
-def ctag_holen(zugang: Zugang) -> str:
+def ctag_holen(zugang: Zugang, klient: httpx.Client | None = None) -> str:
     """Das Sammel-ETag der Sammlung.
 
     ⚠️ **Aendert es sich nicht, hat sich nichts getan** — dann spart der
     Abgleich den ganzen Abruf. Bei einem Postfach macht das die ``UIDNEXT``.
     """
-    with _klient(zugang) as klient:
+    with _verbindung(zugang, klient) as klient:
         baum = _propfind(klient, zugang.url, _KALENDER, "0")
         return _text(baum.find(f".//{{{CS}}}getctag"))
 
@@ -392,14 +451,14 @@ def ortsschluessel(href: str) -> str:
     return unquote(urlparse(href).path).rstrip("/")
 
 
-def etags_holen(zugang: Zugang) -> list[FernTermin]:
+def etags_holen(zugang: Zugang, klient: httpx.Client | None = None) -> list[FernTermin]:
     """Welche Termine liegen dort, und in welcher Fassung.
 
     ⚠️ **Erst die Kennungen, dann die Inhalte.** Ein Kalender mit
     fuenftausend Terminen waere sonst bei jedem Abgleich ein Download von
     Megabyte — geholt wird nur, was sich wirklich geaendert hat.
     """
-    with _klient(zugang) as klient:
+    with _verbindung(zugang, klient) as klient:
         antwort = _anfragen(
             klient, "REPORT", zugang.url,
             content=_ETAGS.encode("utf-8"),
@@ -408,11 +467,22 @@ def etags_holen(zugang: Zugang) -> list[FernTermin]:
         if antwort.status_code not in (207, 200):
             raise CaldavFehler("caldav_abfrage_gescheitert")
         baum = _baum(antwort)
+        # ⚠️ **Die Sammlung selbst steht mit in der Antwort.** iCloud liefert
+        # bei ``Depth: 1`` als erste ``<response>`` den Kalender — samt eigenem
+        # ETag, sie sieht also aus wie ein Termin. Wer sie mitnimmt, fragt beim
+        # naechsten Schritt per ``calendar-multiget`` nach einem Kalender, als
+        # waere er ein Termin, und **iCloud antwortet darauf gar nicht**: kein
+        # 404, keine Absage, einfach Stille bis in die Zeitgrenze.
+        #
+        # Am 03.09.2026 aus dem Betrieb gemeldet und Schritt fuer Schritt
+        # eingekreist. Es traf **jede** Runde, deshalb heilte es nie von selbst.
+        # Google faellt nicht auf, weil es die Sammlung nicht mitschickt.
+        eigen = ortsschluessel(zugang.url)
         raus: list[FernTermin] = []
         for eintrag in baum.findall(f"{{{DAV}}}response"):
             href = _text(eintrag.find(f"{{{DAV}}}href"))
             etag = _text(eintrag.find(f".//{{{DAV}}}getetag"))
-            if href:
+            if href and ortsschluessel(href) != eigen:
                 raus.append(FernTermin(href=urljoin(zugang.url, href), etag=etag.strip('"')))
             if len(raus) >= MAX_TERMINE:
                 logger.warning("Calendar has more than %s events; cut off.", MAX_TERMINE)
@@ -420,12 +490,14 @@ def etags_holen(zugang: Zugang) -> list[FernTermin]:
         return raus
 
 
-def inhalte_holen(zugang: Zugang, hrefs: list[str]) -> list[FernTermin]:
+def inhalte_holen(
+    zugang: Zugang, hrefs: list[str], klient: httpx.Client | None = None
+) -> list[FernTermin]:
     """Die ``.ics`` zu bestimmten Adressen — blockweise."""
     raus: list[FernTermin] = []
     if not hrefs:
         return raus
-    with _klient(zugang) as klient:
+    with _verbindung(zugang, klient) as klient:
         for i in range(0, len(hrefs), BLOCK):
             teil = hrefs[i : i + BLOCK]
             koerper = (
@@ -473,7 +545,10 @@ class Konflikt(CaldavFehler):
     """Der Server hat eine neuere Fassung. ⚠️ **Nicht überschreiben.**"""
 
 
-def schreiben(zugang: Zugang, href: str, ics: str, etag: str = "") -> str:
+def schreiben(
+    zugang: Zugang, href: str, ics: str, etag: str = "",
+    klient: httpx.Client | None = None,
+) -> str:
     """Eine ``.ics`` ablegen. Gibt das neue ETag zurück.
 
     ⚠️ **``If-Match`` bei einem vorhandenen Termin, ``If-None-Match: *`` bei
@@ -487,7 +562,7 @@ def schreiben(zugang: Zugang, href: str, ics: str, etag: str = "") -> str:
         kopf.pop("if-match")
         kopf["if-none-match"] = "*"
 
-    with _klient(zugang) as klient:
+    with _verbindung(zugang, klient) as klient:
         antwort = _anfragen(klient, "PUT", href, content=ics.encode("utf-8"), headers=kopf)
         if antwort.status_code == 412:
             raise Konflikt("caldav_konflikt")
@@ -510,8 +585,10 @@ def schreiben(zugang: Zugang, href: str, ics: str, etag: str = "") -> str:
     return ""
 
 
-def loeschen(zugang: Zugang, href: str, etag: str = "") -> None:
-    with _klient(zugang) as klient:
+def loeschen(
+    zugang: Zugang, href: str, etag: str = "", klient: httpx.Client | None = None
+) -> None:
+    with _verbindung(zugang, klient) as klient:
         kopf = {"if-match": f'"{etag}"'} if etag else {}
         antwort = _anfragen(klient, "DELETE", href, headers=kopf)
         if antwort.status_code == 412:

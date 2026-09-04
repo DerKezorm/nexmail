@@ -12,10 +12,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, GripVertical, ListChecks, MailWarning, Trash2 } from 'lucide-react'
-import { ApiFehler, api } from '../api/client'
+import { api } from '../api/client'
 import type { Konto } from '../daten/typen'
 import { PUNKT_KLASSE } from '../lib/farben'
 import { EmptyState, IconButton } from '../ds'
+import { servermeldung } from '../lib/servermeldung'
 
 export interface AufgabenZeile {
   id: number
@@ -52,7 +53,7 @@ export function AufgabenPage({ konten, aufMail, aufAenderung }: Props) {
     } catch (f) {
       // ⚠️ Ein Fehler darf nicht wie eine leere Liste aussehen — dieselbe
       // Regel wie bei den Postfächern.
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('aufgaben.laden_ging_nicht'))
+      setFehler(servermeldung(f, t('aufgaben.laden_ging_nicht')))
     }
   }, [t])
 
@@ -66,7 +67,7 @@ export function AufgabenPage({ konten, aufMail, aufAenderung }: Props) {
       await laden()
       aufAenderung?.()
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     }
   }
 

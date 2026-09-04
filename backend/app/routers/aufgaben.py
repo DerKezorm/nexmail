@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..deps import AngemeldeterBenutzer, DbSession
 from ..services import aufgaben as dienst
+from ..meldung import MeldungHttp
 
 router = APIRouter(prefix="/api/aufgaben", tags=["aufgaben"])
 
@@ -73,7 +74,7 @@ def anlegen(wunsch: Wunsch, person: AngemeldeterBenutzer, db: DbSession) -> Zeil
     try:
         aufgabe = dienst.anlegen(db, person, wunsch.nachricht_id)
     except dienst.AufgabenFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
     return _zeile(dienst.Sicht(aufgabe=aufgabe, nachricht_id=aufgabe.nachricht_id, verwaist=False))
 
 
@@ -99,7 +100,7 @@ def aendern(
             dienst.faelligkeit(db, person, aufgabe_id, wunsch.faellig)
         aufgabe = dienst.eine(db, person, aufgabe_id)
     except dienst.AufgabenFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
     # Frisch nachschlagen: Die Mail kann inzwischen umgezogen sein.
     for sicht in dienst.alle(db, person):
@@ -113,4 +114,4 @@ def entfernen(aufgabe_id: int, person: AngemeldeterBenutzer, db: DbSession) -> N
     try:
         dienst.entfernen(db, person, aufgabe_id)
     except dienst.AufgabenFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler

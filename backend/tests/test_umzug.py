@@ -494,7 +494,10 @@ def test_ein_zu_grosser_ordner_wird_auf_mbox_verwiesen(klient, db, welt, monkeyp
     antwort = klient.get(f"/api/austausch/export/{ordner.id}?form=zip")
 
     assert antwort.status_code == 400
-    assert "mbox" in antwort.json()["detail"]
+    assert antwort.json()["detail"] == "zip_zu_viele"
+    # ⚠️ Die Zahlen gehoeren in die Meldung: „zu viele" allein sagt nicht,
+    # ab wann es zu viele sind.
+    assert antwort.json()["werte"]["max"]
 
 
 def test_ein_leerer_ordner_gibt_keine_leere_datei(klient, db, welt):

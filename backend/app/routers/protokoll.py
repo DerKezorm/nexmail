@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from ..deps import AngemeldeterBenutzer, DbSession
 from ..services import protokoll as dienst
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.protokoll")
 
@@ -54,7 +55,7 @@ def _nur_betreiber(person) -> None:
     if not getattr(person, "ist_betreiber", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Das Protokoll sieht nur der Betreiber.",
+            detail="nur_betreiber",
         )
 
 
@@ -79,15 +80,12 @@ def stufe_setzen(
     if dienst.stand(db).durch_umgebung:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Die Stufe steht in NEXMAIL_LOG_STUFE und lässt sich hier nicht "
-                "ändern. Nimm sie aus der compose-Datei heraus."
-            ),
+            detail="stufe_aus_der_umgebung",
         )
     try:
         s = dienst.stufe_setzen(db, wunsch.stufe, wunsch.minuten)
     except ValueError as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     return StandAntwort(
         stufe=s.stufe,
         bis=s.bis,

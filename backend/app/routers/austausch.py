@@ -26,6 +26,7 @@ from ..config import get_settings
 from ..deps import AngemeldeterBenutzer, DbSession
 from ..models import Konto, Nachricht, Ordner
 from ..services import austausch as dienst
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.austausch")
 
@@ -91,7 +92,7 @@ def _mein_ordner(db, person, ordner_id: int) -> tuple[Ordner, Konto]:
     if not ordner.waehlbar:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Dieser Ordner kann keine Nachrichten aufnehmen.",
+            detail="ordner_nimmt_nichts_auf",
         )
     return ordner, konto
 
@@ -120,7 +121,7 @@ async def einspielen(
     if laeuft is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Es läuft schon ein Import ({laeuft.dateiname}). Bitte abwarten.",
+            detail="import_laeuft_schon",
         )
 
     ziel = get_settings().data_dir / "einfuhr"
@@ -133,12 +134,10 @@ async def einspielen(
             while block := await datei.read(UPLOAD_BLOCK):
                 groesse += len(block)
                 if groesse > MAX_BYTES:
-                    raise HTTPException(
-                        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                        detail=(
-                            "Die Datei ist größer als 4 GB. Thunderbird legt je Ordner "
-                            "eine eigene mbox an — bitte einzeln einspielen."
-                        ),
+                    raise MeldungHttp(
+                        status.HTTP_413_CONTENT_TOO_LARGE,
+                        "mbox_zu_gross",
+                        {"max_gb": MAX_BYTES // (1024**3)},
                     )
                 raus.write(block)
     except BaseException:
@@ -148,7 +147,7 @@ async def einspielen(
     if groesse == 0:
         pfad.unlink(missing_ok=True)
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Die Datei ist leer."
+            status_code=status.HTTP_400_BAD_REQUEST, detail="datei_leer"
         )
 
     vorgang = dienst.vorgang_starten(
@@ -246,7 +245,7 @@ def ausgeben(
     """
     if form not in ("mbox", "zip"):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Unbekanntes Format."
+            status_code=status.HTTP_400_BAD_REQUEST, detail="format_unbekannt"
         )
 
     ordner, konto = _mein_ordner(db, person, ordner_id)
@@ -254,7 +253,7 @@ def ausgeben(
     if not zeilen:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="In diesem Ordner ist nichts, was sich ausgeben ließe.",
+            detail="ordner_leer",
         )
 
     uids = [uid for uid, _ in zeilen]
@@ -262,12 +261,10 @@ def ausgeben(
 
     if form == "zip":
         if len(uids) > MAX_ZIP:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Der Ordner hat {len(uids)} Nachrichten; als ZIP gehen höchstens "
-                    f"{MAX_ZIP}. Bitte mbox nehmen — das strömt und hat keine Grenze."
-                ),
+            raise MeldungHttp(
+                status.HTTP_400_BAD_REQUEST,
+                "zip_zu_viele",
+                {"anzahl": len(uids), "max": MAX_ZIP},
             )
         # ⚠️ Ohne ``status_einsetzen``: Eine ``.eml`` ist die Mail, wie sie
         # ankam. Eine Kopfzeile, die nexmails Ansicht beschreibt, gehoert

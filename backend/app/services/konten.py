@@ -20,6 +20,7 @@ from .. import crypto
 from ..models import Benutzer, Konto, Ordner, neue_id, utcnow
 from . import anbieter as anbieterdienst
 from . import imap as imapdienst
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.konten")
 
@@ -30,7 +31,7 @@ logger = logging.getLogger("nexmail.konten")
 FARBEN = (1, 2, 3, 4, 5, 6)
 
 
-class KontoFehler(ValueError):
+class KontoFehler(Meldung, ValueError):
     pass
 
 
@@ -69,7 +70,7 @@ def eines(db: Session, benutzer: Benutzer, konto_id: str) -> Konto:
     # dasselbe melden wie bei „gibt es nicht". Sonst verrät die Antwort,
     # welche Kennungen existieren.
     if konto is None or konto.benutzer_id != benutzer.id:
-        raise KontoFehler("Dieses Postfach gibt es nicht.")
+        raise KontoFehler("postfach_unbekannt")
     return konto
 
 
@@ -142,17 +143,17 @@ def _pruefen_regeln(daten: Zugangsdaten, passwort_noetig: bool = True) -> None:
     if passwort_noetig and not (daten.imap_passwort and daten.smtp_passwort):
         # ⚠️ Beim Ändern ist ein leeres Feld erlaubt und heißt „unverändert" —
         # beim Anlegen wäre es ein Postfach ohne Zugang.
-        raise KontoFehler("Ohne Passwort kann sich nexmail nicht anmelden.")
+        raise KontoFehler("passwort_fehlt")
     if "@" not in daten.adresse:
-        raise KontoFehler("Das sieht nicht nach einer E-Mail-Adresse aus.")
+        raise KontoFehler("adresse_ungueltig")
     if not daten.imap_server or not daten.smtp_server:
-        raise KontoFehler("Ohne Serveradressen geht es nicht.")
+        raise KontoFehler("server_fehlt")
     for sicherheit in (daten.imap_sicherheit, daten.smtp_sicherheit):
         if sicherheit not in ("ssl", "starttls"):
-            raise KontoFehler("Verschlüsselung muss SSL/TLS oder STARTTLS sein.")
+            raise KontoFehler("sicherheit_ungueltig")
     for port in (daten.imap_port, daten.smtp_port):
         if not 1 <= port <= 65535:
-            raise KontoFehler("Der Port liegt außerhalb des Möglichen.")
+            raise KontoFehler("port_ungueltig")
 
 
 def anlegen(db: Session, benutzer: Benutzer, daten: Zugangsdaten) -> Konto:
@@ -164,7 +165,7 @@ def anlegen(db: Session, benutzer: Benutzer, daten: Zugangsdaten) -> Konto:
             func.lower(Konto.adresse) == daten.adresse.strip().lower(),
         )
     ).scalar_one_or_none():
-        raise KontoFehler("Dieses Postfach ist schon eingerichtet.")
+        raise KontoFehler("postfach_schon_da")
 
     hoechste = db.execute(
         select(func.max(Konto.reihenfolge)).where(Konto.benutzer_id == benutzer.id)
@@ -234,7 +235,7 @@ def aendern(db: Session, benutzer: Benutzer, konto_id: str, daten: Zugangsdaten)
         )
     ).scalar_one_or_none()
     if doppelt is not None:
-        raise KontoFehler("Ein anderes Postfach hat diese Adresse schon.")
+        raise KontoFehler("adresse_schon_vergeben")
 
     konto.anzeigename = daten.anzeigename.strip() or neue_adresse.split("@")[0]
     konto.absendername = daten.absendername.strip()

@@ -12,9 +12,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download, HardDriveDownload, Plus, Trash2, Upload } from 'lucide-react'
-import { api, ApiFehler } from '../api/client'
+import { api } from '../api/client'
 import { Badge, Button, Dialog, EmptyState, IconButton, Input, Select } from '../ds'
 import { useNachfrage } from '../components/Nachfrage'
+import { servermeldung } from '../lib/servermeldung'
 
 interface Ruecksetzpunkt {
   name: string
@@ -92,7 +93,7 @@ export function Sicherungen() {
         setLadefehler('')
       })
       .catch((e: unknown) =>
-        setLadefehler(e instanceof ApiFehler ? e.detail : t('sicherungen.ladefehler')),
+        setLadefehler(servermeldung(e, t('sicherungen.ladefehler'))),
       )
   }, [t])
 
@@ -109,7 +110,7 @@ export function Sicherungen() {
       setFehler('')
       laden()
     } catch (e) {
-      setFehler(e instanceof ApiFehler ? e.detail : String(e))
+      setFehler(servermeldung(e))
     } finally {
       setLaeuft(false)
     }
@@ -129,7 +130,7 @@ export function Sicherungen() {
       setPasswortWdh('')
       setFehler('')
     } catch (e) {
-      setFehler(e instanceof ApiFehler ? e.detail : String(e))
+      setFehler(servermeldung(e))
     } finally {
       setLaeuft(false)
     }
@@ -149,7 +150,7 @@ export function Sicherungen() {
       await api.loeschen(`/api/sicherung/liste/${encodeURIComponent(eintrag.name)}`)
       laden()
     } catch (e) {
-      setFehler(e instanceof ApiFehler ? e.detail : String(e))
+      setFehler(servermeldung(e))
     }
   }
 
@@ -161,7 +162,7 @@ export function Sicherungen() {
       await api.aendern('/api/sicherung/zeitplan', neu)
       laden()
     } catch (e) {
-      setFehler(e instanceof ApiFehler ? e.detail : String(e))
+      setFehler(servermeldung(e))
     }
   }
 
@@ -447,7 +448,7 @@ function Einspielen({ aufSchliessen }: { aufSchliessen: () => void }) {
       formular.append('passwort', passwort)
       setBefund(await api.formular<Befund>('/api/sicherung/pruefen', formular))
     } catch (e) {
-      setFehler(e instanceof ApiFehler ? e.detail : String(e))
+      setFehler(servermeldung(e))
     } finally {
       setLaeuft(false)
     }
@@ -467,7 +468,7 @@ function Einspielen({ aufSchliessen }: { aufSchliessen: () => void }) {
       await api.formular('/api/sicherung/einspielen', formular)
       setFertig(true)
     } catch (e) {
-      setFehler(e instanceof ApiFehler ? e.detail : String(e))
+      setFehler(servermeldung(e))
       setLaeuft(false)
     }
   }

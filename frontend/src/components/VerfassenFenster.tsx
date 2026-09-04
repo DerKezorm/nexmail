@@ -24,11 +24,12 @@ import { Adressfeld } from './Adressfeld'
 import { Editor } from './Editor'
 import type { TextvorlagenZeile } from '../pages/Textvorlagen'
 import { useNachfrage } from './Nachfrage'
-import { api, ApiFehler } from '../api/client'
+import { api } from '../api/client'
 import type { Konto, Nachricht } from '../daten/typen'
 import { eigenerText, erwaehntAnhang } from '../lib/anhang'
 import { groesse } from '../lib/format'
 import { useGemerkt } from '../lib/haken'
+import { servermeldung } from '../lib/servermeldung'
 
 export type Verfassart = 'neu' | 'antwort' | 'allen' | 'weiter' | 'anhang' | 'entwurf'
 
@@ -518,7 +519,7 @@ export function VerfassenFenster({
     } catch (f) {
       // ⚠️ **Nicht schließen, wenn das Aufbewahren scheitert.** Sonst ist der
       // Text weg, und nexmail hat es nicht einmal gesagt.
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('verfassen.entwurf_fehler'))
+      setFehler(servermeldung(f, t('verfassen.entwurf_fehler')))
     } finally {
       setSpeichert(false)
     }
@@ -609,7 +610,7 @@ export function VerfassenFenster({
       // Nicht draußen, aber auch nicht weg: Sie liegt im Ausgang.
       setFehler(t('verfassen.im_ausgang', { grund: ergebnis.fehler }))
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     } finally {
       setSendet(false)
     }
@@ -648,7 +649,7 @@ export function VerfassenFenster({
       }
       setFehler(t('verfassen.im_ausgang', { grund: ergebnis.fehler }))
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     } finally {
       setSendet(false)
     }

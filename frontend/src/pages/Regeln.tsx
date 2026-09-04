@@ -13,9 +13,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowDown, ArrowUp, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
-import { api, ApiFehler } from '../api/client'
+import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Button, EmptyState, IconButton, Input, Select, Switch } from '../ds'
+import { servermeldung } from '../lib/servermeldung'
 
 interface Bedingung {
   feld: string
@@ -108,7 +109,7 @@ export function Regeln() {
       if (erfolg) setMeldung(erfolg)
       return ergebnis
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
       return null
     }
   }

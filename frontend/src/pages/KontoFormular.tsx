@@ -19,9 +19,10 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, XCircle } from 'lucide-react'
 import { Button, Input, Select } from '../ds'
 import { Schlagwortfeld } from '../components/Schlagwortfeld'
-import { ApiFehler, api } from '../api/client'
+import { api } from '../api/client'
 import type { Befund, KontoZeile, Vorschlag } from '../api/client'
 import { PUNKT_KLASSE } from '../lib/farben'
+import { servermeldung } from '../lib/servermeldung'
 
 interface Props {
   naechsteFarbe: 1 | 2 | 3 | 4 | 5 | 6
@@ -242,7 +243,7 @@ export function KontoFormular({
     try {
       setBefund(await api.senden<Befund>('/api/konten/pruefen', nutzdaten()))
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     } finally {
       setTestet(false)
     }
@@ -258,7 +259,7 @@ export function KontoFormular({
           : await api.senden<KontoZeile>('/api/konten', nutzdaten()),
       )
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     } finally {
       setLegtAn(false)
     }

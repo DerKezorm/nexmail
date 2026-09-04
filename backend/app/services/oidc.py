@@ -210,12 +210,12 @@ def _json_deuten(antwort: httpx.Response, zweck: str, adresse: str) -> dict[str,
         )
         raise OidcFehler(
             "oidc_kein_json",
-            f"Der Anbieter hat bei {zweck} kein JSON geliefert "
-            f"({_inhaltstyp(antwort) or 'ohne Typ'}) — meist steht ein Proxy "
-            "oder eine Fehlerseite davor.",
+            f"The provider returned no JSON for {zweck} "
+            f"({_inhaltstyp(antwort) or 'no content type'}); usually a proxy or "
+            "an error page sits in front of it.",
         ) from None
     if not isinstance(daten, dict):
-        raise OidcFehler("oidc_kein_json", f"Der Anbieter hat bei {zweck} kein Objekt geliefert.")
+        raise OidcFehler("oidc_kein_json", f"The provider returned no object for {zweck}.")
     return daten
 
 
@@ -270,7 +270,7 @@ async def beschreibung_holen(issuer: str) -> dict[str, Any]:
         logger.warning("OIDC: provider description at %r could not be read: %r", adresse, fehler)
         raise OidcFehler(
             "oidc_kein_anbieter",
-            f"Die Selbstauskunft unter {adresse} ist nicht erreichbar.",
+            f"The discovery document at {adresse} is unreachable.",
         ) from fehler
 
     daten = _json_deuten(antwort, "der Selbstauskunft", adresse)
@@ -278,8 +278,8 @@ async def beschreibung_holen(issuer: str) -> dict[str, Any]:
     if gemeldet.rstrip("/") != issuer.rstrip("/"):
         raise OidcFehler(
             "oidc_falscher_aussteller",
-            f"Der Anbieter nennt sich {gemeldet!r}, eingetragen ist {issuer!r}. "
-            "Beides muss übereinstimmen.",
+            f"The provider calls itself {gemeldet!r}, but {issuer!r} is configured. "
+            "The two have to match.",
         )
     return daten
 
@@ -296,7 +296,7 @@ async def code_tauschen(
     """Den Einmal-Code gegen die Ausweise tauschen."""
     adresse = str(beschreibung.get("token_endpoint") or "")
     if not adresse:
-        raise OidcFehler("oidc_kein_token_endpunkt", "Der Anbieter nennt keinen Token-Endpunkt.")
+        raise OidcFehler("oidc_kein_token_endpunkt", "The provider names no token endpoint.")
 
     daten = {
         "grant_type": "authorization_code",
@@ -317,14 +317,14 @@ async def code_tauschen(
             )
     except Exception as fehler:  # noqa: BLE001
         logger.warning("OIDC: token endpoint at %r not reachable: %r", adresse, fehler)
-        raise OidcFehler("oidc_tausch", f"Der Token-Endpunkt {adresse} ist nicht erreichbar.") from fehler
+        raise OidcFehler("oidc_tausch", f"The token endpoint {adresse} is unreachable.") from fehler
 
     if antwort.status_code >= 400:
         logger.warning("OIDC: token exchange refused: %s", _oauth_fehler(antwort))
         raise OidcFehler(
             "oidc_tausch",
-            "Der Anbieter hat den Tausch abgelehnt. Der Grund steht im Protokoll — "
-            "meist Client-ID, Geheimnis oder Rückkehr-Adresse.",
+            "The provider refused the exchange; the reason is in the log above. "
+            "Usually the client id, the secret or the redirect URI.",
         )
 
     rumpf = _json_deuten(antwort, "der Token-Antwort", adresse)
@@ -335,8 +335,8 @@ async def code_tauschen(
         # gemacht und keinen Ausweis ausgestellt.
         raise OidcFehler(
             "oidc_kein_ausweis",
-            "Der Anbieter hat keinen ID-Ausweis geliefert. Meist fehlt der "
-            "Bereich „openid“ in den Scopes.",
+            "The provider returned no ID token. Usually the 'openid' scope is "
+            "missing.",
         )
     zugang = rumpf.get("access_token")
     return id_token, zugang if isinstance(zugang, str) and zugang else None
@@ -348,7 +348,7 @@ async def ausweis_pruefen(
     """Unterschrift, Aussteller, Empfaenger, Ablauf und ``nonce``."""
     jwks = str(beschreibung.get("jwks_uri") or "")
     if not jwks:
-        raise OidcFehler("oidc_keine_schluessel", "Der Anbieter nennt keine Schlüssel-Adresse.")
+        raise OidcFehler("oidc_keine_schluessel", "The provider names no JWKS URI.")
 
     try:
         klient = jwt.PyJWKClient(jwks, timeout=ZEITGRENZE)
@@ -385,28 +385,28 @@ async def ausweis_pruefen(
             )
             raise OidcFehler(
                 "oidc_ausweis",
-                f"Der Ausweis nennt als Aussteller {gefunden!r}, die Selbstauskunft "
-                f"des Anbieters aber {erwartet!r}. Beides muss gleich lauten - bei "
-                "authentik entscheidet das die Einstellung „Issuer mode“ am Provider.",
+                f"The ID token names {gefunden!r} as issuer, the discovery document "
+                f"{erwartet!r}. The two have to match; with authentik the "
+                "provider setting 'Issuer mode' decides this.",
             ) from fehler
 
         raise OidcFehler(
-            "oidc_ausweis", "Der Ausweis des Anbieters ließ sich nicht prüfen."
+            "oidc_ausweis", "The provider's ID token could not be verified."
         ) from fehler
     except Exception as fehler:  # noqa: BLE001
         logger.warning("OIDC: keys at %r could not be read: %r", jwks, fehler)
-        raise OidcFehler("oidc_keine_schluessel", "Die Schlüssel des Anbieters sind nicht lesbar.") from fehler
+        raise OidcFehler("oidc_keine_schluessel", "The provider's keys could not be read.") from fehler
 
     # ⚠️ **Mehrere Empfaenger verlangen ``azp``** (OIDC Core 3.1.3.7) — und die
     # Pruefung gilt, **sobald** ``azp`` dasteht, nicht erst bei mehreren.
     azp = daten.get("azp")
     if azp is not None and azp != client_id:
-        raise OidcFehler("oidc_ausweis", "Der Ausweis ist für eine andere Anwendung ausgestellt.")
+        raise OidcFehler("oidc_ausweis", "The ID token was issued for a different application.")
 
     if daten.get("nonce") != nonce:
         # ⚠️ Ohne diese Pruefung liesse sich ein abgefangener Ausweis ein
         # zweites Mal einloesen.
-        raise OidcFehler("oidc_ausweis", "Der Ausweis gehört nicht zu diesem Anmeldeversuch.")
+        raise OidcFehler("oidc_ausweis", "The ID token does not belong to this sign-in attempt.")
     return daten
 
 
@@ -490,7 +490,7 @@ def weiterleitung_bauen(
 ) -> str:
     ziel = str(beschreibung.get("authorization_endpoint") or "")
     if not ziel:
-        raise OidcFehler("oidc_kein_anmeldeendpunkt", "Der Anbieter nennt keinen Anmelde-Endpunkt.")
+        raise OidcFehler("oidc_kein_anmeldeendpunkt", "The provider names no authorization endpoint.")
     bereiche = " ".join(dict.fromkeys(["openid", *scopes.split()]))
     frage = urlencode(
         {

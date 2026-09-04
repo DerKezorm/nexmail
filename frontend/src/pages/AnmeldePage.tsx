@@ -15,6 +15,7 @@ import { Torbogen } from '../components/Torbogen'
 import { Button, Input } from '../ds'
 import { Meldung } from './EinrichtungPage'
 import { ApiFehler, api } from '../api/client'
+import { servermeldung } from '../lib/servermeldung'
 import type { Einrichtung, Schritt } from '../api/client'
 
 type Lage = 'passwort' | 'code' | 'wiederherstellung' | 'einrichten'
@@ -26,7 +27,7 @@ interface Props {
 }
 
 export function AnmeldePage({ modus, aufModus, aufFertig }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
 
   const [lage, setLage] = useState<Lage>('passwort')
   const [benutzername, setBenutzername] = useState('')
@@ -55,10 +56,16 @@ export function AnmeldePage({ modus, aufModus, aufFertig }: Props) {
   useEffect(() => {
     const kennung = new URLSearchParams(window.location.search).get('oidc_fehler')
     if (!kennung) return
-    const bekannt = ['oidc_abgelehnt', 'oidc_kein_konto', 'oidc_anlauf_fehlt']
-    setOidcFehler(t(bekannt.includes(kennung) ? `oidc.fehler_${kennung}` : 'oidc.fehler_allgemein'))
+    /* ⚠️ **Gefragt wird der Katalog, nicht eine Liste im Code.** Bis zum
+       03.09.2026 standen hier drei Kennungen fest eingetragen; der Server
+       nennt aber zwölf. Die übrigen neun fielen alle auf „Die Anmeldung über
+       den Anbieter hat nicht geklappt" zurück — ein Satz, der den Betreiber
+       nichts wissen lässt, obwohl der Server es genau wusste. Eine Liste im
+       Code altert lautlos: Wer eine Kennung ergänzt, denkt an sie nicht. */
+    const schluessel = `oidc.fehler_${kennung}`
+    setOidcFehler(t(i18n.exists(schluessel) ? schluessel : 'oidc.fehler_allgemein'))
     window.history.replaceState(null, '', appPfad('/'))
-  }, [t])
+  }, [t, i18n])
 
   useEffect(() => {
     if (lage !== 'einrichten') return
@@ -69,13 +76,13 @@ export function AnmeldePage({ modus, aufModus, aufFertig }: Props) {
   }, [lage])
 
   function deuten(f: unknown): string {
-    if (f instanceof ApiFehler) {
-      if (f.status === 429) {
-        return t('anmeldung.zu_viele', { s: f.wartenSekunden ?? 60 })
-      }
-      if (f.detail) return f.detail
+    /* ⚠️ **Die Bremse hat Vorrang vor dem Katalog.** Sie trägt eine Zahl aus
+       einer Kopfzeile, nicht aus dem Rumpf — „warte 43 Sekunden" lässt sich
+       nicht als Kennung ausdrücken. */
+    if (f instanceof ApiFehler && f.status === 429) {
+      return t('anmeldung.zu_viele', { s: f.wartenSekunden ?? 60 })
     }
-    return t('anmeldung.fehler_allgemein')
+    return servermeldung(f, t('anmeldung.fehler_allgemein'))
   }
 
   async function schritt(aufruf: () => Promise<Schritt>) {

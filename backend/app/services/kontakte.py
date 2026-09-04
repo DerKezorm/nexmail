@@ -27,11 +27,12 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..models import Benutzer, Kontakt, Kontaktgruppe, KontaktgruppeMitglied, Nachricht, Ordner
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.kontakte")
 
 
-class KontaktFehler(RuntimeError):
+class KontaktFehler(Meldung, RuntimeError):
     """Etwas, das der Betreiber lesen soll."""
 
 
@@ -41,7 +42,7 @@ _ADRESSE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 def adresse_pruefen(adresse: str) -> str:
     sauber = adresse.strip().lower()
     if not _ADRESSE.match(sauber):
-        raise KontaktFehler(f"„{sauber}“ sieht nicht wie eine E-Mail-Adresse aus.")
+        raise KontaktFehler("kontakt_adresse_ungueltig", adresse=sauber)
     return sauber
 
 
@@ -103,7 +104,7 @@ def anlegen(
         select(Kontakt).where(Kontakt.benutzer_id == person.id, Kontakt.adresse == sauber)
     ).scalar_one_or_none()
     if vorhanden is not None:
-        raise KontaktFehler(f"„{sauber}“ steht schon im Adressbuch.")
+        raise KontaktFehler("adresse_schon_da", adresse=sauber)
 
     eintrag = Kontakt(
         benutzer_id=person.id,
@@ -132,7 +133,7 @@ def aendern(db: Session, person: Benutzer, kontakt_id: int, **felder) -> Kontakt
                 )
             ).scalar_one_or_none()
             if doppelt is not None:
-                raise KontaktFehler(f"„{neue}“ steht schon bei einem anderen Eintrag.")
+                raise KontaktFehler("adresse_bei_anderem", adresse=neue)
             eintrag.adresse = neue
     for schluessel in ("name", "firma", "telefon", "notiz"):
         if schluessel in felder and felder[schluessel] is not None:
@@ -181,7 +182,7 @@ def gesammelte_entfernen(db: Session, person: Benutzer) -> int:
 def _meiner(db: Session, person: Benutzer, kontakt_id: int) -> Kontakt:
     eintrag = db.get(Kontakt, kontakt_id)
     if eintrag is None or eintrag.benutzer_id != person.id:
-        raise KontaktFehler("Diesen Eintrag gibt es nicht.")
+        raise KontaktFehler("eintrag_unbekannt")
     return eintrag
 
 
@@ -324,7 +325,7 @@ def _gruppenname_pruefen(
 ) -> str:
     sauber = name.strip()
     if not sauber:
-        raise KontaktFehler("Die Gruppe braucht einen Namen.")
+        raise KontaktFehler("gruppe_name_fehlt")
     # Gross/klein trennt keine Gruppen - dieselbe Regel wie bei den
     # Postfach-Schlagworten. Verglichen wird klein, behalten die Schreibweise.
     frage = select(Kontaktgruppe).where(
@@ -334,7 +335,7 @@ def _gruppenname_pruefen(
     if ausser_id is not None:
         frage = frage.where(Kontaktgruppe.id != ausser_id)
     if db.execute(frage).scalar_one_or_none() is not None:
-        raise KontaktFehler(f"„{sauber}“ gibt es schon als Gruppe.")
+        raise KontaktFehler("gruppe_schon_da", name=sauber)
     return sauber
 
 
@@ -390,7 +391,7 @@ def mitglieder_setzen(
     )
     fremde = [k for k in gewuenscht if k not in meine_ids]
     if fremde:
-        raise KontaktFehler("Mindestens ein gewählter Eintrag steht nicht in deinem Adressbuch.")
+        raise KontaktFehler("eintrag_fremd")
 
     db.query(KontaktgruppeMitglied).filter(
         KontaktgruppeMitglied.benutzer_id == person.id,
@@ -408,7 +409,7 @@ def mitglieder_setzen(
 def _meine_gruppe(db: Session, person: Benutzer, gruppe_id: int) -> Kontaktgruppe:
     gruppe = db.get(Kontaktgruppe, gruppe_id)
     if gruppe is None or gruppe.benutzer_id != person.id:
-        raise KontaktFehler("Diese Gruppe gibt es nicht.")
+        raise KontaktFehler("gruppe_unbekannt")
     return gruppe
 
 

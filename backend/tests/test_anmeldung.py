@@ -405,7 +405,8 @@ def test_ein_zu_kurzes_kennwort_wird_abgewiesen(klient):
     einrichten(klient)
     antwort = klient.put("/api/auth/passwort", json={"altes": "sehr-geheim-123", "neues": "kurz"})
     assert antwort.status_code == 400
-    assert "Zeichen" in antwort.json()["detail"]
+    assert antwort.json()["detail"] == "passwort_zu_kurz"
+    assert antwort.json()["werte"]["min"]
 
 
 def test_dasselbe_kennwort_noch_einmal_ist_kein_wechsel(klient):

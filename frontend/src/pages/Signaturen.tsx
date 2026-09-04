@@ -7,10 +7,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PenLine, Plus, Trash2 } from 'lucide-react'
-import { api, ApiFehler } from '../api/client'
+import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Button, EmptyState, IconButton, Input, Select, Switch } from '../ds'
 import { Editor } from '../components/Editor'
+import { servermeldung } from '../lib/servermeldung'
 
 export interface SignaturZeile {
   id: number
@@ -53,7 +54,7 @@ export function Signaturen() {
       await laden()
       return ergebnis
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
       return null
     }
   }

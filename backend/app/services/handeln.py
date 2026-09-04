@@ -27,11 +27,12 @@ from sqlalchemy.orm import Session
 
 from ..models import Konto, Nachricht, Ordner, utcnow
 from . import abgleich, imap as imapdienst, konten as kontendienst
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.handeln")
 
 
-class HandelnFehler(RuntimeError):
+class HandelnFehler(Meldung, RuntimeError):
     pass
 
 
@@ -83,8 +84,7 @@ def _ziel_finden(db: Session, konto: Konto, rolle: str) -> Ordner:
     ordner = next((o for o in konto.ordner if o.rolle == rolle), None)
     if ordner is None:
         raise HandelnFehler(
-            f"Dieses Postfach hat keinen Ordner für „{rolle}“. Lege ihn auf dem "
-            "Server an oder verschiebe von Hand."
+            "rolle_ohne_ordner", rolle=rolle
         )
     return ordner
 
@@ -94,11 +94,11 @@ def verschieben(
 ) -> Rueckweg:
     """Nachrichten in einen anderen Ordner desselben Postfachs schieben."""
     if not nachrichten:
-        raise HandelnFehler("Nichts ausgewählt.")
+        raise HandelnFehler("nichts_ausgewaehlt")
 
     konto_ids = {n.konto_id for n in nachrichten}
     if len(konto_ids) != 1:
-        raise HandelnFehler("Nachrichten aus mehreren Postfächern lassen sich nicht zusammen verschieben.")
+        raise HandelnFehler("mehrere_postfaecher")
     if ziel.konto_id != nachrichten[0].konto_id:
         # Über die Kontogrenze ist ein anderer Vorgang: Der Server kann nicht
         # kopieren, was er nicht hat. Siehe ``ueber_konten``.
@@ -106,9 +106,9 @@ def verschieben(
 
     quelle_ids = {n.ordner_id for n in nachrichten}
     if len(quelle_ids) != 1:
-        raise HandelnFehler("Bitte nur aus einem Ordner auf einmal verschieben.")
+        raise HandelnFehler("mehrere_ordner")
     if nachrichten[0].ordner_id == ziel.id:
-        raise HandelnFehler("Die Nachricht liegt schon dort.")
+        raise HandelnFehler("liegt_schon_dort")
 
     konto = db.get(Konto, nachrichten[0].konto_id)
     quelle = nachrichten[0].ordner
@@ -196,15 +196,15 @@ def ueber_konten(
     das Postfach unbrauchbar.
     """
     if not nachrichten:
-        raise HandelnFehler("Nichts ausgewählt.")
+        raise HandelnFehler("nichts_ausgewaehlt")
 
     quelle = nachrichten[0].ordner
     quell_konto = db.get(Konto, nachrichten[0].konto_id)
     ziel_konto = db.get(Konto, ziel.konto_id)
     if quell_konto is None or ziel_konto is None:
-        raise HandelnFehler("Das Postfach gibt es nicht mehr.")
+        raise HandelnFehler("postfach_weg")
     if len({n.ordner_id for n in nachrichten}) != 1:
-        raise HandelnFehler("Bitte nur aus einem Ordner auf einmal verschieben.")
+        raise HandelnFehler("mehrere_ordner")
 
     quell_pw, _ = kontendienst.passwoerter_lesen(quell_konto)
     ziel_pw, _ = kontendienst.passwoerter_lesen(ziel_konto)
@@ -242,7 +242,7 @@ def ueber_konten(
                 angekommen.append(uid)
 
             if not angekommen:
-                raise HandelnFehler("Keine der Nachrichten liess sich holen.")
+                raise HandelnFehler("nichts_zu_holen")
 
             # Nachsehen, bevor geloescht wird.
             ziel_klient.select_folder(ziel.pfad, readonly=True)
@@ -251,8 +251,7 @@ def ueber_konten(
                 gefunden += len(ziel_klient.search(["HEADER", "Message-ID", kennung]))
             if message_ids and gefunden < len(message_ids):
                 raise HandelnFehler(
-                    "Beim Zielpostfach ist nicht alles angekommen. Es wurde nichts "
-                    "gelöscht — die Nachrichten liegen unverändert im Ausgangsordner."
+                    "ziel_unvollstaendig"
                 )
 
             # Erst jetzt bei der Quelle weg.
@@ -298,7 +297,7 @@ def ueber_konten(
 def in_rolle(db: Session, nachrichten: list[Nachricht], rolle: str, text: str = "") -> Rueckweg:
     """In den Papierkorb, ins Archiv oder in den Junk-Ordner."""
     if not nachrichten:
-        raise HandelnFehler("Nichts ausgewählt.")
+        raise HandelnFehler("nichts_ausgewaehlt")
     konto = db.get(Konto, nachrichten[0].konto_id)
     return verschieben(db, nachrichten, _ziel_finden(db, konto, rolle), text)
 
@@ -310,11 +309,11 @@ def zurueck(db: Session, weg: Rueckweg) -> int:
     Verschieben, die Nummer nicht.
     """
     if not weg.message_ids:
-        raise HandelnFehler("Für diesen Zug gibt es keinen Rückweg.")
+        raise HandelnFehler("kein_rueckweg")
 
     konto = db.get(Konto, weg.konto_id)
     if konto is None:
-        raise HandelnFehler("Das Postfach gibt es nicht mehr.")
+        raise HandelnFehler("postfach_weg")
 
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     zurueckgeholt = 0
@@ -388,7 +387,7 @@ def ordner_leeren(db: Session, ordner: Ordner) -> int:
     diese beiden Ordner, und die Oberfläche fragt vorher.
     """
     if ordner.rolle not in ("papierkorb", "junk"):
-        raise HandelnFehler("Nur Papierkorb und Junk lassen sich leeren.")
+        raise HandelnFehler("nur_papierkorb_und_junk")
 
     konto = db.get(Konto, ordner.konto_id)
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)

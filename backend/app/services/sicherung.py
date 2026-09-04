@@ -42,6 +42,7 @@ import pyzipper
 from .. import __version__, crypto
 from ..config import get_settings
 from ..db import datenbank_ersetzen, engine
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.sicherung")
 
@@ -103,7 +104,7 @@ NICHT_INS_ARCHIV: dict[str, str] = {
 }
 
 
-class SicherungFehler(RuntimeError):
+class SicherungFehler(Meldung, RuntimeError):
     """Etwas am Archiv stimmt nicht — mit einem Satz, der sagt was."""
 
 
@@ -180,7 +181,7 @@ def _schlank_machen(db_datei: Path) -> dict:
             )
         ]
     except sqlite3.DatabaseError as fehler:  # pragma: no cover - eigene Kopie
-        raise SicherungFehler(f"Die Kopie liess sich nicht aufraeumen: {fehler}") from fehler
+        raise SicherungFehler("kopie_nicht_aufraeumbar", grund=str(fehler)[:200]) from fehler
     finally:
         verbindung.close()
 
@@ -199,7 +200,7 @@ def archiv(passwort: str, quelle: Path | None = None) -> bytes:
     zweite konsistente Kopie davon wäre nur Arbeit ohne Wirkung.
     """
     if not passwort:
-        raise SicherungFehler("Ein Archiv ohne Passwort wäre keine Sicherung.")
+        raise SicherungFehler("archiv_ohne_passwort")
 
     einstellungen = get_settings()
     puffer = io.BytesIO()
@@ -287,7 +288,7 @@ def _dek_pruefen(db_datei: Path, schluessel: str | None) -> None:
             ).fetchone()
         except sqlite3.DatabaseError as fehler:
             raise SicherungFehler(
-                "Die Datei im Archiv ist keine nexmail-Datenbank."
+                "archiv_keine_datenbank"
             ) from fehler
     finally:
         verbindung.close()
@@ -305,10 +306,7 @@ def _dek_pruefen(db_datei: Path, schluessel: str | None) -> None:
         crypto.dek_auspacken(zeile[0])
     except crypto.SchluesselFehler as fehler:
         raise SicherungFehler(
-            "Der Schlüssel passt nicht zu dieser Datenbank. Ohne ihn wären "
-            "alle Postfach-Passwörter unlesbar, deshalb wurde nichts ersetzt. "
-            "Fehlt im Archiv die Datei secret.key, muss NEXMAIL_SECRET_KEY auf "
-            "den Wert der alten Installation gesetzt werden."
+            "schluessel_passt_nicht"
         ) from fehler
     finally:
         einstellungen.secret_key = alter_wert
@@ -323,7 +321,7 @@ def _manifest_lesen(daten: bytes, passwort: str) -> dict:
                 return {}
             return json.loads(zip_datei.read(MANIFEST_IM_ARCHIV).decode("utf-8"))
     except RuntimeError as fehler:
-        raise SicherungFehler("Das Passwort passt nicht zu diesem Archiv.") from fehler
+        raise SicherungFehler("archiv_passwort_falsch") from fehler
     except SicherungFehler:
         raise
     except Exception:
@@ -383,17 +381,17 @@ def wiederherstellen(
                 zip_datei.setpassword(passwort.encode("utf-8"))
                 namen = set(zip_datei.namelist())
                 if DATENBANK_IM_ARCHIV not in namen:
-                    raise SicherungFehler("Im Archiv fehlt die Datenbank.")
+                    raise SicherungFehler("archiv_ohne_datenbank")
                 zip_datei.extract(DATENBANK_IM_ARCHIV, ziel)
                 if SCHLUESSEL_IM_ARCHIV in namen:
                     zip_datei.extract(SCHLUESSEL_IM_ARCHIV, ziel)
         except RuntimeError as fehler:
             # pyzipper meldet ein falsches Passwort als RuntimeError.
-            raise SicherungFehler("Das Passwort passt nicht zu diesem Archiv.") from fehler
+            raise SicherungFehler("archiv_passwort_falsch") from fehler
         except SicherungFehler:
             raise
         except Exception as fehler:
-            raise SicherungFehler("Die Datei ist kein lesbares nexmail-Archiv.") from fehler
+            raise SicherungFehler("archiv_unlesbar") from fehler
 
         db_datei = ziel / DATENBANK_IM_ARCHIV
         schluessel_datei = ziel / SCHLUESSEL_IM_ARCHIV

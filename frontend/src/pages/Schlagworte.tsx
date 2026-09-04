@@ -19,6 +19,7 @@ import { useNachfrage } from '../components/Nachfrage'
 import { PUNKT_KLASSE } from '../lib/farben'
 import { Schlagwortmarke } from '../components/Schlagwortmarke'
 import type { Postfachfarbe, Schlagwort } from '../daten/typen'
+import { servermeldung } from '../lib/servermeldung'
 
 const FARBEN: Postfachfarbe[] = [1, 2, 3, 4, 5, 6]
 
@@ -63,7 +64,7 @@ export function Schlagworte({ aufGeaendert }: Props) {
     } catch (f) {
       // Der alte Bestand bleibt stehen — ihn zu leeren erzeugte genau den
       // Schrecken, den ein Datenverlust macht.
-      setLadefehler(f instanceof ApiFehler && f.detail ? f.detail : t('stoerung.stamm'))
+      setLadefehler(servermeldung(f, t('stoerung.stamm')))
     }
   }, [t])
 

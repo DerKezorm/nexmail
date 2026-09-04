@@ -93,7 +93,7 @@ def test_falsches_passwort_sagt_das_auch(klient):
         data={"passwort": "ganz-anderes-passwort"},
     )
     assert antwort.status_code == 400
-    assert "Passwort" in antwort.json()["detail"]
+    assert "archiv_passwort_falsch" == antwort.json()["detail"]
 
 
 def test_keine_zip_datei(klient):
@@ -133,7 +133,7 @@ def test_falscher_schluessel_ersetzt_nichts(klient):
         einstellungen.secret_key = vorher
 
     assert antwort.status_code == 400
-    assert "Schlüssel" in antwort.json()["detail"]
+    assert "schluessel_passt_nicht" == antwort.json()["detail"]
 
     # Und die laufende Installation steht noch.
     assert klient.get("/api/auth/ich").status_code == 200

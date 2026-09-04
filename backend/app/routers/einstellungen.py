@@ -24,6 +24,7 @@ from ..db import einstellung_lesen, einstellung_schreiben
 from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
 from ..services import bildfreigaben, systempost
 from ..services.aufraeumen import ERLAUBTE_TAGE
+from ..meldung import MeldungHttp
 
 router = APIRouter(prefix="/api/einstellungen", tags=["einstellungen"])
 
@@ -56,7 +57,7 @@ def schreiben(eingabe: Einstellungen, _: AngemeldeterBenutzer, db: DbSession) ->
         if teile.scheme not in ("http", "https") or not teile.netloc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Die öffentliche Adresse muss mit http:// oder https:// beginnen.",
+                detail="adresse_ohne_schema",
             )
     zone = eingabe.zeitzone.strip()
     if zone:
@@ -66,9 +67,8 @@ def schreiben(eingabe: Einstellungen, _: AngemeldeterBenutzer, db: DbSession) ->
         try:
             ZoneInfo(zone)
         except (ZoneInfoNotFoundError, ValueError) as fehler:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"„{zone}“ ist keine bekannte Zeitzone. Beispiel: Europe/Berlin.",
+            raise MeldungHttp(
+                status.HTTP_400_BAD_REQUEST, "zeitzone_unbekannt", {"zone": zone}
             ) from fehler
 
     einstellung_schreiben(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE, adresse)
@@ -110,7 +110,7 @@ def aufraeumen_schreiben(
         if wert not in ERLAUBTE_TAGE:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Die Aufbewahrung muss aus, 7, 14, 30 oder 90 Tage sein.",
+                detail="aufbewahrung_ungueltig",
             )
     ich.aufraeumen_papierkorb_tage = eingabe.papierkorb_tage
     ich.aufraeumen_junk_tage = eingabe.junk_tage
@@ -234,12 +234,12 @@ def postausgang_schreiben(
     if eingabe.sicherheit not in ("ssl", "starttls", "keine"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Verschlüsselung muss SSL/TLS, STARTTLS oder keine sein.",
+            detail="sicherheit_ungueltig",
         )
     if eingabe.server.strip() and "@" not in eingabe.absender:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ohne Absenderadresse nimmt kein Server die Mail an.",
+            detail="absender_fehlt",
         )
 
     systempost.schreiben(
@@ -274,4 +274,4 @@ def postausgang_proben(eingabe: Probe, _: Betreiber, db: DbSession) -> None:
             "Damit funktionieren Einladungen.\n",
         )
     except systempost.PostFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_502_BAD_GATEWAY) from fehler

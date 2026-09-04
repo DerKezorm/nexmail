@@ -103,6 +103,7 @@ import type { WischAktion } from './lib/wischen'
 import { nachrichtDrucken } from './lib/drucken'
 import type { Listenfilter } from './api/laden'
 import { zeitzoneSetzen } from './lib/format'
+import { servermeldung } from './lib/servermeldung'
 
 type Modus = 'dark' | 'light'
 
@@ -370,7 +371,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     } catch (f) {
       // ⚠️ Der alte Bestand bleibt stehen. Ihn zu leeren hieße, den Schrecken
       // erst recht zu erzeugen — und er stimmt ja noch.
-      setStammFehler(f instanceof ApiFehler && f.detail ? f.detail : t('stoerung.stamm'))
+      setStammFehler(servermeldung(f, t('stoerung.stamm')))
     }
   }, [t])
 
@@ -980,7 +981,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         // („Die Nachricht liegt schon dort", „Dieses Postfach hat keinen
         // Archivordner"). Ein Grund, der nicht ankommt, ist kein Grund.
         setStoerung(
-          f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'),
+          servermeldung(f, t('anmeldung.fehler_allgemein')),
         )
       }
       setGewaehlt(null)
@@ -1089,7 +1090,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       // ⚠️ Auch „schon unterwegs" (409) soll dastehen — der Satz des Servers,
       // nicht ein stilles Nichts. Das Fenster bleibt dann zu: Was draußen
       // ist, ist draußen.
-      setStoerung(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setStoerung(servermeldung(f, t('anmeldung.fehler_allgemein')))
     }
     void ausgangLaden()
     void stammLaden()
@@ -1172,7 +1173,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     } catch (f) {
       // Auch ein 409 („schon unterwegs") soll dastehen - danach wird trotzdem
       // neu geladen, denn genau dann stimmt die Liste nicht mehr.
-      setStoerung(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setStoerung(servermeldung(f, t('anmeldung.fehler_allgemein')))
     }
     await ausgangLaden()
     // Der Entwurf liegt jetzt im Entwurfsordner - Baum und Liste sollen das
@@ -1315,7 +1316,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 await aufgabenZaehlen()
               } catch (f) {
                 setStoerung(
-                  f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'),
+                  servermeldung(f, t('anmeldung.fehler_allgemein')),
                 )
               }
             })()
@@ -1397,7 +1398,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       await ordnerAnlegen(kontoId, name.trim(), eltern ? Number(eltern.id) : null)
       await stammLaden()
     } catch (f) {
-      setStoerung(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setStoerung(servermeldung(f, t('anmeldung.fehler_allgemein')))
     }
   }
 
@@ -1452,7 +1453,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 await listeLaden()
               } catch (f) {
                 setStoerung(
-                  f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'),
+                  servermeldung(f, t('anmeldung.fehler_allgemein')),
                 )
               }
             })(),
@@ -1520,7 +1521,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 await stammLaden()
               } catch (f) {
                 setStoerung(
-                  f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'),
+                  servermeldung(f, t('anmeldung.fehler_allgemein')),
                 )
               }
             })(),
@@ -1549,7 +1550,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 await stammLaden()
               } catch (f) {
                 setStoerung(
-                  f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'),
+                  servermeldung(f, t('anmeldung.fehler_allgemein')),
                 )
               }
             })(),

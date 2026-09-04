@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from ..models import Benutzer, Einladung
 from . import benutzer as benutzerdienst
 from . import mailvorlage, systempost
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.einladung")
 
@@ -32,7 +33,7 @@ logger = logging.getLogger("nexmail.einladung")
 GUELTIG_TAGE = 7
 
 
-class EinladungsFehler(Exception):
+class EinladungsFehler(Meldung):
     """Mit einem Satz, den man dem Betreiber oder dem Eingeladenen zeigt."""
 
 
@@ -72,11 +73,11 @@ def aussprechen(
     benutzerdienst.benutzername_pruefen(benutzername)
 
     if benutzerdienst.finden(db, benutzername) is not None:
-        raise EinladungsFehler("Diesen Benutzernamen gibt es schon.")
+        raise EinladungsFehler("benutzername_vergeben")
 
     adresse = adresse.strip()
     if "@" not in adresse:
-        raise EinladungsFehler("Das sieht nicht nach einer E-Mail-Adresse aus.")
+        raise EinladungsFehler("adresse_ungueltig")
 
     # ⚠️ Eine offene Einladung auf denselben Namen wird ersetzt, nicht
     # verdoppelt: Sonst gelten zwei Links fuer dasselbe Konto, und der aeltere
@@ -113,8 +114,7 @@ def einloesen(db: Session, schluessel: str, passwort: str) -> Benutzer:
     einladung = finden(db, schluessel)
     if einladung is None:
         raise EinladungsFehler(
-            "Diese Einladung gilt nicht mehr. Bitte um eine neue — sie ist nach "
-            f"{GUELTIG_TAGE} Tagen abgelaufen oder wurde schon benutzt."
+            "einladung_abgelaufen_tage", tage=GUELTIG_TAGE
         )
 
     # ⚠️ **Der Name wird hier noch einmal geprueft.** Zwischen Einladung und
@@ -123,8 +123,7 @@ def einloesen(db: Session, schluessel: str, passwort: str) -> Benutzer:
     # dem Eingeladenen nichts sagt.
     if benutzerdienst.finden(db, einladung.benutzername) is not None:
         raise EinladungsFehler(
-            "Dieser Benutzername ist inzwischen vergeben. Der Betreiber muss "
-            "neu einladen."
+            "benutzername_inzwischen_vergeben"
         )
 
     neuer = benutzerdienst.anlegen(

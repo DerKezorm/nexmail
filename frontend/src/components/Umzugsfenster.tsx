@@ -19,7 +19,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Check, Upload } from 'lucide-react'
-import { ApiFehler } from '../api/client'
 import {
   exportVorschau,
   laufenderUmzug,
@@ -31,6 +30,7 @@ import type { Exportvorschau, Umzugsstand } from '../api/laden'
 import { Button, Dialog, Select } from '../ds'
 import { appPfad } from '../lib/basis'
 import type { Ordner } from '../daten/typen'
+import { servermeldung } from '../lib/servermeldung'
 
 /** Wie oft der Stand nachgefragt wird, solange ein Import läuft. */
 const TAKT_MS = 1000
@@ -98,7 +98,7 @@ function Einspielen({ ordner, onClose, onFertig }: Omit<Props, 'art'>) {
     try {
       setStand(await postEinspielen(Number(ordner.id), datei))
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('stoerung.stamm'))
+      setFehler(servermeldung(f, t('stoerung.stamm')))
     } finally {
       setBeschaeftigt(false)
     }
@@ -243,7 +243,7 @@ function Herunterladen({ ordner, onClose }: Omit<Props, 'art' | 'onFertig'>) {
     void exportVorschau(Number(ordner.id))
       .then(setVorschau)
       .catch((f) =>
-        setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('stoerung.stamm')),
+        setFehler(servermeldung(f, t('stoerung.stamm'))),
       )
   }, [ordner.id, t])
 

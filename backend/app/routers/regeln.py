@@ -15,6 +15,7 @@ from ..services import (
     signaturen as signaturdienst,
     textvorlagen as vorlagendienst,
 )
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.regeln")
 
@@ -86,7 +87,7 @@ def regel_anlegen(
     try:
         regeldienst.pruefen(bedingungen, aktionen)
     except regeldienst.RegelFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
     vorhandene = regeldienst.meine(db, person)
     zeile = Regel(
@@ -128,7 +129,7 @@ def regel_aendern(
     try:
         regeldienst.pruefen(bedingungen, aktionen)
     except regeldienst.RegelFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
     zeile.name = eingabe.name or _name_raten(bedingungen)
     zeile.aktiv = eingabe.aktiv
@@ -218,7 +219,7 @@ def signatur_anlegen(
             )
         )
     except signaturdienst.SignaturFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
 
 @router.put("/signaturen/{signatur_id}", response_model=SignaturZeile)
@@ -230,7 +231,7 @@ def signatur_aendern(
             signaturdienst.aendern(db, person, signatur_id, **eingabe.model_dump())
         )
     except signaturdienst.SignaturFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
 
 @router.delete("/signaturen/{signatur_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -238,7 +239,7 @@ def signatur_entfernen(signatur_id: int, person: AngemeldeterBenutzer, db: DbSes
     try:
         signaturdienst.entfernen(db, person, signatur_id)
     except signaturdienst.SignaturFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
 
 # --- Textvorlagen ----------------------------------------------------------- #

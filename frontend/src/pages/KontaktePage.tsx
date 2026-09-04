@@ -12,10 +12,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download, Plus, Trash2, Upload, UserRoundPlus, Users } from 'lucide-react'
-import { api, ApiFehler } from '../api/client'
+import { api } from '../api/client'
 import { Badge, Button, Checkbox, EmptyState, IconButton, Input } from '../ds'
 import { useNachfrage } from '../components/Nachfrage'
 import { appPfad } from '../lib/basis'
+import { servermeldung } from '../lib/servermeldung'
 
 export interface Kontakt {
   id: number
@@ -98,7 +99,7 @@ export function KontaktePage() {
       if (erfolg) setMeldung(erfolg)
       return ergebnis
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
       return null
     } finally {
       setLaeuft(false)

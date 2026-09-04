@@ -32,11 +32,12 @@ from .. import crypto
 from ..models import Benutzer, Kalender, Termin, utcnow
 from . import caldav, vevent
 from . import konten as kontendienst
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.kalenderabgleich")
 
 
-class AbgleichFehler(RuntimeError):
+class AbgleichFehler(Meldung, RuntimeError):
     """Traegt eine KENNUNG, keinen deutschen Satz."""
 
 
@@ -383,6 +384,17 @@ def abgleichen(db: Session, kalender: Kalender) -> Runde:
 
 
 def _caldav_abgleichen(db: Session, kalender: Kalender) -> Runde:
+    """Einen CalDAV-Kalender abgleichen — über **eine** Verbindung.
+
+    ⚠️ **Die Sitzung umschließt den ganzen Abgleich, und das ist keine
+    Sparsamkeit.** iCloud lässt je Konto nur eine Verbindung zu. Bis zum
+    03.09.2026 baute jeder einzelne Aufruf hier seine eigene auf: ctag, ETags
+    und dann ein Block je 50 Termine — bei sechs Kalendern mit zusammen 429
+    Terminen waren das 25 Verbindungen in einem Schwung. Apple beantwortet die
+    überzähligen nicht, und nach 30 Sekunden meldet nexmail
+    ``caldav_nicht_erreichbar``. Der einzelne Google-Kalender lief die ganze
+    Zeit durch, weil er mit einer Verbindung auskommt.
+    """
     runde = Runde()
     verbindung = zugang(kalender, db)
 
@@ -404,7 +416,14 @@ def _caldav_abgleichen(db: Session, kalender: Kalender) -> Runde:
         db.commit()
 
     # 2. Hat sich dort überhaupt etwas getan?
-    ctag = caldav.ctag_holen(verbindung)
+    #
+    # ⚠️ Ab hier eine einzige Verbindung für alles Weitere.
+    with caldav.sitzung(verbindung) as klient:
+        return _caldav_holen(db, kalender, verbindung, klient, runde, bool(schmutzige))
+
+
+def _caldav_holen(db, kalender, verbindung, klient, runde, schmutzige: bool) -> Runde:
+    ctag = caldav.ctag_holen(verbindung, klient)
     if ctag and ctag == kalender.ctag and not schmutzige:
         runde.unveraendert = True
         return runde
@@ -418,7 +437,7 @@ def _caldav_abgleichen(db: Session, kalender: Kalender) -> Runde:
     # legte den Termin neu an und loeschte den eigenen — **bei jeder Runde**.
     # „Sobald ich aktualisieren klicke ist alles weg oder verschoben", am
     # 03.09.2026 aus dem Betrieb gemeldet.
-    fern_roh = caldav.etags_holen(verbindung)
+    fern_roh = caldav.etags_holen(verbindung, klient)
     fern = {caldav.ortsschluessel(t.href): t.etag for t in fern_roh}
     adresse_zu = {caldav.ortsschluessel(t.href): t.href for t in fern_roh}
     hier = {
@@ -432,7 +451,7 @@ def _caldav_abgleichen(db: Session, kalender: Kalender) -> Runde:
         for schluessel, etag in fern.items()
         if hier.get(schluessel) is None or hier[schluessel].etag != etag
     ]
-    for stueck in caldav.inhalte_holen(verbindung, zu_holen):
+    for stueck in caldav.inhalte_holen(verbindung, zu_holen, klient):
         neu, geaendert = _uebernehmen(db, kalender, stueck.roh, stueck.href.rstrip("/"), stueck.etag)
         runde.neu += neu
         runde.geaendert += geaendert

@@ -303,7 +303,7 @@ def test_dasselbe_postfach_nicht_zweimal(klient, ohne_netz):
     assert klient.post("/api/konten", json=_eingabe()).status_code == 201
     zweiter = klient.post("/api/konten", json=_eingabe())
     assert zweiter.status_code == 400
-    assert "schon eingerichtet" in zweiter.json()["detail"]
+    assert "postfach_schon_da" == zweiter.json()["detail"]
 
 
 def test_kaputtes_postfach_wird_nicht_angelegt(klient, monkeypatch):

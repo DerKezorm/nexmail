@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from .. import crypto
 from ..db import einstellung_lesen, einstellung_schreiben
 from . import mailvorlage
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.systempost")
 
@@ -60,7 +61,7 @@ class Postausgang:
         return bool(self.server and self.absender)
 
 
-class PostFehler(Exception):
+class PostFehler(Meldung):
     """Der Versand ging nicht — mit einem Satz, den man dem Betreiber zeigt."""
 
 
@@ -116,8 +117,7 @@ def senden(db: Session, an: str, betreff: str, text: str, html: str = "") -> Non
     angaben = lesen(db)
     if not angaben.eingerichtet:
         raise PostFehler(
-            "Es ist kein Postausgang für nexmail selbst eingerichtet. "
-            "Er steht in der Verwaltung unter „Server“."
+            "postausgang_fehlt"
         )
 
     mail = EmailMessage()
@@ -138,7 +138,7 @@ def senden(db: Session, an: str, betreff: str, text: str, html: str = "") -> Non
     except Exception as fehler:  # noqa: BLE001
         logger.warning("System mailer could not connect to %s:%s", angaben.server, angaben.port)
         raise PostFehler(
-            f"Der Postausgang {angaben.server}:{angaben.port} ist nicht erreichbar."
+            "postausgang_nicht_erreichbar", server=angaben.server, port=angaben.port
         ) from fehler
 
     try:
@@ -147,7 +147,7 @@ def senden(db: Session, an: str, betreff: str, text: str, html: str = "") -> Non
                 verbindung.login(angaben.benutzer, passwort_lesen(db))
             except smtplib.SMTPAuthenticationError as fehler:
                 raise PostFehler(
-                    "Der Postausgang hat Benutzername oder Passwort abgewiesen."
+                    "postausgang_anmeldung_abgewiesen"
                 ) from fehler
         verbindung.send_message(mail)
     except PostFehler:
@@ -160,12 +160,11 @@ def senden(db: Session, an: str, betreff: str, text: str, html: str = "") -> Non
         grund = next(iter(fehler.recipients.values()), (0, b""))
         text = grund[1].decode("utf-8", "replace") if isinstance(grund[1], bytes) else str(grund[1])
         raise PostFehler(
-            f"Der Postausgang hat den Empfänger {an} abgelehnt: {text.strip() or 'ohne Angabe'}"
+            "empfaenger_abgelehnt", an=an, grund=text.strip()
         ) from fehler
     except smtplib.SMTPSenderRefused as fehler:
         raise PostFehler(
-            f"Der Postausgang hat die Absenderadresse {angaben.absender} abgelehnt. "
-            "Meist gehört sie nicht zu dem Konto, mit dem sich nexmail anmeldet."
+            "absender_abgelehnt", absender=angaben.absender
         ) from fehler
     except smtplib.SMTPResponseException as fehler:
         # ⚠️ **Der Satz des Servers, nicht sein Python-Abbild.** Ohne das steht
@@ -175,11 +174,11 @@ def senden(db: Session, an: str, betreff: str, text: str, html: str = "") -> Non
         roh = fehler.smtp_error
         satz = roh.decode("utf-8", "replace") if isinstance(roh, bytes) else str(roh)
         raise PostFehler(
-            f"Der Postausgang hat abgelehnt ({fehler.smtp_code}): {satz.strip()}"
+            "postausgang_abgelehnt", code=fehler.smtp_code, grund=satz.strip()
         ) from fehler
     except Exception as fehler:  # noqa: BLE001
         logger.warning("System mailer failed while sending: %s", type(fehler).__name__)
-        raise PostFehler(f"Die Mail ließ sich nicht absenden: {fehler}") from fehler
+        raise PostFehler("versand_gescheitert", grund=str(fehler)[:200]) from fehler
     finally:
         try:
             verbindung.quit()

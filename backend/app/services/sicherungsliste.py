@@ -156,10 +156,10 @@ def _datei(name: str) -> Path:
     Punkte" — eine Positivliste, keine Verbotsliste.
     """
     if not MUSTER.match(name):
-        raise sicherung.SicherungFehler("Diesen Namen gibt es hier nicht.")
+        raise sicherung.SicherungFehler("name_unbekannt")
     datei = _ordner() / name
     if not datei.exists():
-        raise sicherung.SicherungFehler("Dieser Rücksetzpunkt liegt nicht mehr da.")
+        raise sicherung.SicherungFehler("ruecksetzpunkt_weg")
     return datei
 
 

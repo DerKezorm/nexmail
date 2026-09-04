@@ -27,6 +27,7 @@ import { ApiFehler, api } from '../api/client'
 import type { KontoZeile } from '../api/client'
 import { Button, Checkbox, Dialog } from '../ds'
 import { RUECKWEG } from '../lib/oauthrueckweg'
+import { servermeldung } from '../lib/servermeldung'
 
 /** Welche Anbieter einen eigenen Weg haben. IMAP steht immer daneben. */
 type Anbieter = 'google' | 'microsoft'
@@ -305,7 +306,7 @@ export function PostfachHinzufuegen({
       })
       setSchritt('fertig')
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     } finally {
       setLaeuft(false)
     }

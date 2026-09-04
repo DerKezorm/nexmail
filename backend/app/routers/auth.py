@@ -23,6 +23,7 @@ from ..services import anmeldebremse
 from ..services import benutzer as benutzerdienst
 from ..services import sitzung as sitzungsdienst
 from ..services import zwei_faktor
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.auth")
 
@@ -75,7 +76,7 @@ def anmelden(
         # Dieselbe Antwort fuer "kein solches Konto" und "falsches Passwort".
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Benutzername oder Passwort stimmt nicht.",
+            detail="anmeldung_falsch",
         )
 
     wache.geschafft()
@@ -143,7 +144,7 @@ def code_pruefen(
     if not zwei_faktor.code_pruefen(db, person, eingabe.code.strip()):
         wache.fehlgeschlagen()
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Der Code stimmt nicht."
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="code_falsch"
         )
 
     if not person.totp_bestaetigt:
@@ -170,7 +171,7 @@ def wiederherstellung(
     if not zwei_faktor.code_einloesen(db, person, eingabe.code.strip()):
         wache.fehlgeschlagen()
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Dieser Code gilt nicht."
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="code_ungueltig"
         )
 
     wache.geschafft()
@@ -218,7 +219,7 @@ def passwort_aendern(
         benutzerdienst.passwort_aendern(db, person, wunsch.altes, wunsch.neues)
     except benutzerdienst.BenutzerFehler as fehler:
         wache.fehlgeschlagen()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     wache.geschafft()
 
     weg = sitzungsdienst.alle_beenden(db, person, ausser=aktuelle.id)
@@ -253,7 +254,7 @@ def zwei_faktor_starten(person: AngemeldeterBenutzer, db: DbSession) -> Anschalt
     if person.totp_bestaetigt:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Der zweite Faktor ist schon eingeschaltet.",
+            detail="zwei_faktor_schon_an",
         )
 
     geheimnis = zwei_faktor.geheimnis_erzeugen()
@@ -278,19 +279,19 @@ def zwei_faktor_bestaetigen(
     if person.totp_bestaetigt:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Der zweite Faktor ist schon eingeschaltet.",
+            detail="zwei_faktor_schon_an",
         )
     if not zwei_faktor.geheimnis_lesen(person):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Zuerst den QR-Code holen.",
+            detail="qr_code_fehlt",
         )
 
     wache = anmeldebremse.torwaechter(request, "code", person.benutzername)
     if not zwei_faktor.code_pruefen(db, person, eingabe.code.strip()):
         wache.fehlgeschlagen()
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Der Code stimmt nicht."
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="code_falsch"
         )
     wache.geschafft()
 
@@ -316,7 +317,7 @@ def zwei_faktor_aus(
     if not benutzerdienst.passwort_stimmt(person, eingabe.passwort):
         wache.fehlgeschlagen()
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Das Kennwort stimmt nicht."
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="kennwort_falsch"
         )
     wache.geschafft()
 

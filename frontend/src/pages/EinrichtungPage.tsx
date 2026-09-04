@@ -12,8 +12,9 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Torbogen } from '../components/Torbogen'
 import { Button, Input } from '../ds'
-import { ApiFehler, api } from '../api/client'
+import { api } from '../api/client'
 import type { KontoAntwort } from '../api/client'
+import { servermeldung } from '../lib/servermeldung'
 
 interface Props {
   modus: 'dark' | 'light'
@@ -51,7 +52,7 @@ export function EinrichtungPage({ modus, aufModus, aufFertig }: Props) {
          Einstellungen → Sicherheit. */
       aufFertig()
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     } finally {
       setLaeuft(false)
     }

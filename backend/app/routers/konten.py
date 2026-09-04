@@ -27,6 +27,7 @@ from ..services import (
     ordner as ordnerdienst,
 )
 from ..services.konten import Zugangsdaten
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.konten")
 
@@ -301,7 +302,7 @@ def _wie_anmelden(db, person, eingabe: Eingabe) -> tuple[str, str]:
     try:
         token = mailoauth.zugriffstoken(db, zugang)
     except mailoauth.OauthFehler as f:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(f)) from f
+        raise MeldungHttp.aus(f, status.HTTP_400_BAD_REQUEST) from f
     # ⚠️ Mit Zustimmung ist der App-Passwort-Hinweis falsch: Er schickt den
     # Betreiber ein Passwort erzeugen, das hier gar nicht gebraucht wird.
     return "", token
@@ -330,7 +331,7 @@ def anlegen(eingabe: Eingabe, person: AngemeldeterBenutzer, db: DbSession) -> Ko
     try:
         konto = kontendienst.anlegen(db, person, eingabe.als_zugangsdaten())
     except kontendienst.KontoFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
     kontendienst.ordner_uebernehmen(db, konto, befund.ordner)
     db.refresh(konto)
@@ -350,7 +351,7 @@ def aendern(
     try:
         konto = kontendienst.aendern(db, person, konto_id, eingabe.als_zugangsdaten())
     except kontendienst.KontoFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
     # ⚠️ **Neue Zugangsdaten heissen: die Stoerung ist erst mal erledigt.**
     # Sonst stuende der rote Banner nach dem Korrigieren noch bis zu zwei
@@ -368,7 +369,7 @@ def ordner(konto_id: str, person: AngemeldeterBenutzer, db: DbSession) -> list[O
     try:
         konto = kontendienst.eines(db, person, konto_id)
     except kontendienst.KontoFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
     rang = {
         "posteingang": 0,
@@ -436,7 +437,7 @@ def ordner_anlegen(
     try:
         konto = kontendienst.eines(db, person, konto_id)
     except kontendienst.KontoFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
     eltern = None
     if wunsch.eltern_id is not None:
@@ -444,13 +445,13 @@ def ordner_anlegen(
         if eltern is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Den übergeordneten Ordner gibt es in diesem Postfach nicht.",
+                detail="elternordner_unbekannt",
             )
 
     try:
         neu = ordnerdienst.anlegen(db, konto, wunsch.name, eltern)
     except ordnerdienst.OrdnerFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     except imapdienst.Verbindungsfehler as fehler:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=fehler.text) from fehler
 
@@ -480,7 +481,7 @@ def ordner_umbenennen(
     try:
         konto = kontendienst.eines(db, person, konto_id)
     except kontendienst.KontoFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
     ziel = next((o for o in konto.ordner if o.id == ordner_id), None)
     if ziel is None:
@@ -489,7 +490,7 @@ def ordner_umbenennen(
     try:
         neu = ordnerdienst.umbenennen(db, konto, ziel, wunsch.name)
     except ordnerdienst.OrdnerFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     except imapdienst.Verbindungsfehler as fehler:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=fehler.text) from fehler
 
@@ -515,7 +516,7 @@ def ordner_entfernen(
     try:
         konto = kontendienst.eines(db, person, konto_id)
     except kontendienst.KontoFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
     ziel = next((o for o in konto.ordner if o.id == ordner_id), None)
     if ziel is None:
@@ -524,7 +525,7 @@ def ordner_entfernen(
     try:
         return {"nachrichten": ordnerdienst.entfernen(db, konto, ziel)}
     except ordnerdienst.OrdnerFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     except imapdienst.Verbindungsfehler as fehler:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=fehler.text) from fehler
 
@@ -547,4 +548,4 @@ def entfernen(
     try:
         kontendienst.entfernen(db, person, konto_id, kalender_mit=kalender_mit)
     except kontendienst.KontoFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler

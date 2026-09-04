@@ -139,7 +139,7 @@ def test_ohne_entwurfsordner_kommt_ein_lesbarer_satz(db, konto, monkeypatch):  #
     with pytest.raises(entwuerfe.EntwurfFehler) as fehler:
         entwuerfe.ablegen(db, konto, _entwurf())
 
-    assert "Entwurfsordner" in str(fehler.value)
+    assert "kein_entwurfsordner" == str(fehler.value)
 
 
 def test_eine_gescheiterte_aufraeumung_kostet_nicht_den_text(db, entwurfsordner):

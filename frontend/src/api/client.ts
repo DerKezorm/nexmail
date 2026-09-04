@@ -20,9 +20,16 @@
 export class ApiFehler extends Error {
   constructor(
     readonly status: number,
+    /** Die **Kennung** des Fehlers, kein fertiger Satz. */
     readonly detail: string,
     /** Sekunden bis zum naechsten Versuch — nur bei 429. */
     readonly wartenSekunden?: number,
+    /* ⚠️ **Die Zahlen und Namen aus der Meldung.** „Der Name ist laenger
+       als 40 Zeichen" ist `ordner_name_zu_lang` mit `{ max: 40 }`; den Satz
+       baut `lib/servermeldung.ts`. Sie reisen in einem eigenen Feld neben
+       `detail`, damit dieses eine Zeichenkette bleibt — 73 Stellen lesen sie
+       so, und sie alle auf einmal umzubauen waere der teurere Weg. */
+    readonly werte: Record<string, unknown> = {},
   ) {
     super(detail)
   }
@@ -65,7 +72,13 @@ async function anfrage<T>(pfad: string, init?: RequestInit): Promise<T> {
             String((detail[0] as { msg?: string })?.msg ?? '')
           : ''
     const warten = antwort.headers.get('retry-after')
-    throw new ApiFehler(antwort.status, text, warten ? Number(warten) : undefined)
+    const werte = (daten as { werte?: Record<string, unknown> } | null)?.werte ?? {}
+    throw new ApiFehler(
+      antwort.status,
+      text,
+      warten ? Number(warten) : undefined,
+      werte,
+    )
   }
 
   return daten as T

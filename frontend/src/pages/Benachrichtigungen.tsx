@@ -12,8 +12,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2 } from 'lucide-react'
 import { Button, IconButton, Select, Switch } from '../ds'
-import { api, ApiFehler } from '../api/client'
+import { api } from '../api/client'
 import * as push from '../lib/push'
+import { servermeldung } from '../lib/servermeldung'
 
 interface Einstellungen {
   push_termine: boolean
@@ -77,7 +78,7 @@ export function Benachrichtigungen() {
       setFehler(null)
       setLage(await push.lage())
     } catch (e) {
-      setFehler(e instanceof ApiFehler ? e.detail : String(e))
+      setFehler(servermeldung(e))
     }
   }, [])
 
@@ -92,7 +93,7 @@ export function Benachrichtigungen() {
     try {
       setEinst(await api.aendern<Einstellungen>('/api/push/einstellungen', neu))
     } catch (e) {
-      setFehler(e instanceof ApiFehler ? e.detail : String(e))
+      setFehler(servermeldung(e))
       void laden()
     }
   }
@@ -130,7 +131,7 @@ export function Benachrichtigungen() {
       await push.sicherstellen()
       await laden()
     } catch (e) {
-      setFehler(e instanceof ApiFehler ? e.detail : String(e))
+      setFehler(servermeldung(e))
     } finally {
       setLaeuft(false)
     }
@@ -142,7 +143,7 @@ export function Benachrichtigungen() {
       await api.senden('/api/push/probe', {})
       setProbeGesagt(true)
     } catch (e) {
-      setFehler(e instanceof ApiFehler ? e.detail : String(e))
+      setFehler(servermeldung(e))
     }
   }
 
@@ -152,7 +153,7 @@ export function Benachrichtigungen() {
       else await api.loeschen(`/api/push/geraete/${zeile.id}`)
       await laden()
     } catch (e) {
-      setFehler(e instanceof ApiFehler ? e.detail : String(e))
+      setFehler(servermeldung(e))
     }
   }
 

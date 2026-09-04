@@ -22,11 +22,12 @@ from sqlalchemy.orm import Session
 
 from ..models import Benutzer, Textvorlage
 from . import bereinigen
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.textvorlagen")
 
 
-class TextvorlagenFehler(RuntimeError):
+class TextvorlagenFehler(Meldung, RuntimeError):
     """Traegt eine Kennung, die die Oberflaeche uebersetzt."""
 
 

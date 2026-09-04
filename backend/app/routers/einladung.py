@@ -31,6 +31,7 @@ from ..deps import DbSession
 from ..services import anmeldebremse
 from ..services import einladung as einladungsdienst
 from ..services import sitzung as sitzungsdienst
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.einladung")
 
@@ -61,7 +62,7 @@ def ansehen(schluessel: str, request: Request, db: DbSession) -> Vorschau:
         wache.fehlgeschlagen()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Diese Einladung gilt nicht mehr. Bitte um eine neue.",
+            detail="einladung_abgelaufen",
         )
     wache.geschafft()
     return Vorschau(benutzername=einladung.benutzername, anzeigename=einladung.anzeigename)
@@ -87,10 +88,10 @@ def annehmen(
         neuer = einladungsdienst.einloesen(db, schluessel, eingabe.passwort)
     except einladungsdienst.EinladungsFehler as fehler:
         wache.fehlgeschlagen()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     except Exception as fehler:  # Passwortregeln
         wache.fehlgeschlagen()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     wache.geschafft()
 
     sitzungsdienst.anlegen(db, neuer, request, response, bestaetigt=True)

@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { KeyRound, ScrollText, Server } from 'lucide-react'
-import { api, ApiFehler } from '../api/client'
+import { api } from '../api/client'
 import type { Ich } from '../api/client'
 import { Button, EmptyState, Input, Select, Tabs } from '../ds'
 import { Benutzerverwaltung } from './Benutzerverwaltung'
@@ -25,6 +25,7 @@ import { OauthVerwaltung } from './OauthVerwaltung'
 import { OidcVerwaltung } from './OidcVerwaltung'
 import { Protokoll } from './Protokoll'
 import { Sicherungen } from './Sicherungen'
+import { servermeldung } from '../lib/servermeldung'
 
 export type VerwaltungsReiter =
   | 'protokoll'
@@ -125,7 +126,7 @@ function Serverdaten() {
       })
       setGespeichert(true)
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     }
   }
 
@@ -221,7 +222,7 @@ function Postausgang() {
       setMeldung(gut)
       await laden()
     } catch (fehl) {
-      setFehler(fehl instanceof ApiFehler && fehl.detail ? fehl.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(fehl, t('anmeldung.fehler_allgemein')))
     } finally {
       setLaeuft(false)
     }

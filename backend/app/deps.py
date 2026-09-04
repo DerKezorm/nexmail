@@ -27,7 +27,7 @@ def _sitzung(request: Request, db: Session) -> Sitzung:
     if lage is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not signed in.",
+            detail="nicht_angemeldet",
         )
     return lage
 
@@ -43,7 +43,7 @@ def angemeldete_sitzung(request: Request, db: DbSession) -> Sitzung:
     if not lage.bestaetigt:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Second factor required.",
+            detail="zweiter_faktor_noetig",
         )
     return lage
 
@@ -64,7 +64,7 @@ def halbe_sitzung(request: Request, db: DbSession) -> Sitzung:
     if lage.bestaetigt:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Already signed in.",
+            detail="schon_angemeldet",
         )
     return lage
 
@@ -85,7 +85,7 @@ def nur_betreiber(person: Annotated[Benutzer, Depends(angemeldet)]) -> Benutzer:
     if not person.ist_betreiber:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Das verwaltet nur der Betreiber.",
+            detail="nur_betreiber",
         )
     return person
 

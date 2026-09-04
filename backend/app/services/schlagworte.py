@@ -28,11 +28,12 @@ from sqlalchemy.orm import Session
 
 from ..models import Benutzer, Konto, Nachricht, Schlagwort
 from . import imap as imapdienst, konten as kontendienst
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.schlagworte")
 
 
-class SchlagwortFehler(ValueError):
+class SchlagwortFehler(Meldung, ValueError):
     """Traegt eine KENNUNG, keinen Satz — die Oberflaeche uebersetzt sie."""
 
 

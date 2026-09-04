@@ -41,6 +41,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from .config import get_settings
+from .meldung import Meldung
 
 logger = logging.getLogger("nexmail.crypto")
 
@@ -57,7 +58,7 @@ _sperre = threading.Lock()
 _dek_zwischenspeicher: bytes | None = None
 
 
-class SchluesselFehler(RuntimeError):
+class SchluesselFehler(Meldung, RuntimeError):
     """Der KEK passt nicht zum verpackten DEK in dieser Datenbank."""
 
 
@@ -89,12 +90,19 @@ def dek_auspacken(verpackt: str) -> bytes:
     still eine leere Zeichenkette zurueck, und nirgends stand, warum.
     """
     if not verpackt.startswith(PRAEFIX):
-        raise SchluesselFehler("Unbekanntes Format des verpackten Schluessels.")
+        raise SchluesselFehler("schluessel_format_unbekannt")
     roh = base64.b64decode(verpackt[len(PRAEFIX) :])
     try:
         return AESGCM(_kek()).decrypt(roh[:_NONCE_LAENGE], roh[_NONCE_LAENGE:], _DEK_AAD)
     except (InvalidTag, ValueError) as fehler:
-        raise SchluesselFehler(
+        # ⚠️ **Hier steht bewusst ein ganzer Satz statt einer Kennung, und der
+        # Wächter kennt die Ausnahme.** Diese Meldung erreicht nie eine
+        # Oberfläche: Sie bricht den Start ab, bevor es eine gibt, und ein
+        # Betreiber liest sie in `docker logs`. Dort gilt „englisch", nicht
+        # „übersetzbar" — und sie muss ausführlich sein, weil sie den
+        # teuersten Fall der ganzen Anwendung erklärt: Ohne diesen Schlüssel
+        # ist jedes gespeicherte Postfach-Passwort unlesbar.
+        raise SchluesselFehler(  # noqa: NXM001 - Startabbruch, siehe test_meldungen.py
             "The stored data key cannot be unwrapped with the current "
             "NEXMAIL_SECRET_KEY. Was the key changed, or was data/secret.key "
             "lost when the container was rebuilt? Restore the key file or the "
@@ -121,7 +129,7 @@ def _dek() -> bytes:
     with _sperre:
         if _dek_zwischenspeicher is None:
             raise SchluesselFehler(
-                "Der Daten-Schluessel ist nicht geladen. Wurde init_db() aufgerufen?"
+                "datenschluessel_fehlt"
             )
         return _dek_zwischenspeicher
 
@@ -143,7 +151,7 @@ def entschluesseln(wert: str, kontext: str) -> str:
     if not wert:
         return ""
     if not wert.startswith(PRAEFIX):
-        raise SchluesselFehler(f"Unverschluesselter Wert im Feld {kontext}.")
+        raise SchluesselFehler("wert_unverschluesselt")
     roh = base64.b64decode(wert[len(PRAEFIX) :])
     try:
         klar = AESGCM(_dek()).decrypt(
@@ -154,7 +162,7 @@ def entschluesseln(wert: str, kontext: str) -> str:
         # nicht, oder der Wert steht an einer anderen Stelle als beim
         # Verschluesseln - beides muss laut sein.
         logger.warning("A stored value in %s could not be decrypted.", kontext)
-        raise SchluesselFehler(f"Der Wert in {kontext} laesst sich nicht entschluesseln.") from fehler
+        raise SchluesselFehler("wert_unlesbar") from fehler
     return klar.decode("utf-8")
 
 

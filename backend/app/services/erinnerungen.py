@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Benutzer, Erinnerungszustellung, Kalender, Termin, utcnow
 from . import wiederholung
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.erinnerungen")
 
@@ -222,7 +223,7 @@ def schlummern(
     db.commit()
 
 
-class ErinnerungFehler(Exception):
+class ErinnerungFehler(Meldung):
     """Kennung, kein Satz — die Oberfläche formuliert."""
 
 

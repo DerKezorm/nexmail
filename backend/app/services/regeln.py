@@ -27,6 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Benutzer, Nachricht, Ordner, Regel
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.regeln")
 
@@ -39,7 +40,7 @@ VERGLEICHE = ("enthaelt", "enthaelt_nicht", "ist", "beginnt", "endet")
 AKTIONEN = ("verschieben", "gelesen", "markieren", "loeschen")
 
 
-class RegelFehler(RuntimeError):
+class RegelFehler(Meldung, RuntimeError):
     """Etwas, das der Betreiber lesen soll."""
 
 
@@ -54,23 +55,23 @@ def _liste(roh: str) -> list[dict]:
 def pruefen(bedingungen: list[dict], aktionen: list[dict]) -> None:
     """Was die Oberfläche schickt, bevor es in die Datenbank geht."""
     if not bedingungen:
-        raise RegelFehler("Eine Regel ohne Bedingung würde auf jede Nachricht zutreffen.")
+        raise RegelFehler("regel_ohne_bedingung")
     if not aktionen:
-        raise RegelFehler("Eine Regel ohne Aktion tut nichts.")
+        raise RegelFehler("regel_ohne_aktion")
 
     for b in bedingungen:
         if b.get("feld") not in FELDER:
-            raise RegelFehler(f"Unbekanntes Feld: {b.get('feld')!r}")
+            raise RegelFehler("feld_unbekannt", feld=b.get("feld"))
         if b.get("vergleich") not in VERGLEICHE:
-            raise RegelFehler(f"Unbekannter Vergleich: {b.get('vergleich')!r}")
+            raise RegelFehler("vergleich_unbekannt", vergleich=b.get("vergleich"))
         if not str(b.get("wert", "")).strip():
-            raise RegelFehler("Eine Bedingung ohne Wert trifft auf nichts zu.")
+            raise RegelFehler("bedingung_ohne_wert")
 
     for a in aktionen:
         if a.get("art") not in AKTIONEN:
-            raise RegelFehler(f"Unbekannte Aktion: {a.get('art')!r}")
+            raise RegelFehler("aktion_unbekannt", aktion=a.get("art"))
         if a.get("art") == "verschieben" and not str(a.get("wert", "")).strip():
-            raise RegelFehler("„Verschieben“ braucht einen Zielordner.")
+            raise RegelFehler("verschieben_ohne_ziel")
 
 
 # --- Prüfen ---------------------------------------------------------------- #

@@ -19,11 +19,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Aufgabe, Benutzer, Nachricht
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.aufgaben")
 
 
-class AufgabenFehler(Exception):
+class AufgabenFehler(Meldung):
     """Mit einem Satz, den man zeigen kann."""
 
 
@@ -104,7 +105,7 @@ def alle(db: Session, benutzer: Benutzer) -> list[Sicht]:
 def anlegen(db: Session, benutzer: Benutzer, nachricht_id: int) -> Aufgabe:
     nachricht = db.get(Nachricht, nachricht_id)
     if nachricht is None or nachricht.benutzer_id != benutzer.id:
-        raise AufgabenFehler("Diese Nachricht gibt es nicht.")
+        raise AufgabenFehler("nachricht_unbekannt")
 
     if nachricht.message_id:
         schon = db.execute(
@@ -147,7 +148,7 @@ def anlegen(db: Session, benutzer: Benutzer, nachricht_id: int) -> Aufgabe:
 def eine(db: Session, benutzer: Benutzer, aufgabe_id: int) -> Aufgabe:
     aufgabe = db.get(Aufgabe, aufgabe_id)
     if aufgabe is None or aufgabe.benutzer_id != benutzer.id:
-        raise AufgabenFehler("Diese Aufgabe gibt es nicht.")
+        raise AufgabenFehler("aufgabe_unbekannt")
     return aufgabe
 
 

@@ -36,11 +36,12 @@ from sqlalchemy.orm import Session
 from ..models import Benutzer, Kalender, Termin, utcnow
 from . import wiederholung
 from . import zeit as zeitdienst
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.termine")
 
 
-class TerminFehler(RuntimeError):
+class TerminFehler(Meldung, RuntimeError):
     """Traegt eine KENNUNG, keinen deutschen Satz — die Oberflaeche uebersetzt."""
 
 

@@ -56,7 +56,7 @@ export function Torbogen({
               key={s.code}
               type="button"
               title={s.name}
-              onClick={() => spracheSetzen(s.code as Sprachcode)}
+              onClick={() => void spracheSetzen(s.code as Sprachcode)}
               className={
                 'rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase transition-colors duration-[var(--dur-fast)] ' +
                 (i18n.language === s.code

@@ -45,7 +45,7 @@ class Suchergebnis(BaseModel):
 def suchen(wunsch: Suchwunsch, person: AngemeldeterBenutzer, db: DbSession) -> Suchergebnis:
     if wunsch.bereich not in BEREICHE:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Unbekannter Suchbereich."
+            status_code=status.HTTP_400_BAD_REQUEST, detail="suchbereich_unbekannt"
         )
 
     if wunsch.beim_anbieter:

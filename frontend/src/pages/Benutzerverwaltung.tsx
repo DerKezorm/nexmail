@@ -11,9 +11,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Mail, ShieldCheck, Trash2, UserPlus } from 'lucide-react'
-import { ApiFehler, api } from '../api/client'
+import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Badge, Button, Dialog, IconButton, Input } from '../ds'
+import { servermeldung } from '../lib/servermeldung'
 
 interface BenutzerZeile {
   id: string
@@ -60,7 +61,7 @@ export function Benutzerverwaltung() {
     try {
       setBestand(await api.holen<Bestand>('/api/benutzer'))
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     }
   }, [t])
 
@@ -101,7 +102,7 @@ export function Benutzerverwaltung() {
       await api.loeschen(`/api/benutzer/${person.id}`)
       await laden()
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     }
   }
 
@@ -275,7 +276,7 @@ function Einladungsfenster({
       })
       aufFertig()
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     } finally {
       setLaeuft(false)
     }

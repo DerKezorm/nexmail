@@ -164,7 +164,7 @@ def torwaechter(request: Request, tuer: str, kennung: str) -> Torwaechter:
             logger.info("Rate limit hit at %s (%s attempts, %s s left).", tuer, z.versuche, rest)
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Too many attempts. Please wait and try again.",
+                detail="zu_viele_versuche",
                 headers={"Retry-After": str(rest)},
             )
 

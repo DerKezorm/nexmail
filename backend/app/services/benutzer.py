@@ -23,6 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models import Benutzer
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.benutzer")
 
@@ -40,20 +41,19 @@ MIN_LAENGE = 10
 BENUTZERNAME_MUSTER = re.compile(r"^[A-Za-z0-9._-]{3,64}$")
 
 
-class BenutzerFehler(ValueError):
+class BenutzerFehler(Meldung, ValueError):
     pass
 
 
 def passwort_pruefen_regeln(passwort: str) -> None:
     if len(passwort) < MIN_LAENGE:
-        raise BenutzerFehler(f"Das Passwort muss mindestens {MIN_LAENGE} Zeichen haben.")
+        raise BenutzerFehler("passwort_zu_kurz", min=MIN_LAENGE)
 
 
 def benutzername_pruefen(name: str) -> None:
     if not BENUTZERNAME_MUSTER.fullmatch(name):
         raise BenutzerFehler(
-            "Der Benutzername darf 3 bis 64 Zeichen haben: Buchstaben, Ziffern, Punkt, "
-            "Unterstrich und Bindestrich."
+            "benutzername_ungueltig"
         )
 
 
@@ -101,9 +101,9 @@ def passwort_aendern(
     ein Wechsel, nach dem der andere angemeldet bleibt, hilft nicht.
     """
     if not passwort_stimmt(benutzer, altes):
-        raise BenutzerFehler("Das bisherige Kennwort stimmt nicht.")
+        raise BenutzerFehler("altes_kennwort_falsch")
     if neues == altes:
-        raise BenutzerFehler("Das neue Kennwort ist dasselbe wie das bisherige.")
+        raise BenutzerFehler("kennwort_unveraendert")
     passwort_pruefen_regeln(neues)
 
     benutzer.passwort_hash = hashen(neues)
@@ -144,7 +144,7 @@ def anlegen(
         passwort_pruefen_regeln(passwort)
 
     if finden(db, benutzername) is not None:
-        raise BenutzerFehler("Diesen Benutzernamen gibt es schon.")
+        raise BenutzerFehler("benutzername_vergeben")
 
     benutzer = Benutzer(
         benutzername=benutzername,

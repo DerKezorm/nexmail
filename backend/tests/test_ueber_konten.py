@@ -192,7 +192,7 @@ def test_kommt_nichts_an_wird_nichts_geloescht(db, welt):
     with pytest.raises(handeln.HandelnFehler) as fehler:
         handeln.verschieben(db, nachrichten, ziel)
 
-    assert "gelöscht" in str(fehler.value)
+    assert "ziel_unvollstaendig" == str(fehler.value)
     # Nichts weg, weder auf dem Server noch in der Datenbank.
     assert quelle_srv.geloescht == []
     assert sorted(quelle_srv.ordner["INBOX"]["nachrichten"]) == [1, 2]

@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .config import get_settings
+from . import meldung as meldungsmodul
 from .db import SessionLocal, init_db
 from .deps import angemeldet
 from .middleware import (
@@ -329,6 +330,14 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None,
 )
+
+# ⚠️ **Ersetzt FastAPIs eigenen Handler fuer HTTPException.** Ohne das faellt
+# das Feld ``werte`` weg: Starlette rendert nur ``detail``, und die Zahlen und
+# Namen in einer Meldung („Der Name ist laenger als **40** Zeichen") kaemen nie
+# in der Oberflaeche an. Kopfzeilen reicht er weiter — daran haengt unter
+# anderem ``Retry-After`` bei der Anmeldebremse.
+app.add_exception_handler(HTTPException, meldungsmodul.als_antwort)
+
 
 @app.exception_handler(imapdienst.Verbindungsfehler)
 async def _verbindungsfehler(request: Request, fehler: imapdienst.Verbindungsfehler):

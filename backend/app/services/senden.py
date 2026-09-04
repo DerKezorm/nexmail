@@ -36,6 +36,7 @@ from ..config import get_settings
 from ..models import Ausgang, Konto, neue_id, utcnow
 from . import abgleich, imap as imapdienst, konten as kontendienst
 from .verfassen import Entwurf, bauen
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.senden")
 
@@ -51,7 +52,7 @@ MAX_VERSUCHE = 5
 GEPLANT_VERZOEGERUNG_MINUTEN = (2, 5, 15, 30)
 
 
-class SendeFehler(RuntimeError):
+class SendeFehler(Meldung, RuntimeError):
     pass
 
 
@@ -185,7 +186,7 @@ def versenden(db: Session, zeile: Ausgang) -> None:
     if not beansprucht.rowcount:
         # Abgebrochen oder schon von anderer Hand versandt — nichts mehr tun.
         db.expire_all()
-        raise SendeFehler("Der Eintrag wurde inzwischen zurückgenommen.")
+        raise SendeFehler("eintrag_zurueckgenommen")
     db.refresh(zeile)
 
     try:

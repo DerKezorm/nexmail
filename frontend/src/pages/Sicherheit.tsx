@@ -11,13 +11,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { KeyRound, LogOut, Monitor, ShieldAlert, ShieldCheck } from 'lucide-react'
-import { api, ApiFehler } from '../api/client'
+import { api } from '../api/client'
 import type { Ich } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Oauthzugaenge } from '../components/Oauthzugaenge'
 import { Badge, Button, Dialog, IconButton, Input } from '../ds'
 import { ZweiterFaktor } from '../components/ZweiterFaktor'
 import { appPfad } from '../lib/basis'
+import { servermeldung } from '../lib/servermeldung'
 
 interface Geraet {
   id: string
@@ -60,7 +61,7 @@ export function Sicherheit({
       ichNeuLaden?.()
       return ergebnis
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
       return null
     }
   }

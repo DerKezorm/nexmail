@@ -23,6 +23,7 @@ from ..routers.einstellungen import SCHLUESSEL_OEFFENTLICHE_ADRESSE
 from ..services import benutzer as benutzerdienst
 from ..services import einladung as einladungsdienst
 from ..services import systempost
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.benutzer")
 
@@ -126,10 +127,7 @@ def einladen(eingabe: Einladen, _: Betreiber, db: DbSession) -> EinladungsZeile:
     if not adresse_der_app:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Ohne öffentliche Adresse führt der Link in der Einladung ins "
-                "Leere. Sie steht in der Verwaltung unter „Server“."
-            ),
+            detail="oeffentliche_adresse_fehlt",
         )
 
     try:
@@ -140,14 +138,14 @@ def einladen(eingabe: Einladen, _: Betreiber, db: DbSession) -> EinladungsZeile:
             anzeigename=eingabe.anzeigename,
         )
     except einladungsdienst.EinladungsFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
     try:
         einladungsdienst.verschicken(db, einladung, schluessel, adresse_der_app)
     except systempost.PostFehler as fehler:
         db.delete(einladung)
         db.commit()
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(fehler)) from fehler
+        raise MeldungHttp.aus(fehler, status.HTTP_502_BAD_GATEWAY) from fehler
 
     return _einladungszeile(einladung)
 
@@ -186,11 +184,11 @@ def entfernen(benutzer_id: str, ich: Betreiber, db: DbSession) -> None:
     if person.id == ich.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Du kannst dich nicht selbst entfernen.",
+            detail="sich_selbst_entfernen",
         )
     if person.ist_betreiber:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Der Betreiber lässt sich nicht entfernen.",
+            detail="betreiber_entfernen",
         )
     benutzerdienst.entfernen(db, person)

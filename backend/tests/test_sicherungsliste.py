@@ -152,7 +152,8 @@ def test_ein_unbekannter_takt_wird_abgewiesen(klient):
     einrichten(klient)
     antwort = klient.put("/api/sicherung/zeitplan", json={"takt": "stuendlich", "behalten": 5})
     assert antwort.status_code == 400
-    assert "taeglich" in antwort.json()["detail"]
+    assert antwort.json()["detail"] == "takt_unbekannt"
+    assert "taeglich" in antwort.json()["werte"]["moeglich"]
 
 
 def test_ohne_zeitplan_ist_nie_etwas_faellig(klient):

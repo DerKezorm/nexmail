@@ -12,11 +12,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download, RefreshCw, Trash2 } from 'lucide-react'
-import { api, ApiFehler } from '../api/client'
+import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Badge, Button, Input, Select } from '../ds'
 import { protokollzeit } from '../lib/format'
 import { appPfad } from '../lib/basis'
+import { servermeldung } from '../lib/servermeldung'
 
 interface Zeile {
   zeit: string
@@ -66,7 +67,7 @@ export function Protokoll() {
       .holen<Stand>('/api/protokoll/stand')
       .then(setStand)
       .catch((f) =>
-        setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein')),
+        setFehler(servermeldung(f, t('anmeldung.fehler_allgemein'))),
       )
   }, [t])
 
@@ -83,7 +84,7 @@ export function Protokoll() {
       setStand(await api.aendern<Stand>('/api/protokoll/stufe', { stufe: neu, minuten }))
       await laden()
     } catch (f) {
-      setFehler(f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'))
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     } finally {
       setLaeuft(false)
     }

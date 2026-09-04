@@ -29,11 +29,12 @@ from sqlalchemy.orm import Session
 from ..models import Konto, Nachricht, Ordner
 from . import abgleich, imap as imapdienst, konten as kontendienst
 from .verfassen import Entwurf, bauen
+from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.entwuerfe")
 
 
-class EntwurfFehler(RuntimeError):
+class EntwurfFehler(Meldung, RuntimeError):
     """Etwas, das der Betreiber lesen soll — kein Programmfehler."""
 
 
@@ -41,8 +42,7 @@ def _ordner(konto: Konto) -> Ordner:
     ordner = next((o for o in konto.ordner if o.rolle == "entwuerfe"), None)
     if ordner is None:
         raise EntwurfFehler(
-            "Dieses Postfach hat keinen Entwurfsordner. Lege ihn auf dem Server "
-            "an — dann bewahrt nexmail angefangene Nachrichten dort auf."
+            "kein_entwurfsordner"
         )
     return ordner
 

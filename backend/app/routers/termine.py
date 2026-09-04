@@ -21,6 +21,7 @@ from ..deps import AngemeldeterBenutzer, DbSession
 from ..models import Anhang, Konto, Nachricht, Terminantwort
 from ..services import kalender, konten as kontendienst, senden as sendedienst, verfassen
 from .einstellungen import SCHLUESSEL_ZEITZONE
+from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.termine")
 
@@ -207,7 +208,7 @@ def uebernehmen(
         neu.uid = termin.uid or neu.uid
         db.commit()
     except kalenderdienst.TerminFehler as f:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(f)) from f
+        raise MeldungHttp.aus(f, status.HTTP_400_BAD_REQUEST) from f
 
     sicht.im_kalender = True
     return sicht

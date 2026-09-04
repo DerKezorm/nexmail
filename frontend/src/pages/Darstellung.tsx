@@ -16,10 +16,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Info, Trash2 } from 'lucide-react'
 import { Button, IconButton, Select, Switch } from '../ds'
-import { api, ApiFehler } from '../api/client'
+import { api } from '../api/client'
 import { useGemerkt } from '../lib/haken'
 import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from '../lib/wischen'
 import type { WischAktion } from '../lib/wischen'
+import { servermeldung } from '../lib/servermeldung'
 
 export type Dichte = 'kompakt' | 'normal'
 
@@ -99,7 +100,7 @@ export function Darstellung() {
     api.aendern<Aufraeumen>('/api/einstellungen/aufraeumen', neu).catch((f) => {
       // Der alte Stand gilt weiter — also wieder anzeigen, was der Server hat.
       setAufraeumenFehler(
-        f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'),
+        servermeldung(f, t('anmeldung.fehler_allgemein')),
       )
       api.holen<Aufraeumen>('/api/einstellungen/aufraeumen').then(setAufraeumen).catch(() => {})
     })
@@ -128,7 +129,7 @@ export function Darstellung() {
       .then(setBilder)
       .catch((f) => {
         setBilderFehler(
-          f instanceof ApiFehler && f.detail ? f.detail : t('anmeldung.fehler_allgemein'),
+          servermeldung(f, t('anmeldung.fehler_allgemein')),
         )
         bilderLaden()
       })

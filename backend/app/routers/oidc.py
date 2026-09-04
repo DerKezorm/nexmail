@@ -65,8 +65,8 @@ def _rueckkehr(db, kuerzel: str) -> str:
     if not basis:
         raise oidc.OidcFehler(
             "oidc_keine_adresse",
-            "Ohne öffentliche Adresse gibt es keine Rückkehr-Adresse. Sie steht "
-            "in der Verwaltung unter „Server“.",
+            "Without a public address there is no redirect URI. It lives in the "
+            "administration under 'Server'.",
         )
     return f"{basis}{get_settings().url_base}/api/oidc/{kuerzel}/zurueck"
 
@@ -324,12 +324,12 @@ def anbieter_anlegen(eingabe: AnbieterEingabe, betreiber: Betreiber, db: DbSessi
     if not eingabe.issuer.startswith(("http://", "https://")):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Die Adresse des Anbieters muss mit http:// oder https:// beginnen.",
+            detail="anbieter_adresse_ohne_schema",
         )
     if db.execute(
         select(OidcAnbieter).where(OidcAnbieter.kuerzel == eingabe.kuerzel)
     ).scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Dieses Kürzel gibt es schon.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="kuerzel_vergeben")
 
     from ..models import neue_id
 
@@ -459,8 +459,7 @@ def loesen(verknuepfung_id: int, person: AngemeldeterBenutzer, db: DbSession) ->
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "Das ist dein einziger Anmeldeweg. Vergib zuerst ein Kennwort, "
-                "sonst kommst du nicht mehr hinein."
+                "letzter_anmeldeweg"
             ),
         )
 
