@@ -132,6 +132,11 @@ def einloesen(db: Session, schluessel: str, passwort: str) -> Benutzer:
         passwort,
         anzeigename=einladung.anzeigename,
     )
+    # ⚠️ **Die Adresse der Einladung wird die Adresse fuer Kontosachen.** Sonst
+    # haette ein eingeladener Mensch von Anfang an keinen Weg zurueck, obwohl
+    # der Betreiber seine Adresse gerade eingetippt hat. Aendern kann er sie
+    # danach unter „Sicherheit".
+    neuer.kontaktadresse = einladung.adresse
     einladung.eingeloest = _jetzt()
     db.commit()
     logger.info("An invitation was redeemed.")

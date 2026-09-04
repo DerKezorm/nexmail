@@ -110,6 +110,20 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
         "Schritt eins gesetzt hat — geschützt, aber nicht über 'angemeldet'."
     ),
     "/api/auth/wiederherstellung": "Wie /api/auth/code, nur mit einem Wiederherstellungscode.",
+    "/api/auth/kennwort-vergessen": (
+        "Wer sein Kennwort vergessen hat, kann sich nicht anmelden — das ist "
+        "der ganze Anlass. Die Adresse antwortet deshalb IMMER gleich (202, "
+        "derselbe Rumpf), egal ob es den Namen gibt, ob dort eine "
+        "Kontaktadresse steht oder ob der Postausgang laeuft: Ein sichtbarer "
+        "Unterschied waere eine Namensliste. Die Anmeldebremse zaehlt je "
+        "Benutzernamen mit, sonst schickt eine Maschine tausend Mails los."
+    ),
+    "/api/auth/kennwort-neu": (
+        "Der Link aus der Mail IST der Nachweis; wer angemeldet waere, "
+        "braeuchte ihn nicht. Der Schluessel hat 256 Bit und liegt nur als "
+        "Hash da, gilt zwei Stunden und genau einmal — und die Bremse haengt "
+        "auch hier davor."
+    ),
     "/api/auth/einrichtung": (
         "Zeigt den QR-Code, solange der zweite Faktor unbestätigt ist. Hängt "
         "ebenfalls an der halben Sitzung."

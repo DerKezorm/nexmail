@@ -100,6 +100,17 @@ class Benutzer(Base):
     #: des ersten Kontos - wer nexmail aufsetzt, muss dafuer nichts wissen.
     ist_betreiber: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    #: Wohin ein Ruecksetz-Link geht, wenn dieser Mensch sein Kennwort
+    #: vergessen hat. **Nicht** eines seiner Postfaecher: Am 04.09.2026 so
+    #: entschieden — die Adresse fuer Kontosachen bleibt getrennt und wird
+    #: ausdruecklich gesetzt.
+    #:
+    #: ⚠️ **Leer heisst: kein Weg zurueck.** Wer sie nie eintraegt, kommt nach
+    #: einem vergessenen Kennwort nicht mehr hinein — und merkt das erst im
+    #: Ernstfall. Deshalb traegt eine Einladung sie gleich mit ein, und die
+    #: Sicherheitsseite sagt deutlich, wenn keine dasteht.
+    kontaktadresse: Mapped[str] = mapped_column(String(320), default="")
+
     #: TOTP-Geheimnis, verschluesselt (Kontext ``benutzer:<id>:totp``).
     totp_geheimnis: Mapped[str] = mapped_column(Text, default="")
     totp_bestaetigt: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -168,6 +179,35 @@ class Benutzer(Base):
     oidc: Mapped[list["OidcVerknuepfung"]] = relationship(
         back_populates="benutzer", cascade="all, delete-orphan"
     )
+
+
+class Kennwortruecksetzung(Base):
+    """Ein ausgesprochener Ruecksetz-Link, den noch niemand benutzt hat.
+
+    ⚠️ **Der Schluessel liegt nur als Hash da.** Er steht in einer Mail und
+    setzt ein Kennwort — das ist ein Passwort, kein Datensatz-Merkmal.
+    Dieselbe Regel wie bei der Einladung und den Wiederherstellungscodes.
+
+    ⚠️ **Kurze Gueltigkeit, kuerzer als bei einer Einladung.** Eine Einladung
+    wartet auf einen Menschen, der vielleicht erst am Wochenende Zeit hat. Ein
+    Ruecksetz-Link entsteht, weil jemand **gerade jetzt** vor der Tuer steht.
+    """
+
+    #: ⚠️ **Nicht „kennwortruecksetzung".** Der Passwortzensor im Protokoll
+    #: schwaerzt alles hinter „kennwort" — der Tabellenname stand beim Start
+    #: als ``kennwort*****`` in der Schema-Zeile, und ein Protokoll, das einen
+    #: Tabellennamen verbirgt, kostet bei der Fehlersuche Zeit.
+    __tablename__ = "ruecksetzung"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    schluessel_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    laeuft_ab: Mapped[datetime] = mapped_column(UtcDateTime)
+    #: Wann er benutzt wurde. ``None`` heisst: noch offen.
+    eingeloest: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
 
 
 class Wiederherstellungscode(Base):

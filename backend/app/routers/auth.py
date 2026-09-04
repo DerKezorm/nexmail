@@ -21,9 +21,12 @@ from ..config import get_settings
 from ..deps import AktiveSitzung, AngemeldeterBenutzer, DbSession, HalbeSitzung
 from ..services import anmeldebremse
 from ..services import benutzer as benutzerdienst
+from ..services import ruecksetzung as ruecksetzdienst
 from ..services import sitzung as sitzungsdienst
 from ..services import zwei_faktor
+from ..db import einstellung_lesen
 from ..meldung import MeldungHttp
+from .einstellungen import SCHLUESSEL_OEFFENTLICHE_ADRESSE
 
 logger = logging.getLogger("nexmail.auth")
 
@@ -57,6 +60,9 @@ class Ich(BaseModel):
     ist_betreiber: bool
     zwei_faktor_aktiv: bool
     offene_codes: int
+    #: Wohin ein Ruecksetz-Link ginge. Leer heisst: **kein Weg zurueck**, und
+    #: die Sicherheitsseite sagt das auch so.
+    kontaktadresse: str = ""
 
 
 @router.post("/anmelden", response_model=Schritt)
@@ -178,6 +184,61 @@ def wiederherstellung(
     sitzungsdienst.bestaetigen(db, sitzung, request, response)
     logger.warning("A user signed in with a recovery code.")
     return Schritt(schritt="fertig")
+
+
+class Vergessen(BaseModel):
+    benutzername: str = Field(min_length=1, max_length=64)
+
+
+class NeuesKennwort(BaseModel):
+    schluessel: str = Field(min_length=1, max_length=200)
+    passwort: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/kennwort-vergessen", status_code=status.HTTP_202_ACCEPTED)
+def kennwort_vergessen(
+    eingabe: Vergessen, request: Request, db: DbSession
+) -> Response:
+    """Einen Ruecksetz-Link anfordern.
+
+    ⚠️ **Immer 202, immer derselbe Text.** Ob es den Namen gibt, ob dort eine
+    Kontaktadresse steht, ob der Postausgang laeuft: Nach aussen sieht alles
+    gleich aus. Wer hier einen Unterschied sehen kann, kann Namen
+    durchprobieren — und eine Namensliste ist der halbe Einbruch.
+
+    ⚠️ **Die Bremse zaehlt trotzdem.** Ohne sie schickt eine Maschine tausend
+    Mails los, und der Postausgang landet auf einer Sperrliste.
+    """
+    wache = anmeldebremse.torwaechter(request, "vergessen", eingabe.benutzername.strip())
+    wache.fehlgeschlagen()
+
+    adresse_der_app = einstellung_lesen(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE)
+    if adresse_der_app:
+        ruecksetzdienst.anfordern(db, eingabe.benutzername, adresse_der_app)
+    else:
+        logger.warning("A password reset was requested, but no public address is configured.")
+
+    return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+@router.post("/kennwort-neu", status_code=status.HTTP_204_NO_CONTENT)
+def kennwort_neu(eingabe: NeuesKennwort, request: Request, db: DbSession) -> Response:
+    """Das neue Kennwort setzen.
+
+    ⚠️ **Auch hier die Bremse.** Der Schluessel hat 256 Bit, aber eine Tuer
+    ohne Bremse laedt zum Probieren ein, und Probieren kostet uns Rechenzeit.
+    """
+    wache = anmeldebremse.torwaechter(request, "kennwort-neu", "-")
+    try:
+        ruecksetzdienst.einloesen(db, eingabe.schluessel, eingabe.passwort)
+    except ruecksetzdienst.RuecksetzFehler as fehler:
+        wache.fehlgeschlagen()
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    except benutzerdienst.BenutzerFehler as fehler:
+        # Ein zu kurzes Kennwort ist kein Fehlversuch an der Tuer.
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    wache.geschafft()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/abmelden", status_code=status.HTTP_204_NO_CONTENT)
@@ -337,4 +398,39 @@ def ich(person: AngemeldeterBenutzer) -> Ich:
         ist_betreiber=person.ist_betreiber,
         zwei_faktor_aktiv=person.totp_bestaetigt,
         offene_codes=zwei_faktor.offene_codes(person),
+        kontaktadresse=person.kontaktadresse,
     )
+
+
+class Kontaktadresse(BaseModel):
+    #: Leer heisst: entfernen. Das ist erlaubt und wird nicht wegdiskutiert —
+    #: aber die Oberflaeche sagt, was es kostet.
+    adresse: str = Field(default="", max_length=320)
+
+
+@router.put("/ich/kontaktadresse", response_model=Ich)
+def kontaktadresse_setzen(
+    eingabe: Kontaktadresse, person: AngemeldeterBenutzer, db: DbSession
+) -> Ich:
+    """Die Adresse fuer Kontosachen setzen oder entfernen.
+
+    ⚠️ **Ohne sie gibt es keinen Weg zurueck.** Sie ist ausdruecklich **nicht**
+    eines der eingerichteten Postfaecher; so entschieden am 04.09.2026. Wer sie
+    leer laesst, kommt nach einem vergessenen Kennwort nicht mehr hinein.
+
+    ⚠️ **Kein Kennwort davor, und das ist eine Abwaegung.** Wer eine fremde
+    Sitzung uebernommen hat, koennte die Adresse auf sich umbiegen und sich
+    danach das Kennwort schicken lassen. Dagegen steht: Wer eine Sitzung hat,
+    liest ohnehin alles mit. Die Bremse davor waere Theater, das Kennwort
+    dagegen eine echte Huerde — deshalb steht es dort, wo es zaehlt: beim
+    Aendern des Kennworts und beim Abschalten des zweiten Faktors.
+    """
+    adresse = eingabe.adresse.strip()
+    if adresse and "@" not in adresse:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="adresse_ungueltig"
+        )
+    person.kontaktadresse = adresse
+    db.commit()
+    logger.info("A user set their contact address (empty=%s).", not adresse)
+    return ich(person)

@@ -156,6 +156,8 @@ export interface Ich {
   ist_betreiber: boolean
   zwei_faktor_aktiv: boolean
   offene_codes: number
+  /** Wohin ein Rücksetz-Link ginge. Leer heißt: **kein Weg zurück**. */
+  kontaktadresse: string
 }
 
 export interface Schritt {

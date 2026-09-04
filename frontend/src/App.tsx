@@ -1915,6 +1915,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
               reiter={verwaltungsReiter}
               aufReiter={setVerwaltungsReiter}
               ich={ich}
+              ichNeuLaden={ichNeuLaden}
             />
             </Suspense>
           )}

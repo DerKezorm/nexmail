@@ -92,8 +92,75 @@ export function Sicherheit({
 
   const wenige = (ich?.offene_codes ?? 0) <= 3
 
+  const [adresse, setAdresse] = useState(ich?.kontaktadresse ?? '')
+  const [adresseLaeuft, setAdresseLaeuft] = useState(false)
+  const [adresseFehler, setAdresseFehler] = useState('')
+
+  /* ⚠️ Nachziehen, wenn `ich` später eintrifft — beim ersten Rendern ist es
+     null, und ein Feld, das dann leer bleibt, sähe aus wie „nichts gesetzt". */
+  useEffect(() => {
+    setAdresse(ich?.kontaktadresse ?? '')
+  }, [ich?.kontaktadresse])
+
+  async function adresseSpeichern() {
+    setAdresseFehler('')
+    setAdresseLaeuft(true)
+    try {
+      await api.aendern('/api/auth/ich/kontaktadresse', { adresse: adresse.trim() })
+      ichNeuLaden?.()
+    } catch (f) {
+      setAdresseFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    } finally {
+      setAdresseLaeuft(false)
+    }
+  }
+
   return (
     <div className="flex max-w-[720px] flex-col gap-6">
+      {/* --- Adresse für Kontosachen ------------------------------------ */}
+      {/* ⚠️ **Ohne sie gibt es keinen Weg zurück.** Sie ist ausdrücklich
+          nicht eines der eingerichteten Postfächer, sondern eine eigene
+          Angabe; so entschieden am 04.09.2026. Wer sie leer lässt, kommt nach
+          einem vergessenen Kennwort nicht mehr hinein — und merkt das erst im
+          Ernstfall. Deshalb steht der Abschnitt ganz oben und sagt es. */}
+      <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-4">
+        <h2 className="mb-0 text-[13px] font-semibold text-fg-1">
+          {t('sicherheit.kontaktadresse')}
+        </h2>
+        <p className="mb-0 text-[13px] text-fg-2">{t('sicherheit.kontaktadresse_hinweis')}</p>
+
+        {!ich?.kontaktadresse && (
+          <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-soft p-3 text-[12px] text-warning-text">
+            <ShieldAlert className="mt-0.5 size-4 shrink-0" />
+            <span>{t('sicherheit.kontaktadresse_fehlt')}</span>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[240px] flex-1">
+            <Input
+              type="email"
+              label={t('sicherheit.kontaktadresse_feld')}
+              placeholder="name@example.com"
+              value={adresse}
+              onChange={(e) => setAdresse(e.target.value)}
+            />
+          </div>
+          <Button
+            variant="primary"
+            disabled={adresseLaeuft || adresse.trim() === (ich?.kontaktadresse ?? '')}
+            onClick={adresseSpeichern}
+          >
+            {t('aktion.speichern')}
+          </Button>
+        </div>
+        {adresseFehler && (
+          <p role="alert" className="mb-0 text-[12px] text-danger">
+            {adresseFehler}
+          </p>
+        )}
+      </section>
+
       {/* --- Zweiter Faktor --------------------------------------------- */}
       <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-4">
         <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{t('sicherheit.zwei_faktor')}</h2>

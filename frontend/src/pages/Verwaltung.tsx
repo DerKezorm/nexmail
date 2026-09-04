@@ -39,9 +39,12 @@ interface Props {
   reiter: VerwaltungsReiter
   aufReiter: (r: VerwaltungsReiter) => void
   ich: Ich | null
+  /** ⚠️ Nach einer Betreiber-Übergabe ist man selbst keiner mehr — ohne das
+   *  bliebe die Verwaltung offen stehen, obwohl sie einem nicht mehr gehört. */
+  ichNeuLaden?: () => void
 }
 
-export function Verwaltung({ reiter, aufReiter, ich }: Props) {
+export function Verwaltung({ reiter, aufReiter, ich, ichNeuLaden }: Props) {
   const { t } = useTranslation()
 
   if (ich && !ich.ist_betreiber) {
@@ -83,7 +86,7 @@ export function Verwaltung({ reiter, aufReiter, ich }: Props) {
           ) : reiter === 'server' ? (
             <Serverdaten />
           ) : reiter === 'benutzer' ? (
-            <Benutzerverwaltung />
+            <Benutzerverwaltung ichNeuLaden={ichNeuLaden} />
           ) : reiter === 'oidc' ? (
             <OidcVerwaltung />
           ) : reiter === 'oauth' ? (

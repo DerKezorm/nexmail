@@ -13,8 +13,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import App from './App'
 import { AnmeldePage } from './pages/AnmeldePage'
-import { ohneBasis } from './lib/basis'
+import { appPfad, ohneBasis } from './lib/basis'
 import { EinladungPage } from './pages/EinladungPage'
+import { KennwortNeuPage, VergessenPage } from './pages/KennwortPage'
 import { EinrichtungPage } from './pages/EinrichtungPage'
 import { api } from './api/client'
 import type { Ich, Stand } from './api/client'
@@ -38,6 +39,15 @@ export default function Start() {
     const treffer = pfad ? /^\/einladung\/(.+)$/.exec(pfad) : null
     return treffer ? decodeURIComponent(treffer[1]) : ''
   })
+
+  /* Der Rücksetz-Schlüssel, genauso gelesen — und aus demselben Grund vor der
+     Anmeldung: Wer ihn öffnet, kommt gerade nicht hinein. */
+  const [kennwortschluessel, setKennwortschluessel] = useState(() => {
+    const pfad = ohneBasis(window.location.pathname)
+    const treffer = pfad ? /^\/kennwort\/(.+)$/.exec(pfad) : null
+    return treffer ? decodeURIComponent(treffer[1]) : ''
+  })
+  const [vergessen, setVergessen] = useState(false)
 
   useEffect(() => {
     if (modus === 'light') document.documentElement.setAttribute('data-theme', 'light')
@@ -131,12 +141,42 @@ export default function Start() {
     )
   }
 
+  /* ⚠️ Auch der Rücksetz-Link kommt vor der Anmeldung — dieselbe Begründung
+     wie bei der Einladung. */
+  if (kennwortschluessel) {
+    return (
+      <KennwortNeuPage
+        schluessel={kennwortschluessel}
+        modus={modus}
+        aufModus={setModus}
+        aufFertig={() => {
+          setKennwortschluessel('')
+          window.history.replaceState(null, '', appPfad('/'))
+          void pruefen()
+        }}
+      />
+    )
+  }
+
   if (lage === 'einrichten') {
     return <EinrichtungPage modus={modus} aufModus={setModus} aufFertig={() => void pruefen()} />
   }
 
+  if (vergessen) {
+    return (
+      <VergessenPage modus={modus} aufModus={setModus} aufZurueck={() => setVergessen(false)} />
+    )
+  }
+
   if (lage === 'anmelden') {
-    return <AnmeldePage modus={modus} aufModus={setModus} aufFertig={() => void pruefen()} />
+    return (
+      <AnmeldePage
+        modus={modus}
+        aufModus={setModus}
+        aufFertig={() => void pruefen()}
+        aufVergessen={() => setVergessen(true)}
+      />
+    )
   }
 
   return (

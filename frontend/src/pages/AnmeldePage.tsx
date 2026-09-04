@@ -24,9 +24,10 @@ interface Props {
   modus: 'dark' | 'light'
   aufModus: (m: 'dark' | 'light') => void
   aufFertig: () => void
+  aufVergessen: () => void
 }
 
-export function AnmeldePage({ modus, aufModus, aufFertig }: Props) {
+export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props) {
   const { t, i18n } = useTranslation()
 
   const [lage, setLage] = useState<Lage>('passwort')
@@ -143,6 +144,15 @@ export function AnmeldePage({ modus, aufModus, aufFertig }: Props) {
           >
             {t('anmeldung.weiter')}
           </Button>
+          {/* ⚠️ **Hier und nirgends sonst.** Wer sein Kennwort vergessen hat,
+              kommt nicht bis in ein Menü. */}
+          <button
+            type="button"
+            onClick={aufVergessen}
+            className="mx-auto text-[13px] text-fg-3 underline underline-offset-2 hover:text-fg-1"
+          >
+            {t('kennwort.vergessen_link')}
+          </button>
         </form>
 
         {/* ⚠️ **Ein gewöhnlicher Verweis, kein fetch.** Der Hinweg ist eine

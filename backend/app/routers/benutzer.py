@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -20,6 +20,7 @@ from ..db import einstellung_lesen
 from ..deps import Betreiber, DbSession
 from ..models import Benutzer, Einladung
 from ..routers.einstellungen import SCHLUESSEL_OEFFENTLICHE_ADRESSE
+from ..services import anmeldebremse
 from ..services import benutzer as benutzerdienst
 from ..services import einladung as einladungsdienst
 from ..services import systempost
@@ -167,6 +168,53 @@ def umfang(benutzer_id: str, _: Betreiber, db: DbSession) -> Umfang:
     if person is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     return Umfang(**benutzerdienst.umfang(db, person))
+
+
+class Uebergabe(BaseModel):
+    #: ⚠️ Das eigene Kennwort. Siehe die Begruendung an der Adresse.
+    passwort: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/{benutzer_id}/betreiber", status_code=status.HTTP_204_NO_CONTENT)
+def betreiber_uebergeben(
+    benutzer_id: str, eingabe: Uebergabe, ich: Betreiber, request: Request, db: DbSession
+) -> None:
+    """Den Betreiber-Haken an jemand anderen geben.
+
+    ⚠️ **Genau ein Betreiber, immer.** Der Haken wandert, er wird nicht
+    vergeben: Wer ihn abgibt, hat ihn danach nicht mehr. Zwei Betreiber waeren
+    nicht schlimm, aber null waeren das Ende — aus der Anwendung heraus fuehrt
+    dann kein Weg zurueck.
+
+    ⚠️ **Das eigene Kennwort steht davor.** Das ist der teuerste Knopf in der
+    ganzen Verwaltung: Wer ihn drueckt, gibt die Verwaltung ab und kann sie
+    sich nicht zurueckholen. Eine geklaute Sitzung genuegt dafuer nicht —
+    dieselbe Ueberlegung wie beim Abschalten des zweiten Faktors.
+
+    ⚠️ **Danach laesst sich der alte Betreiber entfernen.** Genau dafuer gibt
+    es diesen Weg: Wer die Wohnung wechselt, hinterlaesst sonst eine
+    Installation, an die niemand mehr herankommt.
+    """
+    wache = anmeldebremse.torwaechter(request, "betreiber-uebergeben", ich.benutzername)
+    if not benutzerdienst.passwort_stimmt(ich, eingabe.passwort):
+        wache.fehlgeschlagen()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="kennwort_falsch"
+        )
+    wache.geschafft()
+
+    person = db.get(Benutzer, benutzer_id)
+    if person is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    if person.id == ich.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="betreiber_an_sich_selbst"
+        )
+
+    person.ist_betreiber = True
+    ich.ist_betreiber = False
+    db.commit()
+    logger.warning("The operator flag was handed over to another user.")
 
 
 @router.delete("/{benutzer_id}", status_code=status.HTTP_204_NO_CONTENT)

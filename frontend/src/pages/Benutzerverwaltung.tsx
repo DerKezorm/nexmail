@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Mail, ShieldCheck, Trash2, UserPlus } from 'lucide-react'
+import { AlertTriangle, Crown, Mail, ShieldCheck, Trash2, UserPlus } from 'lucide-react'
 import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Badge, Button, Dialog, IconButton, Input } from '../ds'
@@ -50,7 +50,7 @@ interface Umfang {
   signaturen: number
 }
 
-export function Benutzerverwaltung() {
+export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }) {
   const { t, i18n } = useTranslation()
   const { fragen, fenster: nachfrage } = useNachfrage()
   const [bestand, setBestand] = useState<Bestand | null>(null)
@@ -68,6 +68,32 @@ export function Benutzerverwaltung() {
   useEffect(() => {
     void laden()
   }, [laden])
+
+  /** Den Betreiber-Haken weitergeben.
+   *
+   * ⚠️ **Danach ist man selbst keiner mehr.** Der Haken wandert, er wird nicht
+   * vergeben; zwei Betreiber wären nicht schlimm, aber null sind das Ende. Die
+   * Rückfrage sagt genau das, und sie verlangt das eigene Kennwort — eine
+   * geklaute Sitzung soll dafür nicht reichen.
+   */
+  async function uebergeben(p: BenutzerZeile) {
+    const wer = p.anzeigename || p.benutzername
+    const kennwort = await fragen({
+      titel: t('verwaltung.uebergeben_frage', { wer }),
+      text: t('verwaltung.uebergeben_text', { wer }),
+      eingabe: { beschriftung: t('anmeldung.passwort'), typ: 'password' },
+      knopf: t('verwaltung.uebergeben_knopf'),
+      gefaehrlich: true,
+    })
+    if (typeof kennwort !== 'string' || !kennwort) return
+    try {
+      await api.senden(`/api/benutzer/${p.id}/betreiber`, { passwort: kennwort })
+      await laden()
+      ichNeuLaden?.()
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    }
+  }
 
   async function entfernen(person: BenutzerZeile) {
     setFehler('')
@@ -176,6 +202,19 @@ export function Benutzerverwaltung() {
               {/* ⚠️ Der Betreiber hat keinen Papierkorb: Danach könnte niemand
                   mehr die Verwaltung öffnen, und aus der Anwendung heraus führt
                   kein Weg zurück. */}
+              {/* ⚠️ **Der teuerste Knopf der Verwaltung.** Wer ihn drückt,
+                  gibt die Verwaltung ab und kann sie sich nicht zurückholen.
+                  Deshalb steht das eigene Kennwort davor — und deshalb ist er
+                  ein stiller Knopf, kein bunter. */}
+              {!p.ist_betreiber && (
+                <IconButton
+                  icon={<Crown />}
+                  label={t('verwaltung.betreiber_uebergeben', {
+                    wer: p.anzeigename || p.benutzername,
+                  })}
+                  onClick={() => void uebergeben(p)}
+                />
+              )}
               {!p.ist_betreiber && (
                 <IconButton
                   icon={<Trash2 />}
