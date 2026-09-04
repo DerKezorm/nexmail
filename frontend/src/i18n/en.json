@@ -1110,6 +1110,8 @@
     "caldav_loeschen_gescheitert": "The calendar server refused the deletion.",
     "caldav_nicht_erreichbar": "The calendar server is unreachable.",
     "caldav_schreiben_gescheitert": "The calendar server refused the change.",
+    "carddav_kein_buchserver": "There is no address book server at that address.",
+    "carddav_nicht_lesbar": "The address book could not be read.",
     "code_falsch": "That code is wrong.",
     "code_ungueltig": "That code is not valid.",
     "datei_leer": "The file is empty.",

@@ -1110,6 +1110,8 @@
     "caldav_loeschen_gescheitert": "Der Kalenderserver hat das Löschen abgelehnt.",
     "caldav_nicht_erreichbar": "Der Kalenderserver ist nicht erreichbar.",
     "caldav_schreiben_gescheitert": "Der Kalenderserver hat die Änderung abgelehnt.",
+    "carddav_kein_buchserver": "Unter dieser Adresse liegt kein Adressbuch-Server.",
+    "carddav_nicht_lesbar": "Das Adressbuch ließ sich nicht lesen.",
     "code_falsch": "Der Code stimmt nicht.",
     "code_ungueltig": "Dieser Code gilt nicht.",
     "datei_leer": "Die Datei ist leer.",
