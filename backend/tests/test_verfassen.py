@@ -698,3 +698,92 @@ def test_die_trennzeile_ist_ein_vertrag_mit_der_oberflaeche():
         "Die Marke in anhang.ts weicht vom Server ab — die Anhang-Erinnerung "
         "sähe den weitergeleiteten Text als eigenen."
     )
+
+
+# --- Absender-Aliasse ----------------------------------------------------- #
+
+
+def test_eine_fremde_absenderadresse_wird_abgewiesen(klient, db, postausgang):
+    """⚠️ **Die sicherheitsrelevante Stelle.** Die Adresse kommt aus dem
+    Browser; ohne Prüfung verschickte nexmail Post unter jeder Adresse, die
+    jemand in die Anfrage schreibt. Der Mailserver sieht nur unsere Anmeldung."""
+    konto, _, _ = postausgang
+    antwort = klient.post(
+        "/api/verfassen/senden",
+        json={
+            "konto_id": konto.id,
+            "an": ["wer@example.org"],
+            "betreff": "Nicht ich",
+            "html": "<p>x</p>",
+            "von_adresse": "chef@fremde-firma.example",
+        },
+    )
+    assert antwort.status_code == 400
+    assert antwort.json()["detail"] == "alias_unbekannt"
+    assert db.query(Ausgang).count() == 0
+
+
+def test_ein_hinterlegter_alias_steht_im_absender(klient, db, postausgang):
+    from app.services import aliase as aliasdienst
+    from app.services.aliase import Alias
+
+    konto, smtp, _ = postausgang
+    aliasdienst.schreiben(konto, [Alias("verein@example.com", "Der Vorstand")])
+    db.commit()
+
+    antwort = klient.post(
+        "/api/verfassen/senden",
+        json={
+            "konto_id": konto.id,
+            "an": ["wer@example.org"],
+            "betreff": "Aus dem Verein",
+            "html": "<p>x</p>",
+            "von_adresse": "verein@example.com",
+        },
+    )
+    assert antwort.status_code == 200, antwort.text
+    _, _, roh = smtp.gesendet[0]
+    von = message_from_bytes(roh)["From"]
+    assert "verein@example.com" in von
+    # ⚠️ Der Name des Alias, nicht der des Kontos — sonst stünde der falsche
+    # Absendername an einer richtigen Adresse.
+    assert "Der Vorstand" in von
+
+
+def test_ohne_wahl_bleibt_es_bei_der_hauptadresse(klient, db, postausgang):
+    konto, smtp, _ = postausgang
+    klient.post(
+        "/api/verfassen/senden",
+        json={"konto_id": konto.id, "an": ["wer@example.org"], "betreff": "x", "html": "<p>x</p>"},
+    )
+    von = message_from_bytes(smtp.gesendet[0][2])["From"]
+    assert konto.adresse in von
+
+
+def test_die_antwort_kommt_von_der_angeschriebenen_zweitadresse(
+    klient, db, original_im_posteingang
+):
+    """⚠️ **Der ganze Zweck der Aliasse.** Ohne das erfährt der andere bei
+    jeder Antwort die Hauptadresse, und die Trennung ist dahin.
+
+    ⚠️ Die Mail muss beim Doppelgänger liegen: ``/vorlage`` holt die Roh-Mail,
+    und ohne sie läuft der Abruf in den Mailserver — im Testlauf ein 502.
+    """
+    from app.services import aliase as aliasdienst
+    from app.services.aliase import Alias
+
+    konto, _, nachricht = original_im_posteingang
+    aliasdienst.schreiben(konto, [Alias("verein@example.com", "Vorstand")])
+    # Die Mail ging an die Zweitadresse, nicht an die Hauptadresse.
+    nachricht.an_json = json.dumps([{"n": "", "a": "verein@example.com"}])
+    db.commit()
+
+    vorlage = klient.get(f"/api/verfassen/vorlage/{nachricht.id}?art=antwort").json()
+    assert vorlage["von_adresse"] == "verein@example.com"
+
+
+def test_ohne_treffer_bleibt_der_absender_leer(klient, db, original_im_posteingang):
+    """Leer heißt: die Hauptadresse. Die Oberfläche muss nichts umschalten."""
+    konto, _, nachricht = original_im_posteingang
+    vorlage = klient.get(f"/api/verfassen/vorlage/{nachricht.id}?art=antwort").json()
+    assert vorlage["von_adresse"] == ""

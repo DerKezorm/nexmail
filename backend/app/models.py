@@ -342,6 +342,12 @@ class Konto(Base):
     #: Verbund und eine Migration und nichts sonst. Wer je nach Schlagwort
     #: suchen will, hat den Punkt erreicht, an dem sich die Tabelle lohnt.
     tags: Mapped[str] = mapped_column(String(255), default="")
+    #: Zusaetzliche Absenderadressen als JSON — ``[{"adresse": …, "name": …}]``.
+    #:
+    #: ⚠️ **Eine Spalte, keine Nebentabelle** — dieselbe Ueberlegung wie oben
+    #: bei ``tags``: eine Handvoll je Postfach, und keine Abfrage sucht danach.
+    #: Beim Antworten wird in Python ueber die paar Adressen gegangen.
+    aliase: Mapped[str] = mapped_column(Text, default="[]")
     farbe: Mapped[int] = mapped_column(Integer, default=1)
     reihenfolge: Mapped[int] = mapped_column(Integer, default=0)
     aktiv: Mapped[bool] = mapped_column(Boolean, default=True)

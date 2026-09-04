@@ -103,6 +103,7 @@ export async function kontenLaden(): Promise<Konto[]> {
     adresse: k.adresse,
     farbe: (k.farbe as Postfachfarbe) ?? 1,
     tags: k.tags ?? [],
+    aliase: k.aliase ?? [],
     stoerung: k.stoerung ?? '',
   }))
 }

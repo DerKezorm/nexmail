@@ -19,6 +19,8 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, XCircle } from 'lucide-react'
 import { Button, Input, Select } from '../ds'
 import { Schlagwortfeld } from '../components/Schlagwortfeld'
+import { Absenderfeld } from '../components/Absenderfeld'
+import type { Absenderalias } from '../components/Absenderfeld'
 import { api } from '../api/client'
 import type { Befund, KontoZeile, Vorschlag } from '../api/client'
 import { PUNKT_KLASSE } from '../lib/farben'
@@ -41,6 +43,7 @@ interface Props {
 interface Felder {
   anzeigename: string
   tags: string[]
+  aliase: Absenderalias[]
   absendername: string
   adresse: string
   passwort: string
@@ -57,6 +60,7 @@ interface Felder {
 const LEER: Felder = {
   anzeigename: '',
   tags: [],
+  aliase: [],
   absendername: '',
   adresse: '',
   passwort: '',
@@ -95,6 +99,7 @@ export function KontoFormular({
       ? {
           anzeigename: bestehend.anzeigename,
           tags: bestehend.tags ?? [],
+          aliase: bestehend.aliase ?? [],
           absendername: bestehend.absendername ?? '',
           adresse: bestehend.adresse,
           passwort: '',
@@ -221,6 +226,10 @@ export function KontoFormular({
     return {
       anzeigename: felder.anzeigename,
       tags: felder.tags,
+      /* ⚠️ **Leere Zeilen fliegen hier raus, nicht im Server.** Wer auf „+"
+         drückt und es sich anders überlegt, hätte sonst eine Absage wegen
+         einer Adresse, die er gar nicht eintragen wollte. */
+      aliase: felder.aliase.filter((a) => a.adresse.trim()),
       absendername: felder.absendername,
       adresse: felder.adresse.trim(),
       imap_server: felder.imap_server.trim(),
@@ -339,6 +348,15 @@ export function KontoFormular({
         werte={felder.tags}
         aufAendern={(tags) => setzen({ tags })}
         vorschlaege={bekannteTags}
+      />
+
+      {/* ⚠️ **Direkt unter dem Absendernamen.** Beides sagt, wie man beim
+          Empfänger erscheint; getrennt suchte man das zweite unter
+          „Erweitert" und fände es nie. */}
+      <Absenderfeld
+        werte={felder.aliase}
+        aufAendern={(aliase) => setzen({ aliase })}
+        hauptadresse={felder.adresse}
       />
 
       {zugaenge.length > 0 && (

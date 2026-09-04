@@ -245,6 +245,8 @@ export interface KontoZeile {
   anzahl_ordner: number
   /** Freie Schlagworte zum Gruppieren der Postfächer. */
   tags: string[]
+  /** Zusätzliche Absenderadressen dieses Postfachs. */
+  aliase?: { adresse: string; name: string }[]
   /** 'google', 'microsoft' — oder leer bei einem gewöhnlichen IMAP-Postfach. */
   oauth_art?: string
   /** Wie viele Kalender an derselben Zustimmung hängen. */

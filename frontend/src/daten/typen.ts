@@ -26,6 +26,8 @@ export interface Konto {
   farbe: Postfachfarbe
   /** Freie Schlagworte zum Gruppieren — „privat", „arbeit", „verein". */
   tags: string[]
+  /** Weitere Absenderadressen dieses Postfachs. Leer bei fast allen. */
+  aliase?: { adresse: string; name: string }[]
 }
 
 /** Ein Schlagwort fuer einzelne Mails — als IMAP-Keyword gespeichert.

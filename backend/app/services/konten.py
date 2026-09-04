@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session
 
 from .. import crypto
 from ..models import Benutzer, Konto, Ordner, neue_id, utcnow
+from . import aliase as aliasdienst
+from .aliase import Alias
 from . import anbieter as anbieterdienst
 from . import imap as imapdienst
 from ..meldung import Meldung
@@ -100,6 +102,10 @@ class Zugangsdaten:
     #: ⚠️ **Google und Microsoft lassen nichts anderes mehr zu** — Basic Auth
     #: ueber IMAP und SMTP wird dort abgewiesen.
     oauth_zugang_id: str = ""
+    #: Zusätzliche Absenderadressen. ⚠️ ``None`` heißt „nicht mitgeschickt",
+    #: also unverändert — dieselbe Regel wie beim Passwort und bei ``tags``.
+    #: Eine leere Liste heißt dagegen ausdrücklich „alle weg".
+    aliase: list[Alias] | None = None
 
 
 #: Mehr als das braucht niemand, und es hält die Pillenreihe lesbar.
@@ -204,6 +210,8 @@ def anlegen(db: Session, benutzer: Benutzer, daten: Zugangsdaten) -> Konto:
     konto.smtp_passwort = crypto.verschluesseln(
         daten.smtp_passwort, _kontext(konto.id, "smtp_passwort")
     )
+    if daten.aliase:
+        aliasdienst.schreiben(konto, daten.aliase)
 
     db.add(konto)
     db.commit()
@@ -252,6 +260,8 @@ def aendern(db: Session, benutzer: Benutzer, konto_id: str, daten: Zugangsdaten)
     # Liste heißt dagegen ausdrücklich „alle Schlagworte weg".
     if daten.tags is not None:
         konto.tags = tags_normieren(daten.tags)
+    if daten.aliase is not None:
+        aliasdienst.schreiben(konto, daten.aliase)
 
     if daten.imap_passwort:
         konto.imap_passwort = crypto.verschluesseln(

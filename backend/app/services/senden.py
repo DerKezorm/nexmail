@@ -26,7 +26,7 @@ import logging
 import smtplib
 from datetime import datetime, timedelta, timezone
 from email import message_from_bytes
-from email.utils import getaddresses
+from email.utils import getaddresses, parseaddr
 from pathlib import Path
 
 from sqlalchemy import or_, select, update
@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import Ausgang, Konto, neue_id, utcnow
-from . import abgleich, imap as imapdienst, konten as kontendienst
+from . import abgleich, aliase as aliasdienst, imap as imapdienst, konten as kontendienst
 from .verfassen import Entwurf, bauen
 from ..meldung import Meldung
 
@@ -246,6 +246,39 @@ def _xoauth2_anmelden(verbindung, benutzer: str, token: str) -> None:
         raise smtplib.SMTPAuthenticationError(code, antwort)
 
 
+def _umschlagabsender(konto: Konto, roh: bytes) -> str:
+    """Die Adresse auf dem Umschlag — bei einem Alias dessen Adresse.
+
+    ⚠️ **Der Umschlag muss zum ``From`` passen.** Steht auf dem Umschlag die
+    Hauptadresse und im Kopf ein Alias, laufen zwei Dinge schief: Ein
+    Rückläufer geht an die falsche Adresse, und DMARC prüft die Ausrichtung
+    beider Angaben — auseinander laufen sie im Spamordner.
+
+    ⚠️ **Gelesen wird aus der fertigen Nachricht, nicht aus einer Spalte.** So
+    ist es dieselbe Angabe wie im Kopf, auch bei einer Nachricht, die vor
+    diesem Umbau in die Warteschlange kam.
+
+    ⚠️ **Und trotzdem noch einmal gegen das Konto gehalten.** Die Datei liegt
+    auf der Platte; wer sie ändert, dürfte sonst über unsere Anmeldung unter
+    fremdem Namen senden. Passt sie nicht, gilt die Hauptadresse — nicht ein
+    Fehler, denn eine eingereihte Mail darf nicht steckenbleiben.
+    """
+    try:
+        kopf = message_from_bytes(roh)["From"] or ""
+        adresse = parseaddr(str(kopf))[1].strip().lower()
+    except Exception:  # noqa: BLE001
+        return konto.adresse
+    if not adresse:
+        return konto.adresse
+    if adresse == konto.adresse.strip().lower():
+        return konto.adresse
+    for alias in aliasdienst.lesen(konto):
+        if alias.adresse == adresse:
+            return alias.adresse
+    logger.warning("Outgoing mail claimed an unknown sender; using the account address instead.")
+    return konto.adresse
+
+
 def _smtp_senden(
     konto: Konto, passwort: str, empfaenger: list[str], roh: bytes, token: str = ""
 ) -> None:
@@ -266,7 +299,7 @@ def _smtp_senden(
             verbindung.login(konto.smtp_benutzer, passwort)
         # ⚠️ Die Empfängerliste kommt hier her, nicht aus den Kopfzeilen -
         # sonst bekäme eine Blindkopie nie etwas.
-        verbindung.sendmail(konto.adresse, empfaenger, roh)
+        verbindung.sendmail(_umschlagabsender(konto, roh), empfaenger, roh)
     finally:
         try:
             verbindung.quit()

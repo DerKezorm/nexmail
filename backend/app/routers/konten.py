@@ -26,6 +26,8 @@ from ..services import (
     konten as kontendienst,
     ordner as ordnerdienst,
 )
+from ..services import aliase as aliasdienst
+from ..services.aliase import Alias
 from ..services.konten import Zugangsdaten
 from ..meldung import MeldungHttp
 
@@ -42,6 +44,23 @@ class Serverteil(BaseModel):
     port: int = 0
     sicherheit: str = "ssl"
     benutzer: str = ""
+
+
+class AliasEingabe(BaseModel):
+    """Eine zusaetzliche Absenderadresse.
+
+    ⚠️ **Geprueft wird im Dienst, nicht hier.** Pydantic wuerde eine rohe
+    englische Meldung erzeugen; nexmail nennt eine Kennung, die die Oberflaeche
+    uebersetzt.
+    """
+
+    adresse: str = Field(max_length=320)
+    name: str = Field(default="", max_length=120)
+
+
+class AliasAntwort(BaseModel):
+    adresse: str
+    name: str = ""
 
 
 class VorschlagAntwort(BaseModel):
@@ -73,11 +92,19 @@ class Eingabe(BaseModel):
     smtp_passwort: str = Field(default="", max_length=500)
     #: Freie Schlagworte zum Gruppieren der Postfächer in der Ordnerspalte.
     tags: list[str] | None = None
+    #: Zusaetzliche Absenderadressen. ⚠️ Nicht mitgeschickt heisst unveraendert.
+    aliase: list[AliasEingabe] | None = None
     #: Statt der Passwoerter: eine erteilte Zustimmung (OAuth).
     oauth_zugang_id: str = Field(default="", max_length=32)
 
     def als_zugangsdaten(self) -> Zugangsdaten:
-        return Zugangsdaten(**self.model_dump())
+        felder = self.model_dump()
+        # ⚠️ Aus den Pydantic-Zeilen die Datenklasse des Dienstes machen; der
+        # Dienst kennt Pydantic nicht und soll es auch nicht kennen.
+        felder["aliase"] = (
+            None if self.aliase is None else [Alias(a.adresse, a.name) for a in self.aliase]
+        )
+        return Zugangsdaten(**felder)
 
 
 class Aenderung(Eingabe):
@@ -161,6 +188,8 @@ class KontoAntwort(BaseModel):
     letzter_fehler_art: str = ""
     anzahl_ordner: int
     tags: list[str]
+    #: Zusaetzliche Absenderadressen dieses Postfachs.
+    aliase: list[AliasAntwort] = []
     #: 'google', 'microsoft' — oder leer bei einem gewoehnlichen
     #: IMAP-Postfach. Die Kachel zeigt daran, woher das Postfach kommt; ohne
     #: das saehe ein Google-Postfach aus wie jedes andere und niemand wuesste,
@@ -194,6 +223,7 @@ def _antwort(konto) -> KontoAntwort:
         letzter_fehler_art=konto.letzter_fehler_art or "",
         anzahl_ordner=len(konto.ordner),
         tags=kontendienst.tags_lesen(konto),
+        aliase=[AliasAntwort(adresse=a.adresse, name=a.name) for a in aliasdienst.lesen(konto)],
         oauth_art=konto.oauth_zugang.art if konto.oauth_zugang else "",
         oauth_kalender=len(konto.oauth_zugang.kalender) if konto.oauth_zugang else 0,
     )
@@ -330,7 +360,10 @@ def anlegen(eingabe: Eingabe, person: AngemeldeterBenutzer, db: DbSession) -> Ko
 
     try:
         konto = kontendienst.anlegen(db, person, eingabe.als_zugangsdaten())
-    except kontendienst.KontoFehler as fehler:
+    # ⚠️ Der Aliasfehler gehört mit hierher. Er kommt aus demselben Aufruf,
+    # trägt genauso eine Kennung — und ungefangen wäre er ein 500 mit
+    # Rückverfolg, wo eine übersetzbare Meldung hingehört.
+    except (kontendienst.KontoFehler, aliasdienst.AliasFehler) as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
     kontendienst.ordner_uebernehmen(db, konto, befund.ordner)
@@ -350,7 +383,10 @@ def aendern(
     """
     try:
         konto = kontendienst.aendern(db, person, konto_id, eingabe.als_zugangsdaten())
-    except kontendienst.KontoFehler as fehler:
+    # ⚠️ Der Aliasfehler gehört mit hierher. Er kommt aus demselben Aufruf,
+    # trägt genauso eine Kennung — und ungefangen wäre er ein 500 mit
+    # Rückverfolg, wo eine übersetzbare Meldung hingehört.
+    except (kontendienst.KontoFehler, aliasdienst.AliasFehler) as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
     # ⚠️ **Neue Zugangsdaten heissen: die Stoerung ist erst mal erledigt.**
@@ -368,7 +404,10 @@ def aendern(
 def ordner(konto_id: str, person: AngemeldeterBenutzer, db: DbSession) -> list[OrdnerAntwort]:
     try:
         konto = kontendienst.eines(db, person, konto_id)
-    except kontendienst.KontoFehler as fehler:
+    # ⚠️ Der Aliasfehler gehört mit hierher. Er kommt aus demselben Aufruf,
+    # trägt genauso eine Kennung — und ungefangen wäre er ein 500 mit
+    # Rückverfolg, wo eine übersetzbare Meldung hingehört.
+    except (kontendienst.KontoFehler, aliasdienst.AliasFehler) as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
     rang = {
@@ -436,7 +475,10 @@ def ordner_anlegen(
     """
     try:
         konto = kontendienst.eines(db, person, konto_id)
-    except kontendienst.KontoFehler as fehler:
+    # ⚠️ Der Aliasfehler gehört mit hierher. Er kommt aus demselben Aufruf,
+    # trägt genauso eine Kennung — und ungefangen wäre er ein 500 mit
+    # Rückverfolg, wo eine übersetzbare Meldung hingehört.
+    except (kontendienst.KontoFehler, aliasdienst.AliasFehler) as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
     eltern = None
@@ -480,7 +522,10 @@ def ordner_umbenennen(
     """Einen Ordner beim Anbieter umbenennen — Unterordner kommen mit."""
     try:
         konto = kontendienst.eines(db, person, konto_id)
-    except kontendienst.KontoFehler as fehler:
+    # ⚠️ Der Aliasfehler gehört mit hierher. Er kommt aus demselben Aufruf,
+    # trägt genauso eine Kennung — und ungefangen wäre er ein 500 mit
+    # Rückverfolg, wo eine übersetzbare Meldung hingehört.
+    except (kontendienst.KontoFehler, aliasdienst.AliasFehler) as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
     ziel = next((o for o in konto.ordner if o.id == ordner_id), None)
@@ -515,7 +560,10 @@ def ordner_entfernen(
     """
     try:
         konto = kontendienst.eines(db, person, konto_id)
-    except kontendienst.KontoFehler as fehler:
+    # ⚠️ Der Aliasfehler gehört mit hierher. Er kommt aus demselben Aufruf,
+    # trägt genauso eine Kennung — und ungefangen wäre er ein 500 mit
+    # Rückverfolg, wo eine übersetzbare Meldung hingehört.
+    except (kontendienst.KontoFehler, aliasdienst.AliasFehler) as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
 
     ziel = next((o for o in konto.ordner if o.id == ordner_id), None)
@@ -547,5 +595,8 @@ def entfernen(
     """
     try:
         kontendienst.entfernen(db, person, konto_id, kalender_mit=kalender_mit)
-    except kontendienst.KontoFehler as fehler:
+    # ⚠️ Der Aliasfehler gehört mit hierher. Er kommt aus demselben Aufruf,
+    # trägt genauso eine Kennung — und ungefangen wäre er ein 500 mit
+    # Rückverfolg, wo eine übersetzbare Meldung hingehört.
+    except (kontendienst.KontoFehler, aliasdienst.AliasFehler) as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler

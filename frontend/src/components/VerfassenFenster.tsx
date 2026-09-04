@@ -40,6 +40,8 @@ export type Verfassart = 'neu' | 'antwort' | 'allen' | 'weiter' | 'anhang' | 'en
  *  verlieren, nie gewinnen. */
 export interface Sendedaten {
   konto_id: string
+  /** Unter welcher Adresse gesendet wird. Leer = die Hauptadresse. */
+  von_adresse: string
   an: string[]
   kopie: string[]
   blindkopie: string[]
@@ -62,6 +64,8 @@ interface Anlage {
 
 interface Vorlage {
   konto_id: string
+  /** Der Absender, den der Server für diese Antwort vorschlägt. */
+  von_adresse?: string
   an: string[]
   kopie: string[]
   /** Nur beim Weiterschreiben eines Entwurfs gefüllt — die Bcc-Zeile schreibt
@@ -114,6 +118,11 @@ export function VerfassenFenster({
   const { t } = useTranslation()
 
   const [kontoId, setKontoId] = useState('')
+  /* ⚠️ **Leer heißt „die Hauptadresse".** Nicht der ausgeschriebene Wert:
+     Wer die Hauptadresse eines Postfachs ändert, hätte sonst eine Wahl, die
+     auf eine Adresse zeigt, die es nicht mehr gibt — und der Server wiese sie
+     zu Recht ab. */
+  const [vonAdresse, setVonAdresse] = useState('')
   const [an, setAn] = useState('')
   const [kopie, setKopie] = useState('')
   const [blindkopie, setBlindkopie] = useState('')
@@ -245,6 +254,7 @@ export function VerfassenFenster({
        * kaputte Bildsymbole. */
       setEntwurfUid(wiederauf.entwurf_uid || 0)
       setKontoId(wiederauf.konto_id)
+      setVonAdresse(wiederauf.von_adresse ?? '')
       setAn(wiederauf.an.length ? wiederauf.an.join(', ') + ', ' : '')
       setKopie(wiederauf.kopie.length ? wiederauf.kopie.join(', ') + ', ' : '')
       setKopieZeigen(wiederauf.kopie.length > 0)
@@ -277,6 +287,7 @@ export function VerfassenFenster({
     if (art === 'neu' || !bezug) {
       const konto = konten[0]?.id ?? ''
       setKontoId(konto)
+      setVonAdresse('')
       setAn('')
       setKopie('')
       setKopieZeigen(false)
@@ -305,6 +316,9 @@ export function VerfassenFenster({
       .holen<Vorlage>(`/api/verfassen/vorlage/${bezug.id}?art=${art}`)
       .then((v) => {
         setKontoId(v.konto_id)
+        // ⚠️ Auf eine Mail an die Zweitadresse wird von dort geantwortet —
+        // der Server hat das entschieden, hier wird es nur übernommen.
+        setVonAdresse(v.von_adresse ?? '')
         setAn(v.an.length ? v.an.join(', ') + ', ' : '')
         setKopie(v.kopie.length ? v.kopie.join(', ') + ', ' : '')
         setKopieZeigen(v.kopie.length > 0)
@@ -473,6 +487,7 @@ export function VerfassenFenster({
 
     return {
       konto_id: kontoId,
+      von_adresse: vonAdresse,
       an: adressen(an),
       kopie: adressen(kopie),
       blindkopie: adressen(blindkopie),
@@ -686,16 +701,35 @@ export function VerfassenFenster({
 
         <div className="shrink-0 divide-y divide-[var(--border-subtle)] border-b border-line-subtle">
           <Zeile beschriftung={t('verfassen.von')}>
+            {/* ⚠️ **Eine Liste von ADRESSEN, nicht von Postfächern.** Aliasse
+                als zweite Auswahl daneben hätten zwei Listen ergeben, die
+                voneinander abhängen — und die Frage „welches Postfach?" stellt
+                sich für den Schreibenden gar nicht, er wählt eine Absender-
+                adresse. Wer keine Zweitadresse hat, merkt von alldem nichts:
+                Die Liste sieht aus wie vorher. */}
             <select
-              value={kontoId}
-              onChange={(e) => setKontoId(e.target.value)}
+              value={`${kontoId}|${vonAdresse}`}
+              onChange={(e) => {
+                const trenner = e.target.value.indexOf('|')
+                setKontoId(e.target.value.slice(0, trenner))
+                setVonAdresse(e.target.value.slice(trenner + 1))
+              }}
               className="min-w-0 flex-1 cursor-pointer bg-transparent text-sm text-fg-1 outline-none"
             >
-              {konten.map((k) => (
-                <option key={k.id} value={k.id} className="bg-surface-1 text-fg-1">
+              {konten.flatMap((k) => [
+                <option key={k.id} value={`${k.id}|`} className="bg-surface-1 text-fg-1">
                   {k.anzeigename} — {k.adresse}
-                </option>
-              ))}
+                </option>,
+                ...(k.aliase ?? []).map((a) => (
+                  <option
+                    key={`${k.id}-${a.adresse}`}
+                    value={`${k.id}|${a.adresse}`}
+                    className="bg-surface-1 text-fg-1"
+                  >
+                    {a.name || k.anzeigename} — {a.adresse}
+                  </option>
+                )),
+              ])}
             </select>
           </Zeile>
 

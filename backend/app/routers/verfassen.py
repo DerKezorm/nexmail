@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -15,6 +16,7 @@ from ..deps import AngemeldeterBenutzer, DbSession
 from ..models import Ausgang, Konto, Nachricht
 from ..services import (
     abgleich,
+    aliase as aliasdienst,
     entwuerfe as entwurfsdienst,
     konten as kontendienst,
     mime,
@@ -67,6 +69,9 @@ class Vorlage(BaseModel):
     #: Beim Weiterleiten als Anhang die Roh-.eml, beim Weiterschreiben eines
     #: Entwurfs dessen Anhänge.
     anlagen: list[VorlagenAnlage] = []
+    #: Unter welcher Adresse geantwortet werden soll. Leer heißt: die
+    #: Hauptadresse des Postfachs.
+    von_adresse: str = ""
 
 
 @router.get("/vorlage/{nachricht_id}", response_model=Vorlage)
@@ -102,6 +107,7 @@ def vorlage(
         return Vorlage(
             signatur=unterschrift.html if unterschrift else "",
             konto_id=konto.id,
+            von_adresse=_antwortabsender(konto, nachricht),
             an=[],
             kopie=[],
             betreff=verfassen.weiterleitung_anhang_betreff(nachricht.betreff),
@@ -136,6 +142,7 @@ def vorlage(
         # verstümmelten Fassung die vollständige auch noch wegräumen.
         return Vorlage(
             konto_id=konto.id,
+            von_adresse=_antwortabsender(konto, nachricht),
             an=[p.adresse for p in zerlegt.an if p.adresse],
             kopie=[p.adresse for p in zerlegt.kopie if p.adresse],
             blindkopie=[p.adresse for p in zerlegt.blindkopie if p.adresse],
@@ -162,6 +169,7 @@ def vorlage(
         return Vorlage(
             signatur=unterschrift.html if unterschrift else "",
             konto_id=konto.id,
+            von_adresse=_antwortabsender(konto, nachricht),
             an=[],
             kopie=[],
             betreff=verfassen.weiterleitung_betreff(zerlegt.betreff),
@@ -177,6 +185,7 @@ def vorlage(
     return Vorlage(
         signatur=unterschrift.html if unterschrift else "",
         konto_id=konto.id,
+        von_adresse=_antwortabsender(konto, nachricht),
         an=an,
         kopie=kopie,
         betreff=verfassen.antwort_betreff(zerlegt.betreff),
@@ -184,6 +193,33 @@ def vorlage(
         in_reply_to=zerlegt.message_id,
         references=verfassen.references_fuer_antwort(zerlegt),
     )
+
+
+def _antwortabsender(konto: Konto, nachricht: Nachricht) -> str:
+    """Die Adresse, unter der auf diese Nachricht geantwortet wird.
+
+    ⚠️ **Das ist der ganze Zweck der Aliasse.** Wer auf eine Mail an ``x@``
+    antwortet, will als ``x@`` antworten; sonst erfährt der andere die
+    Hauptadresse, und die Trennung, für die man sich die Zweitadresse geholt
+    hat, ist dahin.
+
+    ⚠️ **Gelesen wird aus der gespeicherten Zeile, nicht aus der Roh-Mail.**
+    Empfänger und Kopie stehen längst in ``an_json``; die Mail dafür noch
+    einmal zu zerlegen wäre Arbeit für nichts — und beim Weiterleiten als
+    Anhang wird sie ausdrücklich **nicht** zerlegt.
+    """
+
+    def adressen(roh: str) -> list[str]:
+        try:
+            eintraege = json.loads(roh or "[]")
+        except (ValueError, TypeError):
+            return []
+        return [str(e.get("a", "")) for e in eintraege if isinstance(e, dict)]
+
+    treffer = aliasdienst.passend(
+        konto, adressen(nachricht.an_json) + adressen(nachricht.kopie_json)
+    )
+    return treffer.adresse if treffer else ""
 
 
 def _text_als_html(text: str) -> str:
@@ -249,6 +285,10 @@ class Sendewunsch(BaseModel):
     #: Vorgabe ``normal`` heißt: keine Wichtigkeits-Kopfzeilen. Nur ``hoch``
     #: und ``niedrig`` erzeugen ``Importance`` **und** ``X-Priority``.
     wichtigkeit: Literal["hoch", "normal", "niedrig"] = "normal"
+    #: Unter welcher Adresse gesendet wird. Leer heißt: die Hauptadresse des
+    #: Postfachs. ⚠️ **Der Wert wird geprüft, nicht übernommen** — siehe
+    #: ``aliase.absender_pruefen``.
+    von_adresse: str = Field(default="", max_length=320)
 
 
 class Sendeergebnis(BaseModel):
@@ -289,10 +329,15 @@ def _entwurf_bauen(konto: Konto, wunsch: Sendewunsch) -> verfassen.Entwurf:
             )
         )
 
+    # ⚠️ **Die Absenderadresse wird geprüft, nicht übernommen.** Sie kommt aus
+    # dem Browser; ohne diese Zeile könnte jeder Benutzer unter **jeder**
+    # Adresse senden, denn der Mailserver sieht nur unsere Anmeldung. Ein Alias
+    # ohne eigenen Namen behält den Absendernamen des Kontos.
+    absender = aliasdienst.absender_pruefen(konto, wunsch.von_adresse)
     return verfassen.Entwurf(
         # ⚠️ Der Absendername, nicht der Name aus der Ordnerspalte.
-        von_name=kontendienst.absendername(konto),
-        von_adresse=konto.adresse,
+        von_name=absender.name or kontendienst.absendername(konto),
+        von_adresse=absender.adresse,
         an=wunsch.an,
         kopie=wunsch.kopie,
         blindkopie=wunsch.blindkopie,
@@ -338,7 +383,14 @@ def senden_(wunsch: Sendewunsch, person: AngemeldeterBenutzer, db: DbSession) ->
             status_code=status.HTTP_400_BAD_REQUEST, detail="empfaenger_fehlt"
         )
 
-    entwurf = _entwurf_bauen(konto, wunsch)
+    # ⚠️ **Die Absenderprüfung steckt in ``_entwurf_bauen``** und wirft eine
+    # Kennung. Ungefangen wäre sie ein 500 mit Rückverfolg — dabei ist sie
+    # eine gewöhnliche Absage an eine Anfrage, und die Oberfläche kann sie
+    # übersetzen.
+    try:
+        entwurf = _entwurf_bauen(konto, wunsch)
+    except aliasdienst.AliasFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
 
     # ⚠️ Naiv hieße hier UTC: Der Client schickt ISO mit Zone; wer keine
     # mitschickt, hat sie beim Umrechnen schon angewandt.
@@ -416,7 +468,12 @@ def entwurf_ablegen(
     nicht.
     """
     konto = _mein_konto(db, person, wunsch.konto_id)
-    entwurf = _entwurf_bauen(konto, wunsch)
+    # ⚠️ Auch hier — ein Entwurf mit fremder Absenderadresse wäre eine Mail
+    # mit fremder Absenderadresse, sobald ihn jemand abschickt.
+    try:
+        entwurf = _entwurf_bauen(konto, wunsch)
+    except aliasdienst.AliasFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     try:
         uid = entwurfsdienst.ablegen(db, konto, entwurf, wunsch.entwurf_uid or None)
     except entwurfsdienst.EntwurfFehler as fehler:

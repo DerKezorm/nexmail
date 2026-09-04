@@ -702,3 +702,52 @@ def test_die_zahl_steht_an_der_kachel(db, klient):
     zeile = klient.get("/api/konten").json()[0]
     assert zeile["oauth_art"] == "google"
     assert zeile["oauth_kalender"] == 1
+
+
+# --- Absender-Aliasse ----------------------------------------------------- #
+
+
+def test_aliasse_kommen_zurueck(klient, ohne_netz):
+    einrichten(klient)
+    eingabe = _eingabe()
+    eingabe["aliase"] = [{"adresse": "Verein@Example.com", "name": "Vorstand"}]
+    daten = klient.post("/api/konten", json=eingabe).json()
+    assert daten["aliase"] == [{"adresse": "verein@example.com", "name": "Vorstand"}]
+
+
+def test_ohne_das_feld_bleiben_die_aliasse_stehen(klient, ohne_netz):
+    """⚠️ **Nicht mitgeschickt heißt unverändert** — dieselbe Regel wie beim
+    Passwort und bei den Schlagworten. Sonst verlöre jeder seine Zweitadressen,
+    der nur den Anzeigenamen ändert."""
+    einrichten(klient)
+    eingabe = _eingabe()
+    eingabe["aliase"] = [{"adresse": "verein@example.com", "name": ""}]
+    konto_id = klient.post("/api/konten", json=eingabe).json()["id"]
+
+    ohne = _eingabe()
+    ohne["anzeigename"] = "Neuer Name"
+    daten = klient.put(f"/api/konten/{konto_id}", json=ohne).json()
+    assert daten["anzeigename"] == "Neuer Name"
+    assert [a["adresse"] for a in daten["aliase"]] == ["verein@example.com"]
+
+
+def test_eine_leere_liste_raeumt_sie_weg(klient, ohne_netz):
+    """Eine leere Liste heißt ausdrücklich „alle weg" — anders als gar keine."""
+    einrichten(klient)
+    eingabe = _eingabe()
+    eingabe["aliase"] = [{"adresse": "verein@example.com", "name": ""}]
+    konto_id = klient.post("/api/konten", json=eingabe).json()["id"]
+
+    leer = _eingabe()
+    leer["aliase"] = []
+    assert klient.put(f"/api/konten/{konto_id}", json=leer).json()["aliase"] == []
+
+
+def test_eine_kaputte_aliasadresse_wird_benannt(klient, ohne_netz):
+    """⚠️ Eine Kennung, kein deutscher Satz — die Oberfläche übersetzt."""
+    einrichten(klient)
+    eingabe = _eingabe()
+    eingabe["aliase"] = [{"adresse": "ohne-at", "name": ""}]
+    antwort = klient.post("/api/konten", json=eingabe)
+    assert antwort.status_code == 400
+    assert antwort.json()["detail"] == "alias_adresse_ungueltig"
