@@ -21,6 +21,7 @@ from ..config import get_settings
 from ..deps import AktiveSitzung, AngemeldeterBenutzer, DbSession, HalbeSitzung
 from ..services import anmeldebremse
 from ..services import benutzer as benutzerdienst
+from ..services import kidienst
 from ..services import ruecksetzung as ruecksetzdienst
 from ..services import sitzung as sitzungsdienst
 from ..services import zwei_faktor
@@ -68,6 +69,10 @@ class Ich(BaseModel):
     #: der beim Druecken „ist gar nicht an" sagt, ist ein Fehler. Am `ich` zu
     #: haengen erspart eine Anfrage je Verfassen-Fenster und laesst den Knopf
     #: ueber `ichNeuLaden` sofort erscheinen, wenn jemand den Schalter umlegt.
+    #: ⚠️ **Beides zusammen entscheidet ueber den Knopf im Editor.** Der
+    #: eigene Schalter allein genuegt nicht: Der Betreiber kann KI-Dienste
+    #: fuer die ganze Installation sperren, und dann darf der Knopf nicht
+    #: dastehen.
     ki_aktiv: bool = False
 
 
@@ -396,7 +401,7 @@ def zwei_faktor_aus(
 
 
 @router.get("/ich", response_model=Ich)
-def ich(person: AngemeldeterBenutzer) -> Ich:
+def ich(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
     return Ich(
         id=person.id,
         benutzername=person.benutzername,
@@ -405,7 +410,7 @@ def ich(person: AngemeldeterBenutzer) -> Ich:
         zwei_faktor_aktiv=person.totp_bestaetigt,
         offene_codes=zwei_faktor.offene_codes(person),
         kontaktadresse=person.kontaktadresse,
-        ki_aktiv=person.ki_aktiv,
+        ki_aktiv=person.ki_aktiv and kidienst.erlaubt(db),
     )
 
 

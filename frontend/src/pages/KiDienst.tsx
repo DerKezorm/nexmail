@@ -17,7 +17,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, ExternalLink, Pencil, Unplug } from 'lucide-react'
+import { AlertTriangle, ExternalLink, Lock, Pencil, Unplug } from 'lucide-react'
 import { api } from '../api/client'
 import { Button, Input, Select, Switch } from '../ds'
 import { useNachfrage } from '../components/Nachfrage'
@@ -25,6 +25,8 @@ import { KiVorgaenge } from '../components/KiVorgaenge'
 import { servermeldung } from '../lib/servermeldung'
 
 interface Stand {
+  /** Ob der Betreiber es fuer diese Installation ueberhaupt erlaubt. */
+  erlaubt: boolean
   aktiv: boolean
   url: string
   modell: string
@@ -173,6 +175,25 @@ export function KiDienst() {
 
   const bereit = Boolean(url.trim() && modell.trim())
   const steht = Boolean(stand?.modell)
+
+  /* --- Der Betreiber hat es gesperrt ------------------------------------ */
+  if (stand && !stand.erlaubt) {
+    /* ⚠️ **Kein Formular, das man ausfuellen und dann nicht benutzen kann.**
+       Ein Zugang, den man einrichtet und der beim ersten Handgriff abgewiesen
+       wird, ist die schlechtere Auskunft — dieselbe Regel wie beim leeren
+       Entwurf. */
+    return (
+      <div className="flex max-w-[720px] flex-col gap-4">
+        <div className="flex items-start gap-3 rounded-lg border border-line bg-surface-2 px-4 py-3">
+          <Lock className="mt-0.5 size-4 shrink-0 text-fg-4" aria-hidden />
+          <div className="flex flex-col gap-1">
+            <span className="text-[13px] font-semibold text-fg-1">{t('ki.gesperrt')}</span>
+            <p className="mb-0 text-[13px] text-fg-2">{t('ki.gesperrt_text')}</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex max-w-[720px] flex-col gap-6">

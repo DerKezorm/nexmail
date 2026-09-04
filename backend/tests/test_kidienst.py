@@ -259,7 +259,10 @@ def test_ausschalten_geht_immer(db, person):
 def test_die_adressen_gehoeren_dem_benutzer(klient, person):
     """⚠️ **Einstellungen des Benutzers, nicht der Verwaltung.** Jeder bringt
     seinen eigenen Zugang mit; der Betreiber gibt nichts vor und sieht nichts."""
+    # ⚠️ ``erlaubt`` ist der Riegel des Betreibers, nicht die Wahl des
+    # Benutzers — er steht ab Werk zu.
     assert klient.get("/api/ki").json() == {
+        "erlaubt": False,
         "aktiv": False,
         "url": "",
         "modell": "",
@@ -280,10 +283,11 @@ def test_ohne_anmeldung_geht_nichts(klient, person):
     assert klient.post("/api/ki/modelle", json={"url": "https://api.example.com/v1"}).status_code == 401
 
 
-def test_die_bremse_haengt_vor_dem_modellabruf(klient, person, monkeypatch):
+def test_die_bremse_haengt_vor_dem_modellabruf(klient, db, person, monkeypatch):
     """⚠️ **Der Server ruft hier eine Adresse aus der Anfrage auf.** Ohne
     Bremse liesse sich nexmail als Werkzeug benutzen, um jemand anderen mit
     Anfragen zu belegen."""
+    dienst.erlauben(db, True)
     monkeypatch.setattr(
         dienst, "modelle_holen", lambda *a, **k: [{"id": "x", "name": ""}]
     )
@@ -297,6 +301,7 @@ def test_die_bremse_haengt_vor_dem_modellabruf(klient, person, monkeypatch):
 def test_der_gespeicherte_schluessel_wird_genommen(klient, db, person, monkeypatch):
     """⚠️ Sonst müsste man ihn zum Modellwechsel neu eintippen — und wer ihn
     nicht zur Hand hat, kommt nicht mehr an seine Liste."""
+    dienst.erlauben(db, True)
     klient.put("/api/ki", json={"url": "https://api.example.com/v1", "schluessel": SCHLUESSEL})
 
     gesehen = []
@@ -351,7 +356,13 @@ class TextDoppelgaenger:
 
 @pytest.fixture
 def bereit(db, person):
-    """Ein Benutzer mit eingeschaltetem, vollständigem Zugang."""
+    """Ein Benutzer mit eingeschaltetem, vollständigem Zugang.
+
+    ⚠️ **Der Riegel des Betreibers gehört dazu.** Er steht ab Werk zu; ohne
+    ihn ist „bereit" nicht bereit, und die Tests prüften nur noch, dass der
+    Riegel greift.
+    """
+    dienst.erlauben(db, True)
     dienst.einstellung_schreiben(
         db, person, url="https://api.example.com/v1/", modell="m-1", schluessel=SCHLUESSEL
     )
@@ -810,3 +821,106 @@ def test_die_mindestlaenge_steht_in_beiden_haelften_gleich():
     treffer = re.search(r"const MIN_WOERTER = (\d+)", datei.read_text(encoding="utf-8"))
     assert treffer, "MIN_WOERTER steht nicht mehr in KiFenster.tsx"
     assert int(treffer.group(1)) == dienst.MIN_WOERTER
+
+
+# --- Der Riegel des Betreibers --------------------------------------------- #
+
+
+def test_ab_werk_ist_der_riegel_zu(db):
+    """⚠️ **Die schwerere der beiden Vorgaben.** Ohne Riegel entscheidet jeder
+    Benutzer allein, ob Text aus Mails an einen fremden Dienst geht — und
+    verantwortlich ist der Betreiber, der es weder sieht noch verbieten kann."""
+    assert dienst.erlaubt(db) is False
+
+
+def test_der_riegel_laesst_sich_umlegen(db):
+    dienst.erlauben(db, True)
+    assert dienst.erlaubt(db) is True
+    dienst.erlauben(db, False)
+    assert dienst.erlaubt(db) is False
+
+
+def test_bei_zugesperrtem_riegel_geht_kein_text_hinaus(db, person):
+    """⚠️ **Der Riegel steht ÜBER der Wahl des Benutzers.** Ein eingerichteter,
+    eingeschalteter Zugang nützt nichts, solange der Betreiber es nicht
+    erlaubt."""
+    dienst.erlauben(db, True)
+    dienst.einstellung_schreiben(
+        db, person, url="https://api.example.com/v1/", modell="m-1", schluessel=SCHLUESSEL
+    )
+    dienst.einstellung_schreiben(db, person, aktiv=True)
+    dienst.erlauben(db, False)
+
+    server = TextDoppelgaenger()
+    with pytest.raises(dienst.KiFehler) as f:
+        dienst.text_bearbeiten(
+            person, "<p>x y z</p>", auftrag="rechtschreibung",
+            transport=server.transport(), db=db,
+        )
+    assert str(f.value) == "ki_vom_betreiber_gesperrt"
+    assert server.anfragen == []
+
+
+def test_zusperren_loescht_den_zugang_nicht(db, person):
+    """⚠️ **Sonst müsste jeder seinen Schlüssel neu eintragen**, nur weil der
+    Betreiber den Riegel einmal versehentlich zugemacht hat."""
+    dienst.erlauben(db, True)
+    dienst.einstellung_schreiben(
+        db, person, url="https://api.example.com/v1/", modell="m-1", schluessel=SCHLUESSEL
+    )
+    dienst.erlauben(db, False)
+    stand = dienst.einstellung_lesen(person)
+    assert stand["url"] == "https://api.example.com/v1/"
+    assert stand["modell"] == "m-1"
+    assert stand["schluessel_da"] is True
+
+
+def test_der_modellabruf_haengt_auch_hinter_dem_riegel(klient, db, person):
+    """Auch er ruft eine fremde Adresse auf — er geht hinaus."""
+    antwort = klient.post(
+        "/api/ki/modelle", json={"url": "https://api.example.com/v1/", "schluessel": "x"}
+    )
+    assert antwort.status_code == 403
+    assert antwort.json()["detail"] == "ki_vom_betreiber_gesperrt"
+
+
+def test_nur_der_betreiber_legt_den_riegel_um(klient, db, person):
+    """⚠️ **Die Entscheidung gehört dem Verantwortlichen.** Könnte jeder
+    Benutzer sie treffen, wäre der Riegel keiner."""
+    assert klient.put("/api/ki/erlaubt", json={"erlaubt": True}).status_code == 200
+    person.ist_betreiber = False
+    db.commit()
+    antwort = klient.put("/api/ki/erlaubt", json={"erlaubt": True})
+    assert antwort.status_code == 403
+    # Und lesen darf ihn jeder — sein eigener Reiter hängt davon ab.
+    assert klient.get("/api/ki/erlaubt").status_code == 200
+
+
+def test_der_stand_sagt_der_oberflaeche_ob_es_erlaubt_ist(klient, db, person):
+    """Sonst richtete jemand einen Zugang ein, der beim ersten Handgriff
+    abgewiesen wird — die schlechtere Auskunft."""
+    assert klient.get("/api/ki").json()["erlaubt"] is False
+    dienst.erlauben(db, True)
+    assert klient.get("/api/ki").json()["erlaubt"] is True
+
+
+def test_der_riegel_wird_VOR_dem_eigenen_schalter_geprueft(db, person):
+    """⚠️ **Die Reihenfolge ist die Auskunft.** Steht der Riegel zu und der
+    eigene Schalter auf aus, muss die Meldung den Riegel nennen — sonst
+    schickt sie einen los, einen Zugang einzurichten, den man gar nicht
+    benutzen darf.
+
+    ⚠️ **Der Fall, der die beiden Reihenfolgen trennt.** Mit eingeschaltetem
+    Benutzerschalter melden beide Fassungen dasselbe, und die Mutationsprobe
+    lief durch."""
+    dienst.erlauben(db, False)
+    assert person.ki_aktiv is False
+
+    server = TextDoppelgaenger()
+    with pytest.raises(dienst.KiFehler) as f:
+        dienst.text_bearbeiten(
+            person, "<p>x y z</p>", auftrag="rechtschreibung",
+            transport=server.transport(), db=db,
+        )
+    assert str(f.value) == "ki_vom_betreiber_gesperrt"
+    assert server.anfragen == []

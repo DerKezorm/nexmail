@@ -16,7 +16,7 @@ from datetime import datetime
 from fastapi import APIRouter, Request, status
 from pydantic import BaseModel, Field
 
-from ..deps import AngemeldeterBenutzer, DbSession
+from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
 from ..meldung import MeldungHttp
 from ..services import anmeldebremse
 from ..services import kidienst
@@ -30,6 +30,11 @@ class Stand(BaseModel):
     aktiv: bool
     url: str
     modell: str
+    #: ⚠️ **Ob der Betreiber es ueberhaupt erlaubt.** Steht das auf false,
+    #: zeigt der Reiter den Grund statt eines Formulars — ein Zugang, den
+    #: man einrichten kann und der beim ersten Handgriff abgewiesen wird,
+    #: waere die schlechtere Auskunft.
+    erlaubt: bool
     #: ⚠️ **Nicht der Schlüssel selbst**, nur ob einer da ist. Er geht nie
     #: zurück, auch nicht an seinen Eigentümer — dieselbe Regel wie beim
     #: Postfach-Passwort.
@@ -67,14 +72,15 @@ class Modell(BaseModel):
 
 
 @router.get("", response_model=Stand)
-def stand(person: AngemeldeterBenutzer) -> Stand:
-    return Stand(**kidienst.einstellung_lesen(person))
+def stand(person: AngemeldeterBenutzer, db: DbSession) -> Stand:
+    return Stand(erlaubt=kidienst.erlaubt(db), **kidienst.einstellung_lesen(person))
 
 
 @router.put("", response_model=Stand)
 def aendern(eingabe: Aenderung, person: AngemeldeterBenutzer, db: DbSession) -> Stand:
     try:
         return Stand(
+            erlaubt=kidienst.erlaubt(db),
             **kidienst.einstellung_schreiben(
                 db,
                 person,
@@ -90,7 +96,7 @@ def aendern(eingabe: Aenderung, person: AngemeldeterBenutzer, db: DbSession) -> 
 
 @router.post("/modelle", response_model=list[Modell])
 def modelle(
-    eingabe: Abfrage, person: AngemeldeterBenutzer, request: Request
+    eingabe: Abfrage, person: AngemeldeterBenutzer, request: Request, db: DbSession
 ) -> list[Modell]:
     """Die Modellliste holen — und damit den Zugang prüfen.
 
@@ -104,6 +110,10 @@ def modelle(
     begrenzt werden soll — er ist ja der, der hinausgeht. Der erste Anlauf
     setzte den Zähler nach jedem Erfolg zurück, und die Bremse griff nie.
     """
+    if not kidienst.erlaubt(db):
+        raise MeldungHttp.aus(
+            kidienst.KiFehler("ki_vom_betreiber_gesperrt"), status.HTTP_403_FORBIDDEN
+        )
     wache = anmeldebremse.torwaechter(request, "ki-modelle", person.benutzername)
     wache.fehlgeschlagen()
 
@@ -208,3 +218,25 @@ def vorgaenge_leeren(person: AngemeldeterBenutzer, db: DbSession) -> None:
     erst abgleichen".
     """
     kidienst.vorgaenge_leeren(db, person)
+
+
+# --- Der Riegel des Betreibers -------------------------------------------- #
+
+
+class Riegel(BaseModel):
+    erlaubt: bool
+
+
+@router.get("/erlaubt", response_model=Riegel)
+def riegel_lesen(person: AngemeldeterBenutzer, db: DbSession) -> Riegel:
+    """Steht der Riegel offen? Darf jeder Angemeldete wissen — sein eigener
+    Reiter haengt davon ab."""
+    return Riegel(erlaubt=kidienst.erlaubt(db))
+
+
+@router.put("/erlaubt", response_model=Riegel)
+def riegel_setzen(eingabe: Riegel, person: Betreiber, db: DbSession) -> Riegel:
+    """⚠️ **Nur der Betreiber.** Er ist der Verantwortliche fuer die
+    Installation; die Entscheidung, ob Mailtext das Haus verlassen darf, ist
+    seine und nicht die eines einzelnen Benutzers."""
+    return Riegel(erlaubt=kidienst.erlauben(db, eingabe.erlaubt))

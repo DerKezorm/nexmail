@@ -33,6 +33,12 @@ import httpx
 from sqlalchemy.orm import Session
 
 from .. import crypto
+# ⚠️ **Umbenannt, und das ist Pflicht.** Dieses Modul hat schon
+# ``einstellung_lesen``/``einstellung_schreiben`` fuer die Einstellung des
+# **Benutzers**. Ohne Alias verdeckt der Import sie stumm, und der Fehler
+# faellt erst im Test auf — genau so passiert am 04.09.2026.
+from ..db import einstellung_lesen as _anlage_lesen
+from ..db import einstellung_schreiben as _anlage_schreiben
 from . import bereinigen
 from ..meldung import Meldung
 from ..models import Benutzer, KiVorgang, utcnow
@@ -254,6 +260,46 @@ MAX_ZEICHEN = 40_000
 #: Knopf ist keine Zusicherung; dieselbe Regel wie beim Schalter.
 MIN_WOERTER = 3
 
+#: Der Schluessel des Betreiber-Riegels in der ``einstellung``-Tabelle.
+SCHALTER = "ki_erlaubt"
+
+#: ⚠️ **Ab Werk AUS, und das ist die schwerere der beiden Entscheidungen.**
+#:
+#: Ohne Riegel entscheidet jeder Benutzer allein, ob Text aus Mails an einen
+#: fremden Dienst geht — der Betreiber kann es weder sehen noch verbieten.
+#: Fuer einen Haushalt ist das richtig; fuer jeden, der nexmail fuer eine
+#: Organisation betreibt, ist es das Gegenteil. Und **verantwortlich ist der
+#: Betreiber**, nicht der einzelne Benutzer.
+#:
+#: Der Preis steht dabei: Wer von 0.9.0 aktualisiert und den Zugang schon
+#: eingerichtet hat, findet das Umformulieren abgeschaltet vor, bis er den
+#: Haken setzt. Ein Klick gegen einen unbemerkten Weg nach draussen — der
+#: Tausch ist eindeutig, und die Release-Notiz sagt es.
+#:
+#: ⚠️ Am 04.09.2026 gebaut, nachdem beim Nachlesen der Datenschutzerklaerung
+#: auffiel, dass sie den Betreiber anspricht und ihm eine Kontrolle
+#: zuschreibt, die es gar nicht gab.
+SCHALTER_VORGABE = False
+
+
+def erlaubt(db: Session) -> bool:
+    """Darf in dieser Installation ueberhaupt ein KI-Dienst benutzt werden?"""
+    wert = _anlage_lesen(db, SCHALTER, "1" if SCHALTER_VORGABE else "0")
+    return wert == "1"
+
+
+def erlauben(db: Session, ja: bool) -> bool:
+    """Den Riegel umlegen. Nur der Betreiber kommt an diese Adresse.
+
+    ⚠️ **Zugesperrt wird nicht geloescht.** Die Zugaenge der Benutzer bleiben
+    stehen: Wer den Riegel versehentlich zumacht und wieder aufmacht, soll
+    nicht alle Schluessel neu eintragen lassen. Verwendet werden sie
+    trotzdem nicht — geprueft wird bei jedem Aufruf, nicht beim Speichern.
+    """
+    _anlage_schreiben(db, SCHALTER, "1" if ja else "0")
+    logger.info("The operator %s AI services for this installation.", "allowed" if ja else "blocked")
+    return ja
+
 #: Wie viel zurückkommen darf. Großzügig, denn eine Übersetzung ins Deutsche
 #: wird länger als ihr englisches Original.
 MAX_TOKEN = 8_000
@@ -409,6 +455,11 @@ def text_bearbeiten(
     ungeprüft in den Editor zu lassen wäre die eine Stelle, an der nexmail
     seine eigene Regel bräche.
     """
+    # ⚠️ **Der Riegel des Betreibers zuerst.** Er steht ueber der Wahl des
+    # Benutzers: Verantwortlich fuer die Installation ist der Betreiber, und
+    # ein Riegel, den man nach dem eigenen Schalter prueft, waere keiner.
+    if db is not None and not erlaubt(db):
+        raise KiFehler("ki_vom_betreiber_gesperrt")
     if not person.ki_aktiv:
         raise KiFehler("ki_nicht_eingeschaltet")
     if not (person.ki_url and person.ki_modell):
