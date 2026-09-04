@@ -427,7 +427,7 @@ def _falten(zeile: str) -> list[str]:
     return raus
 
 
-def bauen(termin, jetzt: datetime, methode: str = "") -> str:
+def bauen(termin, jetzt: datetime, methode: str = "", status: str = "") -> str:
     """Eine vollständige ``.ics`` mit genau einem ``VEVENT``.
 
     Für Termine, die in nexmail entstanden sind — dort gibt es kein Original,
@@ -438,12 +438,18 @@ def bauen(termin, jetzt: datetime, methode: str = "") -> str:
     beliebigen Anhang und zeigen keine Zusagen-Knoepfe. Fuer den Weg zum
     CalDAV-Server bleibt sie leer: Dort ist die Datei der Termin selbst, keine
     Nachricht ueber ihn, und manche Server weisen eine ``METHOD`` sogar ab.
+
+    ⚠️ **``status`` fuer die Absage.** ``METHOD:CANCEL`` allein genuegt manchen
+    Kalendern nicht; sie streichen den Termin erst bei ``STATUS:CANCELLED``.
+    Beides zu schicken kostet nichts und deckt beide Sorten ab.
     """
     zeilen = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//nexapps//nexmail//DE"]
     if methode:
         zeilen.append(f"METHOD:{methode}")
     zeilen.append("BEGIN:VEVENT")
     zeilen += _zeilen_fuer(termin, jetzt)
+    if status:
+        zeilen.append(f"STATUS:{status}")
     # ⚠️ Ein hier gebauter Termin ist unserer — seine Teilnehmer duerfen mit.
     zeilen += _personen_zeilen(termin)
     if getattr(termin, "erinnerung", -1) >= 0:

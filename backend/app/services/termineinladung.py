@@ -137,3 +137,60 @@ def versenden(db: Session, benutzer: Benutzer, termin: Termin) -> int:
     db.commit()
     logger.info("An invitation was queued for %s recipient(s).", len(leute))
     return len(leute)
+
+
+def absagen(db: Session, benutzer: Benutzer, termin: Termin) -> int:
+    """Den Eingeladenen sagen, dass der Termin ausfaellt. Gibt die Empfaenger.
+
+    ⚠️ **Ohne das steht der Termin bei allen anderen weiter im Kalender.** Ein
+    geloeschter Termin ist nur bei uns geloescht; wer eingeladen wurde, sieht
+    ihn bis zum Tag selbst und kommt.
+
+    ⚠️ **Und trotzdem nicht von selbst.** Auch die Absage ist Post an Fremde.
+    Die Oberflaeche fragt vor dem Loeschen, ob sie hinausgehen soll — sonst
+    verschickt ein versehentliches Loeschen Mail, die niemand zurueckholen
+    kann.
+    """
+    leute = _leute(termin)
+    if not leute:
+        return 0
+    # ⚠️ **Wer nie eingeladen wurde, bekommt keine Absage.** Sonst erfaehrt
+    # jemand von einem Termin erst dadurch, dass er ausfaellt.
+    if termin.eingeladen_am is None:
+        return 0
+
+    absender = _absender(termin)
+    konto = postfach_fuer(db, benutzer, absender.get("adresse", ""))
+
+    # ⚠️ **Die Absage zaehlt hoch.** Sie muss ueber der letzten verschickten
+    # Fassung liegen, sonst haelt die Gegenstelle sie fuer veraltet und laesst
+    # den Termin stehen.
+    termin.sequenz = (termin.sequenz or 0) + 1
+
+    jetzt = datetime.now(timezone.utc)
+    ics = vevent.bauen(termin, jetzt, methode="CANCEL", status="CANCELLED")
+
+    sendedienst.einreihen(
+        db,
+        konto,
+        verfassen.Entwurf(
+            von_name=absender.get("name") or kontendienst.absendername(konto),
+            von_adresse=absender.get("adresse", ""),
+            an=[p["adresse"] for p in leute],
+            betreff=f"Cancelled: {termin.titel}".strip(),
+            text=_absagetext(termin),
+            kalender=ics,
+            kalender_methode="CANCEL",
+        ),
+    )
+    db.commit()
+    logger.info("A cancellation was queued for %s recipient(s).", len(leute))
+    return len(leute)
+
+
+def _absagetext(termin: Termin) -> str:
+    """Der lesbare Teil der Absage — englisch, aus demselben Grund wie oben."""
+    return (
+        f"{termin.titel} has been cancelled.\n\n"
+        f"It was scheduled for {termin.beginn:%Y-%m-%d %H:%M} ({termin.zeitzone}).\n"
+    )

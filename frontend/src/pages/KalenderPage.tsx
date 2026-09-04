@@ -425,11 +425,23 @@ export function KalenderPage() {
    * erst an den Rückfragen. Der Termin ist zu diesem Zeitpunkt schon
    * gespeichert; „Nur speichern" verliert also nichts.
    */
-  async function einladenFragen(terminId: number, anzahl: number, von: string) {
+  /** ⚠️ **Beim zweiten Mal steht etwas anderes da.** Eine „Einladung
+   *  verschicken?" bei einem Termin, zu dem alle schon eingeladen sind, liest
+   *  sich wie ein Versehen — verschickt wird eine Aktualisierung, und die
+   *  Gegenstelle zeigt sie auch so an. */
+  async function einladenFragen(
+    terminId: number,
+    anzahl: number,
+    von: string,
+    schonEingeladen = false,
+  ) {
     const ja = await fragen({
-      titel: t('kalender.einladen_frage'),
-      text: t('kalender.einladen_text', { count: anzahl, von }),
-      knopf: t('kalender.einladen_knopf'),
+      titel: t(schonEingeladen ? 'kalender.neueinladen_frage' : 'kalender.einladen_frage'),
+      text: t(schonEingeladen ? 'kalender.neueinladen_text' : 'kalender.einladen_text', {
+        count: anzahl,
+        von,
+      }),
+      knopf: t(schonEingeladen ? 'kalender.neueinladen_knopf' : 'kalender.einladen_knopf'),
     })
     if (!ja) return
     try {
@@ -437,6 +449,29 @@ export function KalenderPage() {
     } catch (f) {
       melden(f)
     }
+  }
+
+  /** Vor dem Löschen: soll den Eingeladenen abgesagt werden?
+   *
+   * Gibt `null` zurück, wenn gar nicht gelöscht werden soll — sonst kostete
+   * ein Zögern bei der Absage den Termin.
+   *
+   * ⚠️ **Der Haken ist hier vorbelegt, anders als sonst in `Nachfrage`.**
+   * Die Hausregel dort („anhaken, nicht abwählen") gilt für Dinge, die
+   * zusätzlich gelöscht werden — dort ist Vergessen harmlos. Hier ist es
+   * umgekehrt: Ein gelöschter Termin ist nur bei uns gelöscht. Wer die Absage
+   * vergisst, lässt alle anderen zum Termin erscheinen.
+   */
+  async function absageFragen(anzahl: number): Promise<boolean | null> {
+    const antwort = await fragen({
+      titel: t('kalender.absage_frage'),
+      text: t('kalender.absage_text', { count: anzahl }),
+      knopf: t('aktion.loeschen'),
+      gefaehrlich: true,
+      haken: { beschriftung: t('kalender.absage_haken'), vorgabe: true },
+    })
+    if (!antwort || typeof antwort !== 'object') return null
+    return antwort.haken
   }
 
   function kalenderMenue(k: KalenderZeile): MenueEintrag[] {
@@ -747,6 +782,7 @@ export function KalenderPage() {
           herkunft={offen ? (nachId.get(offen.kalenderId)?.herkunft ?? '') : ''}
           postfaecher={postfaecher}
           aufEinladen={einladenFragen}
+          aufAbsage={absageFragen}
           aufFehler={melden}
           aufUmfang={mitUmfang}
           onClose={() => {
@@ -1329,6 +1365,7 @@ function Terminfenster({
   herkunft,
   postfaecher,
   aufEinladen,
+  aufAbsage,
   aufFehler,
   aufUmfang,
   onClose,
@@ -1340,7 +1377,13 @@ function Terminfenster({
   gesperrt: boolean
   herkunft: string
   postfaecher: Konto[]
-  aufEinladen: (terminId: number, anzahl: number, von: string) => Promise<void>
+  aufEinladen: (
+    terminId: number,
+    anzahl: number,
+    von: string,
+    schonEingeladen?: boolean,
+  ) => Promise<void>
+  aufAbsage: (anzahl: number) => Promise<boolean | null>
   aufFehler: (f: unknown) => void
   aufUmfang: (t: TerminZeile, was: 'aendern' | 'loeschen', tun: (u: Umfang) => void) => void
   onClose: () => void
@@ -1467,7 +1510,8 @@ function Terminfenster({
               umfang,
               vorkommen: termin.beginn,
             })
-            if (leute.length) await aufEinladen(termin.id, leute.length, absender)
+            if (leute.length)
+              await aufEinladen(termin.id, leute.length, absender, termin.eingeladen)
             onFertig()
           } catch (f) {
             aufFehler(f)
@@ -1486,7 +1530,16 @@ function Terminfenster({
     aufUmfang(termin, 'loeschen', (umfang) => {
       void (async () => {
         try {
-          await terminEntfernen(termin.id, umfang, termin.beginn)
+          /* ⚠️ **Nur wenn schon eingeladen wurde.** Ein Termin mit
+           * Teilnehmern, zu dem nie eine Einladung hinausging, hat keine
+           * Gegenstelle, die etwas erfahren müsste. */
+          let absagen = false
+          if (termin.eingeladen && termin.teilnehmer.length) {
+            const antwort = await aufAbsage(termin.teilnehmer.length)
+            if (antwort === null) return
+            absagen = antwort
+          }
+          await terminEntfernen(termin.id, umfang, termin.beginn, absagen)
           onFertig()
         } catch (f) {
           aufFehler(f)

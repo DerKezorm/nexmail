@@ -45,3 +45,4 @@ docker-compose.override.yml
 
 # Die Zugangsdaten der Oberflaechen-Tests. Nie mitliefern.
 frontend/tests/.zugang
+*.probe-original

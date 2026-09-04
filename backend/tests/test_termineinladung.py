@@ -184,3 +184,98 @@ def test_eine_mail_an_alle_statt_einer_je_person(db, welt):
     # wurde — der erste Anlauf lief genau daran vorbei.
     zeile = db.query(Ausgang).one()
     assert sorted(json.loads(zeile.an_json)) == ["anja@example.org", "jan@example.org"]
+
+
+# --- Die Absage -------------------------------------------------------- #
+
+
+def test_die_absage_traegt_methode_und_status(db, welt):
+    """⚠️ **Beides, nicht eines.** Manche Kalender streichen den Termin erst
+    bei ``STATUS:CANCELLED``, andere achten nur auf ``METHOD:CANCEL``."""
+    person, kalender, _ = welt
+    termin = _termin(db, person, kalender, eingeladen_am=datetime(2026, 9, 5, tzinfo=timezone.utc))
+
+    assert dienst.absagen(db, person, termin) == 1
+
+    zeile = db.query(Ausgang).one()
+    roh = dienst.sendedienst._datei(zeile.id).read_bytes().decode("utf-8", "replace")
+    assert "METHOD:CANCEL" in roh
+    assert "STATUS:CANCELLED" in roh
+    assert "method=cancel" in roh.lower().replace('"', "")
+
+
+def test_die_absage_zaehlt_hoch(db, welt):
+    """⚠️ Ohne hoehere Nummer haelt die Gegenstelle die Absage fuer veraltet
+    und laesst den Termin stehen."""
+    person, kalender, _ = welt
+    termin = _termin(
+        db, person, kalender, sequenz=3, eingeladen_am=datetime(2026, 9, 5, tzinfo=timezone.utc)
+    )
+
+    dienst.absagen(db, person, termin)
+
+    assert termin.sequenz == 4
+    zeile = db.query(Ausgang).one()
+    roh = dienst.sendedienst._datei(zeile.id).read_bytes().decode("utf-8", "replace")
+    assert "SEQUENCE:4" in roh
+
+
+def test_wer_nie_eingeladen_wurde_bekommt_keine_absage(db, welt):
+    """⚠️ Sonst erfaehrt jemand von einem Termin erst dadurch, dass er
+    ausfaellt."""
+    person, kalender, _ = welt
+    termin = _termin(db, person, kalender)  # eingeladen_am bleibt None
+
+    assert dienst.absagen(db, person, termin) == 0
+    assert db.query(Ausgang).count() == 0
+
+
+def test_ohne_teilnehmer_geht_keine_absage_hinaus(db, welt):
+    person, kalender, _ = welt
+    termin = _termin(
+        db,
+        person,
+        kalender,
+        teilnehmer="[]",
+        eingeladen_am=datetime(2026, 9, 5, tzinfo=timezone.utc),
+    )
+
+    assert dienst.absagen(db, person, termin) == 0
+    assert db.query(Ausgang).count() == 0
+
+
+def test_die_absage_nennt_den_termin_im_text(db, welt):
+    """⚠️ Wer den Kalenderteil nicht versteht, saehe sonst eine leere Mail und
+    wuesste nicht, was ausfaellt."""
+    person, kalender, _ = welt
+    termin = _termin(db, person, kalender, eingeladen_am=datetime(2026, 9, 5, tzinfo=timezone.utc))
+    dienst.absagen(db, person, termin)
+
+    zeile = db.query(Ausgang).one()
+    roh = dienst.sendedienst._datei(zeile.id).read_bytes()
+    from email import message_from_bytes
+    from email.policy import default as regelwerk
+
+    mail = message_from_bytes(roh, policy=regelwerk)
+    text = ""
+    for teil in mail.walk():
+        if teil.get_content_type() == "text/plain":
+            text = teil.get_content()
+            break
+    # ⚠️ Im Text, nicht irgendwo in der Mail — der Titel steht auch in der ics.
+    assert "Quartalsrunde" in text
+    assert "cancelled" in text.lower()
+
+
+def test_eine_fremde_absenderadresse_wird_auch_bei_der_absage_abgewiesen(db, welt):
+    person, kalender, _ = welt
+    termin = _termin(
+        db,
+        person,
+        kalender,
+        organisator=json.dumps({"name": "", "adresse": "fremd@example.net"}),
+        eingeladen_am=datetime(2026, 9, 5, tzinfo=timezone.utc),
+    )
+
+    with pytest.raises(dienst.EinladungFehler):
+        dienst.absagen(db, person, termin)

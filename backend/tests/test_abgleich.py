@@ -68,6 +68,7 @@ class FalscherServer:
         roh: bytes | None = None,
         kopfzeilen: dict[str, str] | None = None,
         schlagworte: list[str] | None = None,
+        struktur=None,
     ):
         self.ordner[pfad]["nachrichten"][uid] = {
             "betreff": betreff,
@@ -79,6 +80,9 @@ class FalscherServer:
             "kopfzeilen": kopfzeilen or {},
             # IMAP-Keywords an der Nachricht — z. B. von Thunderbird gesetzt.
             "schlagworte": list(schlagworte or []),
+            # Was BODYSTRUCTURE melden soll. Ohne Angabe: eine einfache
+            # Textmail. Wer einen Kalenderteil braucht, gibt ihn hier mit.
+            "struktur": struktur,
         }
 
     # --- die Muschelschalen von IMAPClient ---------------------------- #
@@ -121,7 +125,15 @@ class FalscherServer:
                     datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc),
                 )
                 zeile[b"RFC822.SIZE"] = 4096
-                zeile[b"BODYSTRUCTURE"] = ("text", "plain", (), None, None, "7bit", 100)
+                zeile[b"BODYSTRUCTURE"] = eintrag.get("struktur") or (
+                    "text",
+                    "plain",
+                    (),
+                    None,
+                    None,
+                    "7bit",
+                    100,
+                )
                 zeile[b"BODY[1]<0>"] = f"Vorschau zu {eintrag['betreff']}".encode()
             # ⚠️ **Der Doppelgänger antwortet nur auf ``BODY.PEEK[]``** —
             # genau wie iCloud. Auf ``RFC822`` gibt es nichts. Ein Server, der

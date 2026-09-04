@@ -118,6 +118,13 @@ Accept, tentative or decline goes back as a proper reply, and nexmail remembers
 what you answered. *Add to calendar* is a separate button on purpose: saying
 yes tells the organiser you are coming, it does not mean you want the entry.
 
+**Your own invitations.** Put people on one of your events and nexmail asks
+whether to send the invitation — it never goes out by itself, not when you save
+and not when you change something later. Their answers come back into the
+attendee list as they arrive, so you can see who is coming without leaving the
+app. Delete the event and it offers to tell them; without that the appointment
+would stay in their calendars and they would turn up.
+
 **Calendar.** Month, week and day, with your own calendars in nexmail or
 connected over CalDAV to iCloud, Nextcloud or anything else that speaks it.
 Google works too, through the same consent you gave for the mailbox. Recurring
@@ -179,9 +186,6 @@ the server a remote control for your home network.
 
 * **No PGP or S/MIME.** Key management is a project of its own, and half-built
   encryption is worse than none.
-* **No invitations of your own yet.** nexmail reads an invitation and answers
-  it, but it cannot send one. Attendees on your own events are shown, not
-  edited.
 * **No Microsoft calendar.** Microsoft speaks no CalDAV; events there need the
   Graph API, which is a client of its own. Mail through IMAP and SMTP works.
 * **No out-of-office reply while nexmail is down.** It answers only when the

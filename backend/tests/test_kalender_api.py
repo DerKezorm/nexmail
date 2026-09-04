@@ -386,3 +386,88 @@ def test_das_naechstliegende_steht_oben(klient, db, welt):
     _anlegen(klient, welt, "Probe spaet", tag=28)
     treffer = _dienstsuche(db, klient, "probe", datetime(2026, 9, 26, tzinfo=timezone.utc))
     assert [t.termin.titel for t in treffer] == ["Probe spaet", "Probe frueh"]
+
+
+# --- Absage beim Loeschen -------------------------------------------------- #
+#
+# ⚠️ **Hier entscheidet sich, ob nexmail ungefragt Post verschickt.** Die
+# Dienstschicht daneben prueft nur, dass die Absage richtig gebaut ist; ob sie
+# ueberhaupt hinausgeht, entscheidet allein diese Adresse.
+
+
+def _termin_mit_einladung(klient, db, welt):
+    from app.models import Termin
+
+    neu = klient.post(
+        "/api/kalender/termine",
+        json={
+            "kalender_id": welt["id"],
+            "titel": "Quartalsrunde",
+            "beginn": _wann(20),
+            "teilnehmer": [{"adresse": "anja@example.org"}],
+        },
+    )
+    assert neu.status_code == 201, neu.text
+    # ⚠️ Der Absender wird beim Anlegen gegen die Postfaecher gehalten, und
+    # hier gibt es keine. Fuer diese Adresse zaehlt nur, OB abgesagt wird —
+    # der Dienst dahinter ist untergeschoben.
+    termin = db.get(Termin, neu.json()["id"])
+    termin.eingeladen_am = datetime(2026, 9, 5, tzinfo=timezone.utc)
+    db.commit()
+    return neu.json()
+
+
+def test_ohne_den_wunsch_geht_keine_absage_hinaus(klient, db, welt, monkeypatch):
+    from app.services import termineinladung
+
+    neu = _termin_mit_einladung(klient, db, welt)
+    gerufen = []
+    monkeypatch.setattr(
+        termineinladung, "absagen", lambda *a, **k: gerufen.append(1) or 0
+    )
+
+    assert klient.delete(f"/api/kalender/termine/{neu['id']}").status_code == 204
+    assert gerufen == []
+
+
+def test_mit_dem_wunsch_geht_sie_hinaus_und_zwar_vorher(klient, db, welt, monkeypatch):
+    """⚠️ **Erst absagen, dann loeschen.** Danach ist der Termin fort, samt
+    Teilnehmerliste und Nummer — die Absage waere nicht mehr zu bauen."""
+    from app.models import Termin
+    from app.services import termineinladung
+
+    neu = _termin_mit_einladung(klient, db, welt)
+    stand = []
+
+    def merken(db_, person, termin):
+        stand.append(termin.titel)
+        return 1
+
+    monkeypatch.setattr(termineinladung, "absagen", merken)
+
+    antwort = klient.delete(f"/api/kalender/termine/{neu['id']}?absagen=true")
+    assert antwort.status_code == 204, antwort.text
+    assert stand == ["Quartalsrunde"]
+    assert db.get(Termin, neu["id"]) is None
+
+
+def test_ein_fremder_termin_wird_auch_hier_nicht_abgesagt(klient, db, welt, monkeypatch):
+    from app.models import Benutzer as Person
+    from app.models import Termin
+    from app.services import termineinladung
+
+    neu = _termin_mit_einladung(klient, db, welt)
+    # Der Termin gehoert ab jetzt jemand anderem.
+    fremd = Person(benutzername="fremd", passwort_hash="x")
+    db.add(fremd)
+    db.commit()
+    db.get(Termin, neu["id"]).benutzer_id = fremd.id
+    db.commit()
+
+    gerufen = []
+    monkeypatch.setattr(
+        termineinladung, "absagen", lambda *a, **k: gerufen.append(1) or 0
+    )
+
+    klient.delete(f"/api/kalender/termine/{neu['id']}?absagen=true")
+    assert gerufen == []

@@ -175,6 +175,10 @@ class TerminZeile(BaseModel):
     teilnehmer: list[Beteiligter] = Field(default_factory=list)
     rrule: str
     aus_einladung: bool
+    #: ⚠️ **Wahr, sobald eine Einladung hinausgegangen ist.** Nur dann fragt
+    #: die Oberflaeche beim Loeschen nach einer Absage — wer nie eingeladen
+    #: wurde, soll von dem Termin nicht durch seinen Ausfall erfahren.
+    eingeladen: bool = False
     #: Minuten vor dem Beginn, **-1 heisst keine**.
     erinnerung: int = -1
 
@@ -300,6 +304,7 @@ def _sicht(s: dienst.Sicht) -> TerminZeile:
         teilnehmer=[b for b in map(_beteiligter, _liste(t.teilnehmer)) if b],
         rrule=t.rrule,
         aus_einladung=t.aus_einladung, erinnerung=t.erinnerung,
+        eingeladen=t.eingeladen_am is not None,
     )
 
 
@@ -434,7 +439,25 @@ def termin_entfernen(
     db: DbSession,
     umfang: str = "alle",
     vorkommen: datetime | None = None,
+    absagen: bool = False,
 ) -> Response:
+    """Einen Termin loeschen — auf Wunsch mit Absage an die Eingeladenen.
+
+    ⚠️ **``absagen`` ist ein Wunsch, keine Voreinstellung.** Ein geloeschter
+    Termin steht bei allen anderen weiter im Kalender, aber eine Absage ist
+    Post an Fremde; sie geht nur hinaus, wenn die Oberflaeche danach gefragt
+    hat.
+
+    ⚠️ **Erst absagen, dann loeschen.** Danach ist der Termin fort, samt
+    Teilnehmerliste und Nummer — die Absage waere nicht mehr zu bauen.
+    """
+    if absagen:
+        termin = db.get(Termin, termin_id)
+        if termin is not None and termin.benutzer_id == person.id:
+            try:
+                einladungsdienst.absagen(db, person, termin)
+            except einladungsdienst.EinladungFehler as f:
+                raise MeldungHttp.aus(f, status.HTTP_400_BAD_REQUEST) from f
     try:
         dienst.entfernen(db, person, termin_id, vorkommen=vorkommen, umfang=umfang)
     except dienst.TerminFehler as f:

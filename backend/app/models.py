@@ -544,6 +544,12 @@ class Nachricht(Base):
     #: erst per STORE beim Anbieter, dann hier (siehe services/schlagworte.py).
     schlagworte: Mapped[str] = mapped_column(Text, default="[]")
     hat_anhang: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Traegt die Mail einen ``text/calendar``-Teil? Aus ``BODYSTRUCTURE``
+    #: abgelesen, ohne den Koerper zu holen.
+    #:
+    #: ⚠️ **Ohne diese Spalte muesste der Abgleich jede Mail herunterladen**,
+    #: nur um nachzusehen, ob eine Antwort auf eine Einladung darin steckt.
+    hat_kalender: Mapped[bool] = mapped_column(Boolean, default=False)
     #: ``hoch`` | ``normal`` | ``niedrig`` — beim Abgleich aus den Kopfzeilen
     #: ``Importance`` und ``X-Priority`` gedeutet, weil Absender mal die eine,
     #: mal die andere schreiben. Gespeichert wird das Ergebnis, nicht die

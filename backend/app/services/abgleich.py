@@ -440,6 +440,7 @@ def _aus_fetch(db: Session, konto: Konto, ordner: Ordner, uid: int, felder: dict
         # das ist der Interop-Gewinn (siehe services/schlagworte.py).
         schlagworte=json.dumps(schlagwortdienst.atome_aus_flags(flags), ensure_ascii=False),
         hat_anhang=_hat_anhang(struktur),
+        hat_kalender=_hat_kalender(struktur),
         wichtigkeit=_wichtigkeit_deuten(
             felder.get(b"BODY[HEADER.FIELDS (IMPORTANCE X-PRIORITY)]")
         ),
@@ -453,6 +454,17 @@ def _hat_anhang(struktur) -> bool:
         return False
     text = str(struktur).lower()
     return "attachment" in text or "'name'" in text or "filename" in text
+
+
+def _hat_kalender(struktur) -> bool:
+    """Steckt ein ``text/calendar`` darin? Aus der Struktur, ohne sie zu holen.
+
+    ⚠️ **Absichtlich grob.** Ein falsches Ja kostet einen Abruf, ein falsches
+    Nein eine verlorene Zusage. Der Tausch ist eindeutig.
+    """
+    if struktur is None:
+        return False
+    return "calendar" in str(struktur).lower()
 
 
 def _flags_uebernehmen(
@@ -771,8 +783,39 @@ def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -
     if neue:
         _regeln_laufen_lassen(db, konto, neue)
 
+    # ⚠️ **Hier, nicht im Ordner-Abgleich.** Das Nachschlagen holt die Roh-Mail
+    # ueber ``roh_holen``, und das nimmt sich das Schloss des Kontos — waehrend
+    # der Schleife oben ist es noch belegt.
+    _antworten_einsammeln(db, konto, neue)
+
     _melden(db, konto, neue, ergebnis)
     return ergebnis
+
+
+def _antworten_einsammeln(db: Session, konto: Konto, kennungen: list[int]) -> None:
+    """Antworten auf eigene Einladungen an den Terminen nachtragen.
+
+    ⚠️ **Nur Mails mit Kalenderteil.** Ohne die Vorauswahl aus
+    ``BODYSTRUCTURE`` muesste jede eingegangene Mail heruntergeladen werden,
+    nur um nachzusehen.
+
+    ⚠️ **Ein Fehlschlag darf den Abgleich nicht kosten.** Er laeuft am Ende
+    einer Runde; eine kaputte Einladung darf nicht die ganze Runde umwerfen —
+    dieselbe Lehre wie bei den Regeln daneben.
+    """
+    from . import terminantwort as antwortdienst
+
+    for kennung in kennungen:
+        nachricht = db.get(Nachricht, kennung)
+        if nachricht is None or not nachricht.hat_kalender:
+            continue
+        try:
+            roh = roh_holen(db, konto, nachricht)
+            if roh:
+                antwortdienst.verarbeiten(db, konto, nachricht, roh)
+        except Exception:  # noqa: BLE001
+            db.rollback()
+            logger.exception("A calendar reply could not be processed.")
 
 
 def _melden(

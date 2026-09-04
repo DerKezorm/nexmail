@@ -693,6 +693,9 @@ export interface TerminZeile {
   teilnehmer: Beteiligter[]
   rrule: string
   ausEinladung: boolean
+  /** Ob schon eine Einladung hinausgegangen ist — davon haengt ab, ob beim
+   *  Loeschen nach einer Absage gefragt wird. */
+  eingeladen: boolean
 }
 
 /** ``dieser`` gilt nur für dieses Vorkommen, ``folgende`` ab hier, ``alle``. */
@@ -735,6 +738,7 @@ interface ApiTermin {
   teilnehmer: ApiBeteiligter[]
   rrule: string
   aus_einladung: boolean
+  eingeladen: boolean
   erinnerung: number
 }
 
@@ -780,6 +784,7 @@ function terminZeile(t: ApiTermin): TerminZeile {
     teilnehmer: t.teilnehmer ?? [],
     rrule: t.rrule,
     ausEinladung: t.aus_einladung,
+    eingeladen: t.eingeladen ?? false,
     erinnerung: t.erinnerung ?? -1,
   }
 }
@@ -965,9 +970,13 @@ export async function terminEntfernen(
   id: number,
   umfang: Umfang = 'alle',
   vorkommen?: string,
+  absagen = false,
 ): Promise<void> {
   const frage = new URLSearchParams({ umfang })
   if (vorkommen) frage.set('vorkommen', vorkommen)
+  // ⚠️ Nur mitschicken, wenn wirklich abgesagt werden soll. Der Server nimmt
+  // das als Erlaubnis, Post an Fremde zu verschicken.
+  if (absagen) frage.set('absagen', 'true')
   await api.loeschen(`/api/kalender/termine/${id}?${frage}`)
 }
 
