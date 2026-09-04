@@ -30,7 +30,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..models import Benutzer, Kalender, Termin, utcnow
@@ -234,6 +234,123 @@ def fenster(
 
     raus.sort(key=lambda s: (s.beginn, s.termin.id))
     return raus
+
+
+# --- Suchen --------------------------------------------------------------- #
+
+
+#: ⚠️ **Gedeckelt, wie jede Liste in nexmail.** Ohne Deckel liefert „a" bei drei
+#: Jahren Bestand alles, und die Oberfläche zeichnet minutenlang.
+SUCHE_HOECHSTENS = 50
+
+#: Wie weit nach vorn nach dem nächsten Vorkommen einer Reihe gesucht wird.
+#: ⚠️ Ohne Grenze rechnete eine tägliche Reihe ohne Ende bis ans Ende der Zeit.
+SUCHE_VORAUS = timedelta(days=730)
+
+
+@dataclass
+class Treffer:
+    """Ein gefundener Termin samt dem Vorkommen, das gezeigt wird."""
+
+    termin: Termin
+    beginn: datetime
+    ende: datetime
+    aus_reihe: bool
+
+
+def _gezeigtes_vorkommen(zeile: Termin, jetzt: datetime) -> tuple[datetime, datetime]:
+    """Welches Vorkommen einer Reihe im Treffer steht.
+
+    ⚠️ **Das nächste, nicht das erste.** „Team-Runde" gibt es zweihundertmal;
+    wer sie sucht, meint fast immer die nächste. Das erste Vorkommen liegt bei
+    einer alten Reihe Jahre zurück und beantwortet keine Frage.
+
+    ⚠️ **Und bei einer abgelaufenen Reihe das letzte.** Sonst stünde dort das
+    Startdatum von vor drei Jahren, und der Termin sähe aus, als fände er noch
+    statt.
+    """
+    if not zeile.rrule:
+        return zeile.beginn, zeile.ende
+
+    voraus = list(
+        wiederholung.ausrechnen(
+            zeile.beginn, zeile.ende, zeile.rrule, zeile.exdate, zeile.zeitzone,
+            jetzt, jetzt + SUCHE_VORAUS,
+        )
+    )
+    if voraus:
+        return voraus[0].beginn, voraus[0].ende
+
+    zurueck = list(
+        wiederholung.ausrechnen(
+            zeile.beginn, zeile.ende, zeile.rrule, zeile.exdate, zeile.zeitzone,
+            zeile.beginn, jetzt,
+        )
+    )
+    if zurueck:
+        return zurueck[-1].beginn, zurueck[-1].ende
+    return zeile.beginn, zeile.ende
+
+
+def suchen(
+    db: Session,
+    benutzer: Benutzer,
+    wort: str,
+    kalender_ids: list[str] | None = None,
+    jetzt: datetime | None = None,
+) -> tuple[list[Treffer], bool]:
+    """Termine nach Titel, Ort und Beschreibung suchen.
+
+    Gibt die Treffer und zurück, ob abgeschnitten wurde.
+
+    ⚠️ **Eine Reihe steht EINMAL im Ergebnis.** Sie steht auch einmal in der
+    Datenbank; sie aufzurechnen hiesse, eine wöchentliche Besprechung als
+    zweihundert Treffer zu zeigen und alles andere darunter zu begraben.
+
+    ⚠️ **Gesucht wird im Server, nicht im Browser.** Dieselbe Regel wie bei der
+    Nachrichtenliste: Wer alles holt und dann aussiebt, findet nur, was
+    zufällig schon geladen war.
+
+    ⚠️ **Kein Volltextindex.** Anders als bei der Post: Termine sind kurz und
+    es sind Größenordnungen weniger. Ein ``LIKE`` über die Spalten liest die
+    Tabelle, und der Deckel begrenzt, was daraus wird. Wer je hunderttausend
+    Termine hat, hat den Punkt erreicht, an dem sich der Index lohnt.
+    """
+    gesucht = wort.strip()
+    if not gesucht:
+        return [], False
+    jetzt = jetzt or datetime.now(timezone.utc)
+
+    muster = f"%{gesucht.lower()}%"
+    abfrage = (
+        select(Termin)
+        .join(Kalender)
+        .where(Kalender.benutzer_id == benutzer.id)
+        .where(Termin.status != "CANCELLED")
+        .where(
+            or_(
+                func.lower(Termin.titel).like(muster),
+                func.lower(Termin.ort).like(muster),
+                func.lower(Termin.beschreibung).like(muster),
+            )
+        )
+    )
+    if kalender_ids is not None:
+        abfrage = abfrage.where(Termin.kalender_id.in_(kalender_ids))
+
+    treffer: list[Treffer] = []
+    for zeile in db.scalars(abfrage):
+        # ⚠️ Eine überschriebene Einzelausnahme steht für sich; ihre Reihe hat
+        # sie ausgeklinkt, und beide zu zeigen wäre derselbe Termin zweimal.
+        beginn, ende = _gezeigtes_vorkommen(zeile, jetzt)
+        treffer.append(Treffer(zeile, beginn, ende, aus_reihe=bool(zeile.rrule)))
+
+    # ⚠️ **Das Nächstliegende zuerst, nicht das Älteste.** Wer sucht, meint in
+    # aller Regel etwas, das noch kommt; eine Sortierung nach Datum begönne mit
+    # der ältesten Karteileiche.
+    treffer.sort(key=lambda tr: (abs((tr.beginn - jetzt).total_seconds()), tr.termin.id))
+    abgeschnitten = len(treffer) > SUCHE_HOECHSTENS
+    return treffer[:SUCHE_HOECHSTENS], abgeschnitten
 
 
 # --- Termine anlegen und ändern ------------------------------------------- #

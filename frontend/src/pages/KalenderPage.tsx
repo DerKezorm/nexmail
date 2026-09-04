@@ -27,6 +27,7 @@ import {
   Palette,
   PenLine,
   RefreshCw,
+  Search,
   Trash2,
   Unlink,
 } from 'lucide-react'
@@ -40,6 +41,7 @@ import {
   terminAnlegen,
   terminEntfernen,
   termineLaden,
+  termineSuchen,
 } from '../api/laden'
 import type { KalenderZeile, TerminZeile, Umfang } from '../api/laden'
 import { Button, Checkbox, Dialog, EmptyState, Input, Select } from '../ds'
@@ -230,6 +232,14 @@ export function KalenderPage() {
     null,
   )
   const [gleichtAb, setGleichtAb] = useState(false)
+  /* Die Suche. `wort` ist, was im Feld steht; `suche` ist das Ergebnis —
+     `null` heißt „es wird gerade nicht gesucht", die Ansicht bleibt das
+     Raster. */
+  const [wort, setWort] = useState('')
+  const [suche, setSuche] = useState<{
+    treffer: TerminZeile[]
+    abgeschnitten: boolean
+  } | null>(null)
   const [stand, setStand] = useState('')
   const [reihenfrage, setReihenfrage] = useState<{
     titel: string
@@ -277,6 +287,39 @@ export function KalenderPage() {
       melden(f)
     }
   }, [kalender, sichtbare, von, bis, melden])
+
+  /* Die Suche läuft beim Tippen, mit einer kurzen Pause dazwischen.
+   *
+   * ⚠️ **Ohne Pause eine Abfrage je Tastendruck.** „Besprechung" wären zwölf,
+   * von denen elf schon veraltet sind, bevor die Antwort da ist — und die
+   * Suche liest die Termintabelle.
+   *
+   * ⚠️ **Erst ab zwei Zeichen.** Ein einzelner Buchstabe trifft fast alles;
+   * das Ergebnis wäre der abgeschnittene Deckel und keine Antwort.
+   */
+  useEffect(() => {
+    const gesucht = wort.trim()
+    if (gesucht.length < 2) {
+      setSuche(null)
+      return
+    }
+    let gilt = true
+    const uhr = setTimeout(() => {
+      void termineSuchen(gesucht, sichtbare)
+        .then((e) => {
+          // ⚠️ Eine verspätete Antwort darf ein neueres Ergebnis nicht
+          // überschreiben — sonst steht nach dem Tippen der vorletzte Stand da.
+          if (gilt) setSuche(e)
+        })
+        .catch((f) => {
+          if (gilt) melden(f)
+        })
+    }, 250)
+    return () => {
+      gilt = false
+      clearTimeout(uhr)
+    }
+  }, [wort, sichtbare, melden])
 
   useEffect(() => {
     void stammLaden()
@@ -559,6 +602,24 @@ export function KalenderPage() {
             </IconKnopf>
           )}
 
+          {/* ⚠️ **Oben im Kopf, nicht in der Kalenderspalte.** Es sucht über
+              alle sichtbaren Kalender; in der Spalte stünde es neben den
+              einzelnen und sähe aus, als gehörte es zu einem davon. */}
+          <div className="relative w-44 shrink-0">
+            <Search
+              aria-hidden
+              className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-fg-4"
+            />
+            <input
+              type="search"
+              value={wort}
+              onChange={(e) => setWort(e.target.value)}
+              placeholder={t('kalender.suchen')}
+              aria-label={t('kalender.suchen')}
+              className="fokusrahmen h-[var(--control-h-sm)] w-full rounded-md border border-line bg-surface-3 pr-2 pl-7 text-[13px] text-fg-1 outline-none transition-[border-color,box-shadow] duration-[var(--dur-fast)] placeholder:text-fg-4 focus:border-accent focus:shadow-[var(--focus-ring)]"
+            />
+          </div>
+
           <div className="flex shrink-0 rounded-md border border-line p-0.5">
             {(['monat', 'woche', 'tag'] as Sicht[]).map((s) => (
               <button
@@ -579,7 +640,21 @@ export function KalenderPage() {
           </div>
         </div>
 
-        {kalender !== null && kalender.length === 0 ? (
+        {suche !== null ? (
+          <Trefferliste
+            treffer={suche.treffer}
+            abgeschnitten={suche.abgeschnitten}
+            kalender={nachId}
+            aufTermin={(termin) => {
+              /* ⚠️ **Hinspringen UND öffnen.** Nur zu öffnen ließe die Frage
+                 „wann ist das?" offen; nur hinzuspringen zwänge, den Termin im
+                 Raster noch einmal zu suchen. */
+              setAnker(new Date(termin.beginn))
+              setOffen(termin)
+              setWort('')
+            }}
+          />
+        ) : kalender !== null && kalender.length === 0 ? (
           <div className="flex flex-1 items-center justify-center p-6">
             <EmptyState
               title={t('kalender.leer')}
@@ -743,6 +818,86 @@ function Reihenfrage({
         ))}
       </div>
     </Dialog>
+  )
+}
+
+/* --- Die Trefferliste ---------------------------------------------------- */
+
+/** Was die Suche gefunden hat.
+ *
+ * ⚠️ **Eine Liste, kein Raster.** Treffer liegen über Jahre verstreut; in ein
+ * Raster gezeichnet sähe man immer nur den einen Monat, in dem man gerade
+ * steht — also fast nie den gesuchten Termin.
+ */
+function Trefferliste({
+  treffer,
+  abgeschnitten,
+  kalender,
+  aufTermin,
+}: {
+  treffer: TerminZeile[]
+  abgeschnitten: boolean
+  kalender: Map<string, KalenderZeile>
+  aufTermin: (t: TerminZeile) => void
+}) {
+  const { t, i18n } = useTranslation()
+
+  if (treffer.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-6">
+        <EmptyState title={t('kalender.suche_leer')} description={t('kalender.suche_leer_text')} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="px-4 py-2 text-[12px] text-fg-4">
+        {t('kalender.suche_treffer', { count: treffer.length })}
+      </div>
+      {treffer.map((e) => (
+        <button
+          key={`${e.id}-${e.beginn}`}
+          type="button"
+          onClick={() => aufTermin(e)}
+          className="flex items-start gap-2.5 border-b border-line-subtle px-4 py-2.5 text-left hover:bg-surface-3"
+        >
+          <span
+            aria-hidden
+            className={`mt-1.5 size-2 shrink-0 rounded-pill ${
+              PUNKT_KLASSE[kalender.get(e.kalenderId)?.farbe ?? 1]
+            }`}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] text-fg-1">{e.titel}</span>
+            <span className="block truncate text-[12px] text-fg-4">
+              {new Date(e.beginn).toLocaleDateString(i18n.language, {
+                weekday: 'short',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              })}
+              {!e.ganztaegig && ` · ${uhrzeit(e.beginn, i18n.language)}`}
+              {e.ort && ` · ${e.ort}`}
+            </span>
+          </span>
+          {/* ⚠️ **Bei einer Reihe steht das NÄCHSTE Vorkommen da**, und das
+              muss man sehen — sonst hält man das Datum für den einzigen
+              Termin dieser Sorte. */}
+          {e.ausReihe && (
+            <span className="mt-0.5 shrink-0 text-[11px] text-fg-4">
+              {t('kalender.suche_reihe')}
+            </span>
+          )}
+        </button>
+      ))}
+      {/* ⚠️ **Abgeschnitten wird gesagt.** Sonst ist „mehr gibt es nicht" von
+          „mehr wird nicht gezeigt" nicht zu unterscheiden — dieselbe Regel wie
+          am Fuß der Nachrichtenliste. */}
+      {abgeschnitten && (
+        <div className="px-4 py-2.5 text-[12px] text-fg-4">{t('kalender.suche_mehr')}</div>
+      )}
+    </div>
   )
 }
 

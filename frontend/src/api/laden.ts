@@ -874,6 +874,24 @@ export async function erinnerungSchlummern(id: number, minuten: number): Promise
   await api.senden(`/api/erinnerungen/${id}/schlummern`, { minuten })
 }
 
+/** Termine nach Titel, Ort und Beschreibung suchen.
+ *
+ * ⚠️ **Gesucht wird im Server.** Wer alles holt und dann aussiebt, findet nur,
+ * was zufaellig schon geladen war — dieselbe Regel wie bei der
+ * Nachrichtenliste.
+ */
+export async function termineSuchen(
+  wort: string,
+  kalenderIds: string[],
+): Promise<{ treffer: TerminZeile[]; abgeschnitten: boolean }> {
+  const frage = new URLSearchParams({ q: wort })
+  for (const id of kalenderIds) frage.append('kalender', id)
+  const roh = await api.holen<{ treffer: ApiTermin[]; abgeschnitten: boolean }>(
+    `/api/kalender/suche?${frage}`,
+  )
+  return { treffer: roh.treffer.map(terminZeile), abgeschnitten: roh.abgeschnitten }
+}
+
 export async function terminAnlegen(wunsch: Terminwunsch): Promise<TerminZeile> {
   return terminZeile(
     await api.senden<ApiTermin>('/api/kalender/termine', {

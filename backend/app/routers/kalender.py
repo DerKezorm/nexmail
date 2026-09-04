@@ -254,6 +254,38 @@ def fenster(
         raise _fehler(f) from f
 
 
+class Suchergebnis(BaseModel):
+    """Was die Suche zurueckgibt.
+
+    ⚠️ **Die Zahl gehoert dazu, nicht nur die Liste.** Sonst ist „nichts
+    gefunden" nicht von „abgeschnitten" zu unterscheiden — dieselbe Regel wie
+    beim Fuss der Nachrichtenliste.
+    """
+
+    treffer: list[TerminZeile]
+    abgeschnitten: bool
+
+
+@router.get("/suche", response_model=Suchergebnis)
+def suche(
+    person: AngemeldeterBenutzer,
+    db: DbSession,
+    q: str,
+    kalender: list[str] | None = Query(default=None),
+) -> Suchergebnis:
+    """Termine nach Titel, Ort und Beschreibung suchen.
+
+    ⚠️ **Vor ``/termine/{id}``**, sonst nimmt FastAPI die erste passende Route
+    und liest ``suche`` als kaputte Kennung — dasselbe Muster wie bei den
+    Schlagworten und bei ``/api/aufgaben/reihenfolge``.
+    """
+    gefunden, abgeschnitten = dienst.suchen(db, person, q, kalender)
+    return Suchergebnis(
+        treffer=[_sicht(dienst.Sicht(t.termin, t.beginn, t.ende, t.aus_reihe)) for t in gefunden],
+        abgeschnitten=abgeschnitten,
+    )
+
+
 @router.post("/termine", response_model=TerminZeile, status_code=status.HTTP_201_CREATED)
 def termin_anlegen(
     wunsch: TerminWunsch, person: AngemeldeterBenutzer, db: DbSession
