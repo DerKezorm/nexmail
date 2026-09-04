@@ -23,8 +23,10 @@ verwenden. Der Satz steht in der Oberfläche, nicht in einer README.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+from datetime import timedelta
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -33,7 +35,7 @@ from sqlalchemy.orm import Session
 from .. import crypto
 from . import bereinigen
 from ..meldung import Meldung
-from ..models import Benutzer
+from ..models import Benutzer, KiVorgang, utcnow
 
 logger = logging.getLogger("nexmail.ki")
 
@@ -242,6 +244,16 @@ def einstellung_schreiben(
 #: eine Mail.
 MAX_ZEICHEN = 40_000
 
+#: ⚠️ **Eine Untergrenze, und sie ist keine Bevormundung.** Unter drei Woertern
+#: gibt es nichts umzuformulieren: Der Handgriff kostet eine Anfrage, dauert
+#: Sekunden und liefert dieselben zwei Woerter zurueck. Am 04.09.2026 aus dem
+#: Betrieb gemeldet — das Fenster ging bei einem **leeren** Entwurf auf und
+#: zeigte drei Auswahlen samt totem Knopf.
+#:
+#: ⚠️ **Und sie steht im Server, nicht nur in der Oberflaeche.** Ein gesperrter
+#: Knopf ist keine Zusicherung; dieselbe Regel wie beim Schalter.
+MIN_WOERTER = 3
+
 #: Wie viel zurückkommen darf. Großzügig, denn eine Übersetzung ins Deutsche
 #: wird länger als ihr englisches Original.
 MAX_TOKEN = 8_000
@@ -344,6 +356,9 @@ TOENE = {
 #: Sprachangabe davor, drei dahinter — im Editor stünde dann wörtlich der Zaun
 #: über der Mail. Er wird abgetragen, bevor gesäubert wird; ``saeubern`` sieht
 #: darin nur Text und ließe ihn stehen.
+#: Auszeichnung heraus, nur zum Zaehlen — nicht zum Saeubern.
+_TAGS_RAUS = re.compile(r"<[^>]*>")
+
 _ZAUN = re.compile(r"\A`{3}[a-zA-Z]*\s*\n?(.*?)\n?`{3}\Z", re.DOTALL)
 
 
@@ -381,6 +396,7 @@ def text_bearbeiten(
     auftrag: str,
     ziel: str = "",
     transport: object | None = None,
+    db: Session | None = None,
 ) -> str:
     """Den Text durch den Dienst des Benutzers schicken.
 
@@ -403,6 +419,11 @@ def text_bearbeiten(
         raise KiFehler("ki_kein_text")
     if len(text) > MAX_ZEICHEN:
         raise KiFehler("ki_text_zu_lang", max=MAX_ZEICHEN)
+    # ⚠️ **Gezaehlt wird ohne Auszeichnung.** ``<p><b>Hallo</b></p>`` sind
+    # sonst drei „Woerter", und die Grenze griffe bei genau dem Fall nicht, fuer
+    # den es sie gibt.
+    if len(_TAGS_RAUS.sub(" ", text).split()) < MIN_WOERTER:
+        raise KiFehler("ki_text_zu_kurz", min=MIN_WOERTER)
 
     anweisung = _auftrag_bauen(auftrag, ziel)
     ziel_adresse = urljoin(adresse_pruefen(person.ki_url), "chat/completions")
@@ -417,6 +438,24 @@ def text_bearbeiten(
         ],
     }
 
+    # ⚠️ **Ab hier ist der Text unterwegs.** Alles, was jetzt noch schiefgeht,
+    # aendert daran nichts mehr — deshalb wird der Vorgang von hier an in
+    # JEDEM Ausgang gemerkt, auch im Fehlerfall. Eine Liste, die nur die
+    # gelungenen zeigt, beantwortet „was hat mein Rechner verschickt" falsch.
+    def merken(rein: int = 0, hinaus: int = 0, fehler: str = "") -> None:
+        if db is not None:
+            vorgang_merken(
+                db,
+                person,
+                modell=person.ki_modell,
+                auftrag=auftrag,
+                ziel=ziel,
+                rumpf=rumpf,
+                rein=rein,
+                raus=hinaus,
+                fehler=fehler,
+            )
+
     try:
         with httpx.Client(
             timeout=ZEITGRENZE_TEXT, follow_redirects=True, transport=transport
@@ -426,9 +465,14 @@ def text_bearbeiten(
             )
     except httpx.HTTPError as fehler:
         logger.info("The AI service was unreachable: %s", type(fehler).__name__)
+        merken(fehler="ki_nicht_erreichbar")
         raise KiFehler("ki_nicht_erreichbar") from fehler
 
-    _antwort_deuten(antwort)
+    try:
+        _antwort_deuten(antwort)
+    except KiFehler as fehler:
+        merken(fehler=str(fehler))
+        raise
 
     try:
         daten = antwort.json()
@@ -453,6 +497,10 @@ def text_bearbeiten(
     # Zeile ist die einzige Auskunft die Rechnung des Anbieters am Monatsende.
     # Was NICHT hineingeht, ist der Text selbst.
     verbrauch = daten.get("usage") if isinstance(daten, dict) else None
+    merken(
+        rein=(verbrauch or {}).get("prompt_tokens", 0) or 0,
+        hinaus=(verbrauch or {}).get("completion_tokens", 0) or 0,
+    )
     logger.info(
         # ⚠️ **Nicht „tokens" schreiben.** Die Protokollzensur schwärzt alles
         # nach diesem Wort — richtig für ein Zugriffstoken, und hier wird aus
@@ -463,3 +511,132 @@ def text_bearbeiten(
         (verbrauch or {}).get("completion_tokens", "?"),
     )
     return sauber
+
+
+# --- Was hinausging -------------------------------------------------------- #
+
+#: ⚠️ **Vierzehn Tage, und das ist eine Abwaegung.** Die Liste ist eine zweite
+#: Kopie von Mailtext, und sie ueberlebt die Mail: Wer eine Nachricht loescht,
+#: haette sie hier weiter stehen. Kurz genug, dass nichts Altes liegen bleibt,
+#: lang genug, um „was habe ich letzte Woche hinausgeschickt" zu beantworten.
+#: Entschieden mit dem Betreiber am 04.09.2026.
+VORGANG_TAGE = 14
+
+#: Wie viele Zeilen die Oberflaeche auf einmal bekommt. Ein Deckel, damit eine
+#: Woche voller Handgriffe die Seite nicht unbedienbar macht.
+MAX_VORGAENGE = 200
+
+
+def _vorgang_kontext(person: Benutzer) -> str:
+    """⚠️ **Ein eigener Kontext, nicht der des Schluessels.** Sonst liesse sich
+    ein Rumpf gegen einen Schluessel austauschen und umgekehrt."""
+    return f"benutzer:{person.id}:ki-vorgang"
+
+
+def vorgang_merken(
+    db: Session,
+    person: Benutzer,
+    *,
+    modell: str,
+    auftrag: str,
+    ziel: str,
+    rumpf: dict,
+    rein: int = 0,
+    raus: int = 0,
+    fehler: str = "",
+) -> None:
+    """Einen Handgriff festhalten — wortwoertlich, wie er hinausging.
+
+    ⚠️ **Das darf den Handgriff nicht kosten.** Wenn das Merken scheitert, ist
+    das aergerlich; wenn deshalb die Umformulierung scheitert, ist es ein
+    Fehler. Deshalb faengt diese Funktion alles und meldet es nur.
+    """
+    try:
+        db.add(
+            KiVorgang(
+                benutzer_id=person.id,
+                modell=modell,
+                auftrag=auftrag,
+                ziel=ziel,
+                rumpf=crypto.verschluesseln(
+                    json.dumps(rumpf, ensure_ascii=False), _vorgang_kontext(person)
+                ),
+                rein=rein,
+                raus=raus,
+                fehler=fehler,
+            )
+        )
+        db.commit()
+    except Exception as f:  # noqa: BLE001
+        db.rollback()
+        logger.warning("An AI request could not be recorded: %s", type(f).__name__)
+
+
+def vorgaenge_lesen(db: Session, person: Benutzer) -> list[dict]:
+    """Die eigene Liste, neueste zuerst.
+
+    ⚠️ **Ein unlesbarer Rumpf kostet nicht die Liste.** Er kann nur unlesbar
+    sein, wenn der Datenschluessel gewechselt hat oder die Zeile aus einer
+    halb eingespielten Sicherung stammt; dann steht die Zeile mit leerem Rumpf
+    da, statt dass die ganze Seite nicht laedt.
+    """
+    zeilen = (
+        db.query(KiVorgang)
+        .filter(KiVorgang.benutzer_id == person.id)
+        .order_by(KiVorgang.zeitpunkt.desc(), KiVorgang.id.desc())
+        .limit(MAX_VORGAENGE)
+        .all()
+    )
+    kontext = _vorgang_kontext(person)
+    raus = []
+    for zeile in zeilen:
+        try:
+            rumpf = json.loads(crypto.entschluesseln(zeile.rumpf, kontext))
+        except Exception:  # noqa: BLE001
+            rumpf = None
+        raus.append(
+            {
+                "id": zeile.id,
+                "zeitpunkt": zeile.zeitpunkt,
+                "modell": zeile.modell,
+                "auftrag": zeile.auftrag,
+                "ziel": zeile.ziel,
+                "rein": zeile.rein,
+                "raus": zeile.raus,
+                "fehler": zeile.fehler,
+                "rumpf": rumpf,
+            }
+        )
+    return raus
+
+
+def vorgaenge_leeren(db: Session, person: Benutzer) -> int:
+    """Alles loeschen, auf Wunsch des Menschen. Sofort, nicht in 14 Tagen."""
+    anzahl = (
+        db.query(KiVorgang)
+        .filter(KiVorgang.benutzer_id == person.id)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    logger.info("A user cleared their AI request list (%s entries).", anzahl)
+    return anzahl
+
+
+def vorgaenge_aufraeumen(db: Session) -> int:
+    """Was aelter ist als ``VORGANG_TAGE``, faellt.
+
+    ⚠️ **Ueber alle Benutzer, nicht je Benutzer.** Die Frist gehoert der
+    Installation, nicht dem Konto; wer sie je einstellbar macht, muss hier
+    einschraenken — und dann faellt auf, dass die Zeile bis dahin keinen
+    Benutzerbezug brauchte.
+    """
+    stichtag = utcnow() - timedelta(days=VORGANG_TAGE)
+    anzahl = (
+        db.query(KiVorgang)
+        .filter(KiVorgang.zeitpunkt < stichtag)
+        .delete(synchronize_session=False)
+    )
+    if anzahl:
+        db.commit()
+        logger.info("Removed %s AI request(s) older than %s days.", anzahl, VORGANG_TAGE)
+    return anzahl

@@ -43,6 +43,11 @@ const SPRACHEN = ['English', 'Deutsch', 'Français', 'Español', 'Italiano', 'Ne
 const UMBRUCH = String.fromCharCode(10)
 const DREI_UMBRUECHE = new RegExp(UMBRUCH + '{3,}', 'g')
 
+/** ⚠️ **Muss zu `kidienst.MIN_WOERTER` im Server passen.** Ein Test haelt
+ *  beide aneinander; laufen sie auseinander, bietet die Oberflaeche etwas
+ *  an, das der Server abweist. */
+const MIN_WOERTER = 3
+
 type Auftrag = 'rechtschreibung' | 'uebersetzen' | 'umformulieren'
 
 export interface KiAuswahl {
@@ -150,6 +155,31 @@ export function KiFenster({ auswahl, aufUebernehmen, aufSchliessen }: Props) {
     )
   }
 
+  /* --- Zu wenig Text ---------------------------------------------------- */
+  if (anzahl < MIN_WOERTER) {
+    /* ⚠️ **Nicht drei Auswahlen und ein toter Knopf.** Am 04.09.2026 gemeldet:
+       Bei einem leeren Entwurf ging das Fenster auf, bot alles an und liess
+       nichts zu. Ein gesperrter Knopf und ein geschluckter Fehler sind
+       derselbe Fehler — der Grund gehoert dorthin, wo man ihn sucht. */
+    return (
+      <Dialog
+        open
+        width={480}
+        title={t('ki.titel')}
+        onClose={aufSchliessen}
+        footer={
+          <Button variant="primary" onClick={aufSchliessen}>
+            {t('aktion.schliessen')}
+          </Button>
+        }
+      >
+        <p className="mb-0 text-[13px] text-fg-2">
+          {anzahl === 0 ? t('ki.nichts_da') : t('ki.zu_kurz', { min: MIN_WOERTER })}
+        </p>
+      </Dialog>
+    )
+  }
+
   /* --- Stufe 1 und 2 ---------------------------------------------------- */
   return (
     <Dialog
@@ -167,7 +197,7 @@ export function KiFenster({ auswahl, aufUebernehmen, aufSchliessen }: Props) {
           </Button>
           <Button
             variant="primary"
-            disabled={!auftrag || anzahl === 0 || laeuft}
+            disabled={!auftrag || laeuft}
             loading={laeuft}
             onClick={() => auftrag && void losschicken(auftrag)}
           >

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import logging
 
+from datetime import datetime
+
 from fastapi import APIRouter, Request, status
 from pydantic import BaseModel, Field
 
@@ -140,7 +142,10 @@ class Textergebnis(BaseModel):
 
 @router.post("/text", response_model=Textergebnis)
 def text(
-    eingabe: Textauftrag, person: AngemeldeterBenutzer, request: Request
+    eingabe: Textauftrag,
+    person: AngemeldeterBenutzer,
+    request: Request,
+    db: DbSession,
 ) -> Textergebnis:
     """Einen Entwurf bearbeiten lassen.
 
@@ -153,8 +158,53 @@ def text(
 
     try:
         raus = kidienst.text_bearbeiten(
-            person, eingabe.text, auftrag=eingabe.auftrag, ziel=eingabe.ziel
+            person,
+            eingabe.text,
+            auftrag=eingabe.auftrag,
+            ziel=eingabe.ziel,
+            # ⚠️ **Ohne `db` wird nichts gemerkt.** Die Liste haengt am Weg
+            # ueber die Adresse, nicht am Dienst — so bleibt `text_bearbeiten`
+            # in den Tests ohne Datenbank benutzbar, und der einzige Weg, auf
+            # dem ein Mensch Text hinausschickt, schreibt immer mit.
+            db=db,
         )
     except kidienst.KiFehler as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     return Textergebnis(text=raus)
+
+
+class Vorgang(BaseModel):
+    """Ein Handgriff, wie er hinausging.
+
+    ⚠️ **Der Rumpf geht wortwoertlich zurueck.** Das ist der ganze Zweck: Wer
+    nachsehen will, ob Zitat und Signatur wirklich drausen geblieben sind, muss
+    sehen, was geschickt wurde — nicht eine Zusammenfassung davon.
+    """
+
+    id: int
+    zeitpunkt: datetime
+    modell: str
+    auftrag: str
+    ziel: str
+    rein: int
+    raus: int
+    #: Leer heisst: hat geklappt.
+    fehler: str
+    #: ``None``, wenn die Zeile nicht mehr zu entschluesseln ist.
+    rumpf: dict | None
+
+
+@router.get("/vorgaenge", response_model=list[Vorgang])
+def vorgaenge(person: AngemeldeterBenutzer, db: DbSession) -> list[Vorgang]:
+    return [Vorgang(**v) for v in kidienst.vorgaenge_lesen(db, person)]
+
+
+@router.delete("/vorgaenge", status_code=status.HTTP_204_NO_CONTENT)
+def vorgaenge_leeren(person: AngemeldeterBenutzer, db: DbSession) -> None:
+    """Die Liste sofort leeren.
+
+    ⚠️ **Sofort, nicht in vierzehn Tagen.** Wer sie loescht, will sie loeschen;
+    ihn auf eine Frist zu verweisen waere dieselbe Sorte Antwort wie „bitte
+    erst abgleichen".
+    """
+    kidienst.vorgaenge_leeren(db, person)

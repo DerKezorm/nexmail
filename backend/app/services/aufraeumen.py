@@ -93,6 +93,19 @@ def benutzer_aufraeumen(db: Session, person: Benutzer) -> int:
     return geloescht
 
 
+def ki_vorgaenge_aufraeumen(db) -> int:
+    """Die KI-Vorgangsliste kuerzen — einmal je Runde, nicht je Benutzer.
+
+    ⚠️ **Sie haengt hier und nicht am Takt.** Der Takt holt Post; wer ihn mit
+    ``NEXMAIL_TAKT_SEKUNDEN=0`` abschaltet, meint „nicht dauernd Post holen",
+    nicht „meine Vorgangsliste waechst jetzt unbegrenzt". Dieselbe Ueberlegung
+    wie beim Sicherungsplan.
+    """
+    from . import kidienst
+
+    return kidienst.vorgaenge_aufraeumen(db)
+
+
 def runde() -> dict[str, int]:
     """Eine Runde ueber alle Benutzer, bei denen sie faellig ist."""
     stand = {"benutzer": 0, "geloescht": 0}
@@ -125,6 +138,17 @@ def runde() -> dict[str, int]:
                 db.rollback()
                 logger.exception("Auto-clean failed for %s.", wer)
                 continue
+        # ⚠️ **Die KI-Vorgangsliste faellt unabhaengig davon**, ob ein
+        # Benutzer eine Aufraeumrunde faellig hatte: Die Frist gehoert der
+        # Installation, nicht dem Konto. Wer sie an ``faellig(person)`` haengte,
+        # liesse die Liste bei jedem stehen, der das Aufraeumen ausgeschaltet
+        # hat — und das sind alle mit ``tage <= 0``.
+        #
+        # ⚠️ **Kein Eintrag im Rueckgabe-Woerterbuch.** Das ist ein Vertrag,
+        # den zwei Tests woertlich festhalten; was hier wegfaellt, sind keine
+        # Nachrichten und gehoert nicht in ``geloescht``.
+        ki_vorgaenge_aufraeumen(db)
+
         # ⚠️ **Nach dem Loeschen den Volltextindex zusammenschieben.** FTS5
         # traegt eine Loeschung als eigenen Eintrag nach; die alten Segmente
         # bleiben stehen, und der Index waechst beim Loeschen sogar. Gemessen

@@ -1429,6 +1429,61 @@ class Erinnerungszustellung(Base):
     erledigt: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class KiVorgang(Base):
+    """Was bei einem Handgriff wirklich zum KI-Dienst hinausging.
+
+    ⚠️ **Der Zweck ist Nachprüfbarkeit, nicht Buchhaltung.** nexmail sagt an
+    mehreren Stellen zu, dass Zitat und Signatur **nicht** mitgehen und dass der
+    Entwurf als Text und nicht als Anweisung geschickt wird. Solche Zusagen sind
+    ohne Beleg nur Behauptungen. Hier steht der Rumpf wörtlich, wie er
+    abgeschickt wurde — wer nachsehen will, muss niemandem glauben.
+
+    ⚠️ **Und es ist die Abwehr gegen versteckten Text.** Weiß auf Weiß,
+    Schriftgröße 1, ein HTML-Kommentar: Wer fremden Text in seinen Entwurf
+    einfügt, nimmt so etwas mit, ohne es im Editor zu sehen. In dieser Liste
+    ist es sichtbar.
+
+    ⚠️ **Der Rumpf liegt verschlüsselt**, mit dem Datenschlüssel und dem
+    Kontext ``benutzer:<id>:ki-vorgang`` — dieselbe Behandlung wie ein
+    Postfach-Kennwort. Er enthält den Text einer Mail, und eine zweite,
+    dauerhafte Kopie davon im Klartext wäre schlechter als gar keine Liste.
+    Der Preis steht dabei: **durchsuchen lässt sich das nicht.** AES-GCM salzt
+    jeden Vorgang, ein ``LIKE`` findet nichts. Entschieden am 04.09.2026;
+    gelesen wird die Liste ohnehin am Stück und in der Reihenfolge der Zeit.
+
+    ⚠️ **Der Schlüssel des Dienstes steht NIE darin.** Er ist eine Kopfzeile,
+    kein Teil des Rumpfes — und was hier gespeichert wird, ist genau der Rumpf.
+    """
+
+    __tablename__ = "ki_vorgang"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    #: ⚠️ Zusammen mit ``benutzer_id``, denn beides wird immer zusammen
+    #: gebraucht: die eigene Liste, neueste zuerst, und das Aufräumen nach Alter.
+    zeitpunkt: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    #: Welches Modell gefragt wurde — es steht in der Zeile, weil es sich
+    #: ändern darf und die Liste sonst nicht mehr zu deuten wäre.
+    modell: Mapped[str] = mapped_column(String(200), default="")
+    auftrag: Mapped[str] = mapped_column(String(40), default="")
+    #: Ton oder Zielsprache, je nach Auftrag.
+    ziel: Mapped[str] = mapped_column(String(40), default="")
+    #: Der vollstaendige Rumpf als JSON, verschluesselt.
+    rumpf: Mapped[str] = mapped_column(Text, default="")
+    #: ⚠️ **Nicht „token" im Spaltennamen.** Die Protokollzensur schwaerzt
+    #: alles nach diesem Wort; eine Zeile „806 token*** in" hat am 04.09.2026
+    #: schon einmal eine Messung unlesbar gemacht.
+    rein: Mapped[int] = mapped_column(Integer, default=0)
+    raus: Mapped[int] = mapped_column(Integer, default=0)
+    #: Leer heisst: hat geklappt. Sonst die Kennung des Fehlers.
+    #: ⚠️ **Auch ein Fehlschlag steht in der Liste.** Der Text ging trotzdem
+    #: hinaus; eine Liste, die nur die gelungenen zeigt, beantwortet die Frage
+    #: „was hat mein Rechner verschickt" falsch.
+    fehler: Mapped[str] = mapped_column(String(60), default="")
+
+
 class PushAnmeldung(Base):
     """Ein Browser, der Meldungen annimmt.
 

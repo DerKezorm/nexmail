@@ -21,6 +21,7 @@ import { AlertTriangle, ExternalLink, Pencil, Unplug } from 'lucide-react'
 import { api } from '../api/client'
 import { Button, Input, Select, Switch } from '../ds'
 import { useNachfrage } from '../components/Nachfrage'
+import { KiVorgaenge } from '../components/KiVorgaenge'
 import { servermeldung } from '../lib/servermeldung'
 
 interface Stand {
@@ -42,6 +43,11 @@ const KACHELN = [
   { id: 'openai', name: 'ChatGPT', url: 'https://api.openai.com/v1/', wo: 'https://platform.openai.com/api-keys' },
   { id: 'lokal', name: 'Ollama', url: 'http://localhost:11434/v1/', wo: 'https://ollama.com' },
 ] as const
+
+/** ⚠️ **Muss zu `kidienst.VORGANG_TAGE` im Server passen.** Laufen sie
+ *  auseinander, verspricht die Oberfläche eine andere Frist als die, nach
+ *  der wirklich gelöscht wird — ein Test hält beide aneinander. */
+const VORGANG_TAGE = 14
 
 /** Der Name zur Adresse — oder nichts, wenn es keine der bekannten ist. */
 function anbietername(url: string): string {
@@ -355,6 +361,9 @@ export function KiDienst() {
           </section>
         </>
       )}
+
+      {/* --- Was hinausging ---------------------------------------------- */}
+      <KiVorgaenge tage={VORGANG_TAGE} />
 
       {/* --- Was das heißt ----------------------------------------------- */}
       <div className="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning-soft px-4 py-3">
