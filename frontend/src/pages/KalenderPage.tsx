@@ -62,6 +62,7 @@ import {
   verschobenUmTage,
 } from '../lib/ziehen'
 import type { Zeitraum } from '../lib/ziehen'
+import { nebeneinander } from '../lib/ueberlappung'
 
 type Sicht = 'monat' | 'woche' | 'tag'
 
@@ -1007,15 +1008,18 @@ function Raster({
                 className="border-b border-line-subtle"
               />
             ))}
-            {gezeigte
-              .filter((e) => !e.ganztaegig && imTag(e, d))
-              .map((e) => {
+            {tagesTermine(gezeigte, d).map(({ termin: e, lage }) => {
                 const fest = kalender.get(e.kalenderId)?.nurLesen ?? false
                 const wandert = zug?.ur.id === e.id
                 const a = new Date(e.beginn)
                 const b = new Date(e.ende)
                 const oben = (a.getHours() + a.getMinutes() / 60 - VON_STUNDE) * STUNDE_PX
                 const hoch = Math.max(20, ((b.getTime() - a.getTime()) / 3_600_000) * STUNDE_PX)
+                /* ⚠️ **Gerechnet in Prozent, nicht in Pixeln.** Die Spalte
+                   verändert ihre Breite mit dem Griff zwischen Liste und
+                   Kalender; eine ausgerechnete Pixelbreite stünde nach dem
+                   ersten Ziehen daneben. */
+                const breite = 100 / lage.spalten
                 return (
                   <button
                     key={`${e.id}-${e.beginn}`}
@@ -1025,9 +1029,19 @@ function Raster({
                       if (warEinZug()) return
                       aufTermin(e)
                     }}
-                    style={{ top: oben, height: hoch, ...(wandert ? { pointerEvents: 'none' } : {}) }}
+                    style={{
+                      top: oben,
+                      height: hoch,
+                      left: `calc(${lage.spalte * breite}% + 4px)`,
+                      width: `calc(${breite}% - 5px)`,
+                      ...(wandert ? { pointerEvents: 'none' } : {}),
+                    }}
                     className={
-                      'group absolute right-1 left-1 flex gap-1.5 overflow-hidden rounded-md bg-surface-3 p-1 text-left hover:bg-surface-2 ' +
+                      'group absolute flex gap-1.5 overflow-hidden rounded-md bg-surface-3 p-1 text-left hover:bg-surface-2 ' +
+                      /* ⚠️ **Der Angefasste gehört nach vorn.** Sonst
+                         verschwindet er beim Ziehen unter seinem Nachbarn,
+                         und man zieht etwas, das man nicht mehr sieht. */
+                      (wandert ? 'z-10 ' : '') +
                       (fest ? '' : 'cursor-grab ') +
                       (wandert ? 'opacity-70 ring-1 ring-accent' : '')
                     }
@@ -1090,6 +1104,18 @@ function Raster({
       </div>
     </div>
   )
+}
+
+/** Die zeitgebundenen Termine eines Tages, jeder mit seiner Spalte.
+ *
+ * ⚠️ **Die Aufteilung gilt je Tag, nicht je Woche.** Zwei Termine an
+ * verschiedenen Tagen überschneiden sich nie, auch wenn ihre Uhrzeiten
+ * gleich sind; gemeinsam gerechnet bekämen sie unnötig schmale Spalten.
+ */
+function tagesTermine(alle: TerminZeile[], tag: Date) {
+  const drin = alle.filter((e) => !e.ganztaegig && imTag(e, tag))
+  const lagen = nebeneinander(drin)
+  return drin.map((termin, i) => ({ termin, lage: lagen[i] }))
 }
 
 /* --- Das Terminfenster -------------------------------------------------- */

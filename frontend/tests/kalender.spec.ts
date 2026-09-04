@@ -87,6 +87,33 @@ async function einmalAufraeumen(page: Page) {
   }, PROBE)
 }
 
+/** Einen Termin mit eigener Uhrzeit anlegen — für die Fälle, in denen es auf
+ *  die Überschneidung ankommt. */
+async function anlegenUm(page: Page, titel: string, vonStd: number, bisStd: number) {
+  return page.evaluate(
+    async ({ titel, vonStd, bisStd }) => {
+      const ks = await (await fetch('/api/kalender', { credentials: 'include' })).json()
+      const beginn = new Date()
+      beginn.setHours(vonStd, 0, 0, 0)
+      const ende = new Date()
+      ende.setHours(bisStd, 0, 0, 0)
+      const antwort = await fetch('/api/kalender/termine', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kalender_id: ks[0].id,
+          titel,
+          beginn: beginn.toISOString(),
+          ende: ende.toISOString(),
+        }),
+      })
+      return antwort.json()
+    },
+    { titel, vonStd, bisStd },
+  )
+}
+
 /** Einen Termin über die Adresse anlegen — der Test der Oberfläche kommt
  *  danach. */
 async function anlegen(page: Page, titel: string, rrule = '') {
@@ -528,4 +555,40 @@ test('Ein Wackeln beim Klicken oeffnet weiterhin den Termin', async ({ page }) =
 
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('dialog').getByText(`${PROBE} Wackeln`)).toBeVisible()
+})
+
+test('Zwei gleichzeitige Termine verdecken einander nicht', async ({ page }) => {
+  /* ⚠️ **Vorher lagen sie exakt übereinander.** Die Blöcke standen
+     `absolute left-1 right-1`; der obere verbarg den unteren restlos, und das
+     sieht aus wie verloren, nicht wie verdeckt. Am 04.09.2026 gemeldet,
+     nachdem ein gezogener Termin auf einem anderen landete.
+
+     ⚠️ **Geprüft werden die gezeichneten Kästen, nicht die Rechnung.** Die
+     steht in `lib/ueberlappung.test.ts`; hier geht es darum, dass sie im Stil
+     wirklich ankommt. */
+  await anlegenUm(page, `${PROBE} Links`, 9, 11)
+  await anlegenUm(page, `${PROBE} Rechts`, 10, 12)
+  await page.reload()
+  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await expect(page.getByRole('button', { name: /Neuer Termin/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Tag', exact: true }).click()
+
+  const links = page.getByRole('button', { name: new RegExp(`${PROBE} Links`) }).first()
+  const rechts = page.getByRole('button', { name: new RegExp(`${PROBE} Rechts`) }).first()
+  await expect(links).toBeVisible()
+  await expect(rechts).toBeVisible()
+
+  const a = await links.boundingBox()
+  const b = await rechts.boundingBox()
+  if (!a || !b) throw new Error('Ein Block hat keine Ausdehnung')
+
+  // Sie überschneiden sich in der Zeit, also müssen sie sich die Breite teilen.
+  const [erster, zweiter] = a.x <= b.x ? [a, b] : [b, a]
+  expect(erster.x + erster.width).toBeLessThanOrEqual(zweiter.x + 1)
+
+  /* ⚠️ **Und keiner darf dabei fingerbreit werden.** Eine Aufteilung, die
+     einen Block auf ein paar Pixel zusammendrückt, ist nicht besser als das
+     Verdecken — man kann ihn dann weder lesen noch treffen. */
+  expect(erster.width).toBeGreaterThan(60)
+  expect(zweiter.width).toBeGreaterThan(60)
 })
