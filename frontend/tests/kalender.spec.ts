@@ -354,7 +354,12 @@ test('Ohne Teilnehmer steht kein leerer Abschnitt da', async ({ page }) => {
   await expect(neu).toBeHidden()
 
   await page.getByText(`${PROBE} Allein`).first().click()
-  await expect(page.getByRole('dialog').getByText(/Teilnehmer/)).toHaveCount(0)
+  const auf = page.getByRole('dialog')
+  await expect(auf.getByText(/Teilnehmer/)).toHaveCount(0)
+  /* ⚠️ **Und trotzdem muss man jemanden hinzufügen können.** Ohne diese
+     zweite Zusicherung würde ein Abschnitt, der ganz verschwindet, den Test
+     bestehen lassen — und niemand käme mehr zum ersten Teilnehmer. */
+  await expect(auf.getByPlaceholder('Adresse eingeben, Enter')).toBeVisible()
 })
 
 

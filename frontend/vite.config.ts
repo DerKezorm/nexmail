@@ -2,7 +2,7 @@
 // ⚠️ Diese Zeile ist kein Beiwerk: Ohne sie kennt Vites
 // ``UserConfigExport`` den Abschnitt ``test`` nicht, und ``npx tsc --noEmit``
 // bricht ab — im automatischen Bau also, nicht hier.
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -110,7 +110,16 @@ export default defineConfig({
       'Content-Security-Policy': BILDREGEL,
     },
     proxy: {
-      '/api': { target: 'http://127.0.0.1:8010', changeOrigin: false },
+      /* ⚠️ **Umstellbar über ``NEXMAIL_API``.** Ohne das misst ein
+         Oberflächenlauf immer den Server, der gerade auf 8010 hängt — und
+         wenn der von gestern ist, meldet der Lauf einen Fehler, den der Code
+         längst nicht mehr hat. Genau das ist am 04.09.2026 passiert: Ein
+         Server im Stand 0.6.0 schickte noch fertige deutsche Sätze, und der
+         Wächter dagegen sah aus, als wäre er kaputt. */
+      '/api': {
+        target: loadEnv('', '.', 'NEXMAIL_').NEXMAIL_API || 'http://127.0.0.1:8010',
+        changeOrigin: false,
+      },
     },
   },
 })

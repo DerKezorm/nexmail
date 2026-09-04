@@ -379,13 +379,19 @@ cd frontend && npm install && npm run dev
 ```
 
 ```bash
-cd backend && python -m pytest        # ~590 tests
+cd backend && python -m pytest        # ~1170 tests
 cd frontend && npm run test:ui        # Playwright, two viewports
 ```
 
 The interface tests run in a real browser against a real IMAP mailbox. That is
 why they prove anything — jsdom would not have found a single one of the layout
 and rendering faults they were written for.
+
+They only start the Vite server, though. Whatever answers on port 8010 is what
+they measure, and a backend left running from yesterday will report faults the
+code no longer has. Check `data-dev/logs/nexmail.log` for the last `is ready`
+line before you believe a red run, or point the proxy elsewhere with
+`NEXMAIL_API=http://127.0.0.1:8011 npm run dev`.
 
 ## Licence
 

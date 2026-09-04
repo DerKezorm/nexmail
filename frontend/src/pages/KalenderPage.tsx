@@ -1713,86 +1713,89 @@ function Terminfenster({
             Liste im Original aber nur, wenn hier wirklich jemand dazukam oder
             wegfiel — sonst bliebe von den Zusagen eines fremden Termins
             nichts übrig. Den Riegel dafür hält `leuteBeruehrt`. */}
-        {true && (
-          <div className="flex flex-col gap-1.5 border-t border-line-subtle pt-3">
+        <div className="flex flex-col gap-1.5 border-t border-line-subtle pt-3">
+          {/* ⚠️ **Kein „0 Teilnehmer".** Die Zählung steht erst da, wenn es
+              etwas zu zählen gibt; das Feld darunter bleibt, sonst käme man
+              nie zum ersten Teilnehmer. */}
+          {leute.length > 0 && (
             <span className="text-[12px] font-medium text-fg-3">
               {t('kalender.teilnehmer', { count: leute.length })}
             </span>
-            {termin?.organisator && (
-              <p className="mb-0 truncate text-[12px] text-fg-3">
-                {t('kalender.organisator', {
-                  wer: termin.organisator.name || termin.organisator.adresse,
-                })}
-              </p>
-            )}
-            <ul className="flex list-none flex-col gap-1 p-0">
-              {leute.map((b) => (
-                <li key={b.adresse || b.name} className="flex items-center gap-2 text-[12px]">
-                  <span
-                    aria-hidden
-                    className={`size-2 shrink-0 rounded-full ${ANTWORT_PUNKT[b.antwort] ?? 'bg-fg-4'}`}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-fg-1">
-                    {b.name || b.adresse}
-                  </span>
-                  {/* ⚠️ Der Zusagestand gehört dazu — ohne ihn ist eine
-                      Teilnehmerliste eine Namensliste. */}
-                  <span className="shrink-0 text-fg-4">
-                    {t(`kalender.antwort_${b.antwort.toLowerCase() || 'unbekannt'}`, {
-                      defaultValue: t('kalender.antwort_unbekannt'),
-                    })}
-                  </span>
-                  {!gesperrt && (
-                    <button
-                      type="button"
-                      aria-label={t('kalender.teilnehmer_entfernen', { wer: b.adresse })}
-                      onClick={() => personWeg(b.adresse)}
-                      className="shrink-0 rounded-sm p-0.5 text-fg-4 hover:bg-surface-3 hover:text-fg-1"
-                    >
-                      <X className="size-3.5" aria-hidden />
-                    </button>
-                  )}
-                </li>
+          )}
+          {termin?.organisator && (
+            <p className="mb-0 truncate text-[12px] text-fg-3">
+              {t('kalender.organisator', {
+                wer: termin.organisator.name || termin.organisator.adresse,
+              })}
+            </p>
+          )}
+          <ul className="flex list-none flex-col gap-1 p-0">
+            {leute.map((b) => (
+              <li key={b.adresse || b.name} className="flex items-center gap-2 text-[12px]">
+                <span
+                  aria-hidden
+                  className={`size-2 shrink-0 rounded-full ${ANTWORT_PUNKT[b.antwort] ?? 'bg-fg-4'}`}
+                />
+                <span className="min-w-0 flex-1 truncate text-fg-1">
+                  {b.name || b.adresse}
+                </span>
+                {/* ⚠️ Der Zusagestand gehört dazu — ohne ihn ist eine
+                    Teilnehmerliste eine Namensliste. */}
+                <span className="shrink-0 text-fg-4">
+                  {t(`kalender.antwort_${b.antwort.toLowerCase() || 'unbekannt'}`, {
+                    defaultValue: t('kalender.antwort_unbekannt'),
+                  })}
+                </span>
+                {!gesperrt && (
+                  <button
+                    type="button"
+                    aria-label={t('kalender.teilnehmer_entfernen', { wer: b.adresse })}
+                    onClick={() => personWeg(b.adresse)}
+                    className="shrink-0 rounded-sm p-0.5 text-fg-4 hover:bg-surface-3 hover:text-fg-1"
+                  >
+                    <X className="size-3.5" aria-hidden />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {!gesperrt && leute.length > 0 && absenderWahl.length > 0 && (
+            /* ⚠️ **Je Termin gewählt, nicht am Kalender hinterlegt.** Ein
+               Kalender gehört zu keinem Postfach; wer den Vereinstermin aus
+               dem privaten Kalender heraus anlegt, soll trotzdem als Verein
+               einladen können. */
+            <Select
+              label={t('kalender.einladung_von')}
+              value={absender}
+              onChange={(e) => setAbsender(e.target.value)}
+            >
+              {absenderWahl.map((a) => (
+                <option key={a.adresse} value={a.adresse}>
+                  {a.wer} — {a.adresse}
+                </option>
               ))}
-            </ul>
-            {!gesperrt && leute.length > 0 && absenderWahl.length > 0 && (
-              /* ⚠️ **Je Termin gewählt, nicht am Kalender hinterlegt.** Ein
-                 Kalender gehört zu keinem Postfach; wer den Vereinstermin aus
-                 dem privaten Kalender heraus anlegt, soll trotzdem als Verein
-                 einladen können. */
-              <Select
-                label={t('kalender.einladung_von')}
-                value={absender}
-                onChange={(e) => setAbsender(e.target.value)}
-              >
-                {absenderWahl.map((a) => (
-                  <option key={a.adresse} value={a.adresse}>
-                    {a.wer} — {a.adresse}
-                  </option>
-                ))}
-              </Select>
-            )}
-            {!gesperrt && (
-              <Input
-                type="email"
-                value={neueAdresse}
-                onChange={(e) => setNeueAdresse(e.target.value)}
-                onKeyDown={(e) => {
-                  /* ⚠️ **Enter fügt hinzu und schickt das Formular nicht ab.**
-                     Ohne das Abfangen speichert der erste Enter den Termin,
-                     bevor der Teilnehmer überhaupt in der Liste steht. */
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    personDazu(neueAdresse)
-                  }
-                }}
-                onBlur={() => personDazu(neueAdresse)}
-                placeholder={t('kalender.teilnehmer_platzhalter')}
-                hint={t('kalender.teilnehmer_hinweis')}
-              />
-            )}
-          </div>
-        )}
+            </Select>
+          )}
+          {!gesperrt && (
+            <Input
+              type="email"
+              value={neueAdresse}
+              onChange={(e) => setNeueAdresse(e.target.value)}
+              onKeyDown={(e) => {
+                /* ⚠️ **Enter fügt hinzu und schickt das Formular nicht ab.**
+                   Ohne das Abfangen speichert der erste Enter den Termin,
+                   bevor der Teilnehmer überhaupt in der Liste steht. */
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  personDazu(neueAdresse)
+                }
+              }}
+              onBlur={() => personDazu(neueAdresse)}
+              placeholder={t('kalender.teilnehmer_platzhalter')}
+              hint={t('kalender.teilnehmer_hinweis')}
+            />
+          )}
+        </div>
 
         {termin?.ausEinladung && (
           <p className="text-[12px] text-fg-4">{t('kalender.aus_einladung')}</p>
