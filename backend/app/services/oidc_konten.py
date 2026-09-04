@@ -111,6 +111,11 @@ def aufloesen(db: Session, ident: Identitaet) -> Benutzer:
         anzeigename=ident.anzeigename or einladung.anzeigename,
         ohne_passwort=True,
     )
+    # ⚠️ **Dieselbe Einladung, dasselbe Ergebnis.** Der Weg ueber ein Kennwort
+    # traegt die Adresse der Einladung als Kontaktadresse ein; ohne diese Zeile
+    # haette ein ueber OIDC eingeloester Mensch keine — und damit keinen Weg
+    # zurueck, wenn seine Verknuepfung einmal wegfaellt.
+    neuer.kontaktadresse = einladung.adresse
     einladung.eingeloest = datetime.now(timezone.utc)
     db.commit()
     verknuepfen(db, neuer, ident)

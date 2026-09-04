@@ -145,6 +145,10 @@ def test_eine_offene_einladung_wird_eingeloest(klient, anbieter_da, monkeypatch,
     # Kein zufaelliges Passwort - das waere ein Zugang, den niemand kennt.
     assert neuer.passwort_hash == ""
     assert neuer.ist_betreiber is False
+    # ⚠️ **Dieselbe Einladung, dasselbe Ergebnis wie mit Kennwort.** Am
+    # 04.09.2026 fehlte die Zeile hier: Wer ueber einen Anbieter einloeste,
+    # hatte keine Kontaktadresse und damit keinen Weg zurueck.
+    assert neuer.kontaktadresse == "anna@example.com"
 
 
 def test_die_adresse_darf_auch_nur_aus_userinfo_kommen(klient, anbieter_da, monkeypatch, db):

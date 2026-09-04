@@ -247,3 +247,30 @@ def test_die_bremse_zaehlt_mit(klient, db, welt):
         for _ in range(12)
     ]
     assert 429 in codes
+
+
+# --- Woher die Kontaktadresse kommt ------------------------------------- #
+#
+# ⚠️ **Drei Wege führen zu einem Konto, und alle drei müssen dasselbe tun.**
+# Am 04.09.2026 tat der OIDC-Weg es nicht: dieselbe Einladung, je nach Weg
+# einmal mit Adresse und einmal ohne.
+
+
+def test_eine_eingeloeste_einladung_traegt_die_adresse_ein(klient, db):
+    from app.services import einladung as einladungsdienst
+
+    einrichten(klient)
+    einladung, schluessel = einladungsdienst.aussprechen(
+        db, benutzername="neuer", adresse="neuer@example.org"
+    )
+    person = einladungsdienst.einloesen(db, schluessel, "ganz-neu-4711")
+
+    assert person.kontaktadresse == "neuer@example.org"
+
+
+def test_der_betreiber_faengt_ohne_adresse_an(klient, db):
+    """⚠️ **Und das ist der wunde Punkt.** Die Ersteinrichtung fragt nur nach
+    Name und Kennwort; wer sie durchläuft, hat keinen Weg zurück, bis er die
+    Adresse selbst einträgt. Deshalb sagt die Sicherheitsseite es."""
+    einrichten(klient)
+    assert db.query(Benutzer).one().kontaktadresse == ""
