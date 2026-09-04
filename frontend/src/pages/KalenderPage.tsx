@@ -54,6 +54,14 @@ import { Kalenderfenster } from '../components/Kalenderfenster'
 import { Kontextmenue } from '../components/Kontextmenue'
 import type { MenueEintrag } from '../components/Kontextmenue'
 import { useNachfrage } from '../components/Nachfrage'
+import {
+  endeGezogen,
+  minutenAusPixeln,
+  tageDazwischen,
+  verschobenUmMinuten,
+  verschobenUmTage,
+} from '../lib/ziehen'
+import type { Zeitraum } from '../lib/ziehen'
 
 type Sicht = 'monat' | 'woche' | 'tag'
 
@@ -63,6 +71,148 @@ const VON_STUNDE = 7
 const BIS_STUNDE = 21
 /** Höhe einer Stunde im Raster, in Pixeln. */
 const STUNDE_PX = 48
+
+/** Ab hier gilt es als Zug und nicht mehr als Klick.
+ *
+ * ⚠️ **Ohne Schwelle öffnet kein Klick mehr einen Termin.** Eine Maus wackelt
+ * beim Drücken um ein, zwei Pixel; jeder dieser Pixel wäre sonst ein
+ * Verschieben um null Minuten — und der Klick fiele aus, weil er unterdrückt
+ * wird. */
+const ZUG_SCHWELLE_PX = 4
+
+/** Der Kalendertag unter dem Zeiger, aus `data-tag` am Spalten- bzw. Tagesfeld.
+ *
+ * ⚠️ **Über das Element unter dem Zeiger, nicht über gemessene Geometrie.**
+ * Spaltenbreiten hängen an Griffen, Rollbalken und der Sprache; wer sie
+ * nachrechnet, rechnet irgendwann falsch. Der gezogene Block trägt während des
+ * Zuges `pointer-events: none`, sonst fände man immer nur ihn selbst. */
+function tagUnterZeiger(x: number, y: number): Date | null {
+  const feld = document.elementFromPoint(x, y)?.closest('[data-tag]')
+  const wert = feld?.getAttribute('data-tag')
+  if (!wert) return null
+  const [j, m, t] = wert.split('-').map(Number)
+  return new Date(j, m - 1, t)
+}
+
+/** Der Kalendertag, an dem ein Vorkommen hängt — als Ortszeit-Datum. */
+function tagVon(e: TerminZeile): Date {
+  if (e.ganztaegig) {
+    const [j, m, t] = e.beginn.slice(0, 10).split('-').map(Number)
+    return new Date(j, m - 1, t)
+  }
+  const d = new Date(e.beginn)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+interface Zug {
+  /** Das gezogene Vorkommen — bei einer Reihe ist `id` allein nicht eindeutig. */
+  ur: TerminZeile
+  beginn: string
+  ende: string
+}
+
+/** Ziehen und an der Kante längermachen.
+ *
+ * ⚠️ **Die Tastatur verliert nichts.** Die Blöcke bleiben Schaltflächen mit
+ * ihrem `onClick`; wer nicht ziehen kann, ändert den Termin wie bisher im
+ * Formular. Ziehen ist ein zweiter Weg, kein Ersatz.
+ */
+function useZiehen(aufFertig: (t: TerminZeile, z: Zeitraum) => void) {
+  const [zug, setZug] = useState<Zug | null>(null)
+  /** Wurde wirklich gezogen? Verhindert, dass der Zug als Klick ankommt. */
+  const gezogen = useRef(false)
+
+  const starten = useCallback(
+    (
+      ereignis: React.PointerEvent,
+      termin: TerminZeile,
+      art: 'ganz' | 'kante',
+      stundeHoehe: number | null,
+    ) => {
+      // Nur die linke Taste; ein Rechtsklick gehört dem Kontextmenü.
+      if (ereignis.button !== 0) return
+      /* ⚠️ **Nicht mit dem Finger.** Dieselbe Geste rollt dort die Ansicht.
+         Wer beides will, muss `touch-action: none` setzen und das Rollen
+         selbst nachbauen — dann rollt der Kalender am Telefon nicht mehr,
+         und das ist der teurere Verlust. Genau die umgekehrte Entscheidung
+         wie in `lib/wischen.ts`, wo der Wisch **nur** dem Finger gehört.
+         Am Telefon bleibt der Block eine Schaltfläche und öffnet das
+         Formular; verloren geht dort nichts, nur der zweite Weg. */
+      if (ereignis.pointerType === 'touch') return
+      ereignis.preventDefault()
+      ereignis.stopPropagation()
+      const startX = ereignis.clientX
+      const startY = ereignis.clientY
+      const ursprung = tagVon(termin)
+      gezogen.current = false
+      let letzter: Zug | null = null
+
+      function bewegen(e: PointerEvent) {
+        const dx = e.clientX - startX
+        const dy = e.clientY - startY
+        if (!gezogen.current && Math.hypot(dx, dy) < ZUG_SCHWELLE_PX) return
+        gezogen.current = true
+
+        let neu: Zeitraum = { beginn: termin.beginn, ende: termin.ende }
+        if (art === 'kante' && stundeHoehe) {
+          neu = endeGezogen(neu, minutenAusPixeln(dy, stundeHoehe))
+        } else {
+          /* ⚠️ **Erst die Tage, dann die Minuten.** Der Tagessprung hält die
+             Wanduhr fest, die Minuten sind eine Dauer — siehe `lib/ziehen.ts`.
+             Andersherum verschöbe die Zeitumstellung das Ergebnis. */
+          const ziel = tagUnterZeiger(e.clientX, e.clientY)
+          if (ziel) neu = verschobenUmTage(neu, tageDazwischen(ursprung, ziel), termin.ganztaegig)
+          if (stundeHoehe && !termin.ganztaegig) {
+            neu = verschobenUmMinuten(neu, minutenAusPixeln(dy, stundeHoehe))
+          }
+        }
+        letzter = { ur: termin, ...neu }
+        setZug(letzter)
+      }
+
+      function loslassen() {
+        window.removeEventListener('pointermove', bewegen)
+        window.removeEventListener('pointerup', loslassen)
+        window.removeEventListener('pointercancel', loslassen)
+        setZug(null)
+        /* ⚠️ **Nur bei echter Änderung hinausschicken.** Ein Zug, der wieder
+           an seinem Ausgangspunkt endet, wäre sonst ein Schreibvorgang auf dem
+           Server — bei einer Reihe samt Rückfrage „dieser · folgende · alle".
+           Für nichts. */
+        if (letzter && (letzter.beginn !== termin.beginn || letzter.ende !== termin.ende)) {
+          aufFertig(termin, { beginn: letzter.beginn, ende: letzter.ende })
+        }
+      }
+
+      window.addEventListener('pointermove', bewegen)
+      window.addEventListener('pointerup', loslassen)
+      window.addEventListener('pointercancel', loslassen)
+    },
+    [aufFertig],
+  )
+
+  /** Im Zug steht die Vorschau an der Stelle des Originals. */
+  const mitVorschau = useCallback(
+    (liste: TerminZeile[]): TerminZeile[] =>
+      zug
+        ? liste.map((e) =>
+            e.id === zug.ur.id && e.beginn === zug.ur.beginn
+              ? { ...e, beginn: zug.beginn, ende: zug.ende }
+              : e,
+          )
+        : liste,
+    [zug],
+  )
+
+  /** Der Klick nach einem Zug gehört nicht dem Öffnen. */
+  const warEinZug = useCallback(() => {
+    if (!gezogen.current) return false
+    gezogen.current = false
+    return true
+  }, [])
+
+  return { zug, starten, mitVorschau, warEinZug }
+}
 
 export function KalenderPage() {
   const { t, i18n } = useTranslation()
@@ -172,6 +322,45 @@ export function KalenderPage() {
       return
     }
     setReihenfrage({ titel: termin.titel, was, weiter: tun })
+  }
+
+  /** Ein gezogener Termin — derselbe Weg wie „Speichern" im Formular.
+   *
+   * ⚠️ **Nur Beginn und Ende gehen hinaus.** Kein `rrule`, kein Titel: Ein
+   * nicht mitgeschicktes Feld lässt der Server unverändert, und ein Zug ist
+   * eine Aussage über die Zeit und über sonst nichts.
+   *
+   * ⚠️ **Beide Enden, obwohl der Server auch mit einem zurechtkäme.**
+   * `termine.aendern` hält die Dauer, wenn nur der Beginn ankommt — am
+   * 04.09.2026 nachgemessen, weil eine Mutationsprobe genau daran vorbeilief.
+   * Geschickt werden trotzdem beide: Beim Ziehen an der Kante ändert sich nur
+   * das Ende, und eine Stelle, die je nach Geste etwas anderes schickt, ist
+   * eine Stelle mehr, an der man sich irren kann.
+   *
+   * ⚠️ **Bei einer Reihe wird gefragt.** Ein Zug ist billiger als ein
+   * Formular, und genau deshalb muss die Frage bleiben: Sonst verschiebt eine
+   * Handbewegung fünfzig Termine.
+   *
+   * ⚠️ **Nach einem Fehlschlag wird neu geladen.** Sonst bliebe der Block an
+   * der neuen Stelle stehen, obwohl der Server abgelehnt hat — die Anzeige
+   * behauptete etwas, das nirgends steht.
+   */
+  function verschieben(termin: TerminZeile, wohin: Zeitraum) {
+    mitUmfang(termin, 'aendern', (umfang) => {
+      void (async () => {
+        try {
+          await terminAendern(termin.id, {
+            beginn: wohin.beginn,
+            ende: wohin.ende,
+            umfang,
+            vorkommen: termin.beginn,
+          })
+        } catch (f) {
+          melden(f)
+        }
+        await termineHolen()
+      })()
+    })
   }
 
   function kalenderMenue(k: KalenderZeile): MenueEintrag[] {
@@ -408,6 +597,7 @@ export function KalenderPage() {
             kalender={nachId}
             aufTermin={setOffen}
             aufLeer={(d) => setNeuAb({ beginn: d, ganztaegig: true })}
+            aufVerschieben={verschieben}
           />
         ) : (
           <Raster
@@ -417,6 +607,7 @@ export function KalenderPage() {
             kalender={nachId}
             aufTermin={setOffen}
             aufLeer={(d) => setNeuAb({ beginn: d, ganztaegig: false })}
+            aufVerschieben={verschieben}
           />
         )}
       </div>
@@ -562,15 +753,18 @@ function Monat({
   kalender,
   aufTermin,
   aufLeer,
+  aufVerschieben,
 }: {
   anker: Date
   termine: TerminZeile[]
   kalender: Map<string, KalenderZeile>
   aufTermin: (t: TerminZeile) => void
   aufLeer: (d: Date) => void
+  aufVerschieben: (t: TerminZeile, wohin: Zeitraum) => void
 }) {
   const { t, i18n } = useTranslation()
   const heute = new Date()
+  const { zug, starten, mitVorschau, warEinZug } = useZiehen(aufVerschieben)
 
   // Montag der Woche, in der der Erste liegt. ⚠️ In Deutschland beginnt die
   // Woche am Montag; `getDay()` zählt ab Sonntag.
@@ -600,10 +794,11 @@ function Monat({
         {tage.map((d) => {
           const fremderMonat = d.getMonth() !== anker.getMonth()
           const istHeute = d.toDateString() === heute.toDateString()
-          const drin = termine.filter((e) => imTag(e, d))
+          const drin = mitVorschau(termine).filter((e) => imTag(e, d))
           return (
             <div
               key={d.toISOString()}
+              data-tag={alsDatum(d)}
               onDoubleClick={() => aufLeer(mitTag(d, 0))}
               className={
                 'flex min-h-0 flex-col gap-0.5 overflow-hidden border-r border-b border-line-subtle p-1 ' +
@@ -622,12 +817,27 @@ function Monat({
               >
                 {d.getDate()}
               </div>
-              {drin.slice(0, 3).map((e) => (
+              {drin.slice(0, 3).map((e) => {
+                const fest = kalender.get(e.kalenderId)?.nurLesen ?? false
+                const wandert = Boolean(zug) && zug?.ur.id === e.id
+                return (
                 <button
                   key={`${e.id}-${e.beginn}`}
                   type="button"
-                  onClick={() => aufTermin(e)}
-                  className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 text-left hover:bg-surface-3"
+                  onPointerDown={fest ? undefined : (p) => starten(p, e, 'ganz', null)}
+                  onClick={() => {
+                    if (warEinZug()) return
+                    aufTermin(e)
+                  }}
+                  /* ⚠️ **Während des Zuges darf der Block nicht selbst unter
+                     dem Zeiger liegen** — sonst findet `tagUnterZeiger` immer
+                     ihn statt der Tageszelle darunter. */
+                  style={wandert ? { pointerEvents: 'none' } : undefined}
+                  className={
+                    'flex items-center gap-1.5 rounded-sm px-1 py-0.5 text-left hover:bg-surface-3 ' +
+                    (fest ? '' : 'cursor-grab ') +
+                    (wandert ? 'opacity-70' : '')
+                  }
                 >
                   <span
                     aria-hidden
@@ -642,7 +852,8 @@ function Monat({
                     {e.titel}
                   </span>
                 </button>
-              ))}
+                )
+              })}
               {drin.length > 3 && (
                 <span className="px-1 text-[11px] text-fg-4">
                   {t('kalender.weitere', { count: drin.length - 3 })}
@@ -665,6 +876,7 @@ function Raster({
   kalender,
   aufTermin,
   aufLeer,
+  aufVerschieben,
 }: {
   anker: Date
   tage: number
@@ -672,9 +884,12 @@ function Raster({
   kalender: Map<string, KalenderZeile>
   aufTermin: (t: TerminZeile) => void
   aufLeer: (d: Date) => void
+  aufVerschieben: (t: TerminZeile, wohin: Zeitraum) => void
 }) {
   const { i18n } = useTranslation()
   const heute = new Date()
+  const { zug, starten, mitVorschau, warEinZug } = useZiehen(aufVerschieben)
+  const gezeigte = mitVorschau(termine)
 
   const start = new Date(anker)
   if (tage === 7) start.setDate(anker.getDate() - ((anker.getDay() + 6) % 7))
@@ -723,15 +938,31 @@ function Raster({
       >
         <div />
         {spalten.map((d) => (
-          <div key={d.toISOString()} className="flex flex-col gap-0.5 border-l border-line-subtle p-1">
-            {termine
+          <div
+            key={d.toISOString()}
+            data-tag={alsDatum(d)}
+            className="flex flex-col gap-0.5 border-l border-line-subtle p-1"
+          >
+            {gezeigte
               .filter((e) => e.ganztaegig && imTag(e, d))
-              .map((e) => (
+              .map((e) => {
+                const fest = kalender.get(e.kalenderId)?.nurLesen ?? false
+                const wandert = zug?.ur.id === e.id
+                return (
                 <button
                   key={`${e.id}-${e.beginn}`}
                   type="button"
-                  onClick={() => aufTermin(e)}
-                  className="flex items-center gap-1.5 rounded-sm bg-surface-3 px-1.5 py-0.5 text-left"
+                  onPointerDown={fest ? undefined : (p) => starten(p, e, 'ganz', null)}
+                  onClick={() => {
+                    if (warEinZug()) return
+                    aufTermin(e)
+                  }}
+                  style={wandert ? { pointerEvents: 'none' } : undefined}
+                  className={
+                    'flex items-center gap-1.5 rounded-sm bg-surface-3 px-1.5 py-0.5 text-left ' +
+                    (fest ? '' : 'cursor-grab ') +
+                    (wandert ? 'opacity-70' : '')
+                  }
                 >
                   <span
                     aria-hidden
@@ -741,7 +972,8 @@ function Raster({
                   />
                   <span className="min-w-0 flex-1 truncate text-[11px] text-fg-2">{e.titel}</span>
                 </button>
-              ))}
+                )
+              })}
           </div>
         ))}
       </div>
@@ -762,7 +994,11 @@ function Raster({
           ))}
         </div>
         {spalten.map((d) => (
-          <div key={d.toISOString()} className="relative border-l border-line-subtle">
+          <div
+            key={d.toISOString()}
+            data-tag={alsDatum(d)}
+            className="relative border-l border-line-subtle"
+          >
             {stunden.map((h) => (
               <div
                 key={h}
@@ -771,9 +1007,11 @@ function Raster({
                 className="border-b border-line-subtle"
               />
             ))}
-            {termine
+            {gezeigte
               .filter((e) => !e.ganztaegig && imTag(e, d))
               .map((e) => {
+                const fest = kalender.get(e.kalenderId)?.nurLesen ?? false
+                const wandert = zug?.ur.id === e.id
                 const a = new Date(e.beginn)
                 const b = new Date(e.ende)
                 const oben = (a.getHours() + a.getMinutes() / 60 - VON_STUNDE) * STUNDE_PX
@@ -782,9 +1020,17 @@ function Raster({
                   <button
                     key={`${e.id}-${e.beginn}`}
                     type="button"
-                    onClick={() => aufTermin(e)}
-                    style={{ top: oben, height: hoch }}
-                    className="absolute right-1 left-1 flex gap-1.5 overflow-hidden rounded-md bg-surface-3 p-1 text-left hover:bg-surface-2"
+                    onPointerDown={fest ? undefined : (p) => starten(p, e, 'ganz', STUNDE_PX)}
+                    onClick={() => {
+                      if (warEinZug()) return
+                      aufTermin(e)
+                    }}
+                    style={{ top: oben, height: hoch, ...(wandert ? { pointerEvents: 'none' } : {}) }}
+                    className={
+                      'group absolute right-1 left-1 flex gap-1.5 overflow-hidden rounded-md bg-surface-3 p-1 text-left hover:bg-surface-2 ' +
+                      (fest ? '' : 'cursor-grab ') +
+                      (wandert ? 'opacity-70 ring-1 ring-accent' : '')
+                    }
                   >
                     <span
                       aria-hidden
@@ -813,6 +1059,29 @@ function Raster({
                         </span>
                       )}
                     </span>
+                    {/* Der Griff an der Unterkante.
+                        ⚠️ **Ein `span`, keine zweite Schaltfläche.** Eine
+                        Schaltfläche in einer Schaltfläche ist ungültiges HTML,
+                        und Vorleseprogramme melden dann zwei Ziele, von denen
+                        eines nichts sagt. Er ist bewusst nicht mit der Tastatur
+                        erreichbar: Die Dauer stellt man dort im Formular ein,
+                        wo sie einen Namen und eine Einheit hat.
+
+                        ⚠️ **Er muss sichtbar sein, sonst gibt es ihn nicht.**
+                        Der erste Bau war 6 px hoch und ohne jeden Hinweis —
+                        am 04.09.2026 aus dem Betrieb gemeldet: „ich kann da
+                        nix ziehen". Er funktionierte, man fand ihn nur nicht.
+                        Jetzt 8 px, und beim Überfahren erscheint der Balken,
+                        den jeder Kalender an dieser Stelle zeigt. */}
+                    {!fest && (
+                      <span
+                        aria-hidden
+                        onPointerDown={(p) => starten(p, e, 'kante', STUNDE_PX)}
+                        className="absolute inset-x-0 bottom-0 flex h-2 cursor-ns-resize items-end justify-center"
+                      >
+                        <span className="mb-0.5 h-0.5 w-6 rounded-pill bg-fg-3 opacity-0 transition-opacity group-hover:opacity-80" />
+                      </span>
+                    )}
                   </button>
                 )
               })}

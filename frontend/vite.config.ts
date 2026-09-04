@@ -58,6 +58,12 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    /* ⚠️ **Feste Zeitzone, sonst misst `ziehen.test.ts` nichts.** Der teuerste
+     * Fall beim Ziehen eines Termins ist die Zeitumstellung — und in UTC, wie
+     * das Fliessband laeuft, gibt es sie nicht. Die Probe liefe durch, ohne
+     * etwas zu pruefen. `ziehen.test.ts` weist als Erstes nach, dass die Zone
+     * wirklich gilt; ohne diesen Nachweis waere die Zeile hier nur Zierde. */
+    env: { TZ: 'Europe/Berlin' },
     // Die Oberflaechen-Tests laufen mit Playwright, nicht hier - sonst
     // versucht Vitest sie zu starten und scheitert an fehlendem Browser.
     exclude: ['node_modules/**', 'tests/**', 'dist/**'],

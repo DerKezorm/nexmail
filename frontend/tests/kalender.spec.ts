@@ -371,3 +371,161 @@ test('Teilnehmer stehen am Termin — mit ihrem Zusagestand', async ({ page }) =
   await expect(fenster.getByText('Zugesagt')).toBeVisible()
   await expect(fenster.getByText('Abgesagt')).toBeVisible()
 })
+
+/* --- Ziehen ------------------------------------------------------------- */
+
+/** Einen Termin über die Adresse nachschlagen — die Oberfläche ist hier der
+ *  Weg, nicht die Auskunft. */
+async function nachschlagen(page: Page, id: number) {
+  return page.evaluate(async (id) => {
+    const von = new Date()
+    von.setMonth(von.getMonth() - 2)
+    const bis = new Date()
+    bis.setMonth(bis.getMonth() + 2)
+    const frage = new URLSearchParams({ von: von.toISOString(), bis: bis.toISOString() })
+    const alle = await (
+      await fetch(`/api/kalender/termine?${frage}`, { credentials: 'include' })
+    ).json()
+    const t = (alle as Array<{ id: number; beginn: string; ende: string }>).find((x) => x.id === id)
+    return t ? { beginn: t.beginn, ende: t.ende } : null
+  }, id)
+}
+
+/** In die Wochenansicht, wo es ein Zeitraster gibt. */
+async function inDieWoche(page: Page) {
+  await page.getByRole('button', { name: 'Woche', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Woche', exact: true })).toBeVisible()
+}
+
+/** Eine echte Mausbewegung — Playwright erzeugt dabei `pointerType: 'mouse'`,
+ *  und genau darauf hört das Ziehen (mit dem Finger rollt die Ansicht). */
+async function ziehen(page: Page, block: ReturnType<Page['locator']>, dx: number, dy: number) {
+  const kasten = await block.boundingBox()
+  if (!kasten) throw new Error('Der Block hat keine Ausdehnung')
+  const x = kasten.x + kasten.width / 2
+  const y = kasten.y + 8
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  // ⚠️ Zwei Schritte: Der erste bringt den Zeiger über die 4-px-Schwelle,
+  // erst danach gilt es als Zug und nicht mehr als Klick.
+  await page.mouse.move(x + Math.sign(dx) * 6, y + Math.sign(dy) * 6)
+  await page.mouse.move(x + dx, y + dy)
+  await page.mouse.up()
+}
+
+test('Ein gezogener Termin steht danach eine Stunde später', async ({ page }) => {
+  const termin = await anlegen(page, `${PROBE} Zug`)
+  await page.reload()
+  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await expect(page.getByRole('button', { name: /Neuer Termin/ })).toBeVisible()
+  await inDieWoche(page)
+
+  const vorher = await nachschlagen(page, termin.id)
+  const block = page.getByRole('button', { name: new RegExp(`${PROBE} Zug`) }).first()
+  await expect(block).toBeVisible()
+
+  // 48 px sind genau eine Stunde (STUNDE_PX).
+  await ziehen(page, block, 0, 48)
+
+  await expect
+    .poll(async () => (await nachschlagen(page, termin.id))?.beginn, {
+      message: 'Der Zug ist nicht beim Server angekommen',
+    })
+    .not.toBe(vorher?.beginn)
+
+  const nachher = await nachschlagen(page, termin.id)
+  const verschoben =
+    (new Date(nachher!.beginn).getTime() - new Date(vorher!.beginn).getTime()) / 60_000
+  expect(verschoben).toBe(60)
+
+  /* ⚠️ **Hier stand einmal eine Zusicherung auf die Dauer, und sie war Zierde.**
+     Die Mutationsprobe lief auf Rückgabecode 0: `termine.aendern` im Server
+     hält die Dauer von sich aus, wenn nur der Beginn ankommt. Der Test konnte
+     also gar nicht rot werden. Wo die Zusicherung wirklich hängt:
+     `lib/ziehen.test.ts` für die Rechnung der Oberfläche (dort wird die
+     Mutation erkannt) und `termine.aendern` für den Server. Zwei Tests, die
+     dasselbe behaupten, aber nur einer kann es beweisen. */
+})
+
+test('Die Unterkante ändert das Ende und lässt den Beginn stehen', async ({ page }) => {
+  const termin = await anlegen(page, `${PROBE} Kante`)
+  await page.reload()
+  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await expect(page.getByRole('button', { name: /Neuer Termin/ })).toBeVisible()
+  await inDieWoche(page)
+
+  const vorher = await nachschlagen(page, termin.id)
+  const block = page.getByRole('button', { name: new RegExp(`${PROBE} Kante`) }).first()
+  const kasten = await block.boundingBox()
+  if (!kasten) throw new Error('Der Block hat keine Ausdehnung')
+
+  // Der Griff liegt in den untersten Pixeln des Blocks.
+  const x = kasten.x + kasten.width / 2
+  const y = kasten.y + kasten.height - 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x, y + 8)
+  await page.mouse.move(x, y + 48)
+  await page.mouse.up()
+
+  await expect
+    .poll(async () => (await nachschlagen(page, termin.id))?.ende, {
+      message: 'Die Kante ist nicht beim Server angekommen',
+    })
+    .not.toBe(vorher?.ende)
+
+  const nachher = await nachschlagen(page, termin.id)
+  expect(nachher!.beginn).toBe(vorher!.beginn)
+  expect(new Date(nachher!.ende).getTime()).toBeGreaterThan(new Date(vorher!.ende).getTime())
+})
+
+test('Ein Zug an einer Reihe fragt, was gemeint ist', async ({ page }) => {
+  /* ⚠️ **Ein Zug ist billiger als ein Formular — genau deshalb muss die Frage
+     bleiben.** Ohne sie verschiebt eine Handbewegung fünfzig Termine. */
+  await anlegen(page, `${PROBE} Reihe`, 'FREQ=WEEKLY')
+  await page.reload()
+  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await expect(page.getByRole('button', { name: /Neuer Termin/ })).toBeVisible()
+  await inDieWoche(page)
+
+  const block = page.getByRole('button', { name: new RegExp(`${PROBE} Reihe`) }).first()
+  await expect(block).toBeVisible()
+  await ziehen(page, block, 0, 48)
+
+  const frage = page.getByRole('dialog')
+  await expect(frage).toBeVisible()
+  await expect(frage.getByRole('button', { name: /Nur dieser/ })).toBeVisible()
+  await expect(frage.getByRole('button', { name: /folgenden/ })).toBeVisible()
+  await expect(frage.getByRole('button', { name: /Alle Termine/ })).toBeVisible()
+  // Abbrechen lässt alles, wie es war.
+  await frage.getByRole('button', { name: 'Abbrechen' }).click()
+})
+
+test('Ein Wackeln beim Klicken oeffnet weiterhin den Termin', async ({ page }) => {
+  /* ⚠️ **Ohne Schwelle oeffnet kein Klick mehr einen Termin.** Eine Maus
+     wackelt beim Druecken um ein, zwei Pixel; jeder dieser Pixel waere sonst
+     ein Zug um null Minuten — und der unterdrueckt den Klick.
+
+     ⚠️ **Playwrights `click()` findet das nicht.** Es setzt den Zeiger und
+     drueckt, ohne ihn dazwischen zu bewegen; `pointermove` feuert nie. Die
+     Bewegung muss von Hand kommen, sonst prueft der Test die Schwelle nicht. */
+  await anlegen(page, `${PROBE} Wackeln`)
+  await page.reload()
+  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await expect(page.getByRole('button', { name: /Neuer Termin/ })).toBeVisible()
+  await inDieWoche(page)
+
+  const block = page.getByRole('button', { name: new RegExp(`${PROBE} Wackeln`) }).first()
+  const kasten = await block.boundingBox()
+  if (!kasten) throw new Error('Der Block hat keine Ausdehnung')
+  const x = kasten.x + kasten.width / 2
+  const y = kasten.y + 8
+
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + 2, y + 1) // unter der Schwelle
+  await page.mouse.up()
+
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await expect(page.getByRole('dialog').getByText(`${PROBE} Wackeln`)).toBeVisible()
+})
