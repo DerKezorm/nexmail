@@ -47,9 +47,62 @@ def test_dieselbe_adresse_kommt_nicht_zweimal_hinein(db, person):
 
 
 def test_was_keine_adresse_ist_wird_abgewiesen(db, person):
-    for unsinn in ("kein-at-zeichen", "@example.org", "anna@", "anna @ example.org", ""):
+    for unsinn in ("kein-at-zeichen", "@example.org", "anna@", "anna @ example.org"):
         with pytest.raises(kontakte.KontaktFehler):
             kontakte.anlegen(db, person, unsinn)
+
+
+# --- Ohne Adresse ---------------------------------------------------------- #
+
+
+def test_ein_kontakt_ohne_adresse_ist_erlaubt(db, person):
+    """⚠️ Seit dem 05.09.2026. Die Werkstatt hat eine Nummer und kein Postfach.
+    Anschreiben lässt sie sich nicht, aber sie steht im Buch und geht per
+    CardDAV aufs Telefon. Und ein zweiter ohne Adresse steht daneben, statt an
+    der Eindeutigkeit zu scheitern."""
+    k = kontakte.anlegen(db, person, "", "Werkstatt Beispiel", telefon="030 1234")
+    assert k.adresse == ""
+    assert k.adressbuch_id is not None
+    kontakte.anlegen(db, person, "", "Oma", telefon="030 9999")
+    assert len(kontakte.meine(db, person)) == 2
+
+
+def test_ein_kontakt_ganz_ohne_inhalt_wird_abgewiesen(db, person):
+    """Eine Zeile ohne Name, Adresse, Nummer und Firma findet niemand wieder."""
+    with pytest.raises(kontakte.KontaktFehler) as f:
+        kontakte.anlegen(db, person, "", "", notiz="nur eine Notiz")
+    assert str(f.value) == "kontakt_leer"
+    assert kontakte.meine(db, person) == []
+
+
+def test_die_adresse_laesst_sich_wieder_entfernen(db, person):
+    k = kontakte.anlegen(db, person, "anna@example.org", "Anna", telefon="0123")
+    kontakte.aendern(db, person, k.id, adresse="")
+    assert k.adresse == ""
+    # Aber nicht, wenn danach nichts mehr übrig bliebe. Und dann bleibt auch
+    # der Rest unangefasst.
+    with pytest.raises(kontakte.KontaktFehler) as f:
+        kontakte.aendern(db, person, k.id, name="", telefon="")
+    assert str(f.value) == "kontakt_leer"
+    # ⚠️ Der naechste Schreibvorgang eines anderen darf die abgewiesene
+    # Aenderung nicht mitnehmen: Geprueft wird, bevor die Zeile angefasst wird.
+    kontakte.anlegen(db, person, "b@example.org", "Bernd")
+    db.expire_all()
+    assert k.name == "Anna" and k.telefon == "0123"
+
+
+def test_ohne_adresse_wird_nicht_vorgeschlagen(db, person):
+    """Die Vorschläge stehen im Adressfeld; wer dort die Werkstatt wählt,
+    bekäme ein leeres Feld."""
+    kontakte.anlegen(db, person, "", "Werkstatt Beispiel", telefon="030 1234")
+    kontakte.anlegen(db, person, "werk@example.org", "Werkstatt Zwei")
+    assert [k.name for k in kontakte.vorschlagen(db, person, "werk")] == ["Werkstatt Zwei"]
+
+
+def test_die_suche_findet_die_nummer(db, person):
+    kontakte.anlegen(db, person, "", "Werkstatt", telefon="030 1234")
+    kontakte.anlegen(db, person, "anna@example.org", "Anna")
+    assert [k.name for k in kontakte.meine(db, person, "1234")] == ["Werkstatt"]
 
 
 def test_suche_geht_ueber_name_adresse_und_firma(db, person):
@@ -281,10 +334,63 @@ def test_vcard_ergaenzt_statt_zu_verdoppeln(db, person):
     assert eintrag.telefon == "0123"
 
 
-def test_eine_vcard_ohne_adresse_wird_uebersprungen(db, person):
-    karte = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Niemand\r\nEND:VCARD\r\n"
+def test_eine_vcard_ohne_adresse_kommt_trotzdem_an(db, person):
+    """⚠️ Bis zum 05.09.2026 wurde sie übersprungen. Die Werkstatt hat eine
+    Nummer und kein Postfach; wer sie übergeht, hat ein Adressbuch, dem ein
+    Drittel der Telefonliste fehlt."""
+    karte = (
+        "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:w1\r\nFN:Werkstatt Beispiel\r\n"
+        "TEL:030 1234\r\nEND:VCARD\r\n"
+    )
+    assert kontakte.aus_vcard(db, person, karte) == {"neu": 1, "ergaenzt": 0}
+    eintrag = kontakte.meine(db, person)[0]
+    assert eintrag.adresse == "" and eintrag.telefon == "030 1234"
+    assert eintrag.uid == "w1"
+
+
+def test_dieselbe_datei_zweimal_verdoppelt_auch_ohne_adresse_nichts(db, person):
+    """⚠️ Ohne Adresse gibt es keinen Schlüssel. Wiedererkannt wird an der UID
+    der Karte, und ohne UID an Name und Nummer. Dieselbe Regel wie die
+    Message-ID beim mbox-Import: Der zweite Anlauf darf nichts verdoppeln."""
+    datei = (
+        "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:w1\r\nFN:Werkstatt\r\nTEL:030 1234\r\nEND:VCARD\r\n"
+        "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Oma\r\nTEL:030 9999\r\nEND:VCARD\r\n"
+    )
+    assert kontakte.aus_vcard(db, person, datei) == {"neu": 2, "ergaenzt": 0}
+    assert kontakte.aus_vcard(db, person, datei) == {"neu": 0, "ergaenzt": 2}
+    assert len(kontakte.meine(db, person)) == 2
+
+
+def test_eine_leere_vcard_wird_uebersprungen(db, person):
+    karte = "BEGIN:VCARD\r\nVERSION:3.0\r\nNOTE:nur eine Notiz\r\nEND:VCARD\r\n"
     assert kontakte.aus_vcard(db, person, karte) == {"neu": 0, "ergaenzt": 0}
     assert kontakte.meine(db, person) == []
+
+
+def test_ohne_adresse_schreibt_die_vcard_keine_email_zeile(db, person):
+    kontakte.anlegen(db, person, "", "Werkstatt", telefon="030 1234")
+    kontakte.anlegen(db, person, "", "", telefon="030 5555")
+    karte = kontakte.als_vcard(kontakte.meine(db, person))
+    assert "EMAIL" not in karte
+    assert "FN:Werkstatt" in karte and "TEL:030 1234" in karte
+    # Ohne Namen benennt die Nummer den Eintrag; FN ist Pflicht.
+    assert "FN:030 5555" in karte
+
+
+def test_die_uid_geht_mit_hinaus_und_kommt_wieder(db, person):
+    """Die Rückfahrkarte für Einträge ohne Adresse: ausgeführt, beim anderen
+    zweimal eingelesen, und es bleibt bei zwei Einträgen."""
+    kontakte.anlegen(db, person, "", "Werkstatt", telefon="030 1234")
+    kontakte.aus_vcard(
+        db, person, "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:w1\r\nFN:Oma\r\nTEL:1\r\nEND:VCARD\r\n"
+    )
+    karte = kontakte.als_vcard(kontakte.meine(db, person))
+    assert "UID:w1" in karte
+
+    anderer, _ = zweiten_benutzer_anlegen(db)
+    kontakte.aus_vcard(db, anderer, karte)
+    kontakte.aus_vcard(db, anderer, karte)
+    assert len(kontakte.meine(db, anderer)) == 2
 
 
 def test_muell_wirft_den_import_nicht_um(db, person):
@@ -357,6 +463,18 @@ def test_gruppe_anlegen_umbenennen_entfernen(db, person):
     assert kontakte.gruppen(db, person) == []
     # Auch die Zuordnungen sind weg, nicht nur die Gruppe davor.
     assert _mitgliedszeilen(db, person) == 0
+
+
+def test_ein_mitglied_ohne_adresse_zaehlt_mit_und_wird_nicht_adressiert(db, person):
+    """⚠️ In der Mail stünde sonst ein leerer Empfänger."""
+    anna = kontakte.anlegen(db, person, "anna@example.org", "Anna")
+    werkstatt = kontakte.anlegen(db, person, "", "Werkstatt", telefon="1")
+    gruppe = kontakte.gruppe_anlegen(db, person, "Verein")
+    kontakte.mitglieder_setzen(db, person, gruppe.id, [anna.id, werkstatt.id])
+
+    (eintrag,) = kontakte.gruppen(db, person)
+    assert eintrag["mitglieder"] == 2
+    assert eintrag["adressen"] == ["anna@example.org"]
 
 
 def test_gruppe_loeschen_loescht_keine_kontakte(db, person):

@@ -22,9 +22,10 @@ interface Zugang {
   art: string
   adresse: string
   letzter_fehler: string
-  /** Wie viele Postfächer und Kalender an dieser Zustimmung hängen. */
+  /** Wie viele Postfächer, Kalender und Adressbücher an dieser Zustimmung hängen. */
   postfaecher: number
   kalender: number
+  adressbuecher: number
 }
 
 interface AnbieterZeile {
@@ -108,6 +109,7 @@ export function Oauthzugaenge({ istBetreiber = false }: Props) {
     const teile: string[] = []
     if (z.postfaecher) teile.push(t('oauth.trennen_postfaecher', { count: z.postfaecher }))
     if (z.kalender) teile.push(t('oauth.trennen_kalender', { count: z.kalender }))
+    if (z.adressbuecher) teile.push(t('oauth.trennen_adressbuecher', { count: z.adressbuecher }))
     if (teile.length === 0) return t('oauth.trennen_text')
     return `${t('oauth.trennen_haengt_dran', { was: teile.join(t('oauth.und')) })} ${t(
       'oauth.trennen_text',

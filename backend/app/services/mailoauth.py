@@ -79,6 +79,10 @@ ARTEN: dict[str, Anbieterart] = {
             "https://mail.google.com/",
             # Kalender über CalDAV.
             "https://www.googleapis.com/auth/calendar",
+            # Kontakte über CardDAV (Beta). ⚠️ **Eine Zustimmung von vor dem
+            # 05.09.2026 hat diesen Bereich nicht**; das Buch-Fenster sagt es
+            # und schickt zum Neu-Verbinden, statt Google 403 sagen zu lassen.
+            "https://www.googleapis.com/auth/carddav",
             # Nur, um die Adresse des Kontos zu erfahren.
             "https://www.googleapis.com/auth/userinfo.email",
         ),
@@ -356,7 +360,7 @@ def was_daran_haengt(db: Session, zugang: OauthZugang) -> tuple[list, list]:
     als „Zustimmung entfernen"; wer das erst hinterher erfährt, hat es nicht
     entschieden.
     """
-    from ..models import Kalender, Konto
+    from ..models import Adressbuch, Kalender, Konto
 
     konten = list(
         db.scalars(select(Konto).where(Konto.oauth_zugang_id == zugang.id))
@@ -364,7 +368,13 @@ def was_daran_haengt(db: Session, zugang: OauthZugang) -> tuple[list, list]:
     kalender = list(
         db.scalars(select(Kalender).where(Kalender.oauth_zugang_id == zugang.id))
     )
-    return konten, kalender
+    # ⚠️ Die Adressbuecher haengen genauso daran; ohne Zustimmung meldete jedes
+    # bei jedem Takt „Zustimmung fehlt". Sie gehen beim Trennen mit, samt
+    # nexmails Kopie der Kontakte, und die Rueckfrage zaehlt sie.
+    buecher = list(
+        db.scalars(select(Adressbuch).where(Adressbuch.oauth_zugang_id == zugang.id))
+    )
+    return konten, kalender, buecher
 
 
 def entfernen(db: Session, person: Benutzer, zugang_id: str) -> None:
@@ -380,20 +390,36 @@ def entfernen(db: Session, person: Benutzer, zugang_id: str) -> None:
     zugang = db.get(OauthZugang, zugang_id)
     if zugang is None or zugang.benutzer_id != person.id:
         raise OauthFehler("oauth_zugang_unbekannt")
-    konten, kalender = was_daran_haengt(db, zugang)
+    konten, kalender, buecher = was_daran_haengt(db, zugang)
     # ⚠️ Vor dem Loeschen merken: Nach dem ``commit`` ist die Zeile weg, und
     # ein Zugriff auf ``zugang.art`` schluege dann fehl.
-    art, wie_viele = zugang.art, (len(konten), len(kalender))
+    art, wie_viele = zugang.art, (len(konten), len(kalender), len(buecher))
     for konto in konten:
         db.delete(konto)
     for eintrag in kalender:
         db.delete(eintrag)
+    for buch in buecher:
+        # Dieselbe Regel wie beim Trennen eines Buches: erst die Zuordnungen
+        # zu Gruppen, sonst zaehlen die Gruppen Geloeschte weiter mit.
+        _buch_wegraeumen(db, buch)
     db.delete(zugang)
     db.commit()
     logger.info(
-        "An OAuth grant for %s was removed, along with %d mailbox(es) and %d calendar(s).",
+        "An OAuth grant for %s was removed, along with %d mailbox(es), %d calendar(s) "
+        "and %d address book(s).",
         art, *wie_viele,
     )
+
+
+def _buch_wegraeumen(db: Session, buch) -> None:
+    from ..models import Kontakt
+    from . import kontakte as kontaktdienst
+
+    kontaktdienst.mitgliedschaften_loesen(
+        db, select(Kontakt.id).where(Kontakt.adressbuch_id == buch.id)
+    )
+    db.query(Kontakt).filter(Kontakt.adressbuch_id == buch.id).delete(synchronize_session=False)
+    db.delete(buch)
 
 
 def xoauth2(benutzer: str, token: str) -> str:

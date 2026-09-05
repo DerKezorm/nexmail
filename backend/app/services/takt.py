@@ -231,15 +231,29 @@ def kalender_starten() -> None:
     _kalenderfaden.start()
 
 
-def _kalenderschleife() -> None:
+def kalender_runde(db) -> None:
+    """Kalender und Adressbücher jedes Benutzers einmal.
+
+    ⚠️ **Die Bücher hängen am Kalender-Takt, nicht am Post-Takt**, aus
+    demselben Grund wie die Kalender: Wer die Post abschaltet, meint nicht
+    seine Kontakte. Ein eigener Faden dafür wäre ein dritter Faden für
+    dieselbe Sorte Arbeit. Erst die Liste, dann die Arbeit; ein Buch, das
+    klemmt, hält weder die anderen noch die Kalender auf.
+    """
     from ..models import Benutzer
+    from .adressbuchabgleich import alle_abgleichen as buecher_abgleichen
     from .kalenderabgleich import alle_abgleichen
 
+    for person in list(db.scalars(select(Benutzer))):
+        alle_abgleichen(db, person)
+        buecher_abgleichen(db, person)
+
+
+def _kalenderschleife() -> None:
     while not _kalender_halt.wait(KALENDER_TAKT_SEKUNDEN):
         try:
             with SessionLocal() as db:
-                for person in db.scalars(select(Benutzer)):
-                    alle_abgleichen(db, person)
+                kalender_runde(db)
         except Exception as fehler:  # noqa: BLE001
             # Der Faden darf nie sterben — sonst hoert nexmail still auf,
             # nach Terminen zu sehen, und niemand merkt es.

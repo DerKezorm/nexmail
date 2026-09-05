@@ -791,10 +791,19 @@ class Adressbuch(Base):
 class Kontakt(Base):
     """Ein Eintrag im Adressbuch.
 
-    ⚠️ **Die Adresse ist der Schluessel, nicht der Name.** Menschen heissen
-    mehrfach gleich und aendern ihren Namen; die Adresse ist das, woran eine
-    Mail haengt. Deshalb ist sie je Benutzer eindeutig - sonst sammelt das
-    Einsammeln aus Gesendet denselben Menschen zehnmal ein.
+    ⚠️ **Die Adresse ist der Schluessel, nicht der Name, wenn es eine gibt.**
+    Menschen heissen mehrfach gleich und aendern ihren Namen; die Adresse ist
+    das, woran eine Mail haengt. Deshalb ist sie je Benutzer eindeutig - sonst
+    sammelt das Einsammeln aus Gesendet denselben Menschen zehnmal ein.
+
+    ⚠️ **Seit dem 05.09.2026 darf sie fehlen.** Mit CardDAV ist nexmail der
+    zweite Client einer Kontaktliste, und eine Kontaktliste hat Menschen ohne
+    E-Mail-Adresse: die Nummer der Werkstatt, die Oma ohne Postfach. Leer
+    heisst „keine", wie ueberall in diesem Modell. Die Eindeutigkeit gilt nur
+    fuer gefuellte Adressen (Teilindex ``uq_kontakt_adresse``); anschreiben
+    lassen sich solche Eintraege nicht, Vorschlaege und Gruppen lassen sie aus.
+    Wenigstens Name, Adresse, Nummer oder Firma muss ein Kontakt tragen, sonst
+    steht eine leere Zeile im Buch, die niemand wiederfindet.
 
     ``quelle`` unterscheidet, was von Hand gepflegt wurde und was nexmail
     selbst aufgeschnappt hat. Ohne diese Spalte kann man Aufgeschnapptes nie
@@ -804,7 +813,17 @@ class Kontakt(Base):
 
     __tablename__ = "kontakt"
     __table_args__ = (
-        UniqueConstraint("benutzer_id", "adresse", name="uq_kontakt_adresse"),
+        # ⚠️ **Ein Teilindex, keine Tabellenbedingung.** SQLite kann eine
+        # Tabellenbedingung nie mehr loeschen, einen Index schon. Die alte
+        # ``UNIQUE (benutzer_id, adresse)`` hebt ``db._kontakt_umbauen`` beim
+        # Start in diesen Index; leere Adressen bleiben draussen.
+        Index(
+            "uq_kontakt_adresse",
+            "benutzer_id",
+            "adresse",
+            unique=True,
+            sqlite_where=text("adresse <> ''"),
+        ),
         Index("ix_kontakt_name", "benutzer_id", "name"),
     )
 
@@ -814,8 +833,8 @@ class Kontakt(Base):
     name: Mapped[str] = mapped_column(String(320), default="")
     #: Immer kleingeschrieben abgelegt. Mail-Adressen sind im Domaenenteil
     #: ohnehin gleichbedeutend, und ein Adressbuch mit "Max@" und "max@"
-    #: nebeneinander ist kaputt.
-    adresse: Mapped[str] = mapped_column(String(320))
+    #: nebeneinander ist kaputt. Leer heisst: keine.
+    adresse: Mapped[str] = mapped_column(String(320), default="")
     firma: Mapped[str] = mapped_column(String(320), default="")
     telefon: Mapped[str] = mapped_column(String(120), default="")
     notiz: Mapped[str] = mapped_column(Text, default="")

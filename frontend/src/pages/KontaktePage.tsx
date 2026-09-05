@@ -11,12 +11,27 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Download, Plus, Trash2, Upload, UserRoundPlus, Users } from 'lucide-react'
+import {
+  AlertTriangle,
+  Download,
+  Link2,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Unlink,
+  Upload,
+  UserRoundPlus,
+  Users,
+} from 'lucide-react'
 import { api } from '../api/client'
 import { Badge, Button, Checkbox, EmptyState, IconButton, Input } from '../ds'
+import { Buchfenster } from '../components/Buchfenster'
 import { useNachfrage } from '../components/Nachfrage'
 import { appPfad } from '../lib/basis'
+import { PUNKT_KLASSE } from '../lib/farben'
+import { beschriftung, sichtbareKontakte } from '../lib/kontaktanzeige'
 import { servermeldung } from '../lib/servermeldung'
+import type { Postfachfarbe } from '../daten/typen'
 
 export interface Kontakt {
   id: number
@@ -27,6 +42,34 @@ export interface Kontakt {
   notiz: string
   quelle: string
   verwendet: number
+  /** In welchem Buch der Eintrag liegt. */
+  adressbuch_id: string | null
+  /** ⚠️ Beta: Kontakte aus verbundenen Büchern werden nur gelesen. */
+  nur_lesen: boolean
+}
+
+/* Ein Adressbuch: das lokale, das nicht wegkann, oder ein verbundenes (Beta,
+ * nur lesend). Ein Buch ist der Ort eines Kontakts, davon genau einer; eine
+ * Gruppe ist quer dazu. */
+export interface Buch {
+  id: string
+  name: string
+  farbe: number
+  sichtbar: boolean
+  ist_lokal: boolean
+  /** "" (lebt nur hier) | "carddav" */
+  art: string
+  herkunft: string
+  letzter_fehler: string
+  kontakte: number
+}
+
+interface Abgleichbericht {
+  neu: number
+  geaendert: number
+  entfernt: number
+  belegt: number
+  fehler: Record<string, string>
 }
 
 /* Ein Verteiler — ein Eingabehelfer beim Adressieren, kein Mailbegriff.
@@ -39,7 +82,7 @@ export interface Gruppe {
   adressen: string[]
 }
 
-const LEER: Omit<Kontakt, 'id' | 'quelle' | 'verwendet'> = {
+const LEER: Omit<Kontakt, 'id' | 'quelle' | 'verwendet' | 'adressbuch_id' | 'nur_lesen'> = {
   name: '',
   adresse: '',
   firma: '',
@@ -48,7 +91,7 @@ const LEER: Omit<Kontakt, 'id' | 'quelle' | 'verwendet'> = {
 }
 
 export function KontaktePage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
 
   const [liste, setListe] = useState<Kontakt[]>([])
   const [suche, setSuche] = useState('')
@@ -57,6 +100,9 @@ export function KontaktePage() {
   const [gruppen, setGruppen] = useState<Gruppe[]>([])
   const [gruppeGewaehlt, setGruppeGewaehlt] = useState<number | null>(null)
   const [gruppeNeu, setGruppeNeu] = useState(false)
+  const [buecher, setBuecher] = useState<Buch[]>([])
+  const [buchNeu, setBuchNeu] = useState(false)
+  const [gleichtAb, setGleichtAb] = useState(false)
   const [fehler, setFehler] = useState('')
   const [meldung, setMeldung] = useState('')
   const [laeuft, setLaeuft] = useState(false)
@@ -73,6 +119,10 @@ export function KontaktePage() {
     setGruppen(await api.holen<Gruppe[]>('/api/kontakte/gruppen'))
   }, [])
 
+  const buecherLaden = useCallback(async () => {
+    setBuecher(await api.holen<Buch[]>('/api/adressbuecher'))
+  }, [])
+
   useEffect(() => {
     // Kurz warten, sonst eine Abfrage je Tastendruck.
     const uhr = window.setTimeout(() => void laden(suche).catch(() => setListe([])), 200)
@@ -81,10 +131,15 @@ export function KontaktePage() {
 
   useEffect(() => {
     void gruppenLaden().catch(() => setGruppen([]))
-  }, [gruppenLaden])
+    void buecherLaden().catch(() => setBuecher([]))
+  }, [gruppenLaden, buecherLaden])
 
   const offen = liste.find((k) => k.id === gewaehlt) ?? null
   const gruppeOffen = gruppen.find((g) => g.id === gruppeGewaehlt) ?? null
+  /* Die Haken an den Büchern gelten für die Liste; ein Kontakt, dessen Buch
+     die Liste nicht kennt, bleibt sichtbar. */
+  const sichtbar = sichtbareKontakte(liste, buecher)
+  const nachBuch = new Map(buecher.map((b) => [b.id, b]))
 
   async function mit<T>(tun: () => Promise<T>, erfolg = ''): Promise<T | null> {
     setFehler('')
@@ -95,7 +150,9 @@ export function KontaktePage() {
       await laden(suche)
       // Die Gruppen haengen an den Kontakten (Mitgliederzahl!) — nach jeder
       // Handlung frisch holen, sonst zaehlt die Liste Geloeschte weiter mit.
+      // Die Buecher ebenso: Ihre Zahl steht in der Spalte.
       await gruppenLaden()
+      await buecherLaden()
       if (erfolg) setMeldung(erfolg)
       return ergebnis
     } catch (f) {
@@ -104,6 +161,68 @@ export function KontaktePage() {
     } finally {
       setLaeuft(false)
     }
+  }
+
+  /** ⚠️ Der Server nennt eine Kennung, die Oberfläche übersetzt. */
+  function buchfehlertext(kennung: string): string {
+    const schluessel = `kontakte.buch_fehler_${kennung}`
+    return i18n.exists(schluessel) ? t(schluessel) : t('kontakte.buch_fehler_allgemein')
+  }
+
+  async function buchUmschalten(b: Buch, an: boolean) {
+    // Sofort umschalten, damit der Haken nicht hakt; die gezählte Wahrheit
+    // holt der nächste Abruf.
+    setBuecher((alt) => alt.map((x) => (x.id === b.id ? { ...x, sichtbar: an } : x)))
+    try {
+      await api.flicken(`/api/adressbuecher/${b.id}`, { sichtbar: an })
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+      await buecherLaden().catch(() => undefined)
+    }
+  }
+
+  async function jetztAbgleichen() {
+    setGleichtAb(true)
+    setFehler('')
+    setMeldung('')
+    try {
+      const b = await api.senden<Abgleichbericht>('/api/adressbuecher/abgleichen', {})
+      await laden(suche)
+      await buecherLaden()
+      const saetze = [
+        b.neu + b.geaendert + b.entfernt > 0
+          ? t('kontakte.buch_abgleich_fertig', {
+              neu: b.neu,
+              geaendert: b.geaendert,
+              entfernt: b.entfernt,
+            })
+          : t('kontakte.buch_abgleich_nichts'),
+      ]
+      // ⚠️ Übergangene Karten werden genannt, sonst fehlen drüben Kontakte
+      // und niemand weiss warum.
+      if (b.belegt) saetze.push(t('kontakte.buch_abgleich_belegt', { count: b.belegt }))
+      setMeldung(saetze.join(' '))
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    } finally {
+      setGleichtAb(false)
+    }
+  }
+
+  async function buchTrennen(b: Buch) {
+    /* ⚠️ Die Rückfrage sagt, dass beim Anbieter nichts gelöscht wird. Ohne
+       den Satz klingt „trennen" nach „weg". */
+    const ja = await fragen({
+      titel: t('kontakte.buch_trennen_frage', { name: b.name }),
+      text: t('kontakte.buch_trennen_text', { count: b.kontakte, wo: b.herkunft }),
+      knopf: t('kontakte.buch_trennen'),
+      gefaehrlich: true,
+    })
+    if (ja !== true) return
+    await mit(async () => {
+      await api.loeschen(`/api/adressbuecher/${b.id}`)
+      if (offen && offen.adressbuch_id === b.id) setGewaehlt(null)
+    })
   }
 
   async function gruppeSpeichern(name: string, kontaktIds: number[]) {
@@ -221,7 +340,7 @@ export function KontaktePage() {
             }}
           />
           <span className="flex-1" />
-          <span className="pr-1 text-[11px] text-fg-4">{liste.length}</span>
+          <span className="pr-1 text-[11px] text-fg-4">{sichtbar.length}</span>
         </div>
 
         <input
@@ -242,6 +361,80 @@ export function KontaktePage() {
             value={suche}
             onChange={(e) => setSuche(e.target.value)}
           />
+        </div>
+
+        {/* --- Bücher: wo ein Kontakt liegt. Beta, nur lesend ------------ */}
+        <div className="shrink-0 border-b border-line-subtle">
+          <div className="flex h-9 items-center gap-1.5 pr-1 pl-3">
+            <span className="text-[11px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
+              {t('kontakte.buecher')}
+            </span>
+            {/* ⚠️ Die Beta steht dort, wo die verbundenen Bücher stehen, nicht
+                in einer README: Lieferung 1 liest nur. */}
+            <Badge tone="warning">{t('kontakte.beta')}</Badge>
+            <span className="flex-1" />
+            {buecher.some((b) => b.art) && (
+              <IconButton
+                icon={<RefreshCw className={gleichtAb ? 'animate-spin' : undefined} />}
+                label={gleichtAb ? t('kontakte.buch_abgleich_laeuft') : t('kontakte.buch_abgleichen')}
+                size="sm"
+                onClick={() => void jetztAbgleichen()}
+              />
+            )}
+            <IconButton
+              icon={<Plus />}
+              label={t('kontakte.buch_verbinden')}
+              size="sm"
+              onClick={() => setBuchNeu(true)}
+            />
+          </div>
+          <div className="pb-1">
+            {buecher.map((b) => (
+              /* ⚠️ Der Farbfleck steht VOR dem Haken, wie beim Kalender: Der
+                 Haken sagt „wird angezeigt", der Fleck sagt, welches Buch. */
+              <div key={b.id} className="flex items-center gap-2 px-3 py-1 hover:bg-surface-2">
+                <span
+                  aria-hidden
+                  className={`size-2.5 shrink-0 rounded-sm ${PUNKT_KLASSE[b.farbe as Postfachfarbe]}`}
+                />
+                <span className="min-w-0 flex-1 truncate text-[13px]">
+                  <Checkbox
+                    label={b.name}
+                    checked={b.sichtbar}
+                    onCheckedChange={(an) => void buchUmschalten(b, an)}
+                  />
+                </span>
+                <span className="text-[11px] text-fg-4">{b.kontakte}</span>
+                {/* ⚠️ Der Fehler steht am Buch, nicht in einem Banner. Bei
+                    drei verbundenen Büchern sagt „fehlgeschlagen" nicht,
+                    welches. */}
+                {b.letzter_fehler ? (
+                  <span title={buchfehlertext(b.letzter_fehler)}>
+                    <AlertTriangle aria-hidden className="size-3.5 shrink-0 text-warning" />
+                  </span>
+                ) : b.art ? (
+                  <span title={`${b.herkunft} · ${t('kontakte.nur_lesen')}`}>
+                    <Link2 aria-hidden className="size-3.5 shrink-0 text-fg-4" />
+                  </span>
+                ) : null}
+                {b.art && (
+                  <IconButton
+                    icon={<Unlink />}
+                    label={t('kontakte.buch_trennen')}
+                    size="sm"
+                    onClick={() => void buchTrennen(b)}
+                  />
+                )}
+              </div>
+            ))}
+            {/* Das Ergebnis eines Abgleichs gehört hierher, wenn rechts
+                gerade kein Eintrag offen ist, der es zeigen könnte. */}
+            {!(entwurf || offen || gruppeNeu || gruppeOffen) && (fehler || meldung) && (
+              <p className={`px-3 pb-2 text-[12px] ${fehler ? 'text-danger' : 'text-accent-text'}`}>
+                {fehler || meldung}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* --- Gruppen: Verteiler als Eingabehelfer beim Adressieren --- */}
@@ -296,10 +489,10 @@ export function KontaktePage() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {liste.length === 0 ? (
+          {sichtbar.length === 0 ? (
             <p className="px-3 py-6 text-center text-[13px] text-fg-4">{t('kontakte.leer')}</p>
           ) : (
-            liste.map((k) => (
+            sichtbar.map((k) => (
               <button
                 key={k.id}
                 type="button"
@@ -319,7 +512,7 @@ export function KontaktePage() {
               >
                 <span className="flex w-full items-center gap-2">
                   <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg-1">
-                    {k.name || k.adresse}
+                    {beschriftung(k).titel}
                   </span>
                   {/* ⚠️ Aufgeschnapptes muss man sehen — sonst traut sich
                       niemand, das Adressbuch aufzuräumen. */}
@@ -327,7 +520,9 @@ export function KontaktePage() {
                     <Badge tone="neutral">{t('kontakte.gesammelt')}</Badge>
                   )}
                 </span>
-                <span className="w-full truncate text-[12px] text-fg-3">{k.adresse}</span>
+                {/* Ohne Adresse steht hier die Nummer: ein Kontakt darf seit
+                    dem 05.09.2026 ohne Postfach leben. */}
+                <span className="w-full truncate text-[12px] text-fg-3">{beschriftung(k).unter}</span>
               </button>
             ))
           )}
@@ -378,9 +573,11 @@ export function KontaktePage() {
             laeuft={laeuft}
             fehler={fehler}
             meldung={meldung}
+            gesperrt={Boolean(offen?.nur_lesen)}
+            herkunft={offen?.adressbuch_id ? (nachBuch.get(offen.adressbuch_id)?.herkunft ?? '') : ''}
             aufSpeichern={speichern}
             aufEntfernen={
-              offen
+              offen && !offen.nur_lesen
                 ? () =>
                     void mit(async () => {
                       await api.loeschen(`/api/kontakte/${offen.id}`)
@@ -399,6 +596,16 @@ export function KontaktePage() {
           </div>
         )}
       </div>
+
+      {buchNeu && (
+        <Buchfenster
+          onClose={() => setBuchNeu(false)}
+          onFertig={() => {
+            void buecherLaden().catch(() => undefined)
+            void laden(suche).catch(() => undefined)
+          }}
+        />
+      )}
 
       {nachfrage}
     </div>
@@ -444,7 +651,8 @@ function GruppenFormular({
     (k) =>
       !kern ||
       k.name.toLowerCase().includes(kern) ||
-      k.adresse.toLowerCase().includes(kern),
+      k.adresse.toLowerCase().includes(kern) ||
+      k.telefon.includes(kern),
   )
 
   return (
@@ -483,8 +691,8 @@ function GruppenFormular({
                 {sichtbar.map((k) => (
                   <Checkbox
                     key={k.id}
-                    label={k.name || k.adresse}
-                    description={k.name ? k.adresse : undefined}
+                    label={beschriftung(k).titel}
+                    description={beschriftung(k).unter || undefined}
                     checked={gewaehlt.has(k.id)}
                     onCheckedChange={(an) =>
                       setGewaehlt((alt) => {
@@ -525,6 +733,8 @@ function Formular({
   laeuft,
   fehler,
   meldung,
+  gesperrt = false,
+  herkunft = '',
   aufSpeichern,
   aufEntfernen,
 }: {
@@ -533,6 +743,9 @@ function Formular({
   laeuft: boolean
   fehler: string
   meldung: string
+  /** ⚠️ Beta: ein Kontakt aus einem verbundenen Buch wird nur gelesen. */
+  gesperrt?: boolean
+  herkunft?: string
   aufSpeichern: (f: typeof LEER) => void
   aufEntfernen?: () => void
 }) {
@@ -548,28 +761,43 @@ function Formular({
       className="flex max-w-[560px] flex-col gap-4 p-6"
       onSubmit={(e) => {
         e.preventDefault()
-        aufSpeichern(felder)
+        if (!gesperrt) aufSpeichern(felder)
       }}
     >
+      {/* ⚠️ Der Grund steht dort, wo man ihn sucht: über den gesperrten
+          Feldern, nicht in einer Fehlermeldung nach dem Speichern. */}
+      {gesperrt && (
+        <p className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface-2 px-3 py-2 text-[12px] leading-relaxed text-fg-3">
+          <Badge tone="warning">{t('kontakte.beta')}</Badge>
+          <span>
+            {herkunft ? `${t('kontakte.aus_buch', { wo: herkunft })}. ` : ''}
+            {t('kontakte.nur_lesen_hinweis')}
+          </span>
+        </p>
+      )}
       <Input
         label={t('kontakte.adresse')}
         mono
         autoComplete="email"
+        disabled={gesperrt}
         value={felder.adresse}
         onChange={(e) => setzen({ adresse: e.target.value })}
       />
       <Input
         label={t('kontakte.name')}
+        disabled={gesperrt}
         value={felder.name}
         onChange={(e) => setzen({ name: e.target.value })}
       />
       <Input
         label={t('kontakte.firma')}
+        disabled={gesperrt}
         value={felder.firma}
         onChange={(e) => setzen({ firma: e.target.value })}
       />
       <Input
         label={t('kontakte.telefon')}
+        disabled={gesperrt}
         value={felder.telefon}
         onChange={(e) => setzen({ telefon: e.target.value })}
       />
@@ -579,25 +807,28 @@ function Formular({
         </span>
         <textarea
           rows={4}
+          disabled={gesperrt}
           value={felder.notiz}
           onChange={(e) => setzen({ notiz: e.target.value })}
-          className="fokusrahmen rounded-md border border-line bg-surface-1 px-3 py-2 text-sm text-fg-1 outline-none"
+          className="fokusrahmen rounded-md border border-line bg-surface-1 px-3 py-2 text-sm text-fg-1 outline-none disabled:opacity-60"
         />
       </label>
 
       {fehler && <p className="text-[13px] text-danger">{fehler}</p>}
       {meldung && <p className="text-[13px] text-accent-text">{meldung}</p>}
 
-      <div className="flex items-center gap-2">
-        <Button type="submit" variant="primary" loading={laeuft}>
-          {neu ? t('kontakte.anlegen') : t('kontakte.speichern')}
-        </Button>
-        {aufEntfernen && (
-          <Button variant="danger" iconLeft={<Trash2 className="size-4" />} onClick={aufEntfernen}>
-            {t('kontakte.entfernen')}
+      {!gesperrt && (
+        <div className="flex items-center gap-2">
+          <Button type="submit" variant="primary" loading={laeuft}>
+            {neu ? t('kontakte.anlegen') : t('kontakte.speichern')}
           </Button>
-        )}
-      </div>
+          {aufEntfernen && (
+            <Button variant="danger" iconLeft={<Trash2 className="size-4" />} onClick={aufEntfernen}>
+              {t('kontakte.entfernen')}
+            </Button>
+          )}
+        </div>
+      )}
     </form>
   )
 }

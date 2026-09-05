@@ -187,6 +187,33 @@ def test_ein_verbundenes_buch_nimmt_seine_kontakte_mit(db, person):
     assert db.query(Kontakt).count() == 1
 
 
+def test_ein_getrenntes_buch_hinterlaesst_keine_leichen_in_den_gruppen(db, person):
+    """⚠️ Bis zum 05.09.2026 blieben die Zuordnungen stehen: unsichtbar, aber
+    die Mitgliederzahl der Gruppe zählte die Gelöschten weiter mit."""
+    from app.models import Kontaktgruppe, KontaktgruppeMitglied
+
+    fremd = Adressbuch(benutzer_id=person.id, name="iCloud", art="carddav")
+    db.add(fremd)
+    db.commit()
+    drin = _kontakt(db, person, "Drin", adressbuch_id=fremd.id)
+    bleibt = _kontakt(db, person, "Lokal", adressbuch_id=dienst.lokales(db, person).id)
+    gruppe = Kontaktgruppe(benutzer_id=person.id, name="Verein")
+    db.add(gruppe)
+    db.flush()
+    db.add_all(
+        [
+            KontaktgruppeMitglied(benutzer_id=person.id, gruppe_id=gruppe.id, kontakt_id=drin.id),
+            KontaktgruppeMitglied(benutzer_id=person.id, gruppe_id=gruppe.id, kontakt_id=bleibt.id),
+        ]
+    )
+    db.commit()
+
+    dienst.entfernen(db, person, fremd.id)
+
+    uebrig = db.query(KontaktgruppeMitglied).all()
+    assert [m.kontakt_id for m in uebrig] == [bleibt.id]
+
+
 def test_ein_fremdes_buch_laesst_sich_nicht_entfernen(db, person):
     zweiter = Benutzer(
         id="z" * 32, benutzername="zweiter", anzeigename="Zweiter", passwort_hash="x"

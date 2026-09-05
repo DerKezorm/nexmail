@@ -63,6 +63,12 @@ class ZugangZeile(BaseModel):
     #: entfernt" ist eine andere Aussage als „Zustimmung entfernen".
     postfaecher: int = 0
     kalender: int = 0
+    adressbuecher: int = 0
+    #: ⚠️ **Reicht die Zustimmung bis zu den Kontakten?** Eine Google-Zustimmung
+    #: von vor dem 05.09.2026 hat den CardDAV-Bereich nicht; das Buch-Fenster
+    #: sperrt sie und sagt, dass das Konto neu zu verbinden ist, statt Google
+    #: 403 sagen zu lassen. Microsoft spricht kein CardDAV.
+    kann_adressbuch: bool = False
 
 
 def _rueckkehr(db, art: str) -> str:
@@ -164,7 +170,7 @@ def moeglich(_: AngemeldeterBenutzer, db: DbSession) -> list[MoeglichZeile]:
 def zugaenge(person: AngemeldeterBenutzer, db: DbSession) -> list[ZugangZeile]:
     raus: list[ZugangZeile] = []
     for z in dienst.zugaenge(db, person):
-        postfaecher, kalender = dienst.was_daran_haengt(db, z)
+        postfaecher, kalender, buecher = dienst.was_daran_haengt(db, z)
         raus.append(
             ZugangZeile(
                 id=z.id,
@@ -173,6 +179,8 @@ def zugaenge(person: AngemeldeterBenutzer, db: DbSession) -> list[ZugangZeile]:
                 letzter_fehler=z.letzter_fehler,
                 postfaecher=len(postfaecher),
                 kalender=len(kalender),
+                adressbuecher=len(buecher),
+                kann_adressbuch=z.art == "google" and "carddav" in (z.bereich or ""),
             )
         )
     return raus

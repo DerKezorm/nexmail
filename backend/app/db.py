@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from . import crypto
 from .config import get_settings
-from .models import Base, Geheimnis
+from .models import Base, Geheimnis, Kontakt
 
 logger = logging.getLogger("nexmail.db")
 
@@ -95,6 +95,12 @@ def _sichern() -> None:
     ordner.mkdir(parents=True, exist_ok=True)
     stempel = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     ziel = ordner / f"nexmail-{stempel}.db"
+    # ⚠️ **Erst das Journal einspielen, dann kopieren.** Nach einem harten
+    # Ende liegen die letzten Aenderungen noch in ``nexmail.db-wal``; eine
+    # Kopie der Hauptdatei allein waere ein Ruecksetzpunkt von vor dem
+    # Absturz, und er saehe vollstaendig aus.
+    with engine.connect() as verbindung:
+        verbindung.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
     shutil.copy2(_einstellungen.db_path, ziel)
     logger.info("Database backed up to %s before a schema change.", ziel)
 
@@ -231,6 +237,85 @@ def _fehlende_indizes() -> list[str]:
     return ergaenzt
 
 
+def _kontakt_umbauen() -> bool:
+    """Die Eindeutigkeit der Adresse aus der Tabelle in einen Teilindex heben.
+
+    ⚠️ **Der erste Umbau, den die Schemapflege selbst macht.** Bis zum
+    05.09.2026 galt „nur anlegen, nie umbauen", und das bleibt die Regel fuer
+    alles, was Daten kosten kann. Hier kostet es keine: Die Zeilen werden mit
+    denselben Werten in eine frisch angelegte Tabelle kopiert.
+
+    Der Anlass: ``kontakt.adresse`` darf leer sein (CardDAV liefert Menschen
+    ohne E-Mail-Adresse), und die alte Tabellenbedingung
+    ``UNIQUE (benutzer_id, adresse)`` liesse je Benutzer genau EINEN solchen
+    Kontakt zu. SQLite kann eine Tabellenbedingung nicht loeschen; der einzige
+    Weg ist der aus der SQLite-Dokumentation: umbenennen, neu anlegen,
+    umkopieren, alte Tabelle weg. Vorher eine Kopie.
+
+    ⚠️ **Erkannt wird am ``CREATE TABLE`` in ``sqlite_master``**, nicht an
+    einer Marke. Nach dem Umbau steht dort kein ``UNIQUE`` mehr; eine Marke
+    fiele bei jeder Wiederherstellung aus einer Sicherung aus, und dann liefe
+    der Umbau gegen eine Tabelle, die ihn nicht braucht.
+
+    ⚠️ **Die alten Indizes muessen vorher weg.** Nach dem Umbenennen haengen
+    sie an der alten Tabelle, tragen aber weiter ihre Namen, und Indexnamen
+    sind in SQLite je Datenbank eindeutig: ``CREATE INDEX ix_kontakt_name``
+    fuer die neue Tabelle scheiterte sonst.
+
+    ⚠️ **Spalten, die die alte Tabelle nicht hatte, bekommen ihren Vorgabewert
+    ausdruecklich.** Ein rohes ``INSERT ... SELECT`` kennt die Vorgaben aus
+    ``models.py`` nicht, und ``NOT NULL`` ohne Wert wuerfe den Umbau um.
+    Genau das ist der Fall beim Sprung von einer Fassung ohne CardDAV.
+    """
+    with engine.connect() as verbindung:
+        anlage = verbindung.execute(
+            text("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'kontakt'")
+        ).scalar()
+    if not anlage or "UNIQUE" not in anlage.upper():
+        return False
+
+    logger.info("Rebuilding table kontakt: the address becomes optional ...")
+    _sichern()
+    tabelle = Kontakt.__table__
+    with engine.begin() as verbindung:
+        alte = {zeile[1] for zeile in verbindung.execute(text("PRAGMA table_info(kontakt)"))}
+        verbindung.execute(text("ALTER TABLE kontakt RENAME TO kontakt_alt"))
+        for (name,) in verbindung.execute(
+            text(
+                "SELECT name FROM sqlite_master WHERE type = 'index' "
+                "AND tbl_name = 'kontakt_alt' AND sql IS NOT NULL"
+            )
+        ).all():
+            verbindung.execute(text(f'DROP INDEX "{name}"'))
+        tabelle.create(bind=verbindung)
+
+        ziel = [f'"{spalte.name}"' for spalte in tabelle.columns]
+        quelle = [
+            f'"{spalte.name}"' if spalte.name in alte else _vorgabe_als_sql(spalte)
+            for spalte in tabelle.columns
+        ]
+        verbindung.execute(
+            text(
+                f"INSERT INTO kontakt ({', '.join(ziel)}) "
+                f"SELECT {', '.join(quelle)} FROM kontakt_alt"
+            )
+        )
+        verbindung.execute(text("DROP TABLE kontakt_alt"))
+    return True
+
+
+def _vorgabe_als_sql(spalte) -> str:
+    """Der Vorgabewert einer Spalte als SQL-Literal, fuer ein rohes INSERT."""
+    vorgabe = spalte.default.arg if spalte.default is not None else None
+    if vorgabe is None or callable(vorgabe):
+        return "NULL"
+    if isinstance(vorgabe, bool):
+        return "1" if vorgabe else "0"
+    if isinstance(vorgabe, (int, float)):
+        return str(vorgabe)
+    return "'" + str(vorgabe).replace("'", "''") + "'"
+
+
 def init_db() -> None:
     """Datenbank auf den Stand der laufenden Fassung bringen.
 
@@ -242,6 +327,11 @@ def init_db() -> None:
         _sichern()
 
     Base.metadata.create_all(bind=engine)
+
+    # ⚠️ **Vor den Spalten und Indizes.** Der Umbau legt die Tabelle aus dem
+    # Modell neu an, samt allem, was seither dazukam; danach fehlt dort nichts.
+    if _kontakt_umbauen():
+        logger.info("Schema updated, table kontakt rebuilt (the address is optional now).")
 
     neue_spalten = _fehlende_spalten()
     if neue_spalten:

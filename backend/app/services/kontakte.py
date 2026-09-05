@@ -27,6 +27,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..models import (
+    Adressbuch,
     Benutzer,
     Kontakt,
     Kontaktgruppe,
@@ -54,6 +55,26 @@ def adresse_pruefen(adresse: str) -> str:
     return sauber
 
 
+def _adresse_oder_leer(adresse: str | None) -> str:
+    """Leer heisst „keine Adresse"; alles andere muss eine sein.
+
+    ⚠️ **Seit dem 05.09.2026 darf ein Kontakt ohne Adresse leben.** Mit
+    CardDAV ist nexmail der zweite Client einer Kontaktliste, und die hat
+    Menschen ohne Postfach. Anschreiben lassen die sich nicht; Vorschlaege
+    und Gruppen lassen sie aus.
+    """
+    sauber = (adresse or "").strip()
+    return adresse_pruefen(sauber) if sauber else ""
+
+
+def _etwas_muss_da_sein(adresse: str, name: str, telefon: str, firma: str) -> None:
+    """⚠️ Ohne Adresse wenigstens Name, Nummer oder Firma. Eine Zeile, die
+    nichts davon traegt, findet niemand wieder, und sie steht trotzdem im
+    Buch."""
+    if not (adresse or name.strip() or telefon.strip() or firma.strip()):
+        raise KontaktFehler("kontakt_leer")
+
+
 # --- Lesen ---------------------------------------------------------------- #
 
 
@@ -66,6 +87,8 @@ def meine(db: Session, person: Benutzer, suche: str = "") -> list[Kontakt]:
                 func.lower(Kontakt.name).like(muster),
                 func.lower(Kontakt.adresse).like(muster),
                 func.lower(Kontakt.firma).like(muster),
+                # Ein Kontakt ohne Adresse ist oft nur eine Nummer mit Namen.
+                Kontakt.telefon.like(muster),
             )
         )
     return list(db.execute(frage.order_by(Kontakt.name, Kontakt.adresse)).scalars().all())
@@ -86,6 +109,9 @@ def vorschlagen(db: Session, person: Benutzer, anfang: str, grenze: int = 8) -> 
         select(Kontakt)
         .where(
             Kontakt.benutzer_id == person.id,
+            # ⚠️ Nur, wem man schreiben kann. Ein Vorschlag ohne Adresse
+            # setzte ein leeres Feld ein.
+            Kontakt.adresse != "",
             or_(func.lower(Kontakt.name).like(muster), func.lower(Kontakt.adresse).like(muster)),
         )
         .order_by(Kontakt.verwendet.desc(), Kontakt.name, Kontakt.adresse)
@@ -100,19 +126,21 @@ def vorschlagen(db: Session, person: Benutzer, anfang: str, grenze: int = 8) -> 
 def anlegen(
     db: Session,
     person: Benutzer,
-    adresse: str,
+    adresse: str = "",
     name: str = "",
     firma: str = "",
     telefon: str = "",
     notiz: str = "",
     quelle: str = "hand",
 ) -> Kontakt:
-    sauber = adresse_pruefen(adresse)
-    vorhanden = db.execute(
-        select(Kontakt).where(Kontakt.benutzer_id == person.id, Kontakt.adresse == sauber)
-    ).scalar_one_or_none()
-    if vorhanden is not None:
-        raise KontaktFehler("adresse_schon_da", adresse=sauber)
+    sauber = _adresse_oder_leer(adresse)
+    _etwas_muss_da_sein(sauber, name, telefon, firma)
+    if sauber:
+        vorhanden = db.execute(
+            select(Kontakt).where(Kontakt.benutzer_id == person.id, Kontakt.adresse == sauber)
+        ).scalar_one_or_none()
+        if vorhanden is not None:
+            raise KontaktFehler("adresse_schon_da", adresse=sauber)
 
     eintrag = Kontakt(
         benutzer_id=person.id,
@@ -129,24 +157,51 @@ def anlegen(
     return eintrag
 
 
+def _nur_lesen(db: Session, eintrag: Kontakt) -> None:
+    """⚠️ **Lieferung 1 liest nur.** Ein Kontakt aus einem verbundenen Buch wird
+    hier weder geändert noch gelöscht: Geändert würde er beim nächsten Abgleich
+    überschrieben, gelöscht käme er wieder, und beides sähe aus wie ein Fehler.
+    Bearbeiten und Löschen gehen beim Anbieter; hierher kommt es mit Lieferung
+    2, mit ``If-Match``. Bis dahin ist das die Zusage der Beta: Nichts, was in
+    nexmail passiert, erreicht iCloud oder Google."""
+    if not eintrag.adressbuch_id:
+        return
+    buch = db.get(Adressbuch, eintrag.adressbuch_id)
+    if buch is not None and buch.art:
+        raise KontaktFehler("kontakt_nur_lesen")
+
+
 def aendern(db: Session, person: Benutzer, kontakt_id: int, **felder) -> Kontakt:
     eintrag = _meiner(db, person, kontakt_id)
-    if "adresse" in felder and felder["adresse"]:
-        neue = adresse_pruefen(felder.pop("adresse"))
-        if neue != eintrag.adresse:
+    _nur_lesen(db, eintrag)
+    # ⚠️ Erst pruefen, dann anfassen. Wer die Zeile schon geaendert hat, wenn
+    # die Pruefung wirft, laesst sie schmutzig in der Sitzung liegen, und der
+    # naechste ``commit`` eines anderen schreibt sie mit.
+    neu = {
+        schluessel: felder[schluessel]
+        if schluessel in felder and felder[schluessel] is not None
+        else getattr(eintrag, schluessel)
+        for schluessel in ("name", "firma", "telefon", "notiz")
+    }
+    # Eine leere Adresse heisst „keine mehr", eine fehlende „unveraendert".
+    neue_adresse = eintrag.adresse
+    if "adresse" in felder and felder["adresse"] is not None:
+        neue_adresse = _adresse_oder_leer(felder["adresse"])
+        if neue_adresse and neue_adresse != eintrag.adresse:
             doppelt = db.execute(
                 select(Kontakt).where(
                     Kontakt.benutzer_id == person.id,
-                    Kontakt.adresse == neue,
+                    Kontakt.adresse == neue_adresse,
                     Kontakt.id != eintrag.id,
                 )
             ).scalar_one_or_none()
             if doppelt is not None:
-                raise KontaktFehler("adresse_bei_anderem", adresse=neue)
-            eintrag.adresse = neue
-    for schluessel in ("name", "firma", "telefon", "notiz"):
-        if schluessel in felder and felder[schluessel] is not None:
-            setattr(eintrag, schluessel, felder[schluessel])
+                raise KontaktFehler("adresse_bei_anderem", adresse=neue_adresse)
+    _etwas_muss_da_sein(neue_adresse, neu["name"], neu["telefon"], neu["firma"])
+
+    eintrag.adresse = neue_adresse
+    for schluessel, wert in neu.items():
+        setattr(eintrag, schluessel, wert)
     # Wer einen Eintrag anfasst, hat ihn gepflegt - er ist nicht mehr
     # Aufgeschnapptes und darf beim Aufraeumen nicht mitgehen.
     eintrag.quelle = "hand"
@@ -154,30 +209,37 @@ def aendern(db: Session, person: Benutzer, kontakt_id: int, **felder) -> Kontakt
     return eintrag
 
 
+def mitgliedschaften_loesen(db: Session, kontakt_ids) -> None:
+    """Die Zuordnungen dieser Kontakte zu ihren Gruppen wegräumen. Ohne ``commit``.
+
+    ⚠️ **Vor JEDEM Löschen eines Kontakts, egal auf welchem Weg.** Eine
+    Zuordnung auf einen gelöschten Kontakt ist eine Leiche: unsichtbar in der
+    Oberfläche, aber die Mitgliederzahl der Gruppe zählt sie weiter mit. Vier
+    Wege löschen Kontakte: von Hand, das Aufgeschnappte in einem Zug, ein
+    getrenntes Buch und der Abgleich, wenn eine Karte drüben verschwunden ist.
+    Der dritte hatte das bis zum 05.09.2026 vergessen.
+
+    ``kontakt_ids`` ist eine Liste oder ein ``select(Kontakt.id)``.
+    """
+    db.query(KontaktgruppeMitglied).filter(
+        KontaktgruppeMitglied.kontakt_id.in_(kontakt_ids)
+    ).delete(synchronize_session=False)
+
+
 def entfernen(db: Session, person: Benutzer, kontakt_id: int) -> None:
     eintrag = _meiner(db, person, kontakt_id)
-    # ⚠️ Die Mitgliedschaften gehen mit. Eine Zuordnung auf einen geloeschten
-    # Kontakt waere eine Leiche: unsichtbar in der Oberflaeche, aber die
-    # Mitgliederzahl der Gruppe zaehlte sie weiter mit.
-    db.query(KontaktgruppeMitglied).filter(
-        KontaktgruppeMitglied.benutzer_id == person.id,
-        KontaktgruppeMitglied.kontakt_id == eintrag.id,
-    ).delete()
+    _nur_lesen(db, eintrag)
+    mitgliedschaften_loesen(db, [eintrag.id])
     db.delete(eintrag)
     db.commit()
 
 
 def gesammelte_entfernen(db: Session, person: Benutzer) -> int:
     """Alles Aufgeschnappte in einem Zug loswerden."""
-    # Auch hier: erst die Mitgliedschaften der betroffenen Kontakte, sonst
-    # bleiben sie als Leichen in den Gruppen stehen.
     betroffene = select(Kontakt.id).where(
         Kontakt.benutzer_id == person.id, Kontakt.quelle == "gesammelt"
     )
-    db.query(KontaktgruppeMitglied).filter(
-        KontaktgruppeMitglied.benutzer_id == person.id,
-        KontaktgruppeMitglied.kontakt_id.in_(betroffene),
-    ).delete(synchronize_session=False)
+    mitgliedschaften_loesen(db, betroffene)
     anzahl = (
         db.query(Kontakt)
         .filter(Kontakt.benutzer_id == person.id, Kontakt.quelle == "gesammelt")
@@ -226,6 +288,7 @@ def einsammeln(db: Session, person: Benutzer) -> dict[str, int]:
         for k in db.execute(select(Kontakt).where(Kontakt.benutzer_id == person.id))
         .scalars()
         .all()
+        if k.adresse
     }
     eigene = _eigene_adressen(db, person)
 
@@ -330,7 +393,9 @@ def gruppen(db: Session, person: Benutzer) -> list[dict]:
             "name": g.name,
             "mitglieder": len(mitglieder.get(g.id, [])),
             "mitglied_ids": [k for k, _ in mitglieder.get(g.id, [])],
-            "adressen": [a for _, a in mitglieder.get(g.id, [])],
+            # ⚠️ Ein Mitglied ohne Adresse zaehlt mit, wird aber nicht
+            # adressiert: In der Mail staende sonst ein leerer Empfaenger.
+            "adressen": [a for _, a in mitglieder.get(g.id, []) if a],
         }
         for g in zeilen
     ]
@@ -450,11 +515,19 @@ def als_vcard(kontakte: list[Kontakt]) -> str:
     """vCard 3.0 — die Fassung, die Outlook, Apple und Thunderbird alle lesen."""
     zeilen: list[str] = []
     for k in kontakte:
+        # ``FN`` ist Pflicht: der Name, sonst das Naechste, was den Menschen
+        # benennt. Ein Kontakt ohne Adresse hat in der Regel eine Nummer.
+        anzeige = k.name or k.adresse or k.telefon or k.firma
         zeilen.append("BEGIN:VCARD")
         zeilen.append("VERSION:3.0")
-        zeilen.append(f"FN:{_vcard_maskieren(k.name or k.adresse)}")
-        zeilen.append(f"N:{_vcard_maskieren(k.name or k.adresse)};;;;")
-        zeilen.append(f"EMAIL;TYPE=INTERNET:{_vcard_maskieren(k.adresse)}")
+        if k.uid:
+            # Die Kennung der Karte, damit ein zweites Einlesen sie
+            # wiedererkennt; ohne Adresse ist sie der einzige Schluessel.
+            zeilen.append(f"UID:{_vcard_maskieren(k.uid)}")
+        zeilen.append(f"FN:{_vcard_maskieren(anzeige)}")
+        zeilen.append(f"N:{_vcard_maskieren(anzeige)};;;;")
+        if k.adresse:
+            zeilen.append(f"EMAIL;TYPE=INTERNET:{_vcard_maskieren(k.adresse)}")
         if k.firma:
             zeilen.append(f"ORG:{_vcard_maskieren(k.firma)}")
         if k.telefon:
@@ -598,13 +671,30 @@ def aus_vcard(db: Session, person: Benutzer, inhalt: str) -> dict[str, int]:
 
 def _uebernehmen(db: Session, person: Benutzer, felder: dict[str, str]) -> str:
     adresse = felder.get("adresse", "").strip().lower()
-    if not _ADRESSE.match(adresse):
+    if adresse and not _ADRESSE.match(adresse):
+        # Eine kaputte Adresse ist keine; der Rest der Karte ist trotzdem
+        # etwas wert.
+        adresse = ""
+    name = felder.get("name", "").strip()
+    telefon = felder.get("telefon", "").strip()
+    firma = felder.get("firma", "").strip()
+    if not (adresse or name or telefon or firma):
         return "uebersprungen"
 
-    vorhanden = db.execute(
-        select(Kontakt).where(Kontakt.benutzer_id == person.id, Kontakt.adresse == adresse)
-    ).scalar_one_or_none()
+    if adresse:
+        vorhanden = db.execute(
+            select(Kontakt).where(Kontakt.benutzer_id == person.id, Kontakt.adresse == adresse)
+        ).scalar_one_or_none()
+    else:
+        vorhanden = _ohne_adresse_wiedererkennen(db, person, felder.get("uid", ""), name, telefon)
     if vorhanden is not None:
+        # ⚠️ Ein Eintrag aus einem verbundenen Buch bleibt unangetastet: Was
+        # hier ergaenzt wuerde, ueberschriebe der naechste Abgleich, ohne dass
+        # es jemand saehe. Lieferung 1 liest nur.
+        if vorhanden.adressbuch_id:
+            heim = db.get(Adressbuch, vorhanden.adressbuch_id)
+            if heim is not None and heim.art:
+                return "uebersprungen"
         # Nur fuellen, was leer ist. Eine Datei aus einem anderen Programm
         # weiss nicht besser, wie jemand heisst, als der eigene Eintrag.
         for schluessel in ("name", "firma", "telefon", "notiz"):
@@ -617,15 +707,37 @@ def _uebernehmen(db: Session, person: Benutzer, felder: dict[str, str]) -> str:
         Kontakt(
             benutzer_id=person.id,
             adresse=adresse,
-            name=felder.get("name", ""),
-            firma=felder.get("firma", ""),
-            telefon=felder.get("telefon", ""),
+            name=name,
+            firma=firma,
+            telefon=telefon,
             notiz=felder.get("notiz", ""),
+            uid=felder.get("uid", "")[:255],
             quelle="hand",
             adressbuch_id=adressbuecher.lokales(db, person).id,
         )
     )
     return "neu"
+
+
+def _ohne_adresse_wiedererkennen(
+    db: Session, person: Benutzer, uid: str, name: str, telefon: str
+) -> Kontakt | None:
+    """Einen Kontakt ohne Adresse in einer Datei wiederfinden.
+
+    ⚠️ **Ohne Adresse gibt es keinen Schluessel.** Dieselbe Datei zweimal
+    einlesen, weil der erste Anlauf abbrach oder weil man es nicht mehr weiss,
+    legte sonst jeden solchen Eintrag doppelt an. Dieselbe Regel wie die
+    ``Message-ID`` beim mbox-Import. Wiedererkannt wird an der UID der Karte,
+    und ohne UID an Name und Nummer zusammen.
+    """
+    frage = select(Kontakt).where(Kontakt.benutzer_id == person.id)
+    if uid:
+        return db.scalar(frage.where(Kontakt.uid == uid))
+    if not (name or telefon):
+        return None
+    return db.scalar(
+        frage.where(Kontakt.adresse == "", Kontakt.name == name, Kontakt.telefon == telefon)
+    )
 
 
 __all__ = [
@@ -637,6 +749,7 @@ __all__ = [
     "aus_vcard",
     "einsammeln",
     "entfernen",
+    "felder_aus_vcard",
     "gesammelte_entfernen",
     "gruppe_anlegen",
     "gruppe_entfernen",
@@ -644,5 +757,6 @@ __all__ = [
     "gruppen",
     "meine",
     "mitglieder_setzen",
+    "mitgliedschaften_loesen",
     "vorschlagen",
 ]

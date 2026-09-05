@@ -38,6 +38,7 @@ from .caldav import (  # noqa: PLC2701  (bewusst: eine Quelle statt zwei Kopien)
     _anfragen,
     _anzeigename,
     _baum,
+    _entschaerfen,
     _text,
     _verbindung,
     ortsschluessel,
@@ -110,8 +111,23 @@ _ETAGS = (
 CS = "http://calendarserver.org/ns/"
 
 
+def _anfragen_karte(klient: httpx.Client, verb: str, url: str, **kw) -> httpx.Response:
+    """``_anfragen`` aus dem Kalender, mit einer Übersetzung.
+
+    ⚠️ Googles „API nicht eingeschaltet" nennt dort die CalDAV API. Hier heisst
+    die eigene Schnittstelle CardDAV API, und wer die Meldung wörtlich nimmt,
+    schaltet den falschen Schalter ein und sucht danach tagelang.
+    """
+    try:
+        return _anfragen(klient, verb, url, **kw)
+    except CaldavFehler as f:
+        if str(f) == "caldav_google_api_aus":
+            raise CarddavFehler("carddav_google_api_aus") from f
+        raise
+
+
 def _propfind(klient: httpx.Client, url: str, koerper: str, tiefe: str) -> ET.Element:
-    antwort = _anfragen(
+    antwort = _anfragen_karte(
         klient, "PROPFIND", url,
         content=koerper.encode("utf-8"),
         headers={"depth": tiefe, "content-type": 'application/xml; charset="utf-8"'},
@@ -217,7 +233,7 @@ def etags_holen(zugang: Zugang, klient: httpx.Client | None = None) -> list[Fern
     ohne Host —, nicht wörtlich.
     """
     with _verbindung(zugang, klient) as klient:
-        antwort = _anfragen(
+        antwort = _anfragen_karte(
             klient, "REPORT", zugang.url,
             content=_ETAGS.encode("utf-8"),
             headers={"depth": "1", "content-type": 'application/xml; charset="utf-8"'},
@@ -236,7 +252,11 @@ def etags_holen(zugang: Zugang, klient: httpx.Client | None = None) -> list[Fern
             voll = urljoin(zugang.url, href)
             if ortsschluessel(voll) == eigener:
                 continue  # die Sammlung selbst
-            etag = _text(zeile.find(f".//{{{DAV}}}getetag"))
+            # ⚠️ Ohne die Anführungszeichen, wie ``FernTermin`` beim Kalender.
+            # ``caldav.schreiben`` setzt sie für ``If-Match`` selbst wieder;
+            # zwei Schreibweisen desselben ETags liefen in Lieferung 2 in
+            # einen Konflikt, den es gar nicht gibt.
+            etag = _text(zeile.find(f".//{{{DAV}}}getetag")).strip('"')
             raus.append(FernKarte(url=voll, etag=etag))
         return raus
 
@@ -269,14 +289,15 @@ def inhalte_holen(
     with _verbindung(zugang, klient) as klient:
         for i in range(0, len(adressen), BLOCK):
             teil = adressen[i : i + BLOCK]
-            hrefs = "".join(f"<d:href>{_pfad(a)}</d:href>" for a in teil)
+            # ⚠️ Der Pfad wandert in XML; ein ``&`` darin bricht den Rumpf.
+            hrefs = "".join(f"<d:href>{_entschaerfen(_pfad(a))}</d:href>" for a in teil)
             koerper = (
                 '<?xml version="1.0" encoding="utf-8"?>'
                 f'<c:addressbook-multiget xmlns:d="DAV:" xmlns:c="{CARD}">'
                 f"<d:prop><d:getetag/><c:address-data/></d:prop>{hrefs}"
                 "</c:addressbook-multiget>"
             )
-            antwort = _anfragen(
+            antwort = _anfragen_karte(
                 klient, "REPORT", zugang.url,
                 content=koerper.encode("utf-8"),
                 headers={"depth": "1", "content-type": 'application/xml; charset="utf-8"'},
@@ -294,7 +315,7 @@ def inhalte_holen(
                 voll = urljoin(zugang.url, href)
                 raus[ortsschluessel(voll)] = FernKarte(
                     url=voll,
-                    etag=_text(zeile.find(f".//{{{DAV}}}getetag")),
+                    etag=_text(zeile.find(f".//{{{DAV}}}getetag")).strip('"'),
                     roh=roh,
                 )
     return raus

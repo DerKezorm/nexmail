@@ -163,7 +163,9 @@ def test_die_sammlung_selbst_faellt_weg():
     mitnimmt, fragt danach nach einer Sammlung als Karte — und iCloud antwortet
     darauf gar nicht, bis in die Zeitgrenze."""
     raus = dienst.etags_holen(_zugang(lambda a: httpx.Response(207, text=ETAGS)))
-    assert [k.etag for k in raus] == ['"e1"', '"e2"']
+    # ⚠️ Ohne Anführungszeichen, wie beim Kalender. Sonst hätte Lieferung 2
+    # zwei Schreibweisen desselben ETags und einen Konflikt, den es nicht gibt.
+    assert [k.etag for k in raus] == ["e1", "e2"]
 
 
 def test_die_sammlung_faellt_auch_mit_schraegstrich_weg():
@@ -201,6 +203,24 @@ def test_im_rumpf_steht_der_pfad_nicht_die_ganze_adresse():
     )
     assert "<d:href>/dav/heim/privat/eins.vcf</d:href>" in gesehen[0]
     assert "https://dav.example.com" not in gesehen[0]
+
+
+def test_ein_und_zeichen_im_pfad_bricht_den_rumpf_nicht():
+    """⚠️ Der Pfad wandert in XML. Ein ``&`` darin macht den Rumpf ungültig,
+    und der Server antwortet mit 400 statt mit Karten. Dieselbe Wache wie
+    ``_entschaerfen`` beim ``calendar-multiget``."""
+    import xml.etree.ElementTree as ET
+
+    gesehen: list[str] = []
+
+    def antworten(a):
+        gesehen.append(a.content.decode())
+        return httpx.Response(207, text='<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"/>')
+
+    dienst.inhalte_holen(_zugang(antworten), ["https://dav.example.com/dav/heim/privat/a&b.vcf"])
+
+    assert "<d:href>/dav/heim/privat/a&amp;b.vcf</d:href>" in gesehen[0]
+    ET.fromstring(gesehen[0])  # und der Rumpf bleibt lesbares XML
 
 
 def test_der_schluessel_ist_der_ortsschluessel():

@@ -29,10 +29,24 @@ class Zeile(BaseModel):
     notiz: str
     quelle: str
     verwendet: int
+    #: In welchem Buch der Eintrag liegt.
+    adressbuch_id: str | None = None
+    #: ⚠️ **Beta, Lieferung 1: verbundene Bücher werden nur gelesen.** Die
+    #: Oberfläche sperrt das Formular; der Server weist Änderungen mit
+    #: ``kontakt_nur_lesen`` ab, damit kein zweiter Weg daran vorbeiführt.
+    nur_lesen: bool = False
+
+
+def _verbundene(db, person) -> set[str]:
+    from ..services import adressbuecher
+
+    return {b.id for b in adressbuecher.meine(db, person) if b.art}
 
 
 class Eingabe(BaseModel):
-    adresse: str = Field(min_length=3, max_length=320)
+    #: Leer heisst: kein Postfach. Der Dienst verlangt dann wenigstens Name,
+    #: Nummer oder Firma.
+    adresse: str = Field(default="", max_length=320)
     name: str = Field(default="", max_length=320)
     firma: str = Field(default="", max_length=320)
     telefon: str = Field(default="", max_length=120)
@@ -47,7 +61,7 @@ class Aenderung(BaseModel):
     notiz: str | None = Field(default=None, max_length=5000)
 
 
-def _zeile(k) -> Zeile:
+def _zeile(k, verbundene: set[str] | frozenset[str] = frozenset()) -> Zeile:
     return Zeile(
         id=k.id,
         name=k.name,
@@ -57,18 +71,22 @@ def _zeile(k) -> Zeile:
         notiz=k.notiz,
         quelle=k.quelle,
         verwendet=k.verwendet,
+        adressbuch_id=k.adressbuch_id,
+        nur_lesen=k.adressbuch_id in verbundene,
     )
 
 
 @router.get("", response_model=list[Zeile])
 def liste(person: AngemeldeterBenutzer, db: DbSession, suche: str = "") -> list[Zeile]:
-    return [_zeile(k) for k in kontaktdienst.meine(db, person, suche)]
+    verbundene = _verbundene(db, person)
+    return [_zeile(k, verbundene) for k in kontaktdienst.meine(db, person, suche)]
 
 
 @router.get("/vorschlag", response_model=list[Zeile])
 def vorschlag(anfang: str, person: AngemeldeterBenutzer, db: DbSession) -> list[Zeile]:
     """Für die Autovervollständigung im Verfassen-Fenster."""
-    return [_zeile(k) for k in kontaktdienst.vorschlagen(db, person, anfang)]
+    verbundene = _verbundene(db, person)
+    return [_zeile(k, verbundene) for k in kontaktdienst.vorschlagen(db, person, anfang)]
 
 
 # --- Gruppen ---------------------------------------------------------------- #
@@ -172,10 +190,18 @@ def aendern(
 ) -> Zeile:
     try:
         return _zeile(
-            kontaktdienst.aendern(db, person, kontakt_id, **wunsch.model_dump(exclude_none=True))
+            kontaktdienst.aendern(db, person, kontakt_id, **wunsch.model_dump(exclude_none=True)),
+            _verbundene(db, person),
         )
     except kontaktdienst.KontaktFehler as fehler:
-        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
+        raise MeldungHttp.aus(fehler, _kontaktfehler_code(fehler)) from fehler
+
+
+def _kontaktfehler_code(fehler: kontaktdienst.KontaktFehler) -> int:
+    # „Gibt es nicht" ist ein 404; „darf nicht" und „passt nicht" sind 400.
+    if fehler.kennung in ("eintrag_unbekannt", "kontakt_nicht_gefunden"):
+        return status.HTTP_404_NOT_FOUND
+    return status.HTTP_400_BAD_REQUEST
 
 
 # ⚠️ **Diese Regel muss vor ``/{kontakt_id}`` stehen.** FastAPI probiert die
@@ -193,7 +219,7 @@ def entfernen(kontakt_id: int, person: AngemeldeterBenutzer, db: DbSession) -> N
     try:
         kontaktdienst.entfernen(db, person, kontakt_id)
     except kontaktdienst.KontaktFehler as fehler:
-        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
+        raise MeldungHttp.aus(fehler, _kontaktfehler_code(fehler)) from fehler
 
 
 @router.post("/einsammeln")

@@ -41,6 +41,15 @@ LOKAL_NAME = "Meine Kontakte"
 FARBEN = 6
 
 
+def naechste_farbe(vorhanden: list[Adressbuch]) -> int:
+    """Die erste Farbe der Palette, die noch kein Buch trägt; sonst reihum."""
+    belegt = {b.farbe for b in vorhanden}
+    for farbe in range(1, FARBEN + 1):
+        if farbe not in belegt:
+            return farbe
+    return len(vorhanden) % FARBEN + 1
+
+
 def lokales(db: Session, person: Benutzer) -> Adressbuch:
     """Das lokale Buch dieses Benutzers — und legt es an, wenn es fehlt.
 
@@ -115,9 +124,15 @@ def entfernen(db: Session, person: Benutzer, buch_id: str) -> int:
     ⚠️ **Beim Anbieter wird nichts gelöscht.** Die Rückfrage sagt das; ohne den
     Satz klingt „entfernen" nach „weg". Dieselbe Zusage wie beim Kalender.
     """
+    from . import kontakte as kontaktdienst  # unten, weil kontakte.py dieses Modul lädt
+
     buch = meines(db, person, buch_id)
     if buch.ist_lokal:
         raise BuchFehler("adressbuch_lokal_bleibt")
+    # ⚠️ Erst die Mitgliedschaften, sonst zählen die Gruppen Gelöschte weiter.
+    kontaktdienst.mitgliedschaften_loesen(
+        db, select(Kontakt.id).where(Kontakt.adressbuch_id == buch.id)
+    )
     anzahl = (
         db.query(Kontakt)
         .filter(Kontakt.adressbuch_id == buch.id)
