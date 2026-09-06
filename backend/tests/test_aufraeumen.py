@@ -7,7 +7,8 @@ muss dieser Lauf rot zeigen, nicht ein Betreiber am nächsten Morgen.
 
 ⚠️ **Kein echter Server, kein Entwicklungs-Datenbestand.** Der Doppelgänger
 datiert alle Mails auf denselben Tag; das Alter wird deshalb an den lokalen
-Zeilen gesetzt — der Abgleich fasst ein Datum nie wieder an.
+Zeilen gesetzt, für „alt“ wie für „neu“ — der Abgleich fasst ein Datum nie
+wieder an.
 """
 
 from __future__ import annotations
@@ -59,6 +60,14 @@ def welt(db, konto, monkeypatch):  # noqa: F811
         # lange genug drinliegt. Der Posteingang bekommt beides, damit der
         # Rollenfilter-Test gegen die strengste Lesart steht.
         zeile.angekommen = alt
+    # ⚠️ Die neuen Zeilen bekommen ihr Datum ebenfalls hier. Der Doppelgänger
+    # datiert fest auf einen Tag (test_abgleich.Server), und am siebten Tag
+    # danach war „neu“ älter als die Aufbewahrung: Am 06.09.2026 um 12:00 UTC
+    # kippten zwei Tests von selbst, ohne dass jemand etwas geändert hatte.
+    frisch = utcnow()
+    for betreff in ("Posteingang neu", "Papierkorb neu", "Junk neu"):
+        zeile = db.query(Nachricht).filter(Nachricht.betreff == betreff).one()
+        zeile.datum = frisch
     db.commit()
     return server, konto
 
