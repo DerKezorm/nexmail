@@ -962,3 +962,50 @@ def test_das_konto_allein_genuegt_nicht(db, person):
     dienst.erlauben(db, False)
     assert person.ki_erlaubt is True
     assert dienst.erlaubt_fuer(db, person) is False
+
+
+def test_eine_zeitueberschreitung_ist_kein_unerreichbarer_dienst(bereit, db):
+    """⚠️ **Beide Faelle sehen im Netz gleich aus, fuer den Benutzer nicht.**
+    Am 06.09.2026 gegen ein lokales Modell gemessen: Der Dienst antwortete zwei
+    Minuten lang und wurde dann abgebrochen. Die Oberflaeche riet daraufhin zu
+    Adresse und Schluessel. Dort war nichts zu finden, denn das Modell schrieb
+    noch. TimeoutException ist eine Unterklasse von HTTPError, deshalb muss sie
+    davor stehen."""
+
+    def zu_langsam(anfrage: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("das dauert", request=anfrage)
+
+    with pytest.raises(dienst.KiFehler) as f:
+        dienst.text_bearbeiten(
+            bereit, "<p>x y z</p>", auftrag="rechtschreibung",
+            transport=httpx.MockTransport(zu_langsam), db=db,
+        )
+    assert f.value.kennung == "ki_zeitueberschreitung"
+    # Und der Vorgang steht mit derselben Kennung in der Liste, nicht mit der
+    # falschen: Der Text ging ja hinaus.
+    assert dienst.vorgaenge_lesen(db, bereit)[0]["fehler"] == "ki_zeitueberschreitung"
+
+
+def test_korrigieren_und_uebersetzen_duerfen_nicht_erfinden(bereit, db):
+    """⚠️ **Die Temperatur ist die Gegenprobe zu Grundregel 1.** Wird sie nicht
+    mitgeschickt, setzen die meisten Anbieter 1,0 an, den Wert fuers freie
+    Schreiben. Dann erfindet das Modell genau die Zahlen und Namen, die es laut
+    Auftrag unveraendert lassen soll. Umformulieren darf hoeher liegen, die
+    beiden anderen nicht."""
+    erwartungen = (
+        ("rechtschreibung", "", 0.2),
+        ("uebersetzen", "Englisch", 0.2),
+        ("umformulieren", "foermlich", 0.7),
+    )
+    gesehen = 0
+    for auftrag, ziel, erwartet in erwartungen:
+        server = TextDoppelgaenger()
+        dienst.text_bearbeiten(
+            bereit, "<p>x y z</p>", auftrag=auftrag, ziel=ziel,
+            transport=server.transport(), db=db,
+        )
+        _, _, geschickt = server.anfragen[0]
+        assert geschickt["temperature"] == erwartet, auftrag
+        gesehen += 1
+    # ⚠️ Ohne den Zaehler bestuende der Test auch bei leerer Schleife.
+    assert gesehen == len(erwartungen)

@@ -1224,6 +1224,7 @@
     "ki_text_zu_lang": "The text is longer than {{max}} characters.",
     "ki_ton_unbekannt": "The server does not know this tone.",
     "ki_vom_betreiber_gesperrt": "The operator has turned AI services off for this installation.",
+    "ki_zeitueberschreitung": "The model took longer than {{sekunden}} seconds. A smaller model or a shorter passage helps.",
     "ki_zu_viele_anfragen": "The service is throttling. Try again in a moment.",
     "ki_zugang_unvollstaendig": "Enter an address and a model first, then rephrasing can be switched on.",
     "konflikt_drueben_geloescht": "There is nothing there any more: the event was deleted somewhere else.",

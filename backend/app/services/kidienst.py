@@ -147,6 +147,9 @@ def modelle_holen(
             timeout=ZEITGRENZE, follow_redirects=True, transport=transport
         ) as klient:
             antwort = klient.get(ziel, headers=_kopfzeilen(schluessel))
+    except httpx.ReadTimeout as fehler:
+        logger.info("The AI service did not answer in time: %s", type(fehler).__name__)
+        raise KiFehler("ki_zeitueberschreitung", sekunden=int(ZEITGRENZE)) from fehler
     except httpx.HTTPError as fehler:
         logger.info("The AI service was unreachable: %s", type(fehler).__name__)
         raise KiFehler("ki_nicht_erreichbar") from fehler
@@ -328,6 +331,22 @@ MAX_TOKEN = 8_000
 #: im eigenen Netz ohne Grafikkarte braucht dafür Minuten.
 ZEITGRENZE_TEXT = 120.0
 
+#: ⚠️ **Ohne diesen Wert entscheidet der Anbieter**, und die meisten setzen
+#: 1,0 an, den Wert fürs freie Schreiben. Das arbeitet direkt gegen Regel 1 der
+#: Grundregeln: Wer nichts erfinden soll, darf nicht auf Vielfalt gestellt sein.
+#: Am 06.09.2026 gegen ein lokales 8B-Modell gemessen, machte 1,0 aus einer
+#: Rechtschreibkorrektur an 171 Wörtern einen Text von über 1600 Token, der nie
+#: zum Ende kam. Korrigieren und Übersetzen sollen nichts erfinden,
+#: Umformulieren darf es.
+TEMPERATUREN = {
+    "rechtschreibung": 0.2,
+    "uebersetzen": 0.2,
+    "umformulieren": 0.7,
+}
+
+#: Für einen Auftrag, den es hier noch nicht gibt: zurückhaltend, nicht kreativ.
+TEMPERATUR_VORGABE = 0.3
+
 #: ⚠️ **Diese Sätze sind der ganze Schutz vor der stillen Fälschung.** Ein
 #: umformulierter Absatz geht anschließend als Mail hinaus; macht das Modell
 #: aus „Donnerstag" ein „Freitag", merkt es niemand mehr. Sie stehen deshalb in
@@ -502,6 +521,7 @@ def text_bearbeiten(
     rumpf = {
         "model": person.ki_modell,
         "max_tokens": MAX_TOKEN,
+        "temperature": TEMPERATUREN.get(auftrag, TEMPERATUR_VORGABE),
         "messages": [
             {"role": "system", "content": f"{_GRUNDREGELN}\n\nTask: {anweisung}"},
             {"role": "user", "content": text},
@@ -533,6 +553,18 @@ def text_bearbeiten(
             antwort = klient.post(
                 ziel_adresse, headers=_kopfzeilen(schluessel), json=rumpf
             )
+    # ⚠️ **Nur ReadTimeout, nicht TimeoutException.** Der Unterschied ist der
+    # ganze Punkt: Bei ConnectTimeout kam die Verbindung nie zustande, da ist
+    # "nicht erreichbar" richtig und der Blick gehört auf Adresse und Port. Bei
+    # ReadTimeout steht die Verbindung, der Dienst schreibt, nur zu langsam.
+    # Wer beides zusammenwirft, schickt den Benutzer im zweiten Fall zur
+    # Adresse, wo nichts zu finden ist. Und vor HTTPError, denn sie erbt davon.
+    except httpx.ReadTimeout as fehler:
+        logger.info("The AI service did not answer in time: %s", type(fehler).__name__)
+        merken(fehler="ki_zeitueberschreitung")
+        raise KiFehler(
+            "ki_zeitueberschreitung", sekunden=int(ZEITGRENZE_TEXT)
+        ) from fehler
     except httpx.HTTPError as fehler:
         logger.info("The AI service was unreachable: %s", type(fehler).__name__)
         merken(fehler="ki_nicht_erreichbar")

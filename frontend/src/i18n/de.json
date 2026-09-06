@@ -1224,6 +1224,7 @@
     "ki_text_zu_lang": "Der Text ist länger als {{max}} Zeichen.",
     "ki_ton_unbekannt": "Diesen Ton kennt der Server nicht.",
     "ki_vom_betreiber_gesperrt": "Der Betreiber hat KI-Dienste für diese Installation abgeschaltet.",
+    "ki_zeitueberschreitung": "Das Modell hat länger als {{sekunden}} Sekunden gebraucht. Ein kleineres Modell oder ein kürzerer Abschnitt hilft.",
     "ki_zu_viele_anfragen": "Der Dienst bremst gerade. Versuch es in einem Moment noch einmal.",
     "ki_zugang_unvollstaendig": "Erst Adresse und Modell eintragen, dann lässt sich das Umformulieren einschalten.",
     "konflikt_drueben_geloescht": "Dort liegt nichts mehr: Der Termin wurde woanders gelöscht.",
