@@ -80,6 +80,26 @@ def test_die_buecher_werden_gefunden():
     assert raus[0].ctag == '"ct-1"'
 
 
+def test_ein_buch_ohne_namen_sagt_es():
+    """⚠️ iCloud nennt sein Buch nicht; im Pfad heisst es ``card``. Der Aufrufer
+    setzt dann den Anbieter als Namen, dafür muss er wissen, dass keiner kam."""
+    ohne_namen = BUECHER.replace("<d:displayname>D&amp;amp;M</d:displayname>", "")
+
+    def antworten(a):
+        if a.url.path.endswith("/heim/"):
+            return httpx.Response(207, text=ohne_namen)
+        return httpx.Response(
+            207,
+            text=f'<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:c="{CARD}">'
+            "<d:response><d:href>/</d:href><d:propstat><d:prop>"
+            "<c:addressbook-home-set><d:href>/dav/heim/</d:href></c:addressbook-home-set>"
+            "</d:prop></d:propstat></d:response></d:multistatus>",
+        )
+
+    (buch,) = dienst.buecher_finden(_zugang(antworten, "https://dav.example.com/"))
+    assert buch.name == "privat" and buch.benannt is False
+
+
 def test_was_kein_adressbuch_ist_faellt_weg():
     """⚠️ Die Sammlung selbst und alles andere unter demselben Heim. Sie als
     leere Bücher anzuzeigen wäre eine Falschaussage."""

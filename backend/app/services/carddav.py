@@ -63,6 +63,11 @@ class FernBuch:
     url: str
     name: str
     ctag: str = ""
+    #: Hat der Server einen Anzeigenamen geliefert? ⚠️ **iCloud nennt sein
+    #: Buch nicht.** Die Sammlung heisst im Pfad woertlich ``card``, und so
+    #: stand sie am 05.09.2026 in der Spalte. Der Aufrufer setzt dann den
+    #: Anbieter als Namen; hier steht nur, dass er es muss.
+    benannt: bool = True
 
 
 @dataclass
@@ -194,14 +199,15 @@ def buecher_finden(zugang: Zugang, klient: httpx.Client | None = None) -> list[F
             if art is None or art.find(f"{{{CARD}}}addressbook") is None:
                 continue
             voll = urljoin(heim, href)
+            # ⚠️ Doppelt entmaskiert — iCloud liefert ``&amp;amp;``.
+            # Nur der Anzeigename, nie die Karte selbst.
+            name = _anzeigename(antwort.find(f".//{{{DAV}}}displayname"))
             raus.append(
                 FernBuch(
                     url=voll,
-                    # ⚠️ Doppelt entmaskiert — iCloud liefert ``&amp;amp;``.
-                    # Nur der Anzeigename, nie die Karte selbst.
-                    name=_anzeigename(antwort.find(f".//{{{DAV}}}displayname"))
-                    or voll.rstrip("/").rsplit("/", 1)[-1],
+                    name=name or voll.rstrip("/").rsplit("/", 1)[-1],
                     ctag=_text(antwort.find(f".//{{{CS}}}getctag")),
+                    benannt=bool(name),
                 )
             )
         return raus

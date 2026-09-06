@@ -511,13 +511,28 @@ def _vcard_maskieren(wert: str) -> str:
     )
 
 
-def als_vcard(kontakte: list[Kontakt]) -> str:
-    """vCard 3.0 — die Fassung, die Outlook, Apple und Thunderbird alle lesen."""
+def als_vcard(
+    kontakte: list[Kontakt], verbundene: set[str] | frozenset[str] = frozenset()
+) -> str:
+    """vCard 3.0 — die Fassung, die Outlook, Apple und Thunderbird alle lesen.
+
+    ⚠️ **Ein Kontakt aus einem verbundenen Buch geht als Original hinaus.**
+    Seine Karte liegt in ``roh``, mit Foto, allen Nummern und allem, was
+    nexmail nicht kennt; ein Nachbau aus fuenf Feldern waere die halbe Karte.
+    Dieselbe Zusage wie beim Kalender und bei mboxrd. Lokale Kontakte werden
+    nachgebaut: Ihre Felder duerfen hier geaendert sein, und ``roh`` waere
+    dann veraltet. Das zeilenweise Nachziehen ist Lieferung 2.
+    """
     zeilen: list[str] = []
     for k in kontakte:
-        # ``FN`` ist Pflicht: der Name, sonst das Naechste, was den Menschen
-        # benennt. Ein Kontakt ohne Adresse hat in der Regel eine Nummer.
-        anzeige = k.name or k.adresse or k.telefon or k.firma
+        if k.roh and k.adressbuch_id in verbundene:
+            zeilen.extend(z for z in k.roh.replace("\r\n", "\n").split("\n") if z)
+            continue
+        # ``FN`` ist Pflicht: der Name, sonst das Naechste, was den Eintrag
+        # benennt. ⚠️ Die Firma vor Adresse und Nummer: Ein Firmen-Kontakt
+        # von Apple traegt den Namen in ``ORG`` und sonst nichts; als Nummer
+        # betitelt findet ihn niemand wieder.
+        anzeige = k.name or k.firma or k.adresse or k.telefon
         zeilen.append("BEGIN:VCARD")
         zeilen.append("VERSION:3.0")
         if k.uid:
@@ -597,6 +612,77 @@ def entfalten(inhalt: str) -> list[str]:
     return zeilen
 
 
+_APPLE_MARKE = re.compile(r"^_\$!<(.+)>!\$_$")
+
+
+def kontaktdaten_aus_vcard(inhalt: str) -> dict[str, list[dict[str, str]]]:
+    """Alle Nummern und Adressen einer Karte, jede mit Typen und Beschriftung.
+
+    ⚠️ **Das Modell kennt eine Nummer, die Karte viele.** Bis die Felder
+    mehrere tragen (der naechste Schritt, mit Maske vorher), zeigt die
+    Oberflaeche die uebrigen aus der Rohkarte, nur lesend. Ein Kontakt mit
+    Handy und Festnetz, von dem nur eines zu sehen war, sah aus wie halb
+    geholt; am 05.09.2026 genau so aus der Pruefinstanz gemeldet.
+
+    Typen kommen als ``TEL;type=CELL;type=pref`` (vCard 3), ``TEL;TYPE=cell``
+    (vCard 4) oder ``TEL;CELL`` (vCard 2.1). Apple beschriftet ueber Gruppen:
+    ``item1.TEL`` gehoert zu ``item1.X-ABLabel``; eigene Beschriftungen
+    stehen dort im Klartext, Apples eigene als ``_$!<Mobile>!$_``.
+    """
+    nummern: list[dict[str, str]] = []
+    adressen: list[dict[str, str]] = []
+    beschriftungen: dict[str, str] = {}
+    for zeile in entfalten(inhalt):
+        if ":" not in zeile:
+            continue
+        kopf, wert = zeile.split(":", 1)
+        teile = kopf.split(";")
+        name = teile[0].strip()
+        gruppe = ""
+        if "." in name:
+            gruppe, name = name.rsplit(".", 1)
+        name = name.upper()
+        typen: list[str] = []
+        for parameter in teile[1:]:
+            schluessel, _, werte = parameter.partition("=")
+            if not werte:
+                typen.append(schluessel.strip().lower())
+            elif schluessel.strip().upper() == "TYPE":
+                typen.extend(t.strip().lower() for t in werte.split(","))
+        wert = wert.strip()
+        if name == "X-ABLABEL" and gruppe:
+            marke = _APPLE_MARKE.match(wert)
+            beschriftungen[gruppe] = marke.group(1) if marke else _entmaskieren(wert)
+        elif name == "TEL" and wert:
+            nummern.append(
+                {"gruppe": gruppe, "typen": ",".join(typen), "nummer": _entmaskieren(wert)}
+            )
+        elif name == "EMAIL" and wert:
+            adressen.append(
+                {"gruppe": gruppe, "typen": ",".join(typen), "adresse": _entmaskieren(wert).lower()}
+            )
+    for eintrag in nummern + adressen:
+        eintrag["beschriftung"] = beschriftungen.get(eintrag.pop("gruppe"), "")
+    return {"nummern": nummern, "adressen": adressen}
+
+
+def _bevorzugt(eintraege: list[dict[str, str]], feld: str, lieber: tuple[str, ...]) -> str:
+    """Welche von mehreren das eine Feld bekommt.
+
+    ⚠️ Erst die Sorte, die der Aufrufer lieber hat (bei Nummern das Handy),
+    dann die vom Anbieter als ``pref`` markierte, sonst die erste. Vorher
+    gewann die erste Zeile der Karte, und bei Apple steht dort gern das
+    Festnetz: Ein Kontakt mit Handy und Festnetz zeigte nur das Festnetz.
+    """
+    if not eintraege:
+        return ""
+    for sorte in (lieber, ("pref",)):
+        for eintrag in eintraege:
+            if any(t in sorte for t in eintrag["typen"].split(",")):
+                return eintrag[feld]
+    return eintraege[0][feld]
+
+
 def felder_aus_vcard(inhalt: str) -> dict[str, str]:
     """Die acht Felder, die nexmail kennt, aus **einer** Karte.
 
@@ -618,25 +704,43 @@ def felder_aus_vcard(inhalt: str) -> dict[str, str]:
         kopf, roh_wert = zeile.split(":", 1)
         # Parameter abtrennen: EMAIL;TYPE=INTERNET -> EMAIL
         feld = kopf.split(";")[0].strip().upper()
+        # ⚠️ **Apple gruppiert beschriftete Zeilen:** ``item1.TEL`` gehoert
+        # zu ``item1.X-ABLabel:Mutter``. Der Name der Eigenschaft steht
+        # hinter dem Punkt; wer die Gruppe mitliest, findet weder Nummer noch
+        # Adresse. Am 05.09.2026 an einem echten iCloud-Buch aufgefallen.
+        if "." in feld:
+            feld = feld.rsplit(".", 1)[1]
         roh_wert = roh_wert.strip()
-        if feld == "EMAIL" and "adresse" not in felder:
-            felder["adresse"] = _entmaskieren(roh_wert)
-        elif feld == "FN":
+        if feld == "FN" and roh_wert:
+            # ⚠️ **Apple schreibt ``FN:`` leer und den Namen nur in ``N``.**
+            # Am 05.09.2026 an 185 echten iCloud-Karten gesehen: ``FN:`` ohne
+            # Wert, dahinter ``N:Nachname;Vorname;;;``. Ein leeres FN darf
+            # weder den Namen setzen noch das N danach sperren; vorher kamen
+            # 149 von 185 Karten ohne Namen an.
             felder["name"] = _entmaskieren(roh_wert)
         elif feld == "N" and "name" not in felder:
-            # N ist Nachname;Vorname;… - hier zusammengesetzt als „Vorname
-            # Nachname", weil FN gefehlt hat.
-            teile = [t for t in _felder_trennen(roh_wert) if t]
-            felder["name"] = " ".join(reversed(teile[:2])).strip()
+            # N ist Nachname;Vorname;Zusatz;Anrede;Titel, nach Stellung, nicht
+            # nach Fuellung: ``;Vorname;;;`` ist ein Vorname ohne Nachnamen.
+            # Zusammengesetzt als „Vorname Nachname", weil FN fehlt oder leer
+            # ist. Apple laesst Leerzeichen am Ende der Teile stehen.
+            teile = [t.strip() for t in _felder_trennen(roh_wert)] + ["", ""]
+            felder["name"] = " ".join(t for t in (teile[1], teile[0]) if t)
         elif feld == "ORG":
             # ORG ist Firma;Abteilung - nur die Firma wird gebraucht.
             felder["firma"] = _felder_trennen(roh_wert)[0]
-        elif feld == "TEL" and "telefon" not in felder:
-            felder["telefon"] = _entmaskieren(roh_wert)
         elif feld == "NOTE":
             felder["notiz"] = _entmaskieren(roh_wert)
         elif feld == "UID" and "uid" not in felder:
             felder["uid"] = roh_wert
+    # Nummern und Adressen kommen aus dem Leser, der alle kennt, samt Typen;
+    # das eine Feld bekommt die Handynummer, sonst die markierte, sonst die erste.
+    daten = kontaktdaten_aus_vcard(inhalt)
+    telefon = _bevorzugt(daten["nummern"], "nummer", ("cell", "iphone", "mobile"))
+    if telefon:
+        felder["telefon"] = telefon
+    adresse = _bevorzugt(daten["adressen"], "adresse", ("pref",))
+    if adresse:
+        felder["adresse"] = adresse
     return felder
 
 
@@ -657,7 +761,7 @@ def aus_vcard(db: Session, person: Benutzer, inhalt: str) -> dict[str, int]:
             karte = []
             continue
         if oben == "END:VCARD":
-            stand = _uebernehmen(db, person, felder_aus_vcard("\n".join(karte)))
+            stand = _uebernehmen(db, person, felder_aus_vcard("\n".join(karte)), karte)
             neu += stand == "neu"
             ergaenzt += stand == "ergaenzt"
             karte = []
@@ -669,7 +773,12 @@ def aus_vcard(db: Session, person: Benutzer, inhalt: str) -> dict[str, int]:
     return {"neu": neu, "ergaenzt": ergaenzt}
 
 
-def _uebernehmen(db: Session, person: Benutzer, felder: dict[str, str]) -> str:
+def _uebernehmen(
+    db: Session, person: Benutzer, felder: dict[str, str], karte: list[str] | None = None
+) -> str:
+    # ⚠️ Die Karte bleibt liegen, wie sie kam: die Rueckfahrkarte, auch beim
+    # Import. Was nexmail nicht kennt, waere sonst mit dem Einlesen weg.
+    roh = "BEGIN:VCARD\r\n" + "\r\n".join(karte) + "\r\nEND:VCARD\r\n" if karte else ""
     adresse = felder.get("adresse", "").strip().lower()
     if adresse and not _ADRESSE.match(adresse):
         # Eine kaputte Adresse ist keine; der Rest der Karte ist trotzdem
@@ -712,6 +821,7 @@ def _uebernehmen(db: Session, person: Benutzer, felder: dict[str, str]) -> str:
             telefon=telefon,
             notiz=felder.get("notiz", ""),
             uid=felder.get("uid", "")[:255],
+            roh=roh,
             quelle="hand",
             adressbuch_id=adressbuecher.lokales(db, person).id,
         )

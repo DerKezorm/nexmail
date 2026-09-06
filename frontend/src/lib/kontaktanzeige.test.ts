@@ -1,6 +1,35 @@
 /* Die Beschriftung eines Kontakts in der Liste. */
 import { describe, expect, it } from 'vitest'
-import { beschriftung, sichtbareKontakte } from './kontaktanzeige'
+import { beschriftung, beschriftungFuer, nummerArt, sichtbareKontakte } from './kontaktanzeige'
+
+const uebersetzt = (art: string) =>
+  ({ cell: 'Mobil', home: 'Privat', work: 'Arbeit', fax: 'Fax', main: 'Zentrale', pager: 'Pager' })[art] ??
+  '?'
+
+describe('beschriftungFuer', () => {
+  it('uebersetzt Apples Woerter', () => {
+    expect(beschriftungFuer({ typen: 'voice', beschriftung: 'Mobile' }, uebersetzt)).toBe('Mobil')
+    expect(beschriftungFuer({ typen: '', beschriftung: 'HomeFAX' }, uebersetzt)).toBe('Fax')
+    /* „Other" ist Apples Wort fuer „keine Beschriftung", nicht eine. */
+    expect(beschriftungFuer({ typen: 'voice', beschriftung: 'Other' }, uebersetzt)).toBe('')
+  })
+
+  it('laesst eine eigene Beschriftung woertlich stehen', () => {
+    expect(beschriftungFuer({ typen: 'cell', beschriftung: 'Mutter' }, uebersetzt)).toBe('Mutter')
+  })
+
+  it('faellt auf die Typen der Zeile zurueck', () => {
+    expect(beschriftungFuer({ typen: 'cell,voice,pref', beschriftung: '' }, uebersetzt)).toBe('Mobil')
+    expect(beschriftungFuer({ typen: 'work,fax', beschriftung: '' }, uebersetzt)).toBe('Fax')
+    expect(beschriftungFuer({ typen: 'voice', beschriftung: '' }, uebersetzt)).toBe('')
+  })
+
+  it('kennt die Typen in jeder Schreibweise', () => {
+    expect(nummerArt('CELL,VOICE')).toBe('cell')
+    expect(nummerArt('iphone')).toBe('cell')
+    expect(nummerArt('home,voice')).toBe('home')
+  })
+})
 
 describe('sichtbareKontakte', () => {
   const buecher = [
@@ -55,6 +84,15 @@ describe('beschriftung', () => {
     expect(beschriftung(k({ name: 'Werkstatt Beispiel', telefon: '030 1234' }))).toEqual({
       titel: 'Werkstatt Beispiel',
       unter: '030 1234',
+    })
+  })
+
+  it('betitelt einen Firmen-Kontakt mit der Firma, nicht mit der Nummer', () => {
+    /* ⚠️ Ein Firmen-Kontakt von Apple traegt seinen Namen in ORG und sonst
+       keinen. Als Nummer betitelt findet ihn niemand wieder. */
+    expect(beschriftung(k({ firma: 'Polizei Beispielstadt', telefon: '0177 1' }))).toEqual({
+      titel: 'Polizei Beispielstadt',
+      unter: '0177 1',
     })
   })
 

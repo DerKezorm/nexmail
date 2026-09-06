@@ -20,6 +20,20 @@ router = APIRouter(prefix="/api/kontakte", tags=["kontakte"])
 MAX_VCARD = 5 * 1024 * 1024
 
 
+class Nummer(BaseModel):
+    nummer: str
+    #: Die Typen der Karte, klein und mit Komma: ``cell,voice,pref``.
+    typen: str = ""
+    #: Eine eigene Beschriftung („Mutter") oder Apples Wort („Mobile").
+    beschriftung: str = ""
+
+
+class Adresse(BaseModel):
+    adresse: str
+    typen: str = ""
+    beschriftung: str = ""
+
+
 class Zeile(BaseModel):
     id: int
     name: str
@@ -35,6 +49,12 @@ class Zeile(BaseModel):
     #: Oberfläche sperrt das Formular; der Server weist Änderungen mit
     #: ``kontakt_nur_lesen`` ab, damit kein zweiter Weg daran vorbeiführt.
     nur_lesen: bool = False
+    #: Alle Nummern und Adressen der Karte, **nur bei Kontakten aus
+    #: verbundenen Büchern**: Das Modell kennt eine Nummer, die Karte viele.
+    #: Ein lokaler Kontakt trägt seine Felder; seine Rohkarte könnte hinter
+    #: einer Änderung von Hand zurückliegen.
+    nummern: list[Nummer] = Field(default_factory=list)
+    adressen: list[Adresse] = Field(default_factory=list)
 
 
 def _verbundene(db, person) -> set[str]:
@@ -62,6 +82,12 @@ class Aenderung(BaseModel):
 
 
 def _zeile(k, verbundene: set[str] | frozenset[str] = frozenset()) -> Zeile:
+    nur_lesen = k.adressbuch_id in verbundene
+    daten = (
+        kontaktdienst.kontaktdaten_aus_vcard(k.roh)
+        if nur_lesen and k.roh
+        else {"nummern": [], "adressen": []}
+    )
     return Zeile(
         id=k.id,
         name=k.name,
@@ -72,7 +98,9 @@ def _zeile(k, verbundene: set[str] | frozenset[str] = frozenset()) -> Zeile:
         quelle=k.quelle,
         verwendet=k.verwendet,
         adressbuch_id=k.adressbuch_id,
-        nur_lesen=k.adressbuch_id in verbundene,
+        nur_lesen=nur_lesen,
+        nummern=[Nummer(**n) for n in daten["nummern"]],
+        adressen=[Adresse(**a) for a in daten["adressen"]],
     )
 
 
@@ -231,7 +259,7 @@ def einsammeln(person: AngemeldeterBenutzer, db: DbSession) -> dict[str, int]:
 @router.get("/vcard")
 def ausfuehren(person: AngemeldeterBenutzer, db: DbSession) -> Response:
     """Das ganze Adressbuch als vCard-Datei."""
-    inhalt = kontaktdienst.als_vcard(kontaktdienst.meine(db, person))
+    inhalt = kontaktdienst.als_vcard(kontaktdienst.meine(db, person), _verbundene(db, person))
     return Response(
         content=inhalt.encode("utf-8"),
         media_type="text/vcard; charset=utf-8",

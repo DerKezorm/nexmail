@@ -176,6 +176,36 @@ def verschieben(db: Session, person: Benutzer, kontakt_id: int, buch_id: str) ->
     return kontakt
 
 
+def neu_lesen_erzwingen(db: Session) -> int:
+    """Alle Karten verbundener Bücher beim nächsten Abgleich neu holen lassen.
+
+    ⚠️ **Für den Fall, dass der Leser besser geworden ist.** 0.10.0 las Apples
+    leeres ``FN`` als Namen und liess das ``N`` danach liegen; 149 von 185
+    Karten kamen ohne Namen an. Die Felder entstehen beim Holen aus der Karte,
+    und geholt wird nur, was sich drüben geändert hat. Ohne diesen Griff
+    blieben die Namen leer, bis jemand am Telefon jeden Kontakt einmal
+    anfasst. Deshalb fallen ``etag`` je Karte und ``ctag`` je Buch; der
+    nächste Takt vergleicht voll und holt alles noch einmal, durch dieselben
+    Regeln wie sonst. ``roh`` bleibt, es ist die Rückfahrkarte.
+
+    Läuft einmal beim Start, gemerkt an ``karten_neu_gelesen``, wie
+    ``nachtragen``.
+    """
+    verbundene = select(Adressbuch.id).where(Adressbuch.art == "carddav")
+    karten = (
+        db.query(Kontakt)
+        .filter(Kontakt.adressbuch_id.in_(verbundene), Kontakt.etag != "")
+        .update({"etag": ""}, synchronize_session=False)
+    )
+    db.query(Adressbuch).filter(Adressbuch.art == "carddav").update(
+        {"ctag": ""}, synchronize_session=False
+    )
+    if karten:
+        db.commit()
+        logger.info("%s connected contact card(s) will be fetched again on the next sync.", karten)
+    return karten
+
+
 def nachtragen(db: Session) -> int:
     """Jedem Benutzer sein lokales Buch geben und heimatlose Kontakte einordnen.
 

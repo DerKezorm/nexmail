@@ -29,7 +29,7 @@ import { Buchfenster } from '../components/Buchfenster'
 import { useNachfrage } from '../components/Nachfrage'
 import { appPfad } from '../lib/basis'
 import { PUNKT_KLASSE } from '../lib/farben'
-import { beschriftung, sichtbareKontakte } from '../lib/kontaktanzeige'
+import { beschriftung, beschriftungFuer, sichtbareKontakte } from '../lib/kontaktanzeige'
 import { servermeldung } from '../lib/servermeldung'
 import type { Postfachfarbe } from '../daten/typen'
 
@@ -46,6 +46,17 @@ export interface Kontakt {
   adressbuch_id: string | null
   /** ⚠️ Beta: Kontakte aus verbundenen Büchern werden nur gelesen. */
   nur_lesen: boolean
+  /** Alle Nummern und Adressen der Karte, nur bei verbundenen Kontakten:
+   *  Das Modell kennt eine Nummer, die Karte viele. */
+  nummern: Karteneintrag[]
+  adressen: Karteneintrag[]
+}
+
+export interface Karteneintrag {
+  nummer?: string
+  adresse?: string
+  typen: string
+  beschriftung: string
 }
 
 /* Ein Adressbuch: das lokale, das nicht wegkann, oder ein verbundenes (Beta,
@@ -82,7 +93,7 @@ export interface Gruppe {
   adressen: string[]
 }
 
-const LEER: Omit<Kontakt, 'id' | 'quelle' | 'verwendet' | 'adressbuch_id' | 'nur_lesen'> = {
+const LEER: Pick<Kontakt, 'name' | 'adresse' | 'firma' | 'telefon' | 'notiz'> = {
   name: '',
   adresse: '',
   firma: '',
@@ -575,6 +586,8 @@ export function KontaktePage() {
             meldung={meldung}
             gesperrt={Boolean(offen?.nur_lesen)}
             herkunft={offen?.adressbuch_id ? (nachBuch.get(offen.adressbuch_id)?.herkunft ?? '') : ''}
+            nummern={offen?.nummern ?? []}
+            adressen={offen?.adressen ?? []}
             aufSpeichern={speichern}
             aufEntfernen={
               offen && !offen.nur_lesen
@@ -735,6 +748,8 @@ function Formular({
   meldung,
   gesperrt = false,
   herkunft = '',
+  nummern = [],
+  adressen = [],
   aufSpeichern,
   aufEntfernen,
 }: {
@@ -746,6 +761,8 @@ function Formular({
   /** ⚠️ Beta: ein Kontakt aus einem verbundenen Buch wird nur gelesen. */
   gesperrt?: boolean
   herkunft?: string
+  nummern?: Karteneintrag[]
+  adressen?: Karteneintrag[]
   aufSpeichern: (f: typeof LEER) => void
   aufEntfernen?: () => void
 }) {
@@ -755,6 +772,28 @@ function Formular({
   useEffect(() => setFelder(werte), [werte])
 
   const setzen = (teil: Partial<typeof LEER>) => setFelder((alt) => ({ ...alt, ...teil }))
+  const artText = (art: string) => t(`kontakte.art_${art}`)
+
+  /* ⚠️ **Die Karte kennt mehr als das eine Feld.** Bei einem verbundenen
+     Kontakt stehen alle Nummern und Adressen darunter, mit Beschriftung;
+     sonst sieht ein Kontakt mit Handy und Festnetz aus wie halb geholt. */
+  const weitere = (eintraege: Karteneintrag[], schluessel: 'nummer' | 'adresse', titel: string) =>
+    eintraege.length > 1 && (
+      <div className="flex flex-col gap-1">
+        <span className="text-[11px] font-semibold tracking-[0.06em] text-fg-3 uppercase">{titel}</span>
+        <ul className="flex flex-col gap-0.5 text-[13px] text-fg-1">
+          {eintraege.map((e, i) => {
+            const marke = beschriftungFuer(e, artText)
+            return (
+              <li key={`${e[schluessel]}-${i}`} className="flex gap-2">
+                <span className="w-24 shrink-0 truncate text-fg-4">{marke}</span>
+                <span className={schluessel === 'adresse' ? 'font-mono' : ''}>{e[schluessel]}</span>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    )
 
   return (
     <form
@@ -801,6 +840,8 @@ function Formular({
         value={felder.telefon}
         onChange={(e) => setzen({ telefon: e.target.value })}
       />
+      {weitere(nummern, 'nummer', t('kontakte.alle_nummern'))}
+      {weitere(adressen, 'adresse', t('kontakte.alle_adressen'))}
       <label className="flex flex-col gap-1.5">
         <span className="text-[11px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
           {t('kontakte.notiz')}

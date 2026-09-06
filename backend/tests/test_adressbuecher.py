@@ -224,6 +224,37 @@ def test_ein_fremdes_buch_laesst_sich_nicht_entfernen(db, person):
         dienst.entfernen(db, person, dienst.lokales(db, zweiter).id)
 
 
+# --- Neu lesen lassen ----------------------------------------------------- #
+
+
+def test_neu_lesen_laesst_etag_und_ctag_fallen(db, person):
+    """⚠️ Geholt wird nur, was sich drüben geändert hat. Ein besserer Leser
+    erreicht die alten Karten nur, wenn sie noch einmal als „geändert" gelten."""
+    fremd = Adressbuch(benutzer_id=person.id, name="iCloud", art="carddav", ctag="ct-1")
+    db.add(fremd)
+    db.commit()
+    drin = _kontakt(db, person, "Drin", adressbuch_id=fremd.id, etag="e1", href="/x/1.vcf", roh="BEGIN:VCARD\r\nEND:VCARD\r\n")
+    lokal = _kontakt(db, person, "Lokal", adressbuch_id=dienst.lokales(db, person).id, etag="bleibt")
+
+    assert dienst.neu_lesen_erzwingen(db) == 1
+
+    db.refresh(drin)
+    db.refresh(lokal)
+    db.refresh(fremd)
+    assert drin.etag == "" and drin.roh != ""
+    assert fremd.ctag == ""
+    # Das lokale Buch geht das nichts an.
+    assert lokal.etag == "bleibt"
+
+
+def test_neu_lesen_laeuft_beim_start_genau_einmal(klient, db):
+    """Dieselbe Marke wie beim Strang-Neuaufbau: Ohne sie holte jeder Start
+    alle Bücher noch einmal ganz."""
+    from app.db import einstellung_lesen
+
+    assert einstellung_lesen(db, "karten_neu_gelesen") == "1"
+
+
 # --- Ändern --------------------------------------------------------------- #
 
 

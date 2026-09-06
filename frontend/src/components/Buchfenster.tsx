@@ -59,9 +59,16 @@ export function Buchfenster({ onClose, onFertig }: Props) {
   }, [])
   const passende = zugaenge.filter((z) => z.art === 'google')
   const brauchbare = passende.filter((z) => z.kann_adressbuch)
+  /* ⚠️ **Vorbelegt wird immer ein Konto, auch eines, das nicht reicht.** Die
+     erste Fassung wählte nur aus den brauchbaren; gab es keines, blieb der
+     Zustand leer, die Auswahl zeigte trotzdem das erste Konto, und der
+     Hinweis „Zustimmung reicht nicht" erschien nie. Was der Mensch sah: ein
+     gewähltes Konto und einen toten Knopf ohne Grund. Am 05.09.2026 aus dem
+     Betrieb gemeldet, direkt nach 0.10.0. */
   useEffect(() => {
-    if (anbieter === 'google' && !zugangId && brauchbare.length) setZugangId(brauchbare[0].id)
-  }, [anbieter, zugangId, brauchbare])
+    if (anbieter !== 'google' || zugangId || passende.length === 0) return
+    setZugangId((brauchbare[0] ?? passende[0]).id)
+  }, [anbieter, zugangId, brauchbare, passende])
   const gewaehlterZugang = passende.find((z) => z.id === zugangId)
 
   /** ⚠️ Der Server nennt eine Kennung, die Oberfläche übersetzt. */

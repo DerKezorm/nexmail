@@ -101,6 +101,13 @@ class Gefunden(BaseModel):
     schon_verbunden: bool = False
 
 
+def _herkunft(wunsch: Zugangswunsch) -> str:
+    """Was in der Spalte als Herkunft steht: „iCloud", „Google", sonst der Host."""
+    return {"icloud": "iCloud", "google": "Google"}.get(wunsch.art) or (
+        wunsch.adresse.split("/")[2] if "//" in wunsch.adresse else wunsch.adresse
+    )
+
+
 @router.post("/pruefen", response_model=list[Gefunden])
 def pruefen(
     wunsch: Zugangswunsch, person: AngemeldeterBenutzer, db: DbSession
@@ -114,7 +121,18 @@ def pruefen(
     except _VERBINDUNGSFEHLER as f:
         raise MeldungHttp.aus(f, status.HTTP_400_BAD_REQUEST) from f
     bekannt = {b.url for b in adressbuecher.meine(db, person) if b.url}
-    return [Gefunden(url=b.url, name=b.name, schon_verbunden=b.url in bekannt) for b in gefunden]
+    # ⚠️ **Ein Buch ohne Anzeigenamen heisst nach seinem Anbieter.** iCloud
+    # nennt seines nicht; im Pfad heisst es ``card``, und so stand es am
+    # 05.09.2026 in der Spalte. Umbenennen geht ohnehin.
+    herkunft = _herkunft(wunsch)
+    return [
+        Gefunden(
+            url=b.url,
+            name=b.name if b.benannt else herkunft,
+            schon_verbunden=b.url in bekannt,
+        )
+        for b in gefunden
+    ]
 
 
 class Verbindungswunsch(Zugangswunsch):
@@ -132,9 +150,7 @@ def verbinden(
             status_code=status.HTTP_400_BAD_REQUEST, detail="adressbuch_keine_auswahl"
         )
     token, adresse = _token(db, person, wunsch.oauth_zugang_id)
-    herkunft = {"icloud": "iCloud", "google": "Google"}.get(wunsch.art) or (
-        wunsch.adresse.split("/")[2] if "//" in wunsch.adresse else wunsch.adresse
-    )
+    herkunft = _herkunft(wunsch)
     try:
         neue = adressbuchabgleich.verbinden(
             db, person,

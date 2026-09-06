@@ -233,6 +233,14 @@ async def lebenslauf(_: FastAPI):
 
             buchdienst.nachtragen(db)
             einstellung_schreiben(db, "buecher_nachgetragen", "1")
+        # Die Karten verbundener Buecher einmal neu holen lassen: 0.10.0 las
+        # Apples leeres ``FN`` als Namen. Einmal, gemerkt an einer Marke; ohne
+        # sie holte jeder Start alle Buecher noch einmal ganz.
+        if einstellung_lesen(db, "karten_neu_gelesen") != "1":
+            from .services import adressbuecher as buchdienst
+
+            buchdienst.neu_lesen_erzwingen(db)
+            einstellung_schreiben(db, "karten_neu_gelesen", "1")
 
         # ⚠️ **``angekommen`` fuer den Bestand einmal auf „jetzt" setzen.**
         # Die Spalte kam nach den ersten Abgleichen dazu; Zeilen davor stehen

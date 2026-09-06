@@ -82,6 +82,21 @@ def test_pruefen_nennt_was_schon_verbunden_ist(klient, welt):
     assert nachher[0]["schon_verbunden"] is True
 
 
+def test_ein_buch_ohne_namen_heisst_nach_seinem_anbieter(klient, welt, monkeypatch):
+    """⚠️ iCloud nennt sein Buch nicht; im Pfad heisst es ``card``, und so stand
+    es am 05.09.2026 in der Spalte."""
+    monkeypatch.setattr(
+        adressbuchabgleich, "finden",
+        lambda art, adresse, benutzer, passwort, token="": [
+            carddav.FernBuch(url=BUCH, name="card", benannt=False)
+        ],
+    )
+    (buch,) = klient.post(
+        "/api/adressbuecher/pruefen", json={"art": "icloud", "benutzer": "vera", "passwort": "x"}
+    ).json()
+    assert buch["name"] == "iCloud"
+
+
 def test_verbinden_holt_die_kontakte_sofort(klient, welt):
     buch = _verbinden(klient)
     assert buch["herkunft"] == "iCloud" and buch["art"] == "carddav"
@@ -210,6 +225,30 @@ def test_ein_verbundener_kontakt_ist_nur_lesen(klient, db, welt):
     assert geloescht.json()["detail"] == "kontakt_nur_lesen"
 
     assert db.query(Kontakt).one().name == "Vera Beispiel"
+
+
+def test_ein_verbundener_kontakt_nennt_alle_nummern(klient, welt):
+    """Das Modell kennt eine Nummer, die Karte viele; die Zeile trägt sie alle,
+    ein lokaler Kontakt nur seine Felder."""
+    person, server = welt
+    server.karten[f"{PFAD}k1.vcf"] = (
+        "e1",
+        _karte(
+            extra="TEL;type=HOME;type=pref:0241 111\r\n"
+            "item1.TEL;type=CELL:+49 170 222\r\nitem1.X-ABLabel:_$!<Mobile>!$_\r\n",
+        ),
+    )
+    _verbinden(klient)
+    klient.post("/api/kontakte", json={"adresse": "jonas@example.org", "name": "Jonas", "telefon": "1"})
+
+    zeilen = {z["name"]: z for z in klient.get("/api/kontakte").json()}
+    verbunden, lokal = zeilen["Vera Beispiel"], zeilen["Jonas"]
+    assert verbunden["telefon"] == "+49 170 222"
+    assert [(n["nummer"], n["beschriftung"]) for n in verbunden["nummern"]] == [
+        ("0241 111", ""),
+        ("+49 170 222", "Mobile"),
+    ]
+    assert lokal["nummern"] == [] and lokal["telefon"] == "1"
 
 
 def test_ein_lokaler_kontakt_bleibt_bearbeitbar(klient, welt):

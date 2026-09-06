@@ -361,6 +361,141 @@ def test_dieselbe_datei_zweimal_verdoppelt_auch_ohne_adresse_nichts(db, person):
     assert len(kontakte.meine(db, person)) == 2
 
 
+def test_ein_leeres_fn_sperrt_den_namen_aus_n_nicht(db, person):
+    """⚠️ **Apple schreibt ``FN:`` leer und den Namen nur in ``N``.** An 185
+    echten iCloud-Karten gesehen; 149 kamen ohne Namen an, weil das leere FN
+    den Namen setzte und das N danach uebersprungen wurde."""
+    karte = (
+        "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:\r\nN:Beispiel-Keller;Vera ;;;\r\n"
+        "PRODID:-//Apple Inc.//iOS 18.0//EN\r\nORG:;\r\nTEL:+49 30 1234\r\nEND:VCARD\r\n"
+    )
+    felder = kontakte.felder_aus_vcard(karte)
+    assert felder["name"] == "Vera Beispiel-Keller"
+    assert felder.get("firma", "") == ""
+    # ⚠️ Und andersherum: Steht das leere FN HINTER dem N, darf es den Namen
+    # nicht wieder wegwischen. Beide Reihenfolgen kommen vor.
+    hinten = "BEGIN:VCARD\r\nVERSION:3.0\r\nN:Keller;Jonas;;;\r\nFN:\r\nEND:VCARD\r\n"
+    assert kontakte.felder_aus_vcard(hinten)["name"] == "Jonas Keller"
+
+
+def test_n_wird_nach_stellung_gelesen_nicht_nach_fuellung(db, person):
+    """``;Vorname;;;`` ist ein Vorname ohne Nachnamen, kein Nachname. Und ein
+    Zweitname an dritter Stelle rückt nicht an die Stelle des Nachnamens."""
+    assert kontakte.felder_aus_vcard("BEGIN:VCARD\r\nN:;Vera;;;\r\nEND:VCARD\r\n")["name"] == "Vera"
+    assert kontakte.felder_aus_vcard("BEGIN:VCARD\r\nN:Keller;;;;\r\nEND:VCARD\r\n")["name"] == "Keller"
+    assert kontakte.felder_aus_vcard("BEGIN:VCARD\r\nN:;Vera;Maria;;\r\nEND:VCARD\r\n")["name"] == "Vera"
+    # Ein FN mit Inhalt gewinnt weiterhin, egal wo es steht.
+    assert (
+        kontakte.felder_aus_vcard("BEGIN:VCARD\r\nN:Keller;Jonas;;;\r\nFN:Dr. Jonas Keller\r\nEND:VCARD\r\n")["name"]
+        == "Dr. Jonas Keller"
+    )
+
+
+def test_alle_nummern_kommen_mit_typen_und_beschriftung(db, person):
+    """⚠️ Das Modell kennt eine Nummer, die Karte viele. Bis die Felder mehrere
+    tragen, zeigt die Oberfläche die übrigen aus der Rohkarte."""
+    karte = (
+        "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Jonas Keller\r\n"
+        "TEL;type=HOME;type=VOICE;type=pref:0241 111\r\n"
+        "item1.TEL;type=CELL;type=VOICE:+49 170 222\r\n"
+        "item1.X-ABLabel:_$!<Mobile>!$_\r\n"
+        "item2.TEL;type=VOICE:0241 333\r\n"
+        "item2.X-ABLabel:Werkstatt\r\n"
+        "TEL;CELL;VOICE:0170 444\r\n"
+        "EMAIL;type=INTERNET;type=WORK:b@example.org\r\n"
+        "item3.EMAIL;type=INTERNET;type=pref:Jonas@Example.org\r\n"
+        "item3.X-ABLabel:Privat\r\n"
+        "END:VCARD\r\n"
+    )
+    daten = kontakte.kontaktdaten_aus_vcard(karte)
+    assert [(n["nummer"], n["typen"], n["beschriftung"]) for n in daten["nummern"]] == [
+        ("0241 111", "home,voice,pref", ""),
+        ("+49 170 222", "cell,voice", "Mobile"),
+        ("0241 333", "voice", "Werkstatt"),
+        ("0170 444", "cell,voice", ""),  # vCard 2.1: Typen ohne TYPE=
+    ]
+    assert [(a["adresse"], a["beschriftung"]) for a in daten["adressen"]] == [
+        ("b@example.org", ""),
+        ("jonas@example.org", "Privat"),
+    ]
+
+
+def test_das_eine_feld_bekommt_die_handynummer(db, person):
+    """⚠️ Vorher gewann die erste Zeile der Karte, und bei Apple steht dort
+    gern das Festnetz: „angezeigt wird nur seine normale Nummer"."""
+    karte = (
+        "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Jonas Keller\r\n"
+        "TEL;type=HOME;type=VOICE;type=pref:0241 111\r\n"
+        "TEL;type=CELL;type=VOICE:+49 170 222\r\n"
+        "EMAIL;type=INTERNET:erste@example.org\r\n"
+        "EMAIL;type=INTERNET;type=pref:lieber@example.org\r\n"
+        "END:VCARD\r\n"
+    )
+    felder = kontakte.felder_aus_vcard(karte)
+    assert felder["telefon"] == "+49 170 222"
+    # Ohne Handy die vom Anbieter markierte, sonst die erste.
+    assert felder["adresse"] == "lieber@example.org"
+    # ⚠️ Die markierte muss an ZWEITER Stelle stehen, sonst unterscheidet der
+    # Test „pref gewinnt" nicht von „die erste gewinnt".
+    nur_festnetz = karte.replace(
+        "TEL;type=CELL;type=VOICE:+49 170 222\r\n", "TEL;type=WORK;type=VOICE:0241 999\r\n"
+    ).replace(
+        "TEL;type=HOME;type=VOICE;type=pref:0241 111\r\nTEL;type=WORK;type=VOICE:0241 999\r\n",
+        "TEL;type=WORK;type=VOICE:0241 999\r\nTEL;type=HOME;type=VOICE;type=pref:0241 111\r\n",
+    )
+    assert kontakte.felder_aus_vcard(nur_festnetz)["telefon"] == "0241 111"
+
+
+def test_der_import_hebt_die_karte_auf(db, person):
+    """Die Rückfahrkarte gilt auch beim Einlesen: Was nexmail nicht kennt,
+    wäre sonst mit dem Import weg."""
+    karte = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Vera\r\nEMAIL:vera@example.org\r\nBDAY:1980-01-01\r\nEND:VCARD\r\n"
+    kontakte.aus_vcard(db, person, karte)
+    eintrag = kontakte.meine(db, person)[0]
+    assert eintrag.roh.startswith("BEGIN:VCARD") and "BDAY:1980-01-01" in eintrag.roh
+
+
+def test_ein_verbundener_kontakt_geht_als_original_hinaus(db, person):
+    """⚠️ Ein Nachbau aus fünf Feldern wäre die halbe Karte. Ein lokaler
+    Kontakt wird dagegen nachgebaut: Seine Felder dürfen geändert sein."""
+    from app.models import Adressbuch
+
+    buch = Adressbuch(benutzer_id=person.id, name="iCloud", art="carddav")
+    db.add(buch)
+    db.commit()
+    original = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Vera\r\nEMAIL:vera@example.org\r\nPHOTO;ENCODING=b:abc\r\nEND:VCARD\r\n"
+    kontakte.anlegen(db, person, "vera@example.org", "Vera")
+    verbunden = kontakte.meine(db, person)[0]
+    verbunden.adressbuch_id = buch.id
+    verbunden.roh = original
+    kontakte.anlegen(db, person, "jonas@example.org", "Jonas")
+    lokal = [k for k in kontakte.meine(db, person) if k.name == "Jonas"][0]
+    lokal.roh = "BEGIN:VCARD\r\nFN:Jonas alt\r\nEND:VCARD\r\n"
+    db.commit()
+
+    karte = kontakte.als_vcard(kontakte.meine(db, person), {buch.id})
+
+    assert "PHOTO;ENCODING=b:abc" in karte
+    assert "FN:Jonas\r\n" in karte and "Jonas alt" not in karte
+
+
+def test_apples_gruppenzeilen_werden_gelesen(db, person):
+    """⚠️ ``item1.TEL`` gehört zu ``item1.X-ABLabel``. Wer die Gruppe mitliest,
+    findet weder Nummer noch Adresse. An einem echten iCloud-Buch aufgefallen."""
+    karte = (
+        "BEGIN:VCARD\r\nVERSION:3.0\r\nN:Beispiel;Vera;;;\r\nFN:Vera Beispiel\r\n"
+        "item1.EMAIL;type=INTERNET;type=pref:vera@example.org\r\n"
+        "item1.X-ABLabel:Privat\r\n"
+        "item2.TEL;type=pref:030 1234\r\n"
+        "item2.X-ABLabel:Mutter\r\n"
+        "END:VCARD\r\n"
+    )
+    felder = kontakte.felder_aus_vcard(karte)
+    assert felder["adresse"] == "vera@example.org"
+    assert felder["telefon"] == "030 1234"
+    assert felder["name"] == "Vera Beispiel"
+
+
 def test_eine_leere_vcard_wird_uebersprungen(db, person):
     karte = "BEGIN:VCARD\r\nVERSION:3.0\r\nNOTE:nur eine Notiz\r\nEND:VCARD\r\n"
     assert kontakte.aus_vcard(db, person, karte) == {"neu": 0, "ergaenzt": 0}
@@ -375,6 +510,15 @@ def test_ohne_adresse_schreibt_die_vcard_keine_email_zeile(db, person):
     assert "FN:Werkstatt" in karte and "TEL:030 1234" in karte
     # Ohne Namen benennt die Nummer den Eintrag; FN ist Pflicht.
     assert "FN:030 5555" in karte
+
+
+def test_ein_firmen_kontakt_heisst_in_der_vcard_nach_der_firma(db, person):
+    """⚠️ Ein Firmen-Kontakt von Apple trägt seinen Namen in ORG und sonst
+    keinen. Als Nummer betitelt findet ihn drüben niemand wieder."""
+    kontakte.anlegen(db, person, "", "", firma="Beispiel GmbH", telefon="030 7777")
+    karte = kontakte.als_vcard(kontakte.meine(db, person))
+    assert "FN:Beispiel GmbH" in karte
+    assert "FN:030 7777" not in karte
 
 
 def test_die_uid_geht_mit_hinaus_und_kommt_wieder(db, person):
@@ -442,7 +586,7 @@ def test_vcard_ausfuehren_ist_erreichbar(klient):
 
 def _gruppe_mit_mitgliedern(db, person, name="Verein"):
     a = kontakte.anlegen(db, person, "anna@example.org", "Anna")
-    b = kontakte.anlegen(db, person, "bernd@example.org", "Bernd")
+    b = kontakte.anlegen(db, person, "jonas@example.org", "Bernd")
     gruppe = kontakte.gruppe_anlegen(db, person, name)
     kontakte.mitglieder_setzen(db, person, gruppe.id, [a.id, b.id])
     return gruppe, a, b
@@ -454,7 +598,7 @@ def test_gruppe_anlegen_umbenennen_entfernen(db, person):
     stand = kontakte.gruppen(db, person)
     assert [g["name"] for g in stand] == ["Verein"]
     assert stand[0]["mitglieder"] == 2
-    assert stand[0]["adressen"] == ["anna@example.org", "bernd@example.org"]
+    assert stand[0]["adressen"] == ["anna@example.org", "jonas@example.org"]
 
     kontakte.gruppe_umbenennen(db, person, gruppe.id, "Vorstand")
     assert kontakte.gruppen(db, person)[0]["name"] == "Vorstand"
