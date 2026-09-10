@@ -51,6 +51,9 @@ import type { Suchbereich } from './components/Kopfleiste'
 import { Kontextmenue } from './components/Kontextmenue'
 import { useNachfrage } from './components/Nachfrage'
 import type { MenueEintrag } from './components/Kontextmenue'
+import { Aktionsblatt } from './components/Aktionsblatt'
+import { Auswahlleiste } from './components/Auswahlleiste'
+import { alleUmschalten, fuersMehrBlatt, gelesenZiel, sindAlleGewaehlt } from './lib/auswahl'
 /* ⚠️ **Editor und Kalenderseite kommen erst auf Klick.** Zusammen wiegen sie
    439 kB, also gut ein Drittel des JavaScript, und beide hingen fest am
    Einstieg — auch bei jemandem, der nur Post liest. Am 04.09.2026 nachgeholt,
@@ -295,6 +298,11 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const [gleichtAb, setGleichtAb] = useState(false)
 
   const [menue, setMenue] = useState<Menuelage | null>(null)
+  /* Der Auswahlmodus der schmalen Ansicht (langer Druck oder „Auswählen")
+     und das Blatt von unten, das dort das Kontextmenü ersetzt. Beides gibt es
+     nur schmal; am Schreibtisch bleiben sie aus. */
+  const [auswahlmodus, setAuswahlmodus] = useState(false)
+  const [blatt, setBlatt] = useState<{ titel: string; eintraege: MenueEintrag[] } | null>(null)
   /* Welcher Ordner gerade ein- oder ausgespielt wird. Der Vorgang selbst
      lebt im Server; hier steht nur, welches Fenster offen ist. */
   const [umzug, setUmzug] = useState<{ ordner: Ordner; art: 'ein' | 'aus' } | null>(null)
@@ -1163,6 +1171,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       }
       if (e.key === 'Escape' && mehrfach.length > 0) {
         setMehrfach([])
+        setAuswahlmodus(false)
       }
     }
     document.addEventListener('keydown', beiTaste)
@@ -1226,11 +1235,61 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     await listeLaden()
   }
 
+  /* --- Auswahlmodus der schmalen Ansicht -------------------------------- */
+
+  /* Der Modus fällt, sobald die Ansicht breit wird oder der Ordner wechselt:
+     Breit gibt es ihn nicht, und in einem anderen Ordner zeigten die Kreise
+     auf Zeilen, die nicht mehr da sind. Die Auswahl fällt mit — sonst wirkte
+     die nächste Aktion auf Unsichtbares. */
+  useEffect(() => {
+    if (!schmal) setAuswahlmodus(false)
+  }, [schmal])
+  useEffect(() => {
+    setAuswahlmodus(false)
+  }, [ziel])
+
+  const auswahlmodusSetzen = useCallback((an: boolean) => {
+    setAuswahlmodus(an)
+    if (!an) setMehrfach([])
+  }, [])
+
+  /** Langer Druck auf eine Zeile: Modus an, Zeile dazu. */
+  const langdruck = useCallback((n: Nachricht) => {
+    setAuswahlmodus(true)
+    setMehrfach((alt) => (alt.includes(n.id) ? alt : [...alt, n.id]))
+  }, [])
+
   /* --- Kontextmenü ----------------------------------------------------- */
 
   function nachrichtKontext(e: React.MouseEvent, n: Nachricht) {
     e.preventDefault()
-    const ids = betroffene(n.id)
+    setMenue({ x: e.clientX, y: e.clientY, eintraege: nachrichtEintraege(n, betroffene(n.id)) })
+  }
+
+  /** Das Blatt von unten im Auswahlmodus: „Verschieben" zeigt die Ziele,
+   *  „Mehr" den Rest des Kontextmenüs. ⚠️ **Dieselben Einträge wie am
+   *  Rechner**, nur anders gezeigt — eine Quelle, zwei Formen. Die erste
+   *  gewählte Nachricht steht stellvertretend für die Auswahl, so wie beim
+   *  Rechtsklick die angeklickte. */
+  function blattOeffnen(art: 'verschieben' | 'mehr') {
+    const erste = nachrichten.find((n) => mehrfach.includes(n.id))
+    if (!erste) return
+    const eintraege = nachrichtEintraege(erste, mehrfach)
+    if (art === 'verschieben') {
+      const ziele = eintraege.find((e) => e.id === 'verschieben')?.unter ?? []
+      setBlatt({ titel: t('aktion.verschieben'), eintraege: ziele })
+    } else {
+      setBlatt({
+        titel: t('aktion.ausgewaehlt', { count: mehrfach.length }),
+        eintraege: fuersMehrBlatt(eintraege),
+      })
+    }
+  }
+
+  /** Die Einträge des Kontextmenüs für eine Nachricht — `ids` ist, worauf
+   *  sie wirken (die Mehrfachauswahl, sonst nur diese eine). Kontextmenü am
+   *  Rechner und Blatt am Telefon bauen aus derselben Liste. */
+  function nachrichtEintraege(n: Nachricht, ids: string[]): MenueEintrag[] {
     const mehrere = ids.length > 1
 
     /* Verschieben-Ziele. Zuerst die Ordner desselben Postfachs — das ist der
@@ -1270,10 +1329,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       })),
     ]
 
-    setMenue({
-      x: e.clientX,
-      y: e.clientY,
-      eintraege: [
+    return [
         {
           id: 'antworten',
           text: t('aktion.antworten'),
@@ -1410,8 +1466,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           gefaehrlich: true,
           tun: () => void handeln(() => zug('loeschen', ids), t('rueck.geloescht')),
         },
-      ],
-    })
+      ]
   }
 
   function einklappenUmschalten(kontoId: string) {
@@ -1853,6 +1908,46 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 wiedervorlageZahlen={wiedervorlageZahlen}
                 aufwachZeiten={aufwachZeiten}
                 wiedervorlageMenue={(n) => wiedervorlageUntermenue([n.id])}
+                /* Der Auswahlmodus — nur schmal. Die Leiste wirkt über
+                   dieselben Wege wie Tasten und Kontextmenü am Rechner. */
+                auswahlmodus={schmal && auswahlmodus}
+                aufAuswahlmodus={schmal ? auswahlmodusSetzen : undefined}
+                aufLangdruck={schmal ? langdruck : undefined}
+                alleGewaehlt={sindAlleGewaehlt(
+                  nachrichten.map((n) => n.id),
+                  mehrfach,
+                )}
+                aufAlleWaehlen={() =>
+                  setMehrfach(
+                    alleUmschalten(
+                      nachrichten.map((n) => n.id),
+                      mehrfach,
+                    ),
+                  )
+                }
+                auswahlleiste={
+                  <Auswahlleiste
+                    anzahl={mehrfach.length}
+                    gelesenZiel={gelesenZiel(nachrichten.filter((n) => mehrfach.includes(n.id)))}
+                    aufLoeschen={() => {
+                      const ids = mehrfach
+                      setAuswahlmodus(false)
+                      void handeln(() => zug('loeschen', ids), t('rueck.geloescht'))
+                    }}
+                    aufArchivieren={() => {
+                      const ids = mehrfach
+                      setAuswahlmodus(false)
+                      void handeln(() => zug('archivieren', ids), t('rueck.archiviert'))
+                    }}
+                    aufVerschieben={() => blattOeffnen('verschieben')}
+                    aufGelesen={() => {
+                      const ziel = gelesenZiel(nachrichten.filter((n) => mehrfach.includes(n.id)))
+                      for (const id of mehrfach) void flagSetzen(id, { gelesen: ziel === 'gelesen' })
+                      auswahlmodusSetzen(false)
+                    }}
+                    aufMehr={() => blattOeffnen('mehr')}
+                  />
+                }
               />
             </>
           )}
@@ -1957,6 +2052,18 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         />
       )}
 
+      {/* Das Blatt des Auswahlmodus. Nach einer Handlung ist der Modus aus —
+          wie in Outlook: Wer fünf Mails markiert hat, will nach „Junk" nicht
+          fünf leere Kreise sehen. */}
+      {blatt && (
+        <Aktionsblatt
+          titel={blatt.titel}
+          eintraege={blatt.eintraege}
+          aufSchliessen={() => setBlatt(null)}
+          nachHandlung={() => auswahlmodusSetzen(false)}
+        />
+      )}
+
       {/* Das Band während eines Abgleichs. Oben, über der Liste: Dort schaut
           man hin, wenn man auf Post wartet. */}
       {gleichtAb && (
@@ -2046,7 +2153,9 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
 
       {/* Wie viele ausgewählt sind - sonst wirkt eine Aktion überraschend auf
           fünf Nachrichten statt auf eine. */}
-      {mehrfach.length > 1 && (
+      {/* Schmal im Auswahlmodus nicht: Dort steht die Zahl schon im Kopf der
+          Liste, und die Pille läge auf der Leiste unten. */}
+      {mehrfach.length > 1 && !(schmal && auswahlmodus) && (
         <div className="fixed bottom-5 left-5 z-[70] flex items-center gap-3 rounded-lg border border-line bg-surface-1 py-2 pr-2 pl-4 shadow-[var(--shadow-2)]">
           <span className="text-[13px] text-fg-1">
             {t('aktion.ausgewaehlt', { count: mehrfach.length })}

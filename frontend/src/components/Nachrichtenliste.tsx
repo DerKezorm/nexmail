@@ -31,7 +31,8 @@ import type { WischAktion } from '../lib/wischen'
 import { wischSchwelle } from '../lib/wischen'
 import type { Konto, Nachricht, Postfachfarbe, Schlagwort } from '../daten/typen'
 import { EmptyState, Select } from '../ds'
-import { Inbox } from 'lucide-react'
+import { Check, Inbox } from 'lucide-react'
+import { LANGDRUCK_MS, zuWeitGewandert } from '../lib/auswahl'
 
 const GRUPPEN: Datumsgruppe[] = ['heute', 'gestern', 'diese_woche', 'aelter']
 
@@ -87,6 +88,18 @@ interface Props {
   /** Aufwach-Zeitpunkte der Wiedervorlage (Nachricht-Kennung → ISO). Zeilen
    *  mit Eintrag tragen ihre Marke — übersetzt, in Ortszeit. */
   aufwachZeiten?: Record<string, string>
+  /** Der Auswahlmodus der schmalen Ansicht: Ein Tipp markiert statt öffnet,
+   *  jede Zeile trägt einen Kreis, oben steht der Zähler. Nur schmal gesetzt. */
+  auswahlmodus?: boolean
+  /** Schaltet den Modus ein („Auswählen" im Kopf) oder aus („Fertig"). Fehlt
+   *  er, gibt es den Knopf nicht — das ist der Schreibtisch. */
+  aufAuswahlmodus?: (an: boolean) => void
+  /** Langer Druck auf eine Zeile — nur schmal gesetzt. Am Schreibtisch gehört
+   *  der lange Druck der Maus dem Ziehen in den Ordnerbaum. */
+  aufLangdruck?: (n: Nachricht) => void
+  /** Ob alle sichtbaren Zeilen gewählt sind — dann heißt der Knopf „Keine". */
+  alleGewaehlt?: boolean
+  aufAlleWaehlen?: () => void
 }
 
 export function Nachrichtenliste({
@@ -114,6 +127,11 @@ export function Nachrichtenliste({
   aufStrang,
   wischen,
   aufwachZeiten = {},
+  auswahlmodus = false,
+  aufAuswahlmodus,
+  aufLangdruck,
+  alleGewaehlt = false,
+  aufAlleWaehlen,
 }: Props) {
   /* Welche Stränge offen sind, samt ihrer Nachrichten.
      ⚠️ **Aufgeklappt bleibt aufgeklappt, bis man wieder klickt.** Ein Strang,
@@ -142,6 +160,36 @@ export function Nachrichtenliste({
           **wonach eingeschränkt wird**. „Gespräche" steht mit oben, weil die
           zweite Zeile sonst bei schmaler Spalte auf drei umbricht — sie ändert
           die Form der Liste, nicht ihren Inhalt. */}
+      {auswahlmodus ? (
+        /* Der Kopf im Auswahlmodus: links die Zahl, rechts „Alle" und
+           „Fertig". Er ersetzt den Ordnerkopf, statt sich darunterzusetzen —
+           auf 375 px zählt jede Zeile. `aria-live`, damit ein Vorleseprogramm
+           die Zahl beim Antippen mitbekommt. */
+        <div
+          aria-live="polite"
+          className="flex h-11 shrink-0 items-center gap-1 border-b border-accent-line px-1 pl-3"
+        >
+          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold tabular-nums text-fg-1">
+            {t('aktion.ausgewaehlt', { count: mehrfach.length })}
+          </span>
+          {aufAlleWaehlen && (
+            <button
+              type="button"
+              onClick={aufAlleWaehlen}
+              className="rounded-md px-2.5 py-1.5 text-[13px] font-medium text-accent-text hover:bg-accent-soft"
+            >
+              {alleGewaehlt ? t('aktion.keine') : t('aktion.alle')}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => aufAuswahlmodus?.(false)}
+            className="rounded-md px-2.5 py-1.5 text-[13px] font-medium text-accent-text hover:bg-accent-soft"
+          >
+            {t('aktion.fertig')}
+          </button>
+        </div>
+      ) : (
       <div className="shrink-0 border-b border-line-subtle px-3 py-1.5">
         <div className="flex h-6 items-center gap-2">
           <h2 className="min-w-0 flex-1 truncate font-display text-[15px] font-medium text-fg-1">
@@ -153,6 +201,19 @@ export function Nachrichtenliste({
               : t('liste.anzahl_viele', { count: nachrichten.length })}
             {ungelesen > 0 && ` · ${t('liste.ungelesen', { count: ungelesen })}`}
           </span>
+
+          {/* ⚠️ **Ein sichtbarer Weg in den Auswahlmodus**, neben dem langen
+              Druck. Nur die Geste wäre ein Griff, den man nicht sieht — und
+              den meldet niemand als „fehlt", sondern als „geht nicht". */}
+          {aufAuswahlmodus && nachrichten.length > 0 && (
+            <button
+              type="button"
+              onClick={() => aufAuswahlmodus(true)}
+              className="shrink-0 rounded-md px-2 py-0.5 text-[12px] font-medium text-accent-text hover:bg-accent-soft"
+            >
+              {t('aktion.auswaehlen')}
+            </button>
+          )}
 
           {/* ⚠️ **Vorgabe aus, bis man ihr traut.** Falsch gruppiert steckt
               eine Mail in einem zugeklappten Strang, und man merkt es erst,
@@ -233,6 +294,7 @@ export function Nachrichtenliste({
           </div>
         )}
       </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {nachrichten.length === 0 ? (
@@ -296,7 +358,9 @@ export function Nachrichtenliste({
                         strangText={
                           offen ? t('liste.strang_zuklappen') : t('liste.strang_aufklappen')
                         }
-                        wisch={wischen}
+                        wisch={auswahlmodus ? undefined : wischen}
+                        auswahlmodus={auswahlmodus}
+                        aufLangdruck={aufLangdruck}
                       />
 
                       {/* ⚠️ **Die Kopfzeile bleibt stehen.** Sie ist die
@@ -330,7 +394,9 @@ export function Nachrichtenliste({
                                       })
                                     : undefined
                                 }
-                                wisch={wischen}
+                                wisch={auswahlmodus ? undefined : wischen}
+                                auswahlmodus={auswahlmodus}
+                                aufLangdruck={aufLangdruck}
                               />
                             </div>
                           ))}
@@ -454,6 +520,10 @@ interface ZeileProps {
   strangText?: string
   /** Wischen am Finger — nur in der schmalen Ansicht gesetzt. */
   wisch?: Wischen
+  /** Auswahlmodus der schmalen Ansicht: Kreis links, Tipp markiert. */
+  auswahlmodus?: boolean
+  /** Langer Druck — nur in der schmalen Ansicht gesetzt. */
+  aufLangdruck?: (n: Nachricht) => void
 }
 
 /** Farbe und Symbol, die hinter der Zeile erscheinen, wenn man sie zieht.
@@ -494,6 +564,8 @@ function Zeile({
   wichtigHoch,
   aufwachText,
   wisch,
+  auswahlmodus = false,
+  aufLangdruck,
 }: ZeileProps) {
   /* --- Wischen: die Zeile mit dem Finger zur Seite ziehen --------------- */
   const [zugX, setZugX] = useState(0)
@@ -513,6 +585,49 @@ function Zeile({
   /* ⚠️ Nach dem Loslassen feuert der Browser noch ein `click` auf die Zeile.
      Ohne diese Merke oeffnete jeder Wisch zusaetzlich die Nachricht. */
   const gewischt = useRef(false)
+
+  /* --- Langer Druck: der Weg in den Auswahlmodus ------------------------ */
+  /* Die Uhr läuft ab `pointerdown`; Bewegung über die Toleranz, Loslassen
+     und Verlassen brechen sie ab. Feuert sie, ist der folgende `click` kein
+     Öffnen mehr — dieselbe Merke wie `gewischt` beim Wisch. */
+  const druckUhr = useRef<number | undefined>(undefined)
+  const druckStart = useRef<{ x: number; y: number } | null>(null)
+  const gehalten = useRef(false)
+  /* Womit zuletzt gedrückt wurde. Ein `contextmenu` sagt es nicht selbst —
+     und nur das vom Finger (Android macht aus dem langen Druck eines) soll
+     schmal verworfen werden; die Maus behält ihr Menü auch im schmalen
+     Fenster. */
+  const letzterZeiger = useRef<string>('mouse')
+
+  function druckAbbrechen() {
+    window.clearTimeout(druckUhr.current)
+    druckUhr.current = undefined
+    druckStart.current = null
+  }
+
+  function druckBeginn(e: React.PointerEvent<HTMLButtonElement>) {
+    letzterZeiger.current = e.pointerType
+    if (!aufLangdruck || !e.isPrimary) return
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    gehalten.current = false
+    druckStart.current = { x: e.clientX, y: e.clientY }
+    druckUhr.current = window.setTimeout(() => {
+      druckUhr.current = undefined
+      druckStart.current = null
+      gehalten.current = true
+      // Ein kurzes Zittern sagt „gemerkt" — wo der Browser es kann.
+      if (typeof navigator.vibrate === 'function') navigator.vibrate(10)
+      aufLangdruck(n)
+    }, LANGDRUCK_MS)
+  }
+
+  function druckZug(e: React.PointerEvent<HTMLButtonElement>) {
+    const start = druckStart.current
+    if (!start || druckUhr.current === undefined) return
+    if (zuWeitGewandert(start.x, start.y, e.clientX, e.clientY)) druckAbbrechen()
+  }
+
+  useEffect(() => () => window.clearTimeout(druckUhr.current), [])
 
   function wischBeginn(e: React.PointerEvent<HTMLButtonElement>) {
     // ⚠️ **Nur der Finger wischt.** Die Maus zieht Zeilen in den Ordnerbaum
@@ -621,24 +736,57 @@ function Zeile({
           gewischt.current = false
           return
         }
+        // Dasselbe nach einem langen Druck: Er hat schon markiert.
+        if (gehalten.current) {
+          gehalten.current = false
+          return
+        }
+        // Im Auswahlmodus markiert ein Tipp, wie ein Strg-Klick am Rechner.
+        if (auswahlmodus) {
+          onClick(true, false)
+          return
+        }
         onClick(e.ctrlKey || e.metaKey, e.shiftKey)
       }}
-      onPointerDown={wisch ? wischBeginn : undefined}
-      onPointerMove={wisch ? wischZug : undefined}
-      onPointerUp={wisch ? wischEnde : undefined}
-      onPointerCancel={wisch ? wischEnde : undefined}
+      onPointerDown={(e) => {
+        druckBeginn(e)
+        if (wisch) wischBeginn(e)
+      }}
+      onPointerMove={(e) => {
+        druckZug(e)
+        if (wisch) wischZug(e)
+      }}
+      onPointerUp={(e) => {
+        druckAbbrechen()
+        if (wisch) wischEnde(e)
+      }}
+      onPointerCancel={(e) => {
+        druckAbbrechen()
+        if (wisch) wischEnde(e)
+      }}
+      onPointerLeave={druckAbbrechen}
       /* `touch-action: pan-y`: Senkrecht rollt der Browser wie immer, nur
          waagerechte Zuege kommen ueberhaupt als Pointer-Events hier an. */
-      style={
-        wisch
+      style={{
+        ...(wisch
           ? {
               touchAction: 'pan-y',
               transform: `translateX(${zugX}px)`,
               transition: schnappt ? 'transform var(--dur-fast) ease-out' : 'none',
             }
-          : undefined
-      }
+          : undefined),
+        /* ⚠️ Ohne diese beiden zeigt das iPhone beim langen Druck seine
+           eigene Sprechblase und markiert Text — statt der Zeile. */
+        ...(aufLangdruck ? { WebkitTouchCallout: 'none', userSelect: 'none' } : undefined),
+      }}
       onContextMenu={(e) => {
+        // ⚠️ Schmal gehoert der lange Druck dem Auswahlmodus. Android macht
+        // daraus ein `contextmenu`; das Schreibtisch-Menue soll dort nicht
+        // zusaetzlich aufgehen, und die Sprechblase des Browsers auch nicht.
+        if (aufLangdruck && (letzterZeiger.current !== 'mouse' || gehalten.current)) {
+          e.preventDefault()
+          return
+        }
         // Rechtsklick waehlt die Zeile mit aus - aber nur, wenn sie nicht
         // ohnehin schon zur Mehrfachauswahl gehoert. Sonst wirkt das Menue
         // auf eine Nachricht, waehrend rechts eine andere offen ist, und man
@@ -648,6 +796,7 @@ function Zeile({
         aufKontext(e, n)
       }}
       aria-current={gewaehlt ? 'true' : undefined}
+      aria-pressed={auswahlmodus ? mitausgewaehlt : undefined}
       className={
         'relative flex w-full gap-2.5 border-b border-line-subtle px-3 text-left ' +
         (kompakt ? 'py-1 ' : 'py-2 ') +
@@ -663,6 +812,22 @@ function Zeile({
           Zeile, damit die Textspalten aller Zeilen buendig bleiben. */}
       {!n.gelesen && (
         <span aria-hidden className="absolute top-2 bottom-2 left-0 w-[3px] rounded-pill bg-accent" />
+      )}
+
+      {/* Der Kreis des Auswahlmodus — links, wie in Outlook und Apple Mail.
+          Gefüllt mit Haken heißt gewählt; der Zustand steht zusätzlich in
+          `aria-pressed` am Knopf, das Bild allein wäre stumm. */}
+      {auswahlmodus && (
+        <span
+          aria-hidden
+          className={
+            'mt-0.5 flex size-[22px] shrink-0 items-center justify-center rounded-full border ' +
+            'transition-colors duration-[var(--dur-fast)] ' +
+            (mitausgewaehlt ? 'border-accent bg-accent text-on-accent' : 'border-line')
+          }
+        >
+          {mitausgewaehlt && <Check className="size-3.5" strokeWidth={3} />}
+        </span>
       )}
 
       <div className="mt-1 flex w-2 shrink-0 flex-col items-center gap-1">

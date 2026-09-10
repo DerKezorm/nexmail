@@ -63,7 +63,7 @@ const NUR_BREIT = [
   'sicherungen.spec.ts',
   'umzug.spec.ts',
 ]
-const NUR_SCHMAL = ['wischen.spec.ts']
+const NUR_SCHMAL = ['auswahl.spec.ts', 'wischen.spec.ts']
 
 export default defineConfig({
   testDir: './tests',

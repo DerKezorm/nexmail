@@ -6,6 +6,7 @@
  * eine Sonderform baut, pflegt danach drei.
  */
 import { useMemo } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, X } from 'lucide-react'
 import { AusgangListe } from '../components/AusgangListe'
@@ -98,6 +99,15 @@ interface Props {
   aufwachZeiten?: Record<string, string>
   /** Das Untermenü „Wiedervorlage" für „Weitere Aktionen" im Lesebereich. */
   wiedervorlageMenue?: (n: Nachricht) => MenueEintrag[]
+  /** Der Auswahlmodus der schmalen Ansicht, samt seiner Leiste unten. `App`
+   *  baut die Leiste mit ihren Handgriffen; hier bekommt sie nur ihren Platz
+   *  unter der Liste. Am Schreibtisch bleibt alles davon leer. */
+  auswahlmodus?: boolean
+  aufAuswahlmodus?: (an: boolean) => void
+  aufLangdruck?: (n: Nachricht) => void
+  alleGewaehlt?: boolean
+  aufAlleWaehlen?: () => void
+  auswahlleiste?: ReactNode
 }
 
 export function MailPage(p: Props) {
@@ -193,6 +203,11 @@ export function MailPage(p: Props) {
         aufStrang={p.aufStrang}
         wischen={p.wischen}
         aufwachZeiten={p.aufwachZeiten}
+        auswahlmodus={p.auswahlmodus}
+        aufAuswahlmodus={p.aufAuswahlmodus}
+        aufLangdruck={p.aufLangdruck}
+        alleGewaehlt={p.alleGewaehlt}
+        aufAlleWaehlen={p.aufAlleWaehlen}
       />
     )
 
@@ -249,6 +264,10 @@ export function MailPage(p: Props) {
           <div className="flex h-full flex-col">
             {hinweis}
             {listenspalte}
+            {/* Die Leiste des Auswahlmodus steht UNTER der Liste, nicht
+                darüber: als Flex-Kind schiebt sie die Liste hoch, und die
+                letzte Zeile bleibt erreichbar statt unter der Leiste. */}
+            {p.auswahlmodus && p.auswahlleiste}
           </div>
         )}
 
