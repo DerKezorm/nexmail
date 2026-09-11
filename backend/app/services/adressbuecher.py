@@ -171,7 +171,12 @@ def verschieben(db: Session, person: Benutzer, kontakt_id: int, buch_id: str) ->
     # ⚠️ **``roh`` bleibt stehen.** Es ist die Rückfahrkarte: Foto, Geburtstag
     # und alles, was nexmail nicht kennt, gehören dem Menschen und nicht dem
     # Ort. Wer sie beim Verschieben wegwirft, verliert sie unwiederbringlich.
-    kontakt.schmutzig = True
+    #
+    # Wartend ist die Zeile nur in einem verbundenen Buch: Dort holt sie der
+    # Abgleich an ihre Karte oder bringt sie hinaus. Im lokalen Buch gibt es
+    # niemanden, auf den sie warten könnte — und ein wartendes Zeichen, das
+    # nie fällt, sähe aus wie ein Fehler.
+    kontakt.schmutzig = bool(ziel.art)
     db.commit()
     return kontakt
 

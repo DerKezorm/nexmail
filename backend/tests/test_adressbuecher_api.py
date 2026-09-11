@@ -1,12 +1,15 @@
 """Die Adressen der Adressbücher, Beta.
 
 ⚠️ **Der teuerste Fehler wäre ein Weg, auf dem nexmail beim Anbieter etwas
-löscht.** Der Doppelgänger zählt deshalb jede Anfrage: In keiner Prüfung hier
-darf etwas anderes als ``PROPFIND`` und ``REPORT`` vorkommen, und ein Test
-hält das über verbinden, abgleichen, ändern und trennen hinweg fest.
+löscht, ohne dass es jemand wollte.** Der Doppelgänger zählt deshalb jede
+Anfrage samt Kopfzeilen: Verbinden, Abgleichen und Trennen sehen nur
+``PROPFIND`` und ``REPORT``; geschrieben wird nur, was ein Mensch an einem
+Kontakt geändert hat, und jedes ``PUT`` und ``DELETE`` trägt sein ``If-Match``.
 """
 
 from __future__ import annotations
+
+from urllib.parse import unquote
 
 import pytest
 from sqlalchemy import select
@@ -60,6 +63,10 @@ def _verbinden(klient) -> dict:
     return antwort.json()[0]
 
 
+def _verbunden_id(klient) -> str:
+    return next(b["id"] for b in klient.get("/api/adressbuecher").json() if not b["ist_lokal"])
+
+
 # --- Bücher --------------------------------------------------------------- #
 
 
@@ -105,8 +112,9 @@ def test_verbinden_holt_die_kontakte_sofort(klient, welt):
     kontakte = klient.get("/api/kontakte").json()
     assert len(kontakte) == 1
     assert kontakte[0]["adressbuch_id"] == buch["id"]
-    # ⚠️ Beta: verbundene Bücher werden nur gelesen, und die Zeile sagt es.
-    assert kontakte[0]["nur_lesen"] is True
+    # Seit Lieferung 2 gibt es kein „nur lesen" mehr; die Zeile trägt die
+    # Nummern und Adressen der Karte, sonst nichts Besonderes.
+    assert "nur_lesen" not in kontakte[0]
 
 
 def test_zweimal_verbinden_gibt_eine_kennung(klient, welt):
@@ -209,22 +217,254 @@ def test_ein_fremdes_buch_gibt_es_nicht(klient, welt):
 # --- Nur lesen ------------------------------------------------------------ #
 
 
-def test_ein_verbundener_kontakt_ist_nur_lesen(klient, db, welt):
-    """⚠️ Geändert würde er beim nächsten Abgleich überschrieben, gelöscht
-    käme er wieder. Beides sähe aus wie ein Fehler; der Server sagt es statt
-    dessen, und die Oberfläche sperrt das Formular."""
+def test_eine_aenderung_geht_als_put_mit_if_match_hinaus(klient, db, welt):
+    """⚠️ Erst der Server, dann die eigene Datenbank — und die Rohkarte bleibt
+    ganz: Foto, Geburtstag und Apples Zeilen stehen nach der Änderung noch da.
+    Geändert wird die TEL-Zeile, die das Feld zeigte, samt ihren Parametern."""
+    person, server = welt
     _verbinden(klient)
     (kontakt,) = klient.get("/api/kontakte").json()
 
-    geaendert = klient.patch(f"/api/kontakte/{kontakt['id']}", json={"name": "Anders"})
-    assert geaendert.status_code == 400
-    assert geaendert.json()["detail"] == "kontakt_nur_lesen"
+    antwort = klient.patch(
+        f"/api/kontakte/{kontakt['id']}", json={"name": "Vera Muster", "telefon": "+49 30 999"}
+    )
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json()["name"] == "Vera Muster"
+    assert [n["nummer"] for n in antwort.json()["nummern"]] == ["+49 30 999"]
+
+    puts = [(i, a) for i, a in enumerate(server.anfragen) if a[0] == "PUT"]
+    assert len(puts) == 1
+    i, (_, pfad) = puts[0]
+    assert unquote(pfad) == f"{PFAD}k1.vcf"
+    assert server.koepfe[i].get("if-match") == '"e1"'
+    # Das ETag stand im Kopf der Antwort; es danach noch einmal über die Liste
+    # zu holen, wäre eine Runde über das Netz für nichts.
+    assert server.anfragen[i + 1:] == [], "Nach dem PUT wurde noch einmal nachgeschlagen."
+    etag, karte = server.karten[f"{PFAD}k1.vcf"]
+    assert "FN:Vera Muster" in karte and "N:Muster;Vera;;;" in karte
+    assert "TEL;TYPE=CELL:+49 30 999" in karte
+    for fremd in ("PHOTO;ENCODING=b;TYPE=JPEG:/9j/4AAQSkZJRg", "BDAY:1980-01-01", "X-APPLE-SUBLOCALITY:Mitte"):
+        assert fremd in karte, fremd
+    zeile = db.query(Kontakt).one()
+    assert zeile.name == "Vera Muster" and zeile.telefon == "+49 30 999"
+    assert zeile.etag == etag and zeile.roh == karte and zeile.schmutzig is False
+
+
+def test_ohne_etag_im_kopf_wird_es_nachgeschlagen(klient, db, welt):
+    """Google schickt zum PUT kein ETag (beim Kalender am 03.09.2026 gemessen).
+    Ohne Nachschlagen liefe der zweite Schreibvorgang mit dem alten ``If-Match``
+    in einen Konflikt, den es gar nicht gibt."""
+    person, server = welt
+    server.etag_im_kopf = False
+    _verbinden(klient)
+    (kontakt,) = klient.get("/api/kontakte").json()
+
+    erste = klient.patch(f"/api/kontakte/{kontakt['id']}", json={"name": "Vera Eins"})
+    assert erste.status_code == 200, erste.text
+    etag, _ = server.karten[f"{PFAD}k1.vcf"]
+    assert db.query(Kontakt).one().etag == etag
+    zweite = klient.patch(f"/api/kontakte/{kontakt['id']}", json={"name": "Vera Zwei"})
+    assert zweite.status_code == 200, "Der zweite Schreibvorgang lief mit veraltetem If-Match in einen Konflikt."
+
+
+def test_loeschen_nimmt_die_karte_beim_anbieter_mit_if_match(klient, db, welt):
+    person, server = welt
+    _verbinden(klient)
+    (kontakt,) = klient.get("/api/kontakte").json()
+
+    assert klient.delete(f"/api/kontakte/{kontakt['id']}").status_code == 204
+
+    i = next(i for i, a in enumerate(server.anfragen) if a[0] == "DELETE")
+    assert server.koepfe[i].get("if-match") == '"e1"'
+    assert server.karten == {}
+    assert db.query(Kontakt).count() == 0
+
+
+def test_was_der_server_ablehnt_passiert_hier_nicht(klient, db, welt):
+    """Der Doppelgänger nimmt kein PUT und kein DELETE an (405): Die Zeile
+    bleibt, wie sie war, und die Kennung sagt, dass es der Anbieter war."""
+    person, server = welt
+    _verbinden(klient)
+    (kontakt,) = klient.get("/api/kontakte").json()
+    server.nur_lesen = True
+
+    antwort = klient.patch(f"/api/kontakte/{kontakt['id']}", json={"name": "Anders"})
+    assert antwort.status_code == 502
+    assert antwort.json()["detail"] == "carddav_schreiben_gescheitert"
+    assert db.query(Kontakt).one().name == "Vera Beispiel"
 
     geloescht = klient.delete(f"/api/kontakte/{kontakt['id']}")
-    assert geloescht.status_code == 400
-    assert geloescht.json()["detail"] == "kontakt_nur_lesen"
+    assert geloescht.status_code == 502
+    assert geloescht.json()["detail"] == "carddav_loeschen_gescheitert"
+    assert db.query(Kontakt).count() == 1
 
+
+def test_ein_konflikt_wird_gefragt_nicht_ueberbuegelt(klient, db, welt):
+    """⚠️ Jemand hat die Karte am Telefon geändert (neues ETag drüben). Die
+    eigene Änderung wird nicht geschrieben; die andere Fassung lässt sich
+    ansehen — und „meine gewinnt" schreibt auf der FRISCHEN Karte, samt der
+    Zeile, die drüben inzwischen dazukam."""
+    person, server = welt
+    _verbinden(klient)
+    (kontakt,) = klient.get("/api/kontakte").json()
+    server.karten[f"{PFAD}k1.vcf"] = (
+        "e2",
+        _karte(name="Vera Telefon", extra="NOTE:Kennt den Weg\r\nX-NEU:vom Telefon\r\n"),
+    )
+
+    antwort = klient.patch(f"/api/kontakte/{kontakt['id']}", json={"name": "Vera Rechner"})
+    assert antwort.status_code == 409
+    assert antwort.json()["detail"] == "kontakt_konflikt"
     assert db.query(Kontakt).one().name == "Vera Beispiel"
+    assert server.karten[f"{PFAD}k1.vcf"][0] == "e2", "Der Konflikt hat drüben etwas überschrieben."
+
+    bild = klient.get(f"/api/kontakte/{kontakt['id']}/konflikt").json()
+    assert bild["vorhanden"] is True and bild["fremd"]["name"] == "Vera Telefon"
+    assert db.query(Kontakt).one().name == "Vera Beispiel", "Ansehen hat die Zeile angefasst."
+
+    antwort = klient.patch(
+        f"/api/kontakte/{kontakt['id']}", json={"name": "Vera Rechner", "erzwingen": True}
+    )
+    assert antwort.status_code == 200, antwort.text
+    assert any(
+        a[0] == "PUT" and server.koepfe[i].get("if-match") == '"e2"'
+        for i, a in enumerate(server.anfragen)
+    ), "Meine Fassung schrieb nicht auf der frischen Karte."
+    _, karte = server.karten[f"{PFAD}k1.vcf"]
+    assert "FN:Vera Rechner" in karte
+    assert "X-NEU:vom Telefon" in karte, "Die fremde Zeile der frischen Karte ging verloren."
+    assert db.query(Kontakt).one().name == "Vera Rechner"
+
+
+def test_die_andere_fassung_laesst_sich_uebernehmen(klient, db, welt):
+    person, server = welt
+    _verbinden(klient)
+    (kontakt,) = klient.get("/api/kontakte").json()
+    server.karten[f"{PFAD}k1.vcf"] = ("e2", _karte(name="Vera Telefon"))
+
+    antwort = klient.post(f"/api/kontakte/{kontakt['id']}/konflikt")
+    assert antwort.status_code == 200 and antwort.json()["name"] == "Vera Telefon"
+    zeile = db.query(Kontakt).one()
+    assert zeile.name == "Vera Telefon" and zeile.etag == "e2"
+    assert {a[0] for a in server.anfragen} <= LESEND, "Übernehmen darf nichts schreiben."
+
+
+def test_drueben_geloescht_ist_ein_eigener_fall(klient, welt):
+    person, server = welt
+    _verbinden(klient)
+    (kontakt,) = klient.get("/api/kontakte").json()
+    server.karten.clear()
+
+    assert klient.get(f"/api/kontakte/{kontakt['id']}/konflikt").json() == {
+        "vorhanden": False, "fremd": None,
+    }
+    antwort = klient.post(f"/api/kontakte/{kontakt['id']}/konflikt")
+    assert antwort.status_code == 409
+    assert antwort.json()["detail"] == "kontakt_drueben_geloescht"
+
+    # „Meine Fassung" legt die Karte wieder an — als neue, nicht mit einem
+    # If-Match auf etwas, das es nicht mehr gibt.
+    antwort = klient.patch(
+        f"/api/kontakte/{kontakt['id']}", json={"name": "Vera Zurueck", "erzwingen": True}
+    )
+    assert antwort.status_code == 200, antwort.text
+    i = next(i for i, a in enumerate(server.anfragen) if a[0] == "PUT")
+    assert server.koepfe[i].get("if-none-match") == "*"
+    assert unquote(server.anfragen[i][1]) == f"{PFAD}k1.vcf"
+    assert "FN:Vera Zurueck" in server.karten[f"{PFAD}k1.vcf"][1]
+
+
+def test_ein_neuer_kontakt_im_verbundenen_buch_entsteht_zuerst_beim_anbieter(klient, db, welt):
+    person, server = welt
+    buch = _verbinden(klient)
+
+    antwort = klient.post(
+        "/api/kontakte",
+        json={"adresse": "jonas@example.org", "name": "Jonas Keller", "telefon": "0170 1",
+              "adressbuch_id": buch["id"]},
+    )
+    assert antwort.status_code == 201, antwort.text
+
+    i = next(i for i, a in enumerate(server.anfragen) if a[0] == "PUT")
+    assert server.koepfe[i].get("if-none-match") == "*"
+    pfad = unquote(server.anfragen[i][1])
+    assert pfad.startswith(PFAD) and pfad.endswith(".vcf")
+    etag, karte = server.karten[pfad]
+    assert "FN:Jonas Keller" in karte and "N:Keller;Jonas;;;" in karte
+    zeile = db.query(Kontakt).filter_by(adresse="jonas@example.org").one()
+    assert zeile.adressbuch_id == buch["id"] and zeile.uid and zeile.roh == karte
+    assert carddav.ortsschluessel(zeile.href) == pfad and zeile.etag == etag
+    # Und beim nächsten Abgleich ist er weder doppelt noch weg.
+    klient.post("/api/adressbuecher/abgleichen")
+    assert db.query(Kontakt).count() == 2
+
+
+def test_ein_abgelehnter_neuer_kontakt_hinterlaesst_keine_zeile(klient, db, welt):
+    person, server = welt
+    buch = _verbinden(klient)
+    server.nur_lesen = True
+
+    antwort = klient.post("/api/kontakte", json={"name": "Jonas", "adressbuch_id": buch["id"]})
+    assert antwort.status_code == 502
+    assert db.query(Kontakt).count() == 1
+
+
+def test_verschieben_ins_buch_haengt_sich_an_die_vorhandene_karte(klient, db, welt):
+    """⚠️ Erst suchen, dann anlegen. Der lokale Eintrag „Oma" mit Veras Adresse
+    hielt die Karte draussen (belegt). Ins Buch verschoben, erkennt ihn der
+    Abgleich an der Adresse: Die Karte gewinnt, drüben entsteht kein Doppel."""
+    person, server = welt
+    lokal = klient.post("/api/kontakte", json={"adresse": "vera@example.org", "name": "Oma"}).json()
+    buch = _verbinden(klient)
+    assert db.query(Kontakt).count() == 1
+
+    antwort = klient.post(
+        f"/api/kontakte/{lokal['id']}/verschieben", json={"adressbuch_id": buch["id"]}
+    )
+    assert antwort.status_code == 200, antwort.text
+    zeile = db.query(Kontakt).one()
+    assert zeile.id == lokal["id"] and zeile.adressbuch_id == buch["id"]
+    assert zeile.name == "Vera Beispiel" and zeile.href.endswith("k1.vcf")
+    assert zeile.schmutzig is False
+    assert not any(a[0] == "PUT" for a in server.anfragen), "Es wurde eine zweite Karte angelegt."
+    assert len(server.karten) == 1
+
+
+def test_verschieben_ins_buch_legt_sonst_eine_karte_an(klient, db, welt):
+    person, server = welt
+    lokal = klient.post(
+        "/api/kontakte", json={"adresse": "jonas@example.org", "name": "Jonas Keller"}
+    ).json()
+    buch = _verbinden(klient)
+
+    antwort = klient.post(
+        f"/api/kontakte/{lokal['id']}/verschieben", json={"adressbuch_id": buch["id"]}
+    )
+    assert antwort.status_code == 200, antwort.text
+    zeile = db.get(Kontakt, lokal["id"])
+    assert zeile.adressbuch_id == buch["id"] and zeile.href and zeile.schmutzig is False
+    assert any(a[0] == "PUT" for a in server.anfragen)
+    assert len(server.karten) == 2
+    assert any("FN:Jonas Keller" in k for _, k in server.karten.values())
+
+
+def test_verschieben_aus_dem_buch_loescht_drueben(klient, db, welt):
+    """Ein Kontakt, der iCloud verlässt, lebt dort nicht weiter — sonst käme er
+    beim nächsten Abgleich als neue Zeile zurück, und der Umzug wäre eine Kopie.
+    Die Rohkarte kommt mit: Foto und Geburtstag gehören dem Menschen."""
+    person, server = welt
+    _verbinden(klient)
+    lokal = next(b["id"] for b in klient.get("/api/adressbuecher").json() if b["ist_lokal"])
+    (kontakt,) = klient.get("/api/kontakte").json()
+
+    antwort = klient.post(f"/api/kontakte/{kontakt['id']}/verschieben", json={"adressbuch_id": lokal})
+    assert antwort.status_code == 200, antwort.text
+    assert server.karten == {}
+    zeile = db.query(Kontakt).one()
+    assert zeile.adressbuch_id == lokal and zeile.href == "" and zeile.schmutzig is False
+    assert "BDAY:1980-01-01" in zeile.roh
+    klient.post("/api/adressbuecher/abgleichen")
+    assert db.query(Kontakt).count() == 1
 
 
 def test_ein_verbundener_kontakt_nennt_alle_nummern(klient, welt):
@@ -254,7 +494,7 @@ def test_ein_verbundener_kontakt_nennt_alle_nummern(klient, welt):
 def test_ein_lokaler_kontakt_bleibt_bearbeitbar(klient, welt):
     _verbinden(klient)
     neu = klient.post("/api/kontakte", json={"adresse": "jonas@example.org", "name": "Jonas"}).json()
-    assert neu["nur_lesen"] is False
+    assert neu["adressbuch_id"] != _verbunden_id(klient)
     assert klient.patch(f"/api/kontakte/{neu['id']}", json={"name": "Jonas K."}).status_code == 200
     assert klient.delete(f"/api/kontakte/{neu['id']}").status_code == 204
 

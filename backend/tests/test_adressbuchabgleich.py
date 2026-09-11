@@ -70,8 +70,17 @@ class Buchserver:
         #: unterschieden am Pfad.
         self.karten: dict[str, tuple[str, str]] = {}
         self.anfragen: list[tuple[str, str]] = []
+        #: Die Kopfzeilen jeder Anfrage, in derselben Reihenfolge — für die
+        #: Frage, ob ``If-Match`` wirklich mitfuhr.
+        self.koepfe: list[dict[str, str]] = []
         self.ctag = "ct-1"
         self.kodiert_zurueck = False
+        #: Google schickt zum PUT kein ETag zurück; dann muss nexmail es
+        #: nachschlagen. Ab Werk wie iCloud: mit.
+        self.etag_im_kopf = True
+        #: Wahr heisst: Der Server nimmt kein PUT und kein DELETE an (405).
+        self.nur_lesen = False
+        self._laufnummer = 0
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self._antworten)
@@ -82,6 +91,41 @@ class Buchserver:
     def _antworten(self, a: httpx.Request) -> httpx.Response:
         pfad = a.url.path
         self.anfragen.append((a.method, pfad))
+        self.koepfe.append({k.lower(): v for k, v in a.headers.items()})
+
+        if a.method in ("PUT", "DELETE") and self.nur_lesen:
+            return httpx.Response(405)
+
+        if a.method == "PUT":
+            # ⚠️ So zickig wie iCloud: ``If-Match`` muss zum ETag passen,
+            # ``If-None-Match: *`` scheitert an einer vorhandenen Karte.
+            pfad = unquote(pfad)
+            vorhanden = self.karten.get(pfad)
+            wenn = a.headers.get("if-match", "").strip('"')
+            keins = a.headers.get("if-none-match", "")
+            if keins == "*" and vorhanden is not None:
+                return httpx.Response(412)
+            if wenn and (vorhanden is None or vorhanden[0] != wenn):
+                return httpx.Response(412)
+            self._laufnummer += 1
+            etag = f"e{self._laufnummer + 10}"
+            self.karten[pfad] = (etag, a.content.decode("utf-8"))
+            self.ctag = f"ct-{self._laufnummer + 10}"
+            kopf = {"etag": f'"{etag}"'} if self.etag_im_kopf else {}
+            return httpx.Response(201 if vorhanden is None else 204, headers=kopf)
+
+        if a.method == "DELETE":
+            pfad = unquote(pfad)
+            vorhanden = self.karten.get(pfad)
+            if vorhanden is None:
+                return httpx.Response(404)
+            wenn = a.headers.get("if-match", "").strip('"')
+            if wenn and vorhanden[0] != wenn:
+                return httpx.Response(412)
+            del self.karten[pfad]
+            self._laufnummer += 1
+            self.ctag = f"ct-{self._laufnummer + 10}"
+            return httpx.Response(204)
 
         if a.method == "PROPFIND":
             return _xml(

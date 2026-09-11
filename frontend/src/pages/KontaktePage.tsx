@@ -23,9 +23,11 @@ import {
   UserRoundPlus,
   Users,
 } from 'lucide-react'
-import { api } from '../api/client'
-import { Badge, Button, Checkbox, EmptyState, IconButton, Input } from '../ds'
+import { ApiFehler, api } from '../api/client'
+import { Badge, Button, Checkbox, EmptyState, IconButton, Input, Select } from '../ds'
 import { Buchfenster } from '../components/Buchfenster'
+import { Kontaktkonflikt } from '../components/Kontaktkonflikt'
+import type { Kontaktfassung } from '../components/Kontaktkonflikt'
 import { useNachfrage } from '../components/Nachfrage'
 import { appPfad } from '../lib/basis'
 import { PUNKT_KLASSE } from '../lib/farben'
@@ -44,8 +46,6 @@ export interface Kontakt {
   verwendet: number
   /** In welchem Buch der Eintrag liegt. */
   adressbuch_id: string | null
-  /** ⚠️ Beta: Kontakte aus verbundenen Büchern werden nur gelesen. */
-  nur_lesen: boolean
   /** Alle Nummern und Adressen der Karte, nur bei verbundenen Kontakten:
    *  Das Modell kennt eine Nummer, die Karte viele. */
   nummern: Karteneintrag[]
@@ -59,9 +59,9 @@ export interface Karteneintrag {
   beschriftung: string
 }
 
-/* Ein Adressbuch: das lokale, das nicht wegkann, oder ein verbundenes (Beta,
- * nur lesend). Ein Buch ist der Ort eines Kontakts, davon genau einer; eine
- * Gruppe ist quer dazu. */
+/* Ein Adressbuch: das lokale, das nicht wegkann, oder ein verbundenes (Beta;
+ * seit Lieferung 2 gelesen und geschrieben). Ein Buch ist der Ort eines
+ * Kontakts, davon genau einer; eine Gruppe ist quer dazu. */
 export interface Buch {
   id: string
   name: string
@@ -117,6 +117,9 @@ export function KontaktePage() {
   const [fehler, setFehler] = useState('')
   const [meldung, setMeldung] = useState('')
   const [laeuft, setLaeuft] = useState(false)
+  /* Ein offener Konflikt: die eigene Fassung, wie sie gespeichert werden
+     sollte. Solange er steht, ist nichts gespeichert. */
+  const [konflikt, setKonflikt] = useState<{ id: number; meine: Kontaktfassung } | null>(null)
   const dateifeld = useRef<HTMLInputElement>(null)
   const { fragen, fenster: nachfrage } = useNachfrage()
 
@@ -284,19 +287,97 @@ export function KontaktePage() {
     })
   }
 
-  async function speichern(felder: typeof LEER) {
+  async function speichern(felder: typeof LEER, buchId: string) {
     if (entwurf && gewaehlt === null) {
-      const neu = await mit(() => api.senden<Kontakt>('/api/kontakte', felder))
+      /* Ein neuer Kontakt entsteht in dem Buch, das im Formular gewählt ist;
+         in einem verbundenen zuerst beim Anbieter. Was der ablehnt, gibt es
+         hier gar nicht erst. */
+      const neu = await mit(() =>
+        api.senden<Kontakt>('/api/kontakte', { ...felder, adressbuch_id: buchId || null }),
+      )
       if (neu) {
         setEntwurf(null)
         setGewaehlt(neu.id)
       }
       return
     }
-    if (offen) {
-      await mit(() => api.flicken<Kontakt>(`/api/kontakte/${offen.id}`, felder))
-      setEntwurf(null)
+    if (offen) await schreiben(offen.id, felder, false)
+  }
+
+  /* ⚠️ **Ein Konflikt ist keine Fehlermeldung, sondern eine Frage.** Jemand
+     hat die Karte am Telefon geändert, seit sie hier offen ist. Die eigene
+     Eingabe bleibt im Formular stehen (als Entwurf), und das Fenster fragt,
+     welche Fassung gilt — dasselbe Muster wie beim Termin. */
+  async function schreiben(id: number, felder: typeof LEER, erzwingen: boolean) {
+    const fertig = await mit(async () => {
+      try {
+        await api.flicken<Kontakt>(`/api/kontakte/${id}`, { ...felder, erzwingen })
+        return true
+      } catch (f) {
+        if (f instanceof ApiFehler && f.detail === 'kontakt_konflikt') {
+          setEntwurf({ ...felder })
+          setKonflikt({ id, meine: felder })
+          return false
+        }
+        throw f
+      }
+    })
+    if (fertig) setEntwurf(null)
+  }
+
+  async function konfliktEntscheiden(wahl: 'meine' | 'andere') {
+    if (!konflikt) return
+    const { id, meine } = konflikt
+    setKonflikt(null)
+    if (wahl === 'meine') {
+      await schreiben(id, meine, true)
+      return
     }
+    const uebernommen = await mit(() => api.senden<Kontakt>(`/api/kontakte/${id}/konflikt`, {}))
+    if (uebernommen) setEntwurf(null)
+  }
+
+  /* Ein Kontakt wechselt sein Buch. In ein verbundenes hinein hängt er sich
+     an die Karte, die dort schon seine Adresse trägt, sonst entsteht sie.
+     ⚠️ **Aus einem verbundenen heraus heisst: dort löschen** — und das wird
+     gefragt, denn beim Anbieter gibt es kein Rückgängig. */
+  async function verschieben(k: Kontakt, buchId: string) {
+    const von = k.adressbuch_id ? nachBuch.get(k.adressbuch_id) : undefined
+    const nach = nachBuch.get(buchId)
+    if (!nach || von?.id === nach.id) return
+    if (von?.art) {
+      const ja = await fragen({
+        titel: t('kontakte.verschieben_frage', { name: nach.name }),
+        text: t('kontakte.verschieben_text', { wo: von.herkunft }),
+        knopf: t('kontakte.verschieben_knopf'),
+        gefaehrlich: true,
+      })
+      if (ja !== true) return
+    }
+    await mit(
+      () => api.senden<Kontakt>(`/api/kontakte/${k.id}/verschieben`, { adressbuch_id: buchId }),
+      t('kontakte.verschoben', { name: nach.name }),
+    )
+  }
+
+  /* Löschen nimmt bei einem verbundenen Kontakt die Karte beim Anbieter mit.
+     ⚠️ Genau davor wird gefragt; ein lokaler Eintrag geht wie bisher ohne
+     Umweg, denn der ist mit einem Klick wieder angelegt. */
+  async function entfernen(k: Kontakt) {
+    const buch = k.adressbuch_id ? nachBuch.get(k.adressbuch_id) : undefined
+    if (buch?.art) {
+      const ja = await fragen({
+        titel: t('kontakte.entfernen_frage', { name: beschriftung(k).titel }),
+        text: t('kontakte.entfernen_text', { wo: buch.herkunft }),
+        knopf: t('kontakte.entfernen'),
+        gefaehrlich: true,
+      })
+      if (ja !== true) return
+    }
+    await mit(async () => {
+      await api.loeschen(`/api/kontakte/${k.id}`)
+      setGewaehlt(null)
+    })
   }
 
   async function vcardEinlesen(datei: File) {
@@ -374,14 +455,15 @@ export function KontaktePage() {
           />
         </div>
 
-        {/* --- Bücher: wo ein Kontakt liegt. Beta, nur lesend ------------ */}
+        {/* --- Bücher: wo ein Kontakt liegt. Beta ------------------------ */}
         <div className="shrink-0 border-b border-line-subtle">
           <div className="flex h-9 items-center gap-1.5 pr-1 pl-3">
             <span className="text-[11px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
               {t('kontakte.buecher')}
             </span>
             {/* ⚠️ Die Beta steht dort, wo die verbundenen Bücher stehen, nicht
-                in einer README: Lieferung 1 liest nur. */}
+                in einer README. Sie fällt, wenn das Schreiben gegen iCloud
+                und Google gemessen ist. */}
             <Badge tone="warning">{t('kontakte.beta')}</Badge>
             <span className="flex-1" />
             {buecher.some((b) => b.art) && (
@@ -424,7 +506,7 @@ export function KontaktePage() {
                     <AlertTriangle aria-hidden className="size-3.5 shrink-0 text-warning" />
                   </span>
                 ) : b.art ? (
-                  <span title={`${b.herkunft} · ${t('kontakte.nur_lesen')}`}>
+                  <span title={b.herkunft}>
                     <Link2 aria-hidden className="size-3.5 shrink-0 text-fg-4" />
                   </span>
                 ) : null}
@@ -584,20 +666,14 @@ export function KontaktePage() {
             laeuft={laeuft}
             fehler={fehler}
             meldung={meldung}
-            gesperrt={Boolean(offen?.nur_lesen)}
+            buecher={buecher}
+            buchId={offen?.adressbuch_id ?? buecher.find((b) => b.ist_lokal)?.id ?? ''}
             herkunft={offen?.adressbuch_id ? (nachBuch.get(offen.adressbuch_id)?.herkunft ?? '') : ''}
             nummern={offen?.nummern ?? []}
             adressen={offen?.adressen ?? []}
             aufSpeichern={speichern}
-            aufEntfernen={
-              offen && !offen.nur_lesen
-                ? () =>
-                    void mit(async () => {
-                      await api.loeschen(`/api/kontakte/${offen.id}`)
-                      setGewaehlt(null)
-                    })
-                : undefined
-            }
+            aufVerschieben={offen ? (buchId) => void verschieben(offen, buchId) : undefined}
+            aufEntfernen={offen ? () => void entfernen(offen) : undefined}
           />
         ) : (
           <div className="flex h-full items-center justify-center">
@@ -617,6 +693,17 @@ export function KontaktePage() {
             void buecherLaden().catch(() => undefined)
             void laden(suche).catch(() => undefined)
           }}
+        />
+      )}
+
+      {/* ⚠️ Das Konfliktfenster liegt über dem Formular; die eigene Eingabe
+          steht darunter als Entwurf und geht bei „Abbrechen“ nicht verloren. */}
+      {konflikt && (
+        <Kontaktkonflikt
+          kontaktId={konflikt.id}
+          meine={konflikt.meine}
+          aufSchliessen={() => setKonflikt(null)}
+          aufWahl={(wahl) => void konfliktEntscheiden(wahl)}
         />
       )}
 
@@ -746,11 +833,13 @@ function Formular({
   laeuft,
   fehler,
   meldung,
-  gesperrt = false,
+  buecher,
+  buchId,
   herkunft = '',
   nummern = [],
   adressen = [],
   aufSpeichern,
+  aufVerschieben,
   aufEntfernen,
 }: {
   werte: typeof LEER
@@ -758,16 +847,24 @@ function Formular({
   laeuft: boolean
   fehler: string
   meldung: string
-  /** ⚠️ Beta: ein Kontakt aus einem verbundenen Buch wird nur gelesen. */
-  gesperrt?: boolean
+  /** Alle Bücher, zur Wahl: bei einem neuen Kontakt, wo er entsteht; bei
+      einem bestehenden, wohin er zieht. */
+  buecher: Buch[]
+  buchId: string
+  /** Der Anbieter, wenn der Kontakt in einem verbundenen Buch liegt. */
   herkunft?: string
   nummern?: Karteneintrag[]
   adressen?: Karteneintrag[]
-  aufSpeichern: (f: typeof LEER) => void
+  aufSpeichern: (f: typeof LEER, buchId: string) => void
+  aufVerschieben?: (buchId: string) => void
   aufEntfernen?: () => void
 }) {
   const { t } = useTranslation()
   const [felder, setFelder] = useState(werte)
+  /* Bei einem neuen Kontakt gehört das Buch zum Formular; bei einem
+     bestehenden ist die Auswahl eine Handlung (verschieben) und zeigt den
+     gespeicherten Stand. */
+  const [buchNeu, setBuchNeu] = useState(buchId)
 
   useEffect(() => setFelder(werte), [werte])
 
@@ -800,43 +897,57 @@ function Formular({
       className="flex max-w-[560px] flex-col gap-4 p-6"
       onSubmit={(e) => {
         e.preventDefault()
-        if (!gesperrt) aufSpeichern(felder)
+        aufSpeichern(felder, neu ? buchNeu : buchId)
       }}
     >
-      {/* ⚠️ Der Grund steht dort, wo man ihn sucht: über den gesperrten
-          Feldern, nicht in einer Fehlermeldung nach dem Speichern. */}
-      {gesperrt && (
+      {/* ⚠️ Wer einen verbundenen Kontakt bearbeitet, soll wissen, dass es
+          sofort beim Anbieter ankommt — bevor er speichert, nicht danach. */}
+      {herkunft && (
         <p className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface-2 px-3 py-2 text-[12px] leading-relaxed text-fg-3">
           <Badge tone="warning">{t('kontakte.beta')}</Badge>
           <span>
-            {herkunft ? `${t('kontakte.aus_buch', { wo: herkunft })}. ` : ''}
-            {t('kontakte.nur_lesen_hinweis')}
+            {`${t('kontakte.aus_buch', { wo: herkunft })}. `}
+            {t('kontakte.verbunden_hinweis')}
           </span>
         </p>
+      )}
+      {/* Das Buch steht nur zur Wahl, wenn es mehr als eines gibt: eine
+          Auswahl mit einem Eintrag ist ein Klick, der nichts entscheidet. */}
+      {buecher.length > 1 && (
+        <Select
+          label={t('kontakte.buch_feld')}
+          value={neu ? buchNeu : buchId}
+          onChange={(e) => {
+            if (neu) setBuchNeu(e.target.value)
+            else aufVerschieben?.(e.target.value)
+          }}
+        >
+          {buecher.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.art ? `${b.name} · ${b.herkunft}` : b.name}
+            </option>
+          ))}
+        </Select>
       )}
       <Input
         label={t('kontakte.adresse')}
         mono
         autoComplete="email"
-        disabled={gesperrt}
         value={felder.adresse}
         onChange={(e) => setzen({ adresse: e.target.value })}
       />
       <Input
         label={t('kontakte.name')}
-        disabled={gesperrt}
         value={felder.name}
         onChange={(e) => setzen({ name: e.target.value })}
       />
       <Input
         label={t('kontakte.firma')}
-        disabled={gesperrt}
         value={felder.firma}
         onChange={(e) => setzen({ firma: e.target.value })}
       />
       <Input
         label={t('kontakte.telefon')}
-        disabled={gesperrt}
         value={felder.telefon}
         onChange={(e) => setzen({ telefon: e.target.value })}
       />
@@ -848,7 +959,6 @@ function Formular({
         </span>
         <textarea
           rows={4}
-          disabled={gesperrt}
           value={felder.notiz}
           onChange={(e) => setzen({ notiz: e.target.value })}
           className="fokusrahmen rounded-md border border-line bg-surface-1 px-3 py-2 text-sm text-fg-1 outline-none disabled:opacity-60"
@@ -858,18 +968,16 @@ function Formular({
       {fehler && <p className="text-[13px] text-danger">{fehler}</p>}
       {meldung && <p className="text-[13px] text-accent-text">{meldung}</p>}
 
-      {!gesperrt && (
-        <div className="flex items-center gap-2">
-          <Button type="submit" variant="primary" loading={laeuft}>
-            {neu ? t('kontakte.anlegen') : t('kontakte.speichern')}
+      <div className="flex items-center gap-2">
+        <Button type="submit" variant="primary" loading={laeuft}>
+          {neu ? t('kontakte.anlegen') : t('kontakte.speichern')}
+        </Button>
+        {aufEntfernen && (
+          <Button variant="danger" iconLeft={<Trash2 className="size-4" />} onClick={aufEntfernen}>
+            {t('kontakte.entfernen')}
           </Button>
-          {aufEntfernen && (
-            <Button variant="danger" iconLeft={<Trash2 className="size-4" />} onClick={aufEntfernen}>
-              {t('kontakte.entfernen')}
-            </Button>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </form>
   )
 }

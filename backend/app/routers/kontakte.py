@@ -45,14 +45,12 @@ class Zeile(BaseModel):
     verwendet: int
     #: In welchem Buch der Eintrag liegt.
     adressbuch_id: str | None = None
-    #: ⚠️ **Beta, Lieferung 1: verbundene Bücher werden nur gelesen.** Die
-    #: Oberfläche sperrt das Formular; der Server weist Änderungen mit
-    #: ``kontakt_nur_lesen`` ab, damit kein zweiter Weg daran vorbeiführt.
-    nur_lesen: bool = False
     #: Alle Nummern und Adressen der Karte, **nur bei Kontakten aus
     #: verbundenen Büchern**: Das Modell kennt eine Nummer, die Karte viele.
     #: Ein lokaler Kontakt trägt seine Felder; seine Rohkarte könnte hinter
-    #: einer Änderung von Hand zurückliegen.
+    #: einer Änderung von Hand zurückliegen. Seit Lieferung 2 pflegt der
+    #: Zeilen-Editor die Rohkarte bei jeder Änderung mit, deshalb stimmen
+    #: beide auch nach dem Bearbeiten überein.
     nummern: list[Nummer] = Field(default_factory=list)
     adressen: list[Adresse] = Field(default_factory=list)
 
@@ -71,6 +69,9 @@ class Eingabe(BaseModel):
     firma: str = Field(default="", max_length=320)
     telefon: str = Field(default="", max_length=120)
     notiz: str = Field(default="", max_length=5000)
+    #: In welches Buch. Leer heisst: das lokale. Ein verbundenes Buch schickt
+    #: die Karte zuerst zum Anbieter.
+    adressbuch_id: str | None = Field(default=None, max_length=32)
 
 
 class Aenderung(BaseModel):
@@ -79,13 +80,29 @@ class Aenderung(BaseModel):
     firma: str | None = Field(default=None, max_length=320)
     telefon: str | None = Field(default=None, max_length=120)
     notiz: str | None = Field(default=None, max_length=5000)
+    #: ⚠️ **Die Antwort auf eine Rückfrage, kein Schalter.** „Meine Fassung
+    #: gewinnt" im Konfliktfenster; ohne die Frage davor wäre es das
+    #: stillschweigende Überbügeln, das der Abgleich ausdrücklich nicht tut.
+    erzwingen: bool = False
+
+
+class Umzug(BaseModel):
+    adressbuch_id: str = Field(min_length=1, max_length=32)
+
+
+class Konfliktbild(BaseModel):
+    """Was auf der anderen Seite steht, zum Ansehen, nicht zum Übernehmen."""
+
+    #: Falsch heisst: Dort liegt nichts mehr. Jemand hat die Karte gelöscht.
+    vorhanden: bool
+    fremd: Zeile | None = None
 
 
 def _zeile(k, verbundene: set[str] | frozenset[str] = frozenset()) -> Zeile:
-    nur_lesen = k.adressbuch_id in verbundene
+    verbunden = k.adressbuch_id in verbundene
     daten = (
         kontaktdienst.kontaktdaten_aus_vcard(k.roh)
-        if nur_lesen and k.roh
+        if verbunden and k.roh
         else {"nummern": [], "adressen": []}
     )
     return Zeile(
@@ -98,7 +115,6 @@ def _zeile(k, verbundene: set[str] | frozenset[str] = frozenset()) -> Zeile:
         quelle=k.quelle,
         verwendet=k.verwendet,
         adressbuch_id=k.adressbuch_id,
-        nur_lesen=nur_lesen,
         nummern=[Nummer(**n) for n in daten["nummern"]],
         adressen=[Adresse(**a) for a in daten["adressen"]],
     )
@@ -206,19 +222,23 @@ def anlegen(eingabe: Eingabe, person: AngemeldeterBenutzer, db: DbSession) -> Ze
                 eingabe.firma,
                 eingabe.telefon,
                 eingabe.notiz,
-            )
+                adressbuch_id=eingabe.adressbuch_id,
+            ),
+            _verbundene(db, person),
         )
     except kontaktdienst.KontaktFehler as fehler:
-        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+        raise MeldungHttp.aus(fehler, _kontaktfehler_code(fehler)) from fehler
 
 
 @router.patch("/{kontakt_id}", response_model=Zeile)
 def aendern(
     kontakt_id: int, wunsch: Aenderung, person: AngemeldeterBenutzer, db: DbSession
 ) -> Zeile:
+    felder = wunsch.model_dump(exclude_none=True)
+    erzwingen = bool(felder.pop("erzwingen", False))
     try:
         return _zeile(
-            kontaktdienst.aendern(db, person, kontakt_id, **wunsch.model_dump(exclude_none=True)),
+            kontaktdienst.aendern(db, person, kontakt_id, erzwingen=erzwingen, **felder),
             _verbundene(db, person),
         )
     except kontaktdienst.KontaktFehler as fehler:
@@ -227,9 +247,101 @@ def aendern(
 
 def _kontaktfehler_code(fehler: kontaktdienst.KontaktFehler) -> int:
     # „Gibt es nicht" ist ein 404; „darf nicht" und „passt nicht" sind 400.
-    if fehler.kennung in ("eintrag_unbekannt", "kontakt_nicht_gefunden"):
+    # Ein Konflikt ist ein 409, wie beim Kalender; was der Anbieter nicht
+    # annimmt oder nicht beantwortet, ist ein 502 — die Ursache liegt drüben.
+    if fehler.kennung in ("eintrag_unbekannt", "kontakt_nicht_gefunden", "adressbuch_nicht_gefunden"):
         return status.HTTP_404_NOT_FOUND
+    if fehler.kennung == "kontakt_konflikt":
+        return status.HTTP_409_CONFLICT
+    if fehler.kennung.startswith(("carddav_", "caldav_")):
+        return status.HTTP_502_BAD_GATEWAY
     return status.HTTP_400_BAD_REQUEST
+
+
+# --- Konflikt und Umzug (Lieferung 2) ---------------------------------------- #
+
+
+def _meiner(db, person, kontakt_id: int):
+    from ..models import Kontakt
+
+    eintrag = db.get(Kontakt, kontakt_id)
+    if eintrag is None or eintrag.benutzer_id != person.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="kontakt_nicht_gefunden")
+    return eintrag
+
+
+@router.get("/{kontakt_id}/konflikt", response_model=Konfliktbild)
+def konflikt_ansehen(
+    kontakt_id: int, person: AngemeldeterBenutzer, db: DbSession
+) -> Konfliktbild:
+    """Die Fassung des Anbieters holen, ohne etwas zu ändern.
+
+    ⚠️ **Eine Attrappe, keine Zeile in der Datenbank.** Angesehen wird die
+    fremde Fassung; gespeichert ist sie erst, wenn jemand sie wählt.
+    """
+    from ..services import adressbuchabgleich
+
+    eintrag = _meiner(db, person, kontakt_id)
+    try:
+        karte = adressbuchabgleich.fremde_fassung(db, eintrag)
+    except Exception as fehler:  # noqa: BLE001
+        # ⚠️ Ein Netzfehler beim Nachsehen darf nicht wie „dort ist nichts"
+        # aussehen — das wäre die Aufforderung zu löschen.
+        logger.info("The other version of a contact could not be fetched: %s", type(fehler).__name__)
+        raise MeldungHttp(status.HTTP_502_BAD_GATEWAY, "konflikt_nicht_abrufbar", {}) from fehler
+    if karte is None:
+        return Konfliktbild(vorhanden=False)
+    felder = kontaktdienst.felder_aus_vcard(karte.roh)
+    daten = kontaktdienst.kontaktdaten_aus_vcard(karte.roh)
+    return Konfliktbild(
+        vorhanden=True,
+        fremd=Zeile(
+            id=eintrag.id,
+            name=felder.get("name", ""),
+            adresse=felder.get("adresse", ""),
+            firma=felder.get("firma", ""),
+            telefon=felder.get("telefon", ""),
+            notiz=felder.get("notiz", ""),
+            quelle=eintrag.quelle,
+            verwendet=eintrag.verwendet,
+            adressbuch_id=eintrag.adressbuch_id,
+            nummern=[Nummer(**n) for n in daten["nummern"]],
+            adressen=[Adresse(**a) for a in daten["adressen"]],
+        ),
+    )
+
+
+@router.post("/{kontakt_id}/konflikt", response_model=Zeile)
+def konflikt_aufloesen(kontakt_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Zeile:
+    """Die fremde Fassung übernehmen; die eigene Änderung fällt weg.
+
+    ⚠️ **Der andere Ausgang braucht keine eigene Adresse.** „Meine Fassung
+    gewinnt" ist dasselbe Ändern wie vorher, nur mit ``erzwingen``.
+    """
+    from ..services import adressbuchabgleich
+
+    eintrag = _meiner(db, person, kontakt_id)
+    try:
+        geklappt = adressbuchabgleich.fremde_fassung_uebernehmen(db, eintrag)
+    except Exception as fehler:  # noqa: BLE001
+        logger.info("The other version of a contact could not be taken: %s", type(fehler).__name__)
+        raise MeldungHttp(status.HTTP_502_BAD_GATEWAY, "konflikt_nicht_abrufbar", {}) from fehler
+    if not geklappt:
+        raise MeldungHttp(status.HTTP_409_CONFLICT, "kontakt_drueben_geloescht", {})
+    return _zeile(eintrag, _verbundene(db, person))
+
+
+@router.post("/{kontakt_id}/verschieben", response_model=Zeile)
+def verschieben(
+    kontakt_id: int, umzug: Umzug, person: AngemeldeterBenutzer, db: DbSession
+) -> Zeile:
+    """Einen Kontakt in ein anderes Buch legen — der Weg für Aufgeschnapptes
+    und für alles, was drüben stehen soll."""
+    try:
+        eintrag = kontaktdienst.verschieben(db, person, kontakt_id, umzug.adressbuch_id)
+    except kontaktdienst.KontaktFehler as fehler:
+        raise MeldungHttp.aus(fehler, _kontaktfehler_code(fehler)) from fehler
+    return _zeile(eintrag, _verbundene(db, person))
 
 
 # ⚠️ **Diese Regel muss vor ``/{kontakt_id}`` stehen.** FastAPI probiert die

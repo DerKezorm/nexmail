@@ -338,3 +338,69 @@ def _pfad(url: str) -> str:
 
     teile = urlsplit(url)
     return teile.path + (f"?{teile.query}" if teile.query else "")
+
+
+# --- Schreiben (Lieferung 2) ------------------------------------------------ #
+
+
+class KonfliktFehler(CarddavFehler):
+    """Der Server hat eine neuere Fassung. ⚠️ **Nicht überschreiben.**
+
+    Heisst ``…Fehler``, weil der Katalog-Wächter (``test_meldungen``) nur
+    solche Namen als Fundstelle einer Kennung zählt."""
+
+
+def schreiben(
+    zugang: Zugang, href: str, vcf: str, etag: str = "", klient: httpx.Client | None = None
+) -> str:
+    """Eine Karte ablegen. Gibt das neue ETag zurück.
+
+    ⚠️ **``If-Match`` bei einer vorhandenen Karte, ``If-None-Match: *`` bei
+    einer neuen.** Dieselbe Regel wie ``caldav.schreiben``, aus demselben
+    Grund: Ohne das Erste überschreibt nexmail stillschweigend die Änderung
+    vom Telefon; ohne das Zweite eine Karte, die ein anderer gerade unter
+    derselben Adresse angelegt hat. Ein 412 kommt als ``Konflikt`` zurück und
+    wird gefragt, nicht überbügelt.
+    """
+    kopf = {"content-type": "text/vcard; charset=utf-8"}
+    if etag:
+        kopf["if-match"] = f'"{etag}"'
+    else:
+        kopf["if-none-match"] = "*"
+
+    with _verbindung(zugang, klient) as klient:
+        antwort = _anfragen_karte(
+            klient, "PUT", href, content=vcf.encode("utf-8"), headers=kopf
+        )
+        if antwort.status_code == 412:
+            raise KonfliktFehler("carddav_konflikt")
+        if antwort.status_code not in (200, 201, 204):
+            logger.info("CardDAV PUT %s answered %s.", href, antwort.status_code)
+            raise CarddavFehler("carddav_schreiben_gescheitert")
+        neu = antwort.headers.get("etag", "").strip('"')
+        if neu:
+            return neu
+        # ⚠️ **Nicht jeder Server schickt ein ETag zurück** — Google nie, beim
+        # Kalender am 03.09.2026 gemessen. Dann nachschlagen, sonst fährt der
+        # nächste Schreibvorgang mit einem veralteten ``If-Match`` in einen
+        # Konflikt, den es gar nicht gibt.
+        gesucht = ortsschluessel(href)
+        for karte in etags_holen(zugang, klient):
+            if ortsschluessel(karte.url) == gesucht:
+                return karte.etag
+    return ""
+
+
+def loeschen(
+    zugang: Zugang, href: str, etag: str = "", klient: httpx.Client | None = None
+) -> None:
+    """Eine Karte beim Server löschen. ⚠️ Erst dort, dann hier."""
+    with _verbindung(zugang, klient) as klient:
+        kopf = {"if-match": f'"{etag}"'} if etag else {}
+        antwort = _anfragen_karte(klient, "DELETE", href, headers=kopf)
+        if antwort.status_code == 412:
+            raise KonfliktFehler("carddav_konflikt")
+        # ⚠️ 404 ist kein Fehler: Die Karte sollte weg sein, und sie ist es.
+        if antwort.status_code not in (200, 204, 404):
+            logger.info("CardDAV DELETE %s answered %s.", href, antwort.status_code)
+            raise CarddavFehler("carddav_loeschen_gescheitert")

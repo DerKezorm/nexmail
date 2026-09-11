@@ -1,10 +1,24 @@
-"""Adressbücher mit ihrer Gegenstelle abgleichen. CardDAV, Lieferung 1: lesend.
+"""Adressbücher mit ihrer Gegenstelle abgleichen. CardDAV, beide Richtungen.
 
-⚠️ **Nur lesend, und das ist eine Entscheidung, keine Lücke.** Am 04.09.2026
-abgestimmt: Der Abgleich geht in beide Richtungen, aber in zwei Lieferungen.
-Diese hier holt. ``schmutzig`` wird gesetzt, aber nicht hinausgetragen. Wer
-Lieferung 2 baut, nimmt ``kalenderabgleich.hochschieben`` als Vorbild, mit
-``If-Match`` und demselben Konfliktfenster.
+Lieferung 1 (05.09.2026) holte nur. Lieferung 2 (11.09.2026) schreibt:
+``hochschieben`` bringt eine geänderte oder neue Karte mit ``If-Match`` zum
+Anbieter, ``wegnehmen`` löscht dort, ``fremde_fassung`` holt bei einem
+Konflikt die andere Seite zum Ansehen. Das Vorbild ist
+``kalenderabgleich``; die Regeln sind dieselben:
+
+⚠️ **Erst der Server, dann die eigene Datenbank.** Was der Server ablehnt,
+passiert hier gar nicht erst. Ein 412 heisst: Jemand hat dieselbe Karte am
+Telefon geändert; das wird gefragt, nie überbügelt.
+
+⚠️ **Geschrieben wird die geänderte Rohkarte, kein Nachbau.** Der
+Zeilen-Editor in ``vcard.py`` ersetzt genau die Zeilen der fünf Felder; Foto,
+Geburtstag und ``X-APPLE-…`` bleiben stehen.
+
+⚠️ **Ein ins Buch verschobener Kontakt wird erst über seine Adresse gesucht,
+dann angelegt.** Sonst entstünden Doppel beim Anbieter, sobald jemand eine
+Person, die drüben längst steht, hier „ins Buch" schiebt. Kennt der Anbieter
+die Adresse, gewinnt seine Karte (die Zeile hängt sich an sie); kennt er sie
+nicht, wird die Karte aus der Zeile gebaut.
 
 ⚠️ **Das ``ctag`` spart den ganzen Abruf.** Ändert es sich nicht, hat sich in
 dem Buch nichts getan. Beim Kalender ist es genauso, bei einem Postfach macht
@@ -46,8 +60,9 @@ nicht beim nächsten Geburtstag drüben.
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass
-from urllib.parse import quote
+from urllib.parse import quote, urljoin
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -56,7 +71,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from .. import crypto
 from ..meldung import Meldung
 from ..models import Adressbuch, Benutzer, Kontakt, utcnow
-from . import adressbuecher, caldav, carddav
+from . import adressbuecher, caldav, carddav, vcard
 from . import kontakte as kontaktdienst
 
 logger = logging.getLogger("nexmail.adressbuchabgleich")
@@ -76,6 +91,9 @@ class Runde:
     #: Karten, deren Adresse hier ein gepflegter oder anderswo liegender
     #: Kontakt hält (Regeln 2 und 3). Nichts davon wurde angefasst.
     belegt: int = 0
+    #: Zeilen, die auf ihre Karte warteten (ins Buch verschoben) und in
+    #: dieser Runde zum Anbieter gingen.
+    hochgeschoben: int = 0
     #: Wahr, wenn das ``ctag`` gleich war und nichts zu tun blieb.
     unveraendert: bool = False
 
@@ -273,7 +291,10 @@ def _carddav_abgleichen(db: Session, buch: Adressbuch, erzwingen: bool) -> Runde
         .limit(1)
     )
     with carddav.sitzung(verbindung) as klient:
-        return _holen(db, buch, verbindung, klient, runde, erzwingen or wartende is not None)
+        runde = _holen(db, buch, verbindung, klient, runde, erzwingen or wartende is not None)
+        # Was danach noch wartet, hat drüben keine Karte: hinaus damit.
+        _wartende_hinaus(db, buch, klient, runde)
+        return runde
 
 
 def _holen(db, buch, verbindung, klient, runde: Runde, erzwingen: bool) -> Runde:
@@ -436,3 +457,158 @@ def alle_abgleichen(db: Session, person: Benutzer, erzwingen: bool = False) -> d
             db.rollback()
             logger.exception("Sync of address book %s failed unexpectedly.", kennung)
     return raus
+
+
+# --- Schreiben (Lieferung 2) ------------------------------------------------ #
+
+
+def _buch_von(db: Session, kontakt: Kontakt) -> Adressbuch | None:
+    """Das verbundene Buch dieses Kontakts, sonst ``None``."""
+    if not kontakt.adressbuch_id:
+        return None
+    buch = db.get(Adressbuch, kontakt.adressbuch_id)
+    if buch is None or buch.art != "carddav":
+        return None
+    return buch
+
+
+def hochschieben(
+    db: Session, kontakt: Kontakt, roh_neu: str | None = None, klient=None
+) -> None:
+    """Einen geänderten oder neuen Kontakt zum Anbieter bringen. Ohne ``commit``.
+
+    ⚠️ **Das passiert sofort, nicht später.** Erst der Server, dann die eigene
+    Datenbank; wer es andersherum macht, hat beim Konflikt zwei Fassungen und
+    keine Regel, welche gilt. Bei einem 412 kommt ``carddav.Konflikt`` zum
+    Aufrufer, und der fragt.
+
+    ``roh_neu`` ist die fertig geänderte Karte aus dem Zeilen-Editor. Fehlt
+    sie, wird sie hier aus der Zeile gebaut: auf der Rohkarte, die ein
+    verschobener Kontakt mitbringt (Foto und Geburtstag gehören dem Menschen,
+    nicht dem alten Buch), sonst frisch.
+
+    ⚠️ **Der Dateiname folgt der UID**, wie beim Kalender: So findet auch ein
+    anderer Client die Karte wieder, wenn er die Sammlung durchsieht.
+    """
+    buch = _buch_von(db, kontakt)
+    if buch is None:
+        return
+    felder = {f: getattr(kontakt, f) for f in vcard.FELDER}
+    if roh_neu is None:
+        if kontakt.roh:
+            vorher = kontaktdienst.felder_aus_vcard(kontakt.roh)
+            roh_neu = vcard.aktualisieren(kontakt.roh, vorher, felder, kontakt.uid)
+        else:
+            roh_neu = vcard.neu_bauen(felder, kontakt.uid)
+    if not kontakt.uid:
+        kontakt.uid = kontaktdienst.felder_aus_vcard(roh_neu).get("uid", "")[:255]
+    if not kontakt.href:
+        sicher = "".join(c for c in kontakt.uid if c.isalnum() or c in "-_.@")[:120]
+        basis = buch.url if buch.url.endswith("/") else buch.url + "/"
+        kontakt.href = urljoin(basis, f"{sicher or uuid.uuid4()}.vcf")
+    neues_etag = carddav.schreiben(zugang(buch, db), kontakt.href, roh_neu, kontakt.etag, klient)
+    kontakt.roh = roh_neu
+    kontakt.etag = neues_etag[:255]
+    kontakt.schmutzig = False
+
+
+def wegnehmen(db: Session, kontakt: Kontakt) -> None:
+    """Die Karte beim Anbieter löschen. ⚠️ Erst dort, dann hier."""
+    buch = _buch_von(db, kontakt)
+    if buch is None or not kontakt.href:
+        return
+    carddav.loeschen(zugang(buch, db), kontakt.href, kontakt.etag)
+
+
+def fremde_fassung(db: Session, kontakt: Kontakt) -> carddav.FernKarte | None:
+    """Was gerade beim Anbieter unter dieser Adresse steht, **ohne** zu ändern.
+
+    Gibt ``None``, wenn dort nichts (mehr) liegt: Dann hat jemand die Karte
+    drüben gelöscht, und das ist ein anderer Fall als „woanders geändert".
+    """
+    buch = _buch_von(db, kontakt)
+    if buch is None or not kontakt.href:
+        return None
+    treffer = carddav.inhalte_holen(zugang(buch, db), [kontakt.href])
+    return treffer.get(carddav.ortsschluessel(kontakt.href))
+
+
+def fremde_fassung_uebernehmen(db: Session, kontakt: Kontakt) -> bool:
+    """Die Fassung des Anbieters gewinnt: die eigene Änderung fällt weg.
+
+    ⚠️ **Nur diesen einen Kontakt, nicht das ganze Buch.** Ein voller Abgleich
+    dauert und fasst alles an; wer einen Konflikt auflöst, meint genau diese
+    eine Zeile. Eine Adresse, die hier schon ein anderer Eintrag hält, bleibt
+    beim anderen — dieselbe Eindeutigkeit wie beim Abgleich.
+    """
+    karte = fremde_fassung(db, kontakt)
+    if karte is None:
+        return False
+    felder = kontaktdienst.felder_aus_vcard(karte.roh)
+    adresse = ""
+    if felder.get("adresse"):
+        try:
+            adresse = kontaktdienst.adresse_pruefen(felder["adresse"])
+        except kontaktdienst.KontaktFehler:
+            adresse = ""
+    if adresse:
+        anderer = db.scalar(
+            select(Kontakt).where(
+                Kontakt.benutzer_id == kontakt.benutzer_id,
+                Kontakt.adresse == adresse,
+                Kontakt.id != kontakt.id,
+            )
+        )
+        if anderer is not None:
+            adresse = kontakt.adresse
+    kontakt.adresse = adresse
+    kontakt.name = felder.get("name", "")[:320]
+    kontakt.firma = felder.get("firma", "")[:320]
+    kontakt.telefon = felder.get("telefon", "")[:120]
+    kontakt.notiz = felder.get("notiz", "")
+    kontakt.roh = karte.roh
+    kontakt.etag = karte.etag[:255]
+    kontakt.schmutzig = False
+    db.commit()
+    logger.info("A contact conflict was resolved in favour of the server.")
+    return True
+
+
+def frisch_machen(db: Session, kontakt: Kontakt) -> bool:
+    """Nur ``roh`` und ``etag`` nachziehen, für „meine Fassung gewinnt".
+
+    ⚠️ **Die eigenen Felder bleiben.** Was nexmail verwaltet, gewinnt; alles
+    andere aus der fremden Fassung (Foto, weitere Nummern, ``X-APPLE-…``)
+    bleibt stehen, statt überbügelt zu werden. Ohne das frische ``roh`` sässe
+    die Änderung auf einem veralteten Original und holte fremde Zeilen
+    zurück, die drüben längst weg sind.
+    """
+    karte = fremde_fassung(db, kontakt)
+    if karte is None:
+        return False
+    kontakt.roh = karte.roh
+    kontakt.etag = karte.etag[:255]
+    return True
+
+
+def _wartende_hinaus(db: Session, buch: Adressbuch, klient, runde: Runde) -> None:
+    """Zeilen dieses Buches, die nach dem Holen noch warten, zum Anbieter bringen.
+
+    Das sind Kontakte, die ins Buch verschoben wurden und deren Adresse der
+    Anbieter nicht kannte (sonst hätte ``_holen`` sie an ihre Karte gehängt).
+    ⚠️ **Ein Konflikt hält die Runde nicht an**: Die Zeile bleibt schmutzig
+    und kommt beim nächsten Takt wieder dran.
+    """
+    wartende = list(
+        db.scalars(
+            select(Kontakt).where(Kontakt.adressbuch_id == buch.id, Kontakt.schmutzig.is_(True))
+        )
+    )
+    for zeile in wartende:
+        try:
+            hochschieben(db, zeile, klient=klient)
+            runde.hochgeschoben += 1
+        except carddav.KonfliktFehler:
+            logger.info("A waiting contact met a conflict at the provider; it stays queued.")
+    if wartende:
+        db.commit()

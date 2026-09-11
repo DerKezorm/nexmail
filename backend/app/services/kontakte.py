@@ -36,7 +36,14 @@ from ..models import (
     Ordner,
 )
 from ..meldung import Meldung
-from . import adressbuecher
+from . import adressbuecher, caldav, carddav
+# Die vCard-Textregeln wohnen seit Lieferung 2 in ``vcard.py``, wo auch der
+# Zeilen-Editor auf der Rohkarte steht; hier bleiben die alten Namen, damit
+# die Leser weiter lesen wie bisher.
+from .vcard import entfalten
+from .vcard import entmaskieren as _entmaskieren
+from .vcard import felder_trennen as _felder_trennen
+from .vcard import maskieren as _vcard_maskieren
 
 logger = logging.getLogger("nexmail.kontakte")
 
@@ -132,7 +139,13 @@ def anlegen(
     telefon: str = "",
     notiz: str = "",
     quelle: str = "hand",
+    adressbuch_id: str | None = None,
 ) -> Kontakt:
+    """Einen Kontakt anlegen, im lokalen Buch oder in einem verbundenen.
+
+    ⚠️ **In einem verbundenen Buch geht die Karte zuerst zum Anbieter.** Was
+    der ablehnt, steht hier gar nicht erst; die Zeile fällt mit dem Rollback.
+    """
     sauber = _adresse_oder_leer(adresse)
     _etwas_muss_da_sein(sauber, name, telefon, firma)
     if sauber:
@@ -142,6 +155,7 @@ def anlegen(
         if vorhanden is not None:
             raise KontaktFehler("adresse_schon_da", adresse=sauber)
 
+    buch = _zielbuch(db, person, adressbuch_id)
     eintrag = Kontakt(
         benutzer_id=person.id,
         adresse=sauber,
@@ -150,30 +164,66 @@ def anlegen(
         telefon=telefon.strip(),
         notiz=notiz,
         quelle=quelle,
-        adressbuch_id=adressbuecher.lokales(db, person).id,
+        adressbuch_id=buch.id,
     )
     db.add(eintrag)
+    if buch.art:
+        from . import adressbuchabgleich
+
+        db.flush()
+        try:
+            adressbuchabgleich.hochschieben(db, eintrag)
+        except _ANBIETERFEHLER as f:
+            db.rollback()
+            _anbieterfehler(f)
     db.commit()
     return eintrag
 
 
-def _nur_lesen(db: Session, eintrag: Kontakt) -> None:
-    """⚠️ **Lieferung 1 liest nur.** Ein Kontakt aus einem verbundenen Buch wird
-    hier weder geändert noch gelöscht: Geändert würde er beim nächsten Abgleich
-    überschrieben, gelöscht käme er wieder, und beides sähe aus wie ein Fehler.
-    Bearbeiten und Löschen gehen beim Anbieter; hierher kommt es mit Lieferung
-    2, mit ``If-Match``. Bis dahin ist das die Zusage der Beta: Nichts, was in
-    nexmail passiert, erreicht iCloud oder Google."""
+def _zielbuch(db: Session, person: Benutzer, adressbuch_id: str | None) -> Adressbuch:
+    if not adressbuch_id:
+        return adressbuecher.lokales(db, person)
+    try:
+        return adressbuecher.meines(db, person, adressbuch_id)
+    except adressbuecher.BuchFehler as f:
+        raise KontaktFehler("adressbuch_nicht_gefunden") from f
+
+
+def _ist_verbunden(db: Session, eintrag: Kontakt) -> bool:
     if not eintrag.adressbuch_id:
-        return
+        return False
     buch = db.get(Adressbuch, eintrag.adressbuch_id)
-    if buch is not None and buch.art:
-        raise KontaktFehler("kontakt_nur_lesen")
+    return buch is not None and bool(buch.art)
 
 
-def aendern(db: Session, person: Benutzer, kontakt_id: int, **felder) -> Kontakt:
+#: Was beim Anbieter schiefgehen kann. ``caldav`` steht mit dabei, weil
+#: ``carddav`` dessen Verbindung benutzt und dessen Kennungen weiterreicht.
+_ANBIETERFEHLER = (carddav.CarddavFehler, caldav.CaldavFehler)
+
+
+def _anbieterfehler(f: Exception) -> None:
+    """Was der Anbieter gesagt hat, als Kennung für die Oberfläche weiterwerfen.
+
+    ⚠️ **Ein Konflikt ist keine Fehlermeldung, sondern eine Frage.** Er bekommt
+    seine eigene Kennung, an der die Oberfläche das Fenster mit beiden
+    Fassungen aufmacht; alles andere trägt die Kennung des Protokolls weiter.
+    """
+    if isinstance(f, carddav.KonfliktFehler):
+        raise KontaktFehler("kontakt_konflikt") from f
+    raise KontaktFehler(str(f)) from f
+
+
+def aendern(
+    db: Session, person: Benutzer, kontakt_id: int, erzwingen: bool = False, **felder
+) -> Kontakt:
+    """Einen Kontakt ändern; bei einem verbundenen geht die Karte zuerst hinaus.
+
+    ``erzwingen`` ist die Antwort auf die Rückfrage im Konfliktfenster: „meine
+    Fassung gewinnt". Dann wird auf der **frischen** fremden Karte geschrieben,
+    nicht auf der alten — sonst sässe die eigene Änderung auf einem veralteten
+    Original und holte fremde Zeilen zurück, die drüben längst weg sind.
+    """
     eintrag = _meiner(db, person, kontakt_id)
-    _nur_lesen(db, eintrag)
     # ⚠️ Erst pruefen, dann anfassen. Wer die Zeile schon geaendert hat, wenn
     # die Pruefung wirft, laesst sie schmutzig in der Sitzung liegen, und der
     # naechste ``commit`` eines anderen schreibt sie mit.
@@ -198,6 +248,32 @@ def aendern(db: Session, person: Benutzer, kontakt_id: int, **felder) -> Kontakt
             if doppelt is not None:
                 raise KontaktFehler("adresse_bei_anderem", adresse=neue_adresse)
     _etwas_muss_da_sein(neue_adresse, neu["name"], neu["telefon"], neu["firma"])
+
+    if _ist_verbunden(db, eintrag):
+        from . import adressbuchabgleich, vcard
+
+        # Erst der Server, dann die eigene Datenbank. Die geänderte Karte
+        # entsteht auf der Rohkarte: geändert werden die Zeilen der fünf
+        # Felder, erkannt an den bisherigen Werten der Zeile.
+        vorher = {f: getattr(eintrag, f) for f in vcard.FELDER}
+        nachher = {**neu, "adresse": neue_adresse}
+        try:
+            if erzwingen:
+                if adressbuchabgleich.frisch_machen(db, eintrag):
+                    # Auf der frischen fremden Karte sagen deren Werte, welche
+                    # Zeilen gemeint sind — nicht die veralteten der Zeile.
+                    vorher = felder_aus_vcard(eintrag.roh)
+                else:
+                    # ⚠️ Drüben gelöscht. „Meine Fassung" heisst dann: wieder
+                    # anlegen, unter derselben Adresse. Mit dem alten ETag
+                    # ginge ``If-Match`` hinaus, und das ist auf eine Karte,
+                    # die es nicht mehr gibt, ein zweiter Konflikt ohne Ende.
+                    eintrag.etag = ""
+            roh_neu = vcard.aktualisieren(eintrag.roh, vorher, nachher, eintrag.uid)
+            adressbuchabgleich.hochschieben(db, eintrag, roh_neu)
+        except _ANBIETERFEHLER as f:
+            db.rollback()
+            _anbieterfehler(f)
 
     eintrag.adresse = neue_adresse
     for schluessel, wert in neu.items():
@@ -227,11 +303,71 @@ def mitgliedschaften_loesen(db: Session, kontakt_ids) -> None:
 
 
 def entfernen(db: Session, person: Benutzer, kontakt_id: int) -> None:
+    """Einen Kontakt löschen; bei einem verbundenen zuerst beim Anbieter.
+
+    ⚠️ **Ein 412 beim Löschen ist ein Konflikt wie jeder andere:** Jemand hat
+    die Karte inzwischen geändert. Sie trotzdem zu löschen hiesse, eine
+    Änderung zu verwerfen, die nie jemand gesehen hat. Der nächste Abgleich
+    holt sie; danach lässt sich noch einmal entscheiden.
+    """
     eintrag = _meiner(db, person, kontakt_id)
-    _nur_lesen(db, eintrag)
+    if _ist_verbunden(db, eintrag):
+        from . import adressbuchabgleich
+
+        try:
+            adressbuchabgleich.wegnehmen(db, eintrag)
+        except _ANBIETERFEHLER as f:
+            _anbieterfehler(f)
     mitgliedschaften_loesen(db, [eintrag.id])
     db.delete(eintrag)
     db.commit()
+
+
+def verschieben(db: Session, person: Benutzer, kontakt_id: int, buch_id: str) -> Kontakt:
+    """Einen Kontakt in ein anderes Buch legen und, wenn das Buch verbunden
+    ist, gleich zum Anbieter bringen.
+
+    ⚠️ **Erst suchen, dann anlegen.** Kennt der Anbieter die Adresse schon,
+    hängt sich die Zeile an seine Karte (der erzwungene Abgleich erkennt sie
+    an der Adresse, und die Karte gewinnt); sonst entsteht die Karte aus der
+    Zeile. Ohne diese Reihenfolge stünde derselbe Mensch drüben zweimal,
+    sobald jemand einen Aufgeschnappten „ins Buch" schiebt, der dort längst
+    steht.
+
+    ⚠️ **Aus einem verbundenen Buch heraus heisst: dort löschen.** Ein Kontakt,
+    der iCloud verlässt, soll bei iCloud nicht weiterleben; sonst käme er beim
+    nächsten Abgleich als neue Zeile zurück, und der Umzug wäre eine Kopie.
+    """
+    from . import adressbuchabgleich
+
+    eintrag = _meiner(db, person, kontakt_id)
+    if eintrag.adressbuch_id == buch_id:
+        return eintrag
+    try:
+        if _ist_verbunden(db, eintrag):
+            adressbuchabgleich.wegnehmen(db, eintrag)
+    except _ANBIETERFEHLER as f:
+        _anbieterfehler(f)
+    try:
+        eintrag = adressbuecher.verschieben(db, person, kontakt_id, buch_id)
+    except adressbuecher.BuchFehler as f:
+        raise KontaktFehler(str(f)) from f
+    ziel = db.get(Adressbuch, eintrag.adressbuch_id)
+    if ziel is None or not ziel.art:
+        return eintrag
+    # Der Abgleich erkennt eine wartende Zeile an ihrer Adresse und hängt sie
+    # an die vorhandene Karte; was danach noch wartet, bringt er hinaus.
+    runde = adressbuchabgleich.abgleichen(db, ziel, erzwingen=True)
+    db.refresh(eintrag)
+    if eintrag.schmutzig or not eintrag.href:
+        # Der Abgleich hat es nicht geschafft (das Buch klemmt); der Grund
+        # steht am Buch, hier kommt er als Kennung zurück.
+        raise KontaktFehler(ziel.letzter_fehler or "carddav_schreiben_gescheitert")
+    logger.info(
+        "A contact moved into a connected book: %s adopted, %s pushed.",
+        runde.neu + runde.geaendert, runde.hochgeschoben,
+    )
+    return eintrag
 
 
 def gesammelte_entfernen(db: Session, person: Benutzer) -> int:
@@ -497,20 +633,6 @@ def _meine_gruppe(db: Session, person: Benutzer, gruppe_id: int) -> Kontaktgrupp
 # --- vCard ----------------------------------------------------------------- #
 
 
-def _vcard_maskieren(wert: str) -> str:
-    """⚠️ Komma, Semikolon und Zeilenumbruch sind in vCard **Trennzeichen**.
-
-    Ein Name wie „Müller, Gertrud" zerlegt die Datei sonst in Felder, die
-    niemand mehr zusammensetzt.
-    """
-    return (
-        wert.replace("\\", "\\\\")
-        .replace(";", "\\;")
-        .replace(",", "\\,")
-        .replace("\n", "\\n")
-    )
-
-
 def als_vcard(
     kontakte: list[Kontakt], verbundene: set[str] | frozenset[str] = frozenset()
 ) -> str:
@@ -553,63 +675,6 @@ def als_vcard(
     # ⚠️ CRLF ist in RFC 6350 vorgeschrieben. Manche Programme sind nachsichtig,
     # Outlook ist es nicht.
     return "\r\n".join(zeilen) + "\r\n"
-
-
-def _entmaskieren(wert: str) -> str:
-    ergebnis = []
-    schraege = False
-    for zeichen in wert:
-        if schraege:
-            ergebnis.append({"n": "\n", "N": "\n"}.get(zeichen, zeichen))
-            schraege = False
-        elif zeichen == "\\":
-            schraege = True
-        else:
-            ergebnis.append(zeichen)
-    return "".join(ergebnis)
-
-
-def _felder_trennen(roh: str) -> list[str]:
-    r"""Einen strukturierten vCard-Wert an den **unmaskierten** Semikola teilen.
-
-    ⚠️ **Die Reihenfolge ist der ganze Punkt.** ``ORG`` und ``N`` bestehen aus
-    mehreren Teilen, getrennt durch ``;`` — aber ein Semikolon *im* Wert steht
-    als ``\;`` da. Wer zuerst entmaskiert und dann trennt, zerschneidet genau
-    das Zeichen, das die Maskierung schützen sollte: Aus „Meier; Söhne" wird
-    „Meier". Beim Rundlauf-Test aufgefallen, nicht beim Nachdenken.
-    """
-    teile: list[str] = []
-    aktuell: list[str] = []
-    schraege = False
-    for zeichen in roh:
-        if schraege:
-            aktuell.append("\n" if zeichen in ("n", "N") else zeichen)
-            schraege = False
-        elif zeichen == "\\":
-            schraege = True
-        elif zeichen == ";":
-            teile.append("".join(aktuell))
-            aktuell = []
-        else:
-            aktuell.append(zeichen)
-    teile.append("".join(aktuell))
-    return teile
-
-
-def entfalten(inhalt: str) -> list[str]:
-    """Gefaltete Zeilen zusammensetzen.
-
-    ⚠️ **Zuerst, immer.** vCard bricht lange Werte nach 75 Zeichen um und
-    rückt die Fortsetzung ein — wer Zeile für Zeile liest, bekommt
-    abgeschnittene Namen und verliert lange Notizen.
-    """
-    zeilen: list[str] = []
-    for roh in inhalt.replace("\r\n", "\n").split("\n"):
-        if roh[:1] in (" ", "\t") and zeilen:
-            zeilen[-1] += roh[1:]
-        else:
-            zeilen.append(roh)
-    return zeilen
 
 
 _APPLE_MARKE = re.compile(r"^_\$!<(.+)>!\$_$")
@@ -868,5 +933,6 @@ __all__ = [
     "meine",
     "mitglieder_setzen",
     "mitgliedschaften_loesen",
+    "verschieben",
     "vorschlagen",
 ]
