@@ -714,7 +714,7 @@
     "buch_fehler_carddav_kein_buchserver": "Unter dieser Adresse liegt kein Adressbuch-Server.",
     "buch_fehler_carddav_nicht_lesbar": "Das Adressbuch ließ sich nicht lesen.",
     "buch_fehler_carddav_adresse_fehlt": "Bitte eine Adresse eingeben.",
-    "buch_fehler_carddav_google_api_aus": "Google hat abgelehnt: Im Cloud-Projekt ist die CardDAV API nicht eingeschaltet. Sie ist eine eigene neben der CalDAV API; der Betreiber schaltet sie unter APIs & Services → Library ein.",
+    "buch_fehler_carddav_google_api_aus": "Google hat abgelehnt: Im Cloud-Projekt ist die „Google Contacts CardDAV API“ nicht eingeschaltet. Sie ist eine eigene neben der CalDAV API; der Betreiber schaltet sie unter APIs & Services → Library ein.",
     "buch_fehler_adressbuch_schon_verbunden": "Diese Adressbücher sind schon verbunden.",
     "buch_fehler_oauth_zustimmung_fehlt": "Für dieses Konto fehlt die Zustimmung."
   },

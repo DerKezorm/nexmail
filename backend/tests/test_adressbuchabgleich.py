@@ -80,6 +80,9 @@ class Buchserver:
         self.etag_im_kopf = True
         #: Wahr heisst: Der Server nimmt kein PUT und kein DELETE an (405).
         self.nur_lesen = False
+        #: Wie Google: ``addressbook-query`` gibt 400, gelistet wird mit
+        #: ``PROPFIND`` und ``Depth: 1``.
+        self.kein_report = False
         self._laufnummer = 0
 
     def transport(self) -> httpx.MockTransport:
@@ -128,6 +131,27 @@ class Buchserver:
             return httpx.Response(204)
 
         if a.method == "PROPFIND":
+            rumpf = a.content.decode(errors="replace")
+            if "getetag" in rumpf and a.headers.get("depth") == "1":
+                # Die Verzeichnisabfrage: die Sammlung selbst (als solche
+                # gekennzeichnet) und jede Karte mit ETag.
+                im_buch = {p: k for p, k in self.karten.items() if p.startswith(pfad)}
+                zeilen = [
+                    f"<d:response><d:href>{pfad}</d:href><d:propstat><d:prop>"
+                    '<d:getetag>"sammlung"</d:getetag>'
+                    "<d:resourcetype><d:collection/></d:resourcetype>"
+                    "</d:prop></d:propstat></d:response>"
+                ]
+                zeilen += [
+                    f"<d:response><d:href>{self._gelistet(p)}</d:href><d:propstat><d:prop>"
+                    f'<d:getetag>"{etag}"</d:getetag><d:resourcetype/></d:prop></d:propstat></d:response>'
+                    for p, (etag, _) in im_buch.items()
+                ]
+                return _xml(
+                    '<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">'
+                    + "".join(zeilen)
+                    + "</d:multistatus>"
+                )
             return _xml(
                 '<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" '
                 'xmlns:cs="http://calendarserver.org/ns/">'
@@ -139,6 +163,8 @@ class Buchserver:
         if a.method == "REPORT":
             rumpf = a.content.decode()
             im_buch = {p: k for p, k in self.karten.items() if p.startswith(pfad)}
+            if self.kein_report and "addressbook-query" in rumpf:
+                return httpx.Response(400)
             if "addressbook-multiget" in rumpf:
                 gefragt = {unquote(h) for h in re.findall(r"<d:href>([^<]+)</d:href>", rumpf)}
                 zeilen = [
@@ -705,3 +731,61 @@ def test_das_passwort_haengt_am_buch(db, welt):
     assert dienst.passwort_lesen(buch) == "geheim"
     with pytest.raises(Exception):
         dienst.passwort_lesen(zweites)
+
+
+# --- Googles Absagen ------------------------------------------------------- #
+
+NEU_FORMAT = (
+    '{\n    "message": "Google Contacts CardDAV API has not been used in project 123 before '
+    'or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/'
+    'carddav.googleapis.com/overview?project=123 then retry.",\n    "status": "PERMISSION_DENIED"\n}'
+)
+ALT_FORMAT = '{"error": {"errors": [{"reason": "accessNotConfigured"}], "code": 403}}'
+
+
+def _google_zugang(antwort: httpx.Response) -> carddav.Zugang:
+    z = carddav.Zugang(
+        url="https://www.googleapis.com/carddav/v1/principals/x%40example.org/",
+        benutzer="x@example.org", passwort="", token="t",
+    )
+    z.transport = httpx.MockTransport(lambda a: antwort)
+    return z
+
+
+@pytest.mark.parametrize("rumpf", [NEU_FORMAT, ALT_FORMAT])
+def test_eine_abgeschaltete_google_api_wird_in_beiden_formaten_erkannt(rumpf):
+    """⚠️ Am 11.09.2026 im Protokoll der Live-Instanz: Die Kontakt-Schnittstelle
+    antwortet im neuen Format ohne ``accessNotConfigured``; nexmail meldete
+    „Benutzername oder Passwort weist der Server ab" statt „API nicht
+    eingeschaltet", und der Betreiber suchte an der falschen Stelle."""
+    with pytest.raises(carddav.CarddavFehler) as f:
+        carddav.buecher_finden(_google_zugang(httpx.Response(403, text=rumpf)))
+    assert str(f.value) == "carddav_google_api_aus"
+
+
+def test_eine_schlichte_absage_bleibt_abgewiesen():
+    with pytest.raises(carddav.CaldavFehler) as f:
+        carddav.buecher_finden(_google_zugang(httpx.Response(401, text="Unauthorized")))
+    assert str(f.value) == "caldav_abgewiesen"
+
+
+def test_ein_server_ohne_addressbook_query_wird_ueber_propfind_gelesen(db, welt):
+    """⚠️ Google, am 11.09.2026 auf der Live-Instanz: ``REPORT …/lists/default/``
+    antwortet 400, der erste Abgleich scheiterte mit „nicht lesbar", das Buch
+    stand mit Warndreieck und null Kontakten da. Die Verzeichnisabfrage
+    (``PROPFIND``, ``Depth: 1``) kann jeder WebDAV-Server."""
+    person, buch, server = welt
+    server.kein_report = True
+    server.karten[f"{PFAD}k1.vcf"] = ("e1", VOLL)
+    server.karten[f"{PFAD}k2.vcf"] = ("e2", _karte(uid="k2", name="Jonas Keller", adresse="jonas@example.org"))
+
+    runde = dienst.abgleichen(db, buch)
+
+    assert (runde.neu, buch.letzter_fehler) == (2, "")
+    zeilen = {k.adresse: k for k in db.query(Kontakt).all()}
+    assert zeilen["vera@example.org"].etag == "e1" and zeilen["jonas@example.org"].etag == "e2"
+    assert ("REPORT", PFAD) in server.anfragen, "Erst der REPORT, wie bei iCloud."
+    assert ("PROPFIND", PFAD) in server.anfragen
+    # Und beim naechsten Mal dieselbe Zahl, nicht das Doppelte.
+    server.ctag = "ct-2"
+    assert dienst.abgleichen(db, buch).neu == 0

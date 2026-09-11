@@ -234,6 +234,14 @@ def _verbindung(zugang: Zugang, klient: httpx.Client | None) -> Iterator[httpx.C
         yield eigener
 
 
+def _api_abgeschaltet(text: str) -> bool:
+    """Sagt Google, dass die Schnittstelle im Cloud-Projekt aus ist?"""
+    return any(
+        spur in text
+        for spur in ("accessNotConfigured", "SERVICE_DISABLED", "has not been used in project")
+    )
+
+
 def _anfragen(klient: httpx.Client, verb: str, url: str, **kw) -> httpx.Response:
     try:
         antwort = klient.request(verb, url, **kw)
@@ -253,7 +261,13 @@ def _anfragen(klient: httpx.Client, verb: str, url: str, **kw) -> httpx.Response
         # „Google Calendar API" eingeschaltet hat, bekommt hier ein 403, das
         # aussieht wie eine fehlende Zustimmung — und sucht dann tagelang an
         # der falschen Stelle. Am 03.09.2026 an einem echten Konto gemessen.
-        if "accessNotConfigured" in antwort.text:
+        # ⚠️ **Zwei Formate.** Der Kalender-Endpunkt antwortet im alten mit
+        # ``accessNotConfigured``; die Kontakt-Schnittstelle antwortete am
+        # 11.09.2026 im neuen, mit ``PERMISSION_DENIED`` und dem Satz „has
+        # not been used in project … or it is disabled" — und nexmail sagte
+        # dazu „Benutzername oder Passwort weist der Server ab". Erkannt wird
+        # deshalb jede der drei Spuren.
+        if _api_abgeschaltet(antwort.text):
             raise CaldavFehler("caldav_google_api_aus")
         raise CaldavFehler("caldav_abgewiesen")
     return antwort

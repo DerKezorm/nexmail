@@ -112,6 +112,17 @@ _ETAGS = (
     f'<c:addressbook-query xmlns:d="DAV:" xmlns:c="{CARD}">'
     "<d:prop><d:getetag/></d:prop></c:addressbook-query>"
 )
+#: ⚠️ **Google kennt ``addressbook-query`` nicht.** Am 11.09.2026 auf der
+#: Live-Instanz gemessen: ``REPORT …/lists/default/`` antwortet 400, und der
+#: erste Abgleich scheiterte mit „nicht lesbar". Was Google (und jeder
+#: WebDAV-Server) kann, ist die Verzeichnisabfrage: ``PROPFIND`` mit
+#: ``Depth: 1`` liefert jede Karte mit ihrem ETag. iCloud bleibt beim
+#: ``REPORT``, der dort seit 0.10.0 gemessen ist; der Rückfall greift nur,
+#: wenn der Server den ``REPORT`` nicht annimmt.
+_ETAGS_VERZEICHNIS = (
+    '<?xml version="1.0" encoding="utf-8"?>'
+    '<d:propfind xmlns:d="DAV:"><d:prop><d:getetag/><d:resourcetype/></d:prop></d:propfind>'
+)
 
 CS = "http://calendarserver.org/ns/"
 
@@ -245,7 +256,19 @@ def etags_holen(zugang: Zugang, klient: httpx.Client | None = None) -> list[Fern
             headers={"depth": "1", "content-type": 'application/xml; charset="utf-8"'},
         )
         if antwort.status_code not in (207, 200):
-            logger.info("CardDAV REPORT %s answered %s.", zugang.url, antwort.status_code)
+            # Google: siehe ``_ETAGS_VERZEICHNIS``. Der Rückfall ist eine
+            # zweite Runde über das Netz, nur bei Servern ohne den REPORT.
+            logger.info(
+                "CardDAV REPORT %s answered %s; listing with PROPFIND instead.",
+                zugang.url, antwort.status_code,
+            )
+            antwort = _anfragen_karte(
+                klient, "PROPFIND", zugang.url,
+                content=_ETAGS_VERZEICHNIS.encode("utf-8"),
+                headers={"depth": "1", "content-type": 'application/xml; charset="utf-8"'},
+            )
+        if antwort.status_code not in (207, 200):
+            logger.info("CardDAV PROPFIND %s answered %s.", zugang.url, antwort.status_code)
             raise CarddavFehler("carddav_nicht_lesbar")
         baum = _baum(antwort)
 
