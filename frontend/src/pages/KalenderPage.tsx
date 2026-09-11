@@ -25,8 +25,10 @@ import {
   ChevronRight,
   Download,
   Link2,
+  Menu,
   Palette,
   PenLine,
+  Plus,
   RefreshCw,
   Search,
   Trash2,
@@ -53,6 +55,9 @@ import type { Beteiligter, KalenderZeile, TerminZeile, Umfang } from '../api/lad
 import type { Konto } from '../daten/typen'
 import { Button, Checkbox, Dialog, EmptyState, Input, Select } from '../ds'
 import { PUNKT_KLASSE } from '../lib/farben'
+import { useSchmal } from '../lib/haken'
+import { alsDatum, imTag } from '../lib/kalendertage'
+import { farbpunkte, monatsraster, nachTagen, tagesliste } from '../lib/kalenderschmal'
 import type { Wiederholung } from '../components/Wiederholungsfeld'
 import {
   LEERE_WIEDERHOLUNG,
@@ -262,7 +267,14 @@ export function KalenderPage() {
     weiter: (u: Umfang) => void
   } | null>(null)
 
-  const [von, bis] = useMemo(() => spanne(anker, sicht), [anker, sicht])
+  /* Schmal gibt es nur den Monat: Das Fenster folgt dann dem Monat, egal was
+     am Schreibtisch zuletzt gewählt war — sonst lüde die Telefonansicht die
+     Termine einer Woche und zeigte im Raster leere Tage. */
+  const schmal = useSchmal()
+  const [von, bis] = useMemo(
+    () => spanne(anker, schmal ? 'monat' : sicht),
+    [anker, sicht, schmal],
+  )
   const sichtbare = useMemo(
     () => (kalender ?? []).filter((k) => k.sichtbar).map((k) => k.id),
     [kalender],
@@ -367,6 +379,19 @@ export function KalenderPage() {
       melden(f)
     } finally {
       setGleichtAb(false)
+    }
+  }
+
+  /** Einen Kalender ein- oder ausblenden — Spalte am Schreibtisch und Schublade
+   *  am Telefon gehen denselben Weg. Sofort umschalten, damit der Haken nicht
+   *  hakt; die gezählte Wahrheit holt der nächste Abruf. */
+  async function sichtbarSetzen(k: KalenderZeile, an: boolean) {
+    setKalender((alt) => (alt ?? []).map((x) => (x.id === k.id ? { ...x, sichtbar: an } : x)))
+    try {
+      await kalenderAendern(k.id, { sichtbar: an })
+    } catch (f) {
+      melden(f)
+      await stammLaden()
     }
   }
 
@@ -583,6 +608,47 @@ export function KalenderPage() {
 
   return (
     <div className="flex min-h-0 flex-1">
+      {schmal ? (
+        <KalenderSchmal
+          anker={anker}
+          aufAnker={setAnker}
+          termine={termine}
+          kalender={kalender ?? []}
+          nachId={nachId}
+          leer={kalender !== null && kalender.length === 0}
+          aufTermin={setOffen}
+          aufNeu={(d) =>
+            setNeuAb({
+              beginn:
+                d.toDateString() === new Date().toDateString()
+                  ? naechsteVolleStunde()
+                  : mitTag(d, 9),
+              ganztaegig: false,
+            })
+          }
+          aufSichtbar={(k, an) => void sichtbarSetzen(k, an)}
+          aufKalenderNeu={() => setKalenderNeu(true)}
+          aufAbgleichen={() => void jetztAbgleichen()}
+          gleichtAb={gleichtAb}
+          wort={wort}
+          aufWort={setWort}
+          suchergebnis={
+            suche !== null ? (
+              <Trefferliste
+                treffer={suche.treffer}
+                abgeschnitten={suche.abgeschnitten}
+                kalender={nachId}
+                aufTermin={(termin) => {
+                  setAnker(new Date(termin.beginn))
+                  setOffen(termin)
+                  setWort('')
+                }}
+              />
+            ) : null
+          }
+        />
+      ) : (
+      <>
       {/* --- Die Kalenderspalte ------------------------------------------ */}
       <aside className="flex w-[240px] shrink-0 flex-col gap-4 border-r border-line-subtle bg-surface-1 p-3">
         <Button
@@ -620,21 +686,7 @@ export function KalenderPage() {
                 <Checkbox
                   label={k.name}
                   checked={k.sichtbar}
-                  onCheckedChange={(an) =>
-                    void (async () => {
-                      // Sofort umschalten, damit der Haken nicht hakt; die
-                      // gezählte Wahrheit holt der nächste Abruf.
-                      setKalender((alt) =>
-                        (alt ?? []).map((x) => (x.id === k.id ? { ...x, sichtbar: an } : x)),
-                      )
-                      try {
-                        await kalenderAendern(k.id, { sichtbar: an })
-                      } catch (f) {
-                        melden(f)
-                        await stammLaden()
-                      }
-                    })()
-                  }
+                  onCheckedChange={(an) => void sichtbarSetzen(k, an)}
                 />
               </span>
               {/* ⚠️ **Der Fehler steht am Kalender, nicht in einem Banner.**
@@ -787,6 +839,8 @@ export function KalenderPage() {
           />
         )}
       </div>
+      </>
+      )}
 
       {menue && (
         <Kontextmenue
@@ -1009,6 +1063,397 @@ function Trefferliste({
       {abgeschnitten && (
         <div className="px-4 py-2.5 text-[12px] text-fg-4">{t('kalender.suche_mehr')}</div>
       )}
+    </div>
+  )
+}
+
+/* --- Die schmale Ansicht (Telefon) --------------------------------------- */
+
+/** Der Kalender auf dem Telefon: der Monat als Raster mit Punkten und darunter
+ *  die Termine des angetippten Tages, oder die fortlaufende Terminübersicht.
+ *  Die Kalenderliste wohnt in einer Schublade wie die Ordner bei der Post,
+ *  „Neuer Termin" ist der runde Knopf unten rechts. Vorher als klickbare
+ *  Attrappe abgestimmt.
+ *
+ *  ⚠️ **Kein Wochen- und kein Tagesraster am Telefon.** Auf 375 px ist die
+ *  Stundenspalte die halbe Breite, und Ziehen gibt es am Finger ohnehin nicht
+ *  (siehe „Termine ziehen"). Die Uhrzeit steht in der Liste; wer sie ändern
+ *  will, öffnet den Termin.
+ *
+ *  ⚠️ **Der gewählte Tag hängt am Monat.** Wechselt der Monat über die Pfeile
+ *  oder „Heute", wandert er mit — sonst zeigte die Liste unten einen Tag, den
+ *  das Raster darüber nicht zeigt. Ein Tipp auf einen Tag des Nachbarmonats
+ *  wechselt den Monat gleich mit. */
+function KalenderSchmal({
+  anker,
+  aufAnker,
+  termine,
+  kalender,
+  nachId,
+  leer,
+  aufTermin,
+  aufNeu,
+  aufSichtbar,
+  aufKalenderNeu,
+  aufAbgleichen,
+  gleichtAb,
+  wort,
+  aufWort,
+  suchergebnis,
+}: {
+  anker: Date
+  aufAnker: (d: Date) => void
+  termine: TerminZeile[]
+  kalender: KalenderZeile[]
+  nachId: Map<string, KalenderZeile>
+  /** Es gibt noch gar keinen Kalender — dann steht die Einladung da. */
+  leer: boolean
+  aufTermin: (t: TerminZeile) => void
+  aufNeu: (tag: Date) => void
+  aufSichtbar: (k: KalenderZeile, an: boolean) => void
+  aufKalenderNeu: () => void
+  aufAbgleichen: () => void
+  gleichtAb: boolean
+  wort: string
+  aufWort: (w: string) => void
+  suchergebnis: React.ReactNode
+}) {
+  const { t, i18n } = useTranslation()
+  const [sicht, setSicht] = useState<'monat' | 'liste'>('monat')
+  const [gewaehlt, setGewaehlt] = useState(() => new Date(anker))
+  const [schublade, setSchublade] = useState(false)
+  const [suchtSichtbar, setSuchtSichtbar] = useState(false)
+
+  useEffect(() => {
+    setGewaehlt(new Date(anker))
+  }, [anker])
+
+  const heute = new Date()
+  const istHeute = (d: Date) => d.toDateString() === heute.toDateString()
+  const tage = monatsraster(anker)
+  const wochentage = tage
+    .slice(0, 7)
+    .map((d) => d.toLocaleDateString(i18n.language, { weekday: 'short' }))
+  const titel = anker.toLocaleDateString(i18n.language, { month: 'long', year: 'numeric' })
+  const langesDatum = (d: Date) =>
+    d.toLocaleDateString(i18n.language, {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+  const kurzesDatum = (d: Date) =>
+    d.toLocaleDateString(i18n.language, { weekday: 'short', day: 'numeric', month: 'short' })
+  const monatsanfang = new Date(anker.getFullYear(), anker.getMonth(), 1)
+  const naechsterMonat = new Date(anker.getFullYear(), anker.getMonth() + 1, 1)
+
+  /* ⚠️ Erst auf den Ersten, dann den Monat wechseln: Vom 31. aus überspränge
+     `setMonth` sonst einen Monat, der keinen 31. hat. */
+  function monatSchieben(richtung: number) {
+    const d = new Date(anker)
+    d.setDate(1)
+    d.setMonth(d.getMonth() + richtung)
+    aufAnker(d)
+  }
+
+  const zeile = (e: TerminZeile) => (
+    <button
+      key={`${e.id}-${e.beginn}`}
+      type="button"
+      onClick={() => aufTermin(e)}
+      className="grid w-full grid-cols-[56px_3px_1fr] gap-2.5 border-b border-line-subtle px-3.5 py-2 text-left transition-colors duration-[var(--dur-fast)] active:bg-surface-3"
+    >
+      <span className="pt-px text-[12.5px] leading-snug tabular-nums text-fg-3">
+        {e.ganztaegig ? (
+          <span className="text-[11px] tracking-[0.04em] uppercase">{t('kalender.ganztaegig')}</span>
+        ) : (
+          <>
+            {uhrzeit(e.beginn, i18n.language)}
+            <span className="block text-fg-4">{uhrzeit(e.ende, i18n.language)}</span>
+          </>
+        )}
+      </span>
+      <span
+        aria-hidden
+        className={`rounded-sm ${PUNKT_KLASSE[nachId.get(e.kalenderId)?.farbe ?? 1]}`}
+      />
+      <span className="min-w-0">
+        <span className="block truncate text-[14px] font-medium text-fg-1">{e.titel}</span>
+        {e.ort && <span className="block truncate text-[12.5px] text-fg-3">{e.ort}</span>}
+      </span>
+    </button>
+  )
+
+  const tagesTermine = tagesliste(termine, gewaehlt)
+  const uebersicht = nachTagen(termine, monatsanfang, naechsterMonat)
+
+  return (
+    /* ⚠️ `overflow-hidden` ist kein Schmuck: Die zugeschobene Schublade steht
+       um ihre Breite nach links versetzt und läge sonst über der NavRail —
+       unsichtbar, aber sie fing dort jeden Tipp ab. Dieselbe Zeile trägt die
+       Schublade der Post. */
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface-1">
+      {/* --- Der Kopf: Schublade, Monat, Pfeile, Heute, Suche, Ansicht ------- */}
+      <div className="shrink-0 border-b border-line-subtle px-1.5 pt-1 pb-2">
+        <div className="flex items-center gap-0.5">
+          <IconKnopf label={t('kalender.kalender_waehlen')} onClick={() => setSchublade(true)}>
+            <Menu />
+          </IconKnopf>
+          <IconKnopf label={t('kalender.zurueck')} onClick={() => monatSchieben(-1)}>
+            <ChevronLeft />
+          </IconKnopf>
+          <h1 className="min-w-0 flex-1 truncate px-1 font-display text-[16px] font-medium text-fg-1">
+            {titel}
+          </h1>
+          <IconKnopf label={t('kalender.vor')} onClick={() => monatSchieben(1)}>
+            <ChevronRight />
+          </IconKnopf>
+          <button
+            type="button"
+            onClick={() => aufAnker(new Date())}
+            className="rounded-md px-2 py-1.5 text-[12.5px] font-medium text-accent-text hover:bg-accent-soft"
+          >
+            {t('kalender.heute')}
+          </button>
+          <IconKnopf label={t('kalender.suchen')} onClick={() => setSuchtSichtbar((v) => !v)}>
+            <Search />
+          </IconKnopf>
+        </div>
+        <div className="mt-1.5 flex items-center gap-2 px-1.5">
+          <div className="flex shrink-0 rounded-pill border border-line bg-surface-2 p-0.5">
+            {(['monat', 'liste'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                aria-pressed={sicht === s}
+                onClick={() => setSicht(s)}
+                className={
+                  'rounded-pill px-3 py-1 text-[12px] font-medium transition-colors duration-[var(--dur-fast)] ' +
+                  (sicht === s ? 'bg-accent text-on-accent' : 'text-fg-3 hover:bg-surface-3 hover:text-fg-1')
+                }
+              >
+                {t(`kalender.sicht_${s}`)}
+              </button>
+            ))}
+          </div>
+          {kalender.some((k) => k.art) && (
+            <span className="ml-auto">
+              <IconKnopf
+                label={gleichtAb ? t('kalender.abgleich_laeuft') : t('kalender.abgleichen')}
+                onClick={aufAbgleichen}
+              >
+                <RefreshCw className={gleichtAb ? 'animate-spin' : undefined} />
+              </IconKnopf>
+            </span>
+          )}
+        </div>
+        {(suchtSichtbar || wort) && (
+          <div className="relative mt-2 px-1.5">
+            <Search
+              aria-hidden
+              className="pointer-events-none absolute top-1/2 left-4 size-3.5 -translate-y-1/2 text-fg-4"
+            />
+            <input
+              type="search"
+              value={wort}
+              autoFocus
+              onChange={(e) => aufWort(e.target.value)}
+              placeholder={t('kalender.suchen')}
+              aria-label={t('kalender.suchen')}
+              className="fokusrahmen h-[var(--control-h-sm)] w-full rounded-md border border-line bg-surface-3 pr-2 pl-8 text-[14px] text-fg-1 outline-none placeholder:text-fg-4 focus:border-accent"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* --- Der Inhalt --------------------------------------------------- */}
+      {suchergebnis ? (
+        suchergebnis
+      ) : leer ? (
+        <div className="flex flex-1 items-center justify-center p-6">
+          <EmptyState
+            title={t('kalender.leer')}
+            description={t('kalender.leer_text')}
+            action={
+              <Button variant="primary" onClick={aufKalenderNeu}>
+                {t('kalender.hinzufuegen')}
+              </Button>
+            }
+          />
+        </div>
+      ) : sicht === 'monat' ? (
+        <div className="min-h-0 flex-1 overflow-y-auto pb-20">
+          <div className="grid grid-cols-7 px-1 pt-1.5 text-center text-[11px] tracking-[0.04em] text-fg-4 uppercase">
+            {wochentage.map((w) => (
+              <span key={w}>{w}</span>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-0.5 px-1 pb-1.5">
+            {tage.map((d) => {
+              const fremd = d.getMonth() !== anker.getMonth()
+              const gew = d.toDateString() === gewaehlt.toDateString()
+              const punkte = farbpunkte(termine, d)
+              return (
+                <button
+                  key={alsDatum(d)}
+                  type="button"
+                  aria-pressed={gew}
+                  aria-label={langesDatum(d)}
+                  onClick={() => {
+                    setGewaehlt(d)
+                    if (fremd) aufAnker(d)
+                  }}
+                  className="flex min-h-[50px] flex-col items-center gap-1 rounded-lg pt-1.5 pb-1 transition-colors duration-[var(--dur-fast)] active:bg-surface-3"
+                >
+                  <span
+                    className={
+                      'flex size-[26px] items-center justify-center rounded-pill text-[13.5px] tabular-nums ' +
+                      (gew
+                        ? 'bg-accent font-semibold text-on-accent'
+                        : istHeute(d)
+                          ? 'font-semibold text-accent-text ring-1 ring-accent ring-inset'
+                          : fremd
+                            ? 'text-fg-4'
+                            : 'text-fg-1')
+                    }
+                  >
+                    {d.getDate()}
+                  </span>
+                  <span className="flex h-1.5 gap-[3px]">
+                    {punkte.map((id) => (
+                      <span
+                        key={id}
+                        aria-hidden
+                        className={`size-1.5 rounded-pill ${PUNKT_KLASSE[nachId.get(id)?.farbe ?? 1]}`}
+                      />
+                    ))}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="border-t border-line-subtle">
+            <div className="sticky top-0 z-[1] bg-surface-2/95 px-3.5 py-1.5 text-[11px] font-semibold tracking-[0.06em] text-fg-4 uppercase backdrop-blur-sm">
+              {istHeute(gewaehlt) && (
+                <span className="text-accent-text">{t('kalender.heute')} · </span>
+              )}
+              {langesDatum(gewaehlt)}
+            </div>
+            {tagesTermine.length === 0 ? (
+              <div className="px-3.5 py-4 text-[13px] text-fg-3">
+                {t('kalender.kein_termin_tag')}{' '}
+                <button
+                  type="button"
+                  onClick={() => aufNeu(gewaehlt)}
+                  className="font-medium text-accent-text underline underline-offset-2"
+                >
+                  {t('kalender.termin_hier')}
+                </button>
+              </div>
+            ) : (
+              tagesTermine.map(zeile)
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto pb-20">
+          {uebersicht.length === 0 ? (
+            <div className="px-3.5 py-6 text-[13px] text-fg-3">{t('kalender.keine_termine_monat')}</div>
+          ) : (
+            uebersicht.map(({ tag, termine: drin }) => (
+              <div key={alsDatum(tag)}>
+                <div className="sticky top-0 z-[1] flex items-baseline gap-2 bg-surface-2/95 px-3.5 py-1.5 backdrop-blur-sm">
+                  <span
+                    className={
+                      'text-[14px] font-semibold ' + (istHeute(tag) ? 'text-accent-text' : 'text-fg-1')
+                    }
+                  >
+                    {kurzesDatum(tag)}
+                  </span>
+                  {istHeute(tag) && (
+                    <span className="text-[11px] font-semibold tracking-[0.06em] text-accent-text uppercase">
+                      {t('kalender.heute')}
+                    </span>
+                  )}
+                </div>
+                {drin.map(zeile)}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* --- Neuer Termin: der runde Knopf in Daumennähe ------------------- */}
+      {!leer && kalender.some((k) => !k.nurLesen) && (
+        <button
+          type="button"
+          aria-label={t('kalender.neuer_termin')}
+          onClick={() => aufNeu(gewaehlt)}
+          className="absolute right-4 bottom-4 z-10 flex size-[52px] items-center justify-center rounded-2xl bg-accent text-on-accent shadow-[var(--shadow-3)] transition-transform duration-[var(--dur-fast)] active:scale-95"
+        >
+          <Plus className="size-6" />
+        </button>
+      )}
+
+      {/* --- Die Schublade mit den Kalendern ------------------------------- */}
+      <div
+        hidden={!schublade}
+        className="absolute inset-0 z-40 bg-[var(--surface-overlay)]"
+        onClick={() => setSchublade(false)}
+      />
+      <aside
+        className={
+          'absolute inset-y-0 left-0 z-40 flex w-[280px] max-w-[85vw] flex-col border-r border-line bg-surface-1 ' +
+          'shadow-[var(--shadow-3)] transition-transform duration-[var(--dur-mid)] ' +
+          (schublade ? 'translate-x-0' : '-translate-x-full')
+        }
+        aria-hidden={!schublade}
+      >
+        <div className="flex h-10 shrink-0 items-center justify-between border-b border-line-subtle px-2">
+          <span className="px-1 text-[11px] font-semibold tracking-wide text-fg-4 uppercase">
+            {t('kalender.meine')}
+          </span>
+          <IconKnopf label={t('aktion.schliessen')} onClick={() => setSchublade(false)}>
+            <X />
+          </IconKnopf>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          {kalender.map((k) => (
+            <div key={k.id} className="flex items-center gap-2 rounded-md px-1 py-2">
+              <span aria-hidden className={`size-2.5 shrink-0 rounded-sm ${PUNKT_KLASSE[k.farbe]}`} />
+              <span className="min-w-0 flex-1 truncate text-[14px]">
+                <Checkbox
+                  label={k.name}
+                  checked={k.sichtbar}
+                  onCheckedChange={(an) => aufSichtbar(k, an)}
+                />
+              </span>
+              {k.letzterFehler ? (
+                <AlertTriangle aria-hidden className="size-3.5 shrink-0 text-warning" />
+              ) : (
+                k.art && <Link2 aria-hidden className="size-3.5 shrink-0 text-fg-4" />
+              )}
+            </div>
+          ))}
+          <Button
+            variant="ghost"
+            size="sm"
+            fullWidth
+            onClick={() => {
+              setSchublade(false)
+              aufKalenderNeu()
+            }}
+          >
+            {t('kalender.hinzufuegen')}
+          </Button>
+          {kalender.some((k) => k.nurLesen) && (
+            <p className="mt-3 px-1 text-[11px] leading-relaxed text-fg-4">
+              {t('kalender.nur_lesen_hinweis')}
+            </p>
+          )}
+        </div>
+      </aside>
     </div>
   )
 }
@@ -1982,38 +2427,9 @@ function spanne(anker: Date, sicht: Sicht): [Date, Date] {
   return [von, bis]
 }
 
-/** Liegt der Termin an diesem Tag? Ganztägige spannen über mehrere. */
-function imTag(e: TerminZeile, d: Date): boolean {
-  /* ⚠️ **Ein ganztägiger Termin ist ein DATUM, kein Zeitpunkt.**
-   *
-   * Er steht als UTC-Mitternacht in der Datenbank (`2026-09-14T00:00:00Z` bis
-   * `2026-09-15T00:00:00Z`, das Ende ausschließend). `new Date(...)` macht
-   * daraus in Berlin den 14. um **02:00** und das Ende am 15. um 02:00 — und
-   * damit ragt der Termin in den 15. hinein. Genau so gemeldet am 03.09.2026:
-   * „Der Termin wird mir in Google für den 14. angezeigt, in nexmail steht er
-   * von 14–15."
-   *
-   * Westlich von Greenwich wäre es andersherum: Dort begänne er am 13.
-   * Verglichen wird deshalb der **Kalendertag**, nie eine Ortszeit. */
-  if (e.ganztaegig) {
-    const tag = alsDatum(d)
-    return e.beginn.slice(0, 10) <= tag && tag < e.ende.slice(0, 10)
-  }
-  const a = new Date(e.beginn)
-  const b = new Date(e.ende)
-  const tagAnfang = new Date(d)
-  tagAnfang.setHours(0, 0, 0, 0)
-  const tagEnde = new Date(tagAnfang)
-  tagEnde.setDate(tagEnde.getDate() + 1)
-  return a < tagEnde && b > tagAnfang
-}
-
-/** Der Kalendertag als `JJJJ-MM-TT` — aus den örtlichen Feldern, nicht über
- *  `toISOString()`: Das rechnete erst nach UTC um und verschöbe den Tag. */
-function alsDatum(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
+/* `imTag` und `alsDatum` wohnen seit der schmalen Ansicht in
+   `lib/kalendertage.ts` — dort rechnet die Telefonansicht ohne Browser damit,
+   und zwei Kopien liefen auseinander. */
 
 function uhrzeit(iso: string, sprache: string): string {
   return new Date(iso).toLocaleTimeString(sprache, { hour: '2-digit', minute: '2-digit' })
