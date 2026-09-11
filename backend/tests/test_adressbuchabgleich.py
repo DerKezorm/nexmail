@@ -80,6 +80,9 @@ class Buchserver:
         self.etag_im_kopf = True
         #: Wahr heisst: Der Server nimmt kein PUT und kein DELETE an (405).
         self.nur_lesen = False
+        #: Einzelne Pfade, deren PUT mit 500 scheitert — eine abgelehnte Karte
+        #: zwischen angenommenen, wie ein Anbieter mit Launen.
+        self.verweigert: set[str] = set()
         #: Wie Google: ``addressbook-query`` gibt 400, gelistet wird mit
         #: ``PROPFIND`` und ``Depth: 1``.
         self.kein_report = False
@@ -103,6 +106,8 @@ class Buchserver:
             # ⚠️ So zickig wie iCloud: ``If-Match`` muss zum ETag passen,
             # ``If-None-Match: *`` scheitert an einer vorhandenen Karte.
             pfad = unquote(pfad)
+            if pfad in self.verweigert:
+                return httpx.Response(500)
             vorhanden = self.karten.get(pfad)
             wenn = a.headers.get("if-match", "").strip('"')
             keins = a.headers.get("if-none-match", "")

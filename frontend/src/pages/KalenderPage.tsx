@@ -26,14 +26,15 @@ import {
   Download,
   Link2,
   Menu,
+  MoreHorizontal,
   Palette,
   PenLine,
   Plus,
   RefreshCw,
   Search,
   Trash2,
-  Upload,
   Unlink,
+  Upload,
   X,
 } from 'lucide-react'
 import { ApiFehler } from '../api/client'
@@ -67,6 +68,7 @@ import {
 import { Kalendereinfuhr } from '../components/Kalendereinfuhr'
 import { Konfliktfenster } from '../components/Konfliktfenster'
 import { Kalenderfenster } from '../components/Kalenderfenster'
+import { Aktionsblatt } from '../components/Aktionsblatt'
 import { Kontextmenue } from '../components/Kontextmenue'
 import type { MenueEintrag } from '../components/Kontextmenue'
 import { useNachfrage } from '../components/Nachfrage'
@@ -627,6 +629,7 @@ export function KalenderPage() {
             })
           }
           aufSichtbar={(k, an) => void sichtbarSetzen(k, an)}
+          kalenderEintraege={kalenderMenue}
           aufKalenderNeu={() => setKalenderNeu(true)}
           aufAbgleichen={() => void jetztAbgleichen()}
           gleichtAb={gleichtAb}
@@ -1094,6 +1097,7 @@ function KalenderSchmal({
   aufTermin,
   aufNeu,
   aufSichtbar,
+  kalenderEintraege,
   aufKalenderNeu,
   aufAbgleichen,
   gleichtAb,
@@ -1111,6 +1115,11 @@ function KalenderSchmal({
   aufTermin: (t: TerminZeile) => void
   aufNeu: (tag: Date) => void
   aufSichtbar: (k: KalenderZeile, an: boolean) => void
+  /** ⚠️ Dieselben Einträge wie im Kontextmenü am Schreibtisch — eine Quelle,
+      zwei Formen, wie beim Aktionsblatt der Post. Am Telefon gibt es keinen
+      Rechtsklick; ohne den Knopf gab es umbenennen, Farbe, ICS und trennen
+      dort gar nicht (0.12.0). */
+  kalenderEintraege: (k: KalenderZeile) => MenueEintrag[]
   aufKalenderNeu: () => void
   aufAbgleichen: () => void
   gleichtAb: boolean
@@ -1123,6 +1132,8 @@ function KalenderSchmal({
   const [gewaehlt, setGewaehlt] = useState(() => new Date(anker))
   const [schublade, setSchublade] = useState(false)
   const [suchtSichtbar, setSuchtSichtbar] = useState(false)
+  /* Der Kalender, dessen Menü als Blatt offen ist. */
+  const [blatt, setBlatt] = useState<KalenderZeile | null>(null)
 
   useEffect(() => {
     setGewaehlt(new Date(anker))
@@ -1434,6 +1445,9 @@ function KalenderSchmal({
               ) : (
                 k.art && <Link2 aria-hidden className="size-3.5 shrink-0 text-fg-4" />
               )}
+              <IconKnopf label={t('kalender.mehr_zu', { name: k.name })} onClick={() => setBlatt(k)}>
+                <MoreHorizontal />
+              </IconKnopf>
             </div>
           ))}
           <Button
@@ -1454,6 +1468,17 @@ function KalenderSchmal({
           )}
         </div>
       </aside>
+
+      {/* Das Menü eines Kalenders, als Blatt von unten; die Rückfragen dahinter
+          (umbenennen, entfernen) gehören der Seite und stehen über allem. */}
+      {blatt && (
+        <Aktionsblatt
+          titel={blatt.name}
+          eintraege={kalenderEintraege(blatt)}
+          aufSchliessen={() => setBlatt(null)}
+          nachHandlung={() => setSchublade(false)}
+        />
+      )}
     </div>
   )
 }

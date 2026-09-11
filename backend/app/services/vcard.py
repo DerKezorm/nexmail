@@ -36,6 +36,8 @@ beim Kalender und wird von dort geholt, eine Kopie liefe auseinander.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 import uuid
 from datetime import datetime, timezone
@@ -889,3 +891,66 @@ def aktualisieren(roh: str, felder: dict, uid: str = "", uid_ergaenzen: bool = T
 def neu_bauen(felder: dict, uid: str = "") -> str:
     """Eine frische Karte aus den Feldern."""
     return aktualisieren("", felder, uid)
+
+
+# --- Das Foto --------------------------------------------------------------- #
+
+_BILDTYPEN = {"jpeg": "image/jpeg", "jpg": "image/jpeg", "png": "image/png", "gif": "image/gif", "webp": "image/webp"}
+
+
+def hat_foto(roh: str) -> bool:
+    """Ob die Karte ein eingebettetes Foto traegt — billig, ohne zu dekodieren."""
+    return any(_name_von(z) == "PHOTO" and z.split(":", 1)[1].strip() for z in entfalten(roh)) if roh else False
+
+
+def foto_lesen(roh: str) -> tuple[bytes, str] | None:
+    """Das eingebettete Foto einer Karte: die Bytes und ihr Medientyp.
+
+    ⚠️ **Nur eingebettet, nie nachgeladen.** Apple legt das Bild als Base64
+    in die Karte (``PHOTO;ENCODING=b;TYPE=JPEG:``, vCard 3), vCard 4 als
+    ``data:``-Adresse. Eine Karte kann stattdessen eine Web-Adresse tragen;
+    die wird nicht geholt — nexmail funkt beim Oeffnen eines Kontakts nirgends
+    hin, aus demselben Grund, aus dem es Bilder in fremder Post nicht laedt.
+    Ein kaputtes Bild (Base64 mit Fehlern) gilt als keines.
+    """
+    for zeile in entfalten(roh or ""):
+        z = _zerlegen(zeile)
+        if z is None or z[1] != "PHOTO":
+            continue
+        _, _, params, wert = z
+        wert = wert.strip()
+        if not wert:
+            continue
+        typ = ""
+        kodiert = False
+        for p in params:
+            schluessel, _, w = p.partition("=")
+            schluessel = schluessel.strip().upper()
+            w = w.strip().strip('"').lower()
+            if schluessel == "TYPE":
+                typ = w.split("/")[-1]
+            elif schluessel == "ENCODING" and w in ("b", "base64"):
+                kodiert = True
+            elif not w and schluessel.lower() in ("base64",):
+                kodiert = True
+        daten = wert
+        if wert.lower().startswith("data:"):
+            kopf, _, daten = wert.partition(",")
+            if ";base64" not in kopf.lower():
+                return None
+            typ = kopf[5:].split(";")[0].split("/")[-1] or typ
+            kodiert = True
+        if not kodiert:
+            return None  # eine Adresse, kein Bild
+        # Manche Karten lassen die Auffuellung am Ende weg; nachgeholt ist sie
+        # billig, ein abgewiesenes Foto nicht.
+        glatt = "".join(daten.split())
+        glatt += "=" * (-len(glatt) % 4)
+        try:
+            bild = base64.b64decode(glatt, validate=False)
+        except (binascii.Error, ValueError):
+            return None
+        if not bild:
+            return None
+        return bild, _BILDTYPEN.get(typ, "image/jpeg" if bild[:3] == b"\xff\xd8\xff" else "image/png" if bild[:4] == b"\x89PNG" else "application/octet-stream")
+    return None

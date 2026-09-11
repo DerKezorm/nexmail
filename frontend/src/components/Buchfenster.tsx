@@ -15,7 +15,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ApiFehler, api } from '../api/client'
-import { Badge, Button, Checkbox, Dialog, Input, Select } from '../ds'
+import { Button, Checkbox, Dialog, Input, Select } from '../ds'
 
 export interface GefundenesBuch {
   url: string
@@ -128,12 +128,7 @@ export function Buchfenster({ onClose, onFertig }: Props) {
     <Dialog
       open
       width={540}
-      title={
-        <span className="flex items-center gap-2">
-          {t('kontakte.buch_verbinden')}
-          <Badge tone="warning">{t('kontakte.beta')}</Badge>
-        </span>
-      }
+      title={t('kontakte.buch_verbinden')}
       onClose={onClose}
       footer={
         <>
@@ -152,7 +147,9 @@ export function Buchfenster({ onClose, onFertig }: Props) {
       }
     >
       <div className="flex flex-col gap-3">
-        {/* ⚠️ Der eine Satz, auf dem die Beta ruht: nexmail liest nur. */}
+        {/* ⚠️ Was gemessen ist und was nicht, steht hier, nicht in einer
+            README: iCloud und Google lesen und schreiben; ungemessen sind
+            bei Google eigene Beschriftungen und der Konfliktfall. */}
         <p className="text-[12px] leading-relaxed text-fg-4">{t('kontakte.buch_verbinden_text')}</p>
 
         <Select

@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import select
 
 from app.models import Adressbuch, Benutzer, Kontakt, Kontaktgruppe, KontaktgruppeMitglied, OauthZugang
-from app.services import adressbuchabgleich, carddav, kalenderabgleich, mailoauth, takt
+from app.services import adressbuchabgleich, carddav, kalenderabgleich, kontaktvorgang, mailoauth, takt
 from app.services import kontakte as kontaktdienst
 from conftest import einrichten
 from test_adressbuchabgleich import BUCH, PFAD, VOLL, Buchserver, _karte
@@ -321,6 +321,20 @@ def test_die_fremde_fassung_traegt_die_listen(klient, db, welt):
         ("+49 170 1", "cell", True), ("030 2", "home", False),
     ]
     assert (bild["fremd"]["vorname"], bild["fremd"]["nachname"]) == ("Vera", "Telefon")
+
+
+def test_das_foto_der_karte_kommt_als_bild(klient, welt):
+    person, server = welt
+    _verbinden(klient)
+    (kontakt,) = klient.get("/api/kontakte").json()
+    assert kontakt["hat_foto"] is True
+    antwort = klient.get(f"/api/kontakte/{kontakt['id']}/foto")
+    assert antwort.status_code == 200
+    assert antwort.headers["content-type"].startswith("image/")
+    assert antwort.content.startswith(b"\xff\xd8\xff")
+    ohne = klient.post("/api/kontakte", json={"vorname": "Jonas", "adresse": "jonas@example.org"}).json()
+    assert ohne["hat_foto"] is False
+    assert klient.get(f"/api/kontakte/{ohne['id']}/foto").status_code == 404
 
 
 def test_loeschen_nimmt_die_karte_beim_anbieter_mit_if_match(klient, db, welt):
@@ -663,3 +677,108 @@ def test_eine_zweite_karte_kommt_beim_abgleich_dazu(klient, welt):
 
     assert bericht["neu"] == 1
     assert [b["kontakte"] for b in klient.get("/api/adressbuecher").json() if b["id"] == buch["id"]] == [2]
+
+
+# --- vCard in ein verbundenes Buch ------------------------------------------ #
+
+DATEI = (
+    "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:neu-1\r\nFN:Jonas Keller\r\nN:Keller;Jonas;;;\r\n"
+    "EMAIL;TYPE=INTERNET:jonas@example.org\r\nTEL;TYPE=CELL:0170 1\r\n"
+    "PHOTO;ENCODING=b;TYPE=JPEG:/9j/4AAQSkZJRg\r\nEND:VCARD\r\n"
+    "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Vera Anders\r\nEMAIL:vera@example.org\r\nEND:VCARD\r\n"
+    "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Werkstatt\r\nTEL:030 9\r\nEND:VCARD\r\n"
+)
+
+
+def _einlesen(klient, buch_id: str, inhalt: str = DATEI):
+    antwort = klient.post(
+        "/api/kontakte/vcard",
+        files={"datei": ("kontakte.vcf", inhalt.encode("utf-8"), "text/vcard")},
+        data={"adressbuch_id": buch_id},
+    )
+    assert antwort.status_code == 200, antwort.text
+    return antwort.json()
+
+
+def _abwarten(klient, kennung: str) -> dict:
+    """Den Faden des Vorgangs abwarten — im Betrieb fragt die Oberflaeche den
+    Stand ab, im Test wartet man auf das Ende."""
+    for v in list(kontaktvorgang._VORGAENGE.values()):
+        if v.id == kennung and v.faden is not None:
+            v.faden.join(10)
+    stand = klient.get(f"/api/kontakte/vcard/vorgang/{kennung}").json()
+    assert stand["laeuft"] is False, stand
+    return stand
+
+
+def test_eine_datei_in_ein_verbundenes_buch_geht_karte_fuer_karte_zum_anbieter(klient, db, welt):
+    """⚠️ Erst der Server, dann die Datenbank — je Karte, in einem eigenen
+    Faden mit Stand. Was es schon gibt (Veras Adresse), wird uebersprungen,
+    nicht ergaenzt; die neue Karte geht als Original hinaus, Foto inklusive."""
+    person, server = welt
+    buch = _verbinden(klient)
+
+    antwort = _einlesen(klient, buch["id"])
+    assert antwort["neu"] == 0 and antwort["vorgang"]["laeuft"] in (True, False)
+    stand = _abwarten(klient, antwort["vorgang"]["id"])
+    assert (stand["gesamt"], stand["neu"], stand["uebersprungen"], stand["fehler_gesamt"]) == (3, 2, 1, 0)
+    assert stand["fehler_satz"] == "" and stand["abgebrochen"] is False
+
+    puts = [(i, a) for i, a in enumerate(server.anfragen) if a[0] == "PUT"]
+    assert len(puts) == 2
+    assert all(server.koepfe[i].get("if-none-match") == "*" for i, _ in puts)
+    assert len(server.karten) == 3
+    jonas = next(k for _, k in server.karten.values() if "FN:Jonas Keller" in k)
+    assert "PHOTO;ENCODING=b;TYPE=JPEG:/9j/4AAQSkZJRg" in jonas and "UID:neu-1" in jonas
+    zeilen = {z["name"]: z for z in klient.get("/api/kontakte").json()}
+    assert zeilen["Jonas Keller"]["adressbuch_id"] == buch["id"] and zeilen["Jonas Keller"]["hat_foto"]
+    assert zeilen["Werkstatt"]["adressbuch_id"] == buch["id"]
+    assert zeilen["Vera Beispiel"]["adresse"] == "vera@example.org"
+    # Ein zweiter Anlauf mit derselben Datei legt nichts doppelt an.
+    zweite = _abwarten(klient, _einlesen(klient, buch["id"])["vorgang"]["id"])
+    assert (zweite["neu"], zweite["uebersprungen"]) == (0, 3)
+    assert len(server.karten) == 3
+
+
+def test_was_der_anbieter_ablehnt_zaehlt_als_fehler_und_haelt_nicht_an(klient, db, welt):
+    person, server = welt
+    buch = _verbinden(klient)
+    server.nur_lesen = True
+    stand = _abwarten(klient, _einlesen(klient, buch["id"])["vorgang"]["id"])
+    assert (stand["neu"], stand["fehler_gesamt"]) == (0, 2)
+    assert stand["fehler"] == ["carddav_schreiben_gescheitert", "carddav_schreiben_gescheitert"]
+    assert stand["fehler_satz"] == ""
+    assert db.query(Kontakt).count() == 1, "Eine abgelehnte Karte hinterliess eine Zeile."
+
+
+def test_eine_karte_die_drueben_schon_liegt_ist_ein_ueberspringen(klient, db, welt):
+    """Gleiche UID wie eine Karte im Buch, andere Adresse: Der Anbieter sagt 412
+    auf If-None-Match, und das ist kein Fehler."""
+    person, server = welt
+    buch = _verbinden(klient)
+    datei = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:k1\r\nFN:Vera Zweit\r\nEMAIL:vera2@example.org\r\nEND:VCARD\r\n"
+    stand = _abwarten(klient, _einlesen(klient, buch["id"], datei)["vorgang"]["id"])
+    assert (stand["neu"], stand["uebersprungen"], stand["fehler_gesamt"]) == (0, 1, 0)
+    assert db.query(Kontakt).count() == 1
+
+
+def test_ins_lokale_buch_bleibt_der_import_wie_bisher(klient, db, welt):
+    lokal = next(b for b in klient.get("/api/adressbuecher").json() if b["ist_lokal"])
+    antwort = _einlesen(klient, lokal["id"])
+    assert antwort["vorgang"] is None and antwort["neu"] == 3
+    assert not any(a[0] == "PUT" for a in welt[1].anfragen)
+
+
+def test_eine_abgelehnte_karte_reisst_nicht_mit_der_naechsten_in_die_datenbank(klient, db, welt):
+    """⚠️ Rollback je Karte. Ohne ihn bliebe die Zeile der abgelehnten Karte in
+    der Sitzung liegen, und der Commit der naechsten, angenommenen Karte
+    naehme sie mit — eine Zeile hier, keine Karte druebem. Die Probe „Rollback
+    weg" lief zuerst durch, weil alle Karten der Datei abgelehnt wurden."""
+    person, server = welt
+    buch = _verbinden(klient)
+    server.verweigert.add(f"{PFAD}neu-1.vcf")
+    stand = _abwarten(klient, _einlesen(klient, buch["id"])["vorgang"]["id"])
+    assert (stand["neu"], stand["uebersprungen"], stand["fehler_gesamt"]) == (1, 1, 1)
+    zeilen = {z["name"] for z in klient.get("/api/kontakte").json()}
+    assert "Werkstatt" in zeilen and "Jonas Keller" not in zeilen
+    assert db.query(Kontakt).count() == 2

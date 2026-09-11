@@ -795,23 +795,83 @@ def aus_vcard(db: Session, person: Benutzer, inhalt: str) -> dict[str, int]:
     """
     neu = 0
     ergaenzt = 0
-    karte: list[str] = []
-    for zeile in entfalten(inhalt):
-        oben = zeile.strip().upper()
-        if oben == "BEGIN:VCARD":
-            karte = []
-            continue
-        if oben == "END:VCARD":
-            stand = _uebernehmen(db, person, felder_aus_vcard("\n".join(karte)), karte)
-            neu += stand == "neu"
-            ergaenzt += stand == "ergaenzt"
-            karte = []
-            continue
-        karte.append(zeile)
+    for felder, karte in karten_aus_datei(inhalt):
+        stand = _uebernehmen(db, person, felder, karte)
+        neu += stand == "neu"
+        ergaenzt += stand == "ergaenzt"
 
     db.commit()
     logger.info("vCard import: %s new, %s updated.", neu, ergaenzt)
     return {"neu": neu, "ergaenzt": ergaenzt}
+
+
+def karten_aus_datei(inhalt: str) -> list[tuple[dict, list[str]]]:
+    """Die Karten einer Datei: je der gelesene Feldersatz und die Zeilen der
+    Karte (fuer ``roh``). Zeilen ausserhalb von BEGIN und END werden uebergangen."""
+    karten: list[tuple[dict, list[str]]] = []
+    karte: list[str] = []
+    drin = False
+    for zeile in entfalten(inhalt):
+        oben = zeile.strip().upper()
+        if oben == "BEGIN:VCARD":
+            karte = []
+            drin = True
+            continue
+        if oben == "END:VCARD":
+            if drin:
+                karten.append((felder_aus_vcard("\n".join(karte)), karte))
+            karte = []
+            drin = False
+            continue
+        if drin:
+            karte.append(zeile)
+    return karten
+
+
+def in_buch_einlesen(
+    db: Session, person: Benutzer, buch: Adressbuch, felder: dict, karte: list[str], klient=None
+) -> str:
+    """Eine Karte aus einer Datei in ein verbundenes Buch: erst zum Anbieter,
+    dann in die eigene Datenbank. Gibt ``neu`` oder ``uebersprungen``.
+
+    ⚠️ **Was es schon gibt, wird uebersprungen, nicht ergaenzt** — anders als
+    beim lokalen Import. Ein Eintrag in einem verbundenen Buch ist die Karte
+    des Anbieters; sie aus einer Datei zu „ergaenzen" hiesse, sie drueben zu
+    aendern, und das hat niemand gewollt, der eine Datei einliest. Erkannt
+    wird an der Adresse (je Benutzer, ueber alle Buecher), ohne Adresse an
+    UID oder Name samt Nummer.
+
+    ⚠️ **Die Karte geht als Original hinaus.** ``roh`` ist die eingelesene
+    Karte; der Zeilen-Editor legt nexmails Felder darauf, Foto und alles
+    andere gehen mit — wie beim Verschieben.
+    """
+    from . import adressbuchabgleich
+
+    roh = "BEGIN:VCARD\r\n" + "\r\n".join(karte) + "\r\nEND:VCARD\r\n" if karte else ""
+    neu = felder_pruefen_lose(felder)
+    if not (neu["adresse"] or neu["name"] or neu["telefon"] or neu["firma"]):
+        return "uebersprungen"
+    if neu["adresse"]:
+        vorhanden = db.scalar(
+            select(Kontakt).where(Kontakt.benutzer_id == person.id, Kontakt.adresse == neu["adresse"])
+        )
+    else:
+        vorhanden = _ohne_adresse_wiedererkennen(db, person, felder.get("uid", ""), neu["name"], neu["telefon"])
+    if vorhanden is not None:
+        return "uebersprungen"
+    eintrag = Kontakt(
+        benutzer_id=person.id,
+        quelle="hand",
+        adressbuch_id=buch.id,
+        uid=felder.get("uid", "")[:255],
+        roh=roh,
+    )
+    felder_anwenden(eintrag, neu)
+    db.add(eintrag)
+    db.flush()
+    adressbuchabgleich.hochschieben(db, eintrag, klient=klient)
+    db.commit()
+    return "neu"
 
 
 def _uebernehmen(
@@ -954,6 +1014,8 @@ __all__ = [
     "gruppe_entfernen",
     "gruppe_umbenennen",
     "gruppen",
+    "in_buch_einlesen",
+    "karten_aus_datei",
     "meine",
     "mitglieder_setzen",
     "mitgliedschaften_loesen",

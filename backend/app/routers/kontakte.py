@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Response, UploadFile, status
+from typing import Annotated
+
+from fastapi import APIRouter, Form, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, Field
 
 from ..deps import AngemeldeterBenutzer, DbSession
+from ..services import adressbuecher, kontaktvorgang
 from ..services import kontakte as kontaktdienst
+from ..services import vcard
 from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.kontakte")
@@ -94,6 +98,10 @@ class Zeile(BaseModel):
     anschriften: list[Anschrift] = Field(default_factory=list)
     #: Nur bei Kontakten aus verbundenen Büchern, aus der Rohkarte gelesen.
     weiteres: list[Weiteres] = Field(default_factory=list)
+    #: Die Karte traegt ein eingebettetes Foto; die Oberflaeche holt es ueber
+    #: ``GET …/{id}/foto``. Nicht in der Zeile selbst: 185 Karten mit je
+    #: 100 kB Base64 waeren eine Listenantwort von 18 MB.
+    hat_foto: bool = False
 
 
 def _verbundene(db, person) -> set[str]:
@@ -171,6 +179,7 @@ def _zeile_aus_felder(k, felder: dict, weiteres: list[dict]) -> Zeile:
         adressen=[Adresse.model_validate(a) for a in felder.get("adressen", [])],
         anschriften=[Anschrift.model_validate(a) for a in felder.get("anschriften", [])],
         weiteres=[Weiteres.model_validate(w) for w in weiteres],
+        hat_foto=vcard.hat_foto(k.roh),
     )
 
 
@@ -377,6 +386,85 @@ def konflikt_aufloesen(kontakt_id: int, person: AngemeldeterBenutzer, db: DbSess
     return _zeile(eintrag, _verbundene(db, person))
 
 
+# --- vCard in ein verbundenes Buch: ein Vorgang mit Fortschritt --------------- #
+# ⚠️ Diese Regeln stehen VOR ``/{kontakt_id}/…``: FastAPI nimmt die erste
+# passende, und ``/vcard/vorgang`` saehe sonst aus wie eine kaputte Zahl.
+
+
+class Vorgangsstand(BaseModel):
+    id: str
+    dateiname: str
+    laeuft: bool
+    #: Leer heisst: lief (oder laeuft noch). Sonst die Kennung, an der der
+    #: ganze Vorgang scheiterte.
+    fehler_satz: str
+    gesamt: int
+    gelesen: int
+    neu: int
+    uebersprungen: int
+    fehler_gesamt: int
+    fehler: list[str]
+    abgebrochen: bool
+
+
+class Einleseantwort(BaseModel):
+    """Was ``POST /vcard`` zurueckgibt: ins lokale Buch die Zahlen sofort, in ein
+    verbundenes den Vorgang, dessen Stand die Oberflaeche abfragt."""
+
+    neu: int = 0
+    ergaenzt: int = 0
+    vorgang: Vorgangsstand | None = None
+
+
+def _vorgangsstand(v: kontaktvorgang.Vorgang) -> Vorgangsstand:
+    return Vorgangsstand(
+        id=v.id, dateiname=v.dateiname, laeuft=v.laeuft, fehler_satz=v.fehler_satz,
+        gesamt=v.gesamt, gelesen=v.gelesen, neu=v.neu, uebersprungen=v.uebersprungen,
+        fehler_gesamt=v.fehler_gesamt, fehler=list(v.fehler), abgebrochen=v.abgebrochen,
+    )
+
+
+@router.get("/vcard/vorgang", response_model=Vorgangsstand | None)
+def einlesen_laufend(person: AngemeldeterBenutzer) -> Vorgangsstand | None:
+    """Der gerade laufende Import, falls es einen gibt — damit ein Neuladen der
+    Seite den Vorgang nicht verliert."""
+    gefunden = kontaktvorgang.laeuft_schon(person.id)
+    return _vorgangsstand(gefunden) if gefunden else None
+
+
+@router.get("/vcard/vorgang/{kennung}", response_model=Vorgangsstand)
+def einlesen_stand(kennung: str, person: AngemeldeterBenutzer) -> Vorgangsstand:
+    gefunden = kontaktvorgang.stand(kennung, person.id)
+    if gefunden is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="vorgang_unbekannt")
+    return _vorgangsstand(gefunden)
+
+
+@router.post("/vcard/vorgang/{kennung}/abbrechen", response_model=Vorgangsstand)
+def einlesen_abbrechen(kennung: str, person: AngemeldeterBenutzer) -> Vorgangsstand:
+    """Anhalten. ⚠️ Was schon angelegt wurde, bleibt — beim Anbieter und hier."""
+    gefunden = kontaktvorgang.stand(kennung, person.id)
+    if gefunden is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="vorgang_unbekannt")
+    kontaktvorgang.abbrechen(kennung, person.id)
+    return _vorgangsstand(gefunden)
+
+
+@router.get("/{kontakt_id}/foto")
+def foto(kontakt_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Response:
+    """Das eingebettete Foto der Karte, als Bild. Nur zeigen: Beim Schreiben
+    bleibt die ``PHOTO``-Zeile ohnehin stehen, wie jede Zeile, die nexmail nicht
+    pflegt."""
+    eintrag = _meiner(db, person, kontakt_id)
+    bild = vcard.foto_lesen(eintrag.roh)
+    if bild is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="kontakt_kein_foto")
+    daten, typ = bild
+    # ⚠️ Privat und kurz: Das Bild gehoert zur Sitzung, nicht in einen
+    # geteilten Zwischenspeicher; und es aendert sich mit der Karte.
+    return Response(content=daten, media_type=typ, headers={"cache-control": "private, max-age=300"})
+
+
 @router.post("/{kontakt_id}/verschieben", response_model=Zeile)
 def verschieben(
     kontakt_id: int, umzug: Umzug, person: AngemeldeterBenutzer, db: DbSession
@@ -425,10 +513,15 @@ def ausfuehren(person: AngemeldeterBenutzer, db: DbSession) -> Response:
     )
 
 
-@router.post("/vcard")
+@router.post("/vcard", response_model=Einleseantwort)
 async def einlesen(
-    datei: UploadFile, person: AngemeldeterBenutzer, db: DbSession
-) -> dict[str, int]:
+    datei: UploadFile,
+    person: AngemeldeterBenutzer,
+    db: DbSession,
+    adressbuch_id: Annotated[str | None, Form()] = None,
+) -> Einleseantwort:
+    """Eine vCard-Datei einlesen: ins lokale Buch sofort, in ein verbundenes als
+    Vorgang mit Fortschritt (jede Karte geht einzeln zum Anbieter)."""
     roh = await datei.read(MAX_VCARD + 1)
     if len(roh) > MAX_VCARD:
         raise HTTPException(
@@ -443,4 +536,17 @@ async def einlesen(
     except UnicodeDecodeError:
         inhalt = roh.decode("cp1252", errors="replace")
         logger.info("A vCard was not UTF-8; read as Windows-1252 instead.")
-    return kontaktdienst.aus_vcard(db, person, inhalt)
+    if adressbuch_id:
+        try:
+            buch = adressbuecher.meines(db, person, adressbuch_id)
+        except adressbuecher.BuchFehler as fehler:
+            raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
+        if buch.art:
+            if kontaktvorgang.laeuft_schon(person.id) is not None:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="einlesen_laeuft_schon")
+            vorgang = kontaktvorgang.vorgang_starten(
+                person.id, buch.id, datei.filename or "kontakte.vcf", inhalt
+            )
+            return Einleseantwort(vorgang=_vorgangsstand(vorgang))
+    zahlen = kontaktdienst.aus_vcard(db, person, inhalt)
+    return Einleseantwort(neu=zahlen["neu"], ergaenzt=zahlen["ergaenzt"])

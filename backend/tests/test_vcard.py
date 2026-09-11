@@ -387,3 +387,36 @@ def test_eine_neue_karte_ohne_namen_nennt_die_firma_im_fn():
     zeilen = _zeilen(neu)
     assert "FN:Polizei Beispielstadt" in zeilen
     assert "N:;;;;" in zeilen
+
+
+# --- Das Foto --------------------------------------------------------------- #
+
+PNG_1PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+
+
+def test_ein_eingebettetes_foto_wird_gelesen_in_beiden_formaten():
+    v3 = f"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:X\r\nPHOTO;ENCODING=b;TYPE=PNG:{PNG_1PX}\r\nEND:VCARD\r\n"
+    bild = vcard.foto_lesen(v3)
+    assert bild is not None and bild[1] == "image/png" and bild[0][:4] == b"\x89PNG"
+    v4 = f"BEGIN:VCARD\r\nVERSION:4.0\r\nFN:X\r\nPHOTO:data:image/png;base64,{PNG_1PX}\r\nEND:VCARD\r\n"
+    assert vcard.foto_lesen(v4) == bild
+    assert vcard.hat_foto(v3) and not vcard.hat_foto(APPLE.replace("PHOTO;ENCODING=b;TYPE=JPEG:/9j/4AAQSkZJRgABAQAAAQABAAD\r\n", ""))
+
+
+def test_eine_web_adresse_als_foto_wird_nicht_geholt():
+    """⚠️ nexmail funkt beim Oeffnen eines Kontakts nirgends hin."""
+    karte = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:X\r\nPHOTO;VALUE=uri:https://example.org/bild.jpg\r\nEND:VCARD\r\n"
+    assert vcard.foto_lesen(karte) is None
+    # ⚠️ Auch eine Adresse, deren Buchstaben zufaellig wie Base64 aussehen,
+    # ist keine: Ohne die Wache dekodierte sie sich zu Bytes, und die Probe
+    # „Wache weg" lief zuerst durch, weil die erste Adresse nicht aufging.
+    glatt = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:X\r\nPHOTO;VALUE=uri:https://example.org/foto.jpeg\r\nEND:VCARD\r\n"
+    assert vcard.foto_lesen(glatt) is None
+    kaputt = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:X\r\nPHOTO;ENCODING=b;TYPE=JPEG:###\r\nEND:VCARD\r\n"
+    assert vcard.foto_lesen(kaputt) is None
+
+
+def test_das_foto_ueberlebt_jede_aenderung():
+    v3 = f"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Anna Beispiel\r\nN:Beispiel;Anna;;;\r\nPHOTO;ENCODING=b;TYPE=PNG:{PNG_1PX}\r\nEND:VCARD\r\n"
+    neu = vcard.aktualisieren(v3, {"vorname": "Anna", "nachname": "Muster"})
+    assert vcard.foto_lesen(neu) == vcard.foto_lesen(v3)

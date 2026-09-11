@@ -70,6 +70,8 @@ export interface Kontakt extends Kontaktfelder {
   /** Was die Karte außerdem trägt, nur bei verbundenen Kontakten: nexmail
    *  zeigt es, ändert es nicht. */
   weiteres: Weiteres[]
+  /** Die Karte trägt ein Foto; geholt wird es über eine eigene Adresse. */
+  hat_foto: boolean
 }
 
 /** Was das Konfliktfenster von beiden Fassungen zeigt. */
@@ -93,9 +95,10 @@ function neuerEntwurf(): Kontaktfelder {
   }
 }
 
-/* Ein Adressbuch: das lokale, das nicht wegkann, oder ein verbundenes (Beta;
- * seit Lieferung 2 gelesen und geschrieben). Ein Buch ist der Ort eines
- * Kontakts, davon genau einer; eine Gruppe ist quer dazu. */
+/* Ein Adressbuch: das lokale, das nicht wegkann, oder ein verbundenes
+ * (gelesen und geschrieben, seit 0.15.0 ohne Beta-Schild: iCloud und Google
+ * sind gemessen). Ein Buch ist der Ort eines Kontakts, davon genau einer;
+ * eine Gruppe ist quer dazu. */
 export interface Buch {
   id: string
   name: string
@@ -107,6 +110,29 @@ export interface Buch {
   herkunft: string
   letzter_fehler: string
   kontakte: number
+}
+
+/* Der Stand eines Imports in ein verbundenes Buch: Jede Karte geht einzeln
+ * zum Anbieter, deshalb läuft er in einem eigenen Faden, und die Oberfläche
+ * fragt nach — dasselbe Muster wie der mbox-Import. */
+interface Einlesestand {
+  id: string
+  dateiname: string
+  laeuft: boolean
+  fehler_satz: string
+  gesamt: number
+  gelesen: number
+  neu: number
+  uebersprungen: number
+  fehler_gesamt: number
+  fehler: string[]
+  abgebrochen: boolean
+}
+
+interface Einleseantwort {
+  neu: number
+  ergaenzt: number
+  vorgang: Einlesestand | null
 }
 
 interface Abgleichbericht {
@@ -146,6 +172,9 @@ export function KontaktePage() {
   /* Ein offener Konflikt: die eigene Fassung, wie sie gespeichert werden
      sollte. Solange er steht, ist nichts gespeichert. */
   const [konflikt, setKonflikt] = useState<{ id: number; meine: Kontaktfassung } | null>(null)
+  /* Ein laufender Import in ein verbundenes Buch, solange er läuft und bis
+     sein Ergebnis gelesen ist. */
+  const [einlesen, setEinlesen] = useState<Einlesestand | null>(null)
   const dateifeld = useRef<HTMLInputElement>(null)
   const { fragen, fenster: nachfrage } = useNachfrage()
 
@@ -172,7 +201,31 @@ export function KontaktePage() {
   useEffect(() => {
     void gruppenLaden().catch(() => setGruppen([]))
     void buecherLaden().catch(() => setBuecher([]))
+    // Ein Import, der ein Neuladen der Seite überlebt hat, zeigt sich wieder.
+    void api
+      .holen<Einlesestand | null>('/api/kontakte/vcard/vorgang')
+      .then((v) => v && setEinlesen(v))
+      .catch(() => undefined)
   }, [gruppenLaden, buecherLaden])
+
+  /* ⚠️ Nachfragen statt warten: Der Faden auf dem Server meldet sich nicht.
+     Jede Sekunde, solange er läuft; danach einmal alles neu holen. */
+  useEffect(() => {
+    if (!einlesen?.laeuft) return
+    const uhr = window.setInterval(() => {
+      void api
+        .holen<Einlesestand>(`/api/kontakte/vcard/vorgang/${einlesen.id}`)
+        .then((stand) => {
+          setEinlesen(stand)
+          if (!stand.laeuft) {
+            void laden(suche).catch(() => undefined)
+            void buecherLaden().catch(() => undefined)
+          }
+        })
+        .catch(() => setEinlesen(null))
+    }, 1000)
+    return () => window.clearInterval(uhr)
+  }, [einlesen?.id, einlesen?.laeuft, laden, suche, buecherLaden])
 
   const offen = liste.find((k) => k.id === gewaehlt) ?? null
   const gruppeOffen = gruppen.find((g) => g.id === gruppeGewaehlt) ?? null
@@ -410,10 +463,55 @@ export function KontaktePage() {
   async function vcardEinlesen(datei: File) {
     const formular = new FormData()
     formular.append('datei', datei)
-    const stand = await mit(() =>
-      api.formular<{ neu: number; ergaenzt: number }>('/api/kontakte/vcard', formular),
-    )
-    if (stand) setMeldung(t('kontakte.eingelesen', stand))
+    /* Bei mehr als einem Buch entscheidet der Mensch, wohin — in ein
+       verbundenes geht jede Karte zum Anbieter, das ist eine andere Sache
+       als ein paar Zeilen im lokalen Buch. */
+    if (buecher.length > 1) {
+      const lokal = buecher.find((b) => b.ist_lokal)
+      const antwort = await fragen({
+        titel: t('kontakte.einlesen'),
+        text: t('kontakte.einlesen_wohin', { datei: datei.name }),
+        auswahl: {
+          beschriftung: t('kontakte.buch_feld'),
+          werte: buecher.map((b) => ({ wert: b.id, text: b.art ? `${b.name} · ${b.herkunft}` : b.name })),
+          vorgabe: lokal?.id,
+        },
+        knopf: t('kontakte.einlesen_knopf'),
+      })
+      if (!antwort || typeof antwort !== 'object') return
+      formular.append('adressbuch_id', antwort.wert)
+    }
+    const stand = await mit(() => api.formular<Einleseantwort>('/api/kontakte/vcard', formular))
+    if (!stand) return
+    if (stand.vorgang) {
+      setEinlesen(stand.vorgang)
+      return
+    }
+    setMeldung(t('kontakte.eingelesen', { neu: stand.neu, ergaenzt: stand.ergaenzt }))
+  }
+
+  async function einlesenAbbrechen() {
+    if (!einlesen) return
+    try {
+      setEinlesen(await api.senden<Einlesestand>(`/api/kontakte/vcard/vorgang/${einlesen.id}/abbrechen`, {}))
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    }
+  }
+
+  /** Der Satz zum Stand eines Imports: laufend, fertig oder gescheitert. */
+  function einlesenText(stand: Einlesestand): string {
+    if (stand.laeuft) return t('kontakte.einlesen_laeuft', { fertig: stand.gelesen, gesamt: stand.gesamt })
+    const zahlen = t('kontakte.eingelesen_buch', {
+      neu: stand.neu,
+      uebersprungen: stand.uebersprungen,
+      fehler: stand.fehler_gesamt,
+    })
+    if (stand.fehler_satz) {
+      const schluessel = `serverfehler.${stand.fehler_satz}`
+      return `${zahlen} ${t('kontakte.einlesen_gescheitert')} ${i18n.exists(schluessel) ? t(schluessel) : ''}`.trim()
+    }
+    return stand.abgebrochen ? `${zahlen} ${t('kontakte.einlesen_abgebrochen')}` : zahlen
   }
 
   return (
@@ -482,16 +580,12 @@ export function KontaktePage() {
           />
         </div>
 
-        {/* --- Bücher: wo ein Kontakt liegt. Beta ------------------------ */}
+        {/* --- Bücher: wo ein Kontakt liegt ------------------------------ */}
         <div className="shrink-0 border-b border-line-subtle">
           <div className="flex h-9 items-center gap-1.5 pr-1 pl-3">
             <span className="text-[11px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
               {t('kontakte.buecher')}
             </span>
-            {/* ⚠️ Die Beta steht dort, wo die verbundenen Bücher stehen, nicht
-                in einer README. Sie fällt, wenn das Schreiben gegen iCloud
-                und Google gemessen ist. */}
-            <Badge tone="warning">{t('kontakte.beta')}</Badge>
             <span className="flex-1" />
             {buecher.some((b) => b.art) && (
               <IconButton
@@ -553,6 +647,23 @@ export function KontaktePage() {
               <p className={`px-3 pb-2 text-[12px] ${fehler ? 'text-danger' : 'text-accent-text'}`}>
                 {fehler || meldung}
               </p>
+            )}
+            {/* Ein Import in ein verbundenes Buch: sein Stand, solange er
+                läuft, und sein Ergebnis, bis es weggeklickt ist. */}
+            {einlesen && (
+              <div
+                role="status"
+                className={`mx-3 mb-2 flex items-center gap-2 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[12px] ${einlesen.fehler_satz ? 'text-danger' : 'text-fg-2'}`}
+              >
+                <span className="min-w-0 flex-1">{einlesenText(einlesen)}</span>
+                {einlesen.laeuft ? (
+                  <Button size="sm" variant="ghost" onClick={() => void einlesenAbbrechen()}>
+                    {t('kontakte.einlesen_abbrechen')}
+                  </Button>
+                ) : (
+                  <IconButton icon={<X />} label={t('aktion.schliessen')} size="sm" onClick={() => setEinlesen(null)} />
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -691,6 +802,7 @@ export function KontaktePage() {
             buchId={offen?.adressbuch_id ?? buecher.find((b) => b.ist_lokal)?.id ?? ''}
             herkunft={offen?.adressbuch_id ? (nachBuch.get(offen.adressbuch_id)?.herkunft ?? '') : ''}
             weiteres={offen?.weiteres ?? []}
+            foto={offen?.hat_foto ? appPfad(`/api/kontakte/${offen.id}/foto`) : ''}
             aufSpeichern={speichern}
             aufVerschieben={offen ? (buchId) => void verschieben(offen, buchId) : undefined}
             aufEntfernen={offen ? () => void entfernen(offen) : undefined}
@@ -861,6 +973,7 @@ function Formular({
   buchId,
   herkunft = '',
   weiteres = [],
+  foto = '',
   aufSpeichern,
   aufVerschieben,
   aufEntfernen,
@@ -877,6 +990,8 @@ function Formular({
   /** Der Anbieter, wenn der Kontakt in einem verbundenen Buch liegt. */
   herkunft?: string
   weiteres?: Weiteres[]
+  /** Die Adresse des Fotos der Karte, leer ohne Foto. Nur zeigen. */
+  foto?: string
   aufSpeichern: (f: Kontaktfelder, buchId: string) => void
   aufVerschieben?: (buchId: string) => void
   aufEntfernen?: () => void
@@ -977,12 +1092,9 @@ function Formular({
       {/* ⚠️ Wer einen verbundenen Kontakt bearbeitet, soll wissen, dass es
           sofort beim Anbieter ankommt — bevor er speichert, nicht danach. */}
       {herkunft && (
-        <p className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface-2 px-3 py-2 text-[12px] leading-relaxed text-fg-3">
-          <Badge tone="warning">{t('kontakte.beta')}</Badge>
-          <span>
-            {`${t('kontakte.aus_buch', { wo: herkunft })}. `}
-            {t('kontakte.verbunden_hinweis')}
-          </span>
+        <p className="rounded-md border border-line bg-surface-2 px-3 py-2 text-[12px] leading-relaxed text-fg-3">
+          {`${t('kontakte.aus_buch', { wo: herkunft })}. `}
+          {t('kontakte.verbunden_hinweis')}
         </p>
       )}
       {/* Das Buch steht nur zur Wahl, wenn es mehr als eines gibt: eine
@@ -1006,9 +1118,20 @@ function Formular({
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Input label={t('kontakte.vorname')} autoComplete="given-name" value={felder.vorname} onChange={(e) => setzen({ vorname: e.target.value })} />
-        <Input label={t('kontakte.nachname')} autoComplete="family-name" value={felder.nachname} onChange={(e) => setzen({ nachname: e.target.value })} />
+      <div className="flex items-start gap-4">
+        {/* Das Foto der Karte, wie es vom Anbieter kommt. Geändert wird es am
+            Telefon; hier bleibt es beim Speichern ohnehin stehen. */}
+        {foto && (
+          <img
+            src={foto}
+            alt={t('kontakte.foto_alt')}
+            className="size-16 shrink-0 rounded-full border border-line object-cover"
+          />
+        )}
+        <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
+          <Input label={t('kontakte.vorname')} autoComplete="given-name" value={felder.vorname} onChange={(e) => setzen({ vorname: e.target.value })} />
+          <Input label={t('kontakte.nachname')} autoComplete="family-name" value={felder.nachname} onChange={(e) => setzen({ nachname: e.target.value })} />
+        </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Input label={t('kontakte.spitzname')} value={felder.spitzname} onChange={(e) => setzen({ spitzname: e.target.value })} />

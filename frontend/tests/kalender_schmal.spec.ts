@@ -97,6 +97,26 @@ test('Ein Haken in der Schublade blendet den Kalender beim Server aus', async ({
   await expect(eintrag, 'Der ausgeblendete Kalender zeigt noch Termine.').toHaveCount(0)
 })
 
+test('Das Menü eines Kalenders kommt als Blatt von unten', async ({ page }) => {
+  /* ⚠️ Am Telefon gibt es keinen Rechtsklick; bis 0.14.1 gab es umbenennen,
+     Farbe, ICS und trennen dort gar nicht. Die Einträge sind dieselben wie
+     im Kontextmenü am Schreibtisch. */
+  await page.getByRole('button', { name: 'Kalender wählen' }).click()
+  const schublade = page.locator('aside[aria-hidden="false"]')
+  await expect(schublade).toBeVisible()
+
+  await schublade.getByRole('button', { name: /^Mehr zu/ }).first().click()
+  const blatt = page.getByRole('dialog')
+  await expect(blatt).toBeVisible()
+  for (const eintrag of ['Umbenennen', 'Farbe ändern', 'Kalender herunterladen …']) {
+    await expect(blatt.getByRole('menuitem', { name: eintrag })).toBeVisible()
+  }
+  /* Der eine sichtbare Ausgang: Abbrechen. Danach steht die Schublade noch. */
+  await blatt.getByRole('button', { name: 'Abbrechen' }).click()
+  await expect(blatt).toHaveCount(0)
+  await expect(schublade).toBeVisible()
+})
+
 test('Der runde Knopf öffnet das Terminfenster für den gewählten Tag', async ({ page }) => {
   await page.getByRole('button', { name: 'Neuer Termin' }).click()
   const fenster = page.getByRole('dialog')
