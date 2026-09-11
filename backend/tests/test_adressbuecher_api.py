@@ -242,7 +242,7 @@ def test_eine_aenderung_geht_als_put_mit_if_match_hinaus(klient, db, welt):
     assert server.anfragen[i + 1:] == [], "Nach dem PUT wurde noch einmal nachgeschlagen."
     etag, karte = server.karten[f"{PFAD}k1.vcf"]
     assert "FN:Vera Muster" in karte and "N:Muster;Vera;;;" in karte
-    assert "TEL;TYPE=CELL:+49 30 999" in karte
+    assert "TEL;type=CELL;type=VOICE:+49 30 999" in karte and "+49 30 123456" not in karte
     for fremd in ("PHOTO;ENCODING=b;TYPE=JPEG:/9j/4AAQSkZJRg", "BDAY:1980-01-01", "X-APPLE-SUBLOCALITY:Mitte"):
         assert fremd in karte, fremd
     zeile = db.query(Kontakt).one()
@@ -265,6 +265,62 @@ def test_ohne_etag_im_kopf_wird_es_nachgeschlagen(klient, db, welt):
     assert db.query(Kontakt).one().etag == etag
     zweite = klient.patch(f"/api/kontakte/{kontakt['id']}", json={"name": "Vera Zwei"})
     assert zweite.status_code == 200, "Der zweite Schreibvorgang lief mit veraltetem If-Match in einen Konflikt."
+
+
+def test_die_listen_gehen_als_zeilen_hinaus_und_kommen_zurueck(klient, db, welt):
+    """Der Felder-Schritt über die Adresse: Nummern mit Art und eigener
+    Beschriftung, Anschrift, Geburtstag. Die Karte trägt danach genau diese
+    Zeilen, und die Zeile liest sie wieder so."""
+    person, server = welt
+    _verbinden(klient)
+    (kontakt,) = klient.get("/api/kontakte").json()
+    assert (kontakt["vorname"], kontakt["nachname"]) == ("Vera", "Beispiel")
+
+    antwort = klient.patch(
+        f"/api/kontakte/{kontakt['id']}",
+        json={
+            "vorname": "Vera", "nachname": "Muster", "abteilung": "Einkauf", "geburtstag": "1981-02-03",
+            "nummern": [
+                {"nummer": "+49 30 123456", "art": "cell", "bevorzugt": True},
+                {"nummer": "030 999", "art": "", "beschriftung": "Zweitbüro"},
+            ],
+            "adressen": [{"adresse": "vera@example.org", "art": "home", "bevorzugt": True}],
+            "anschriften": [{"strasse": "Beispielstraße 12", "plz": "10115", "ort": "Berlin", "land": "Deutschland", "art": "home"}],
+        },
+    )
+    assert antwort.status_code == 200, antwort.text
+    zeile = antwort.json()
+    assert [(n["nummer"], n["art"], n["beschriftung"]) for n in zeile["nummern"]] == [
+        ("+49 30 123456", "cell", ""), ("030 999", "", "Zweitbüro"),
+    ]
+    assert zeile["anschriften"][0]["ort"] == "Berlin" and zeile["geburtstag"] == "1981-02-03"
+    assert zeile["name"] == "Vera Muster" and zeile["telefon"] == "+49 30 123456"
+
+    _, karte = server.karten[f"{PFAD}k1.vcf"]
+    for erwartet in (
+        "N:Muster;Vera;;;", "ORG:Beispiel GmbH;Einkauf", "BDAY:1981-02-03",
+        "TEL;TYPE=CELL:+49 30 123456", "X-ABLabel:Zweitbüro",
+        "ADR;type=HOME:;;Beispielstraße 12;Berlin;;10115;Deutschland",
+        "PHOTO;ENCODING=b;TYPE=JPEG:/9j/4AAQSkZJRg",
+    ):
+        assert erwartet in karte, erwartet
+    # Und die Suche findet die eigene Beschriftung, Umlaut inklusive.
+    assert [k["id"] for k in klient.get("/api/kontakte?suche=zweitbüro").json()] == [kontakt["id"]]
+    assert [k["id"] for k in klient.get("/api/kontakte?suche=030 999").json()] == [kontakt["id"]]
+
+
+def test_die_fremde_fassung_traegt_die_listen(klient, db, welt):
+    person, server = welt
+    _verbinden(klient)
+    (kontakt,) = klient.get("/api/kontakte").json()
+    server.karten[f"{PFAD}k1.vcf"] = (
+        "e2", _karte(name="Vera Telefon", extra="TEL;type=CELL:+49 170 1\r\nTEL;type=HOME:030 2\r\n"),
+    )
+    bild = klient.get(f"/api/kontakte/{kontakt['id']}/konflikt").json()
+    assert [(n["nummer"], n["art"], n["bevorzugt"]) for n in bild["fremd"]["nummern"]] == [
+        ("+49 170 1", "cell", True), ("030 2", "home", False),
+    ]
+    assert (bild["fremd"]["vorname"], bild["fremd"]["nachname"]) == ("Vera", "Telefon")
 
 
 def test_loeschen_nimmt_die_karte_beim_anbieter_mit_if_match(klient, db, welt):
@@ -484,11 +540,13 @@ def test_ein_verbundener_kontakt_nennt_alle_nummern(klient, welt):
     zeilen = {z["name"]: z for z in klient.get("/api/kontakte").json()}
     verbunden, lokal = zeilen["Vera Beispiel"], zeilen["Jonas"]
     assert verbunden["telefon"] == "+49 170 222"
-    assert [(n["nummer"], n["beschriftung"]) for n in verbunden["nummern"]] == [
-        ("0241 111", ""),
-        ("+49 170 222", "Mobile"),
+    assert [(n["nummer"], n["art"], n["bevorzugt"]) for n in verbunden["nummern"]] == [
+        ("0241 111", "home", False),
+        ("+49 170 222", "cell", True),
     ]
-    assert lokal["nummern"] == [] and lokal["telefon"] == "1"
+    assert (verbunden["vorname"], verbunden["nachname"]) == ("Vera", "Beispiel")
+    assert lokal["nummern"] == [{"nummer": "1", "art": "", "beschriftung": "", "bevorzugt": True}]
+    assert lokal["telefon"] == "1" and lokal["weiteres"] == []
 
 
 def test_ein_lokaler_kontakt_bleibt_bearbeitbar(klient, welt):

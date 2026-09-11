@@ -76,12 +76,13 @@ a due date. The task survives its message: if the mail is moved from your phone,
 the task follows it by `Message-ID`; if the mail is deleted, the task stays and
 says so.
 
-**Contacts, rules, signatures.** An address book with vCard import and export
-and collection from Sent; connected CardDAV address books (iCloud, Google or
-any other CardDAV server, in beta) that are read and written back, with a
-question instead of an overwrite when a card changed on both sides; contact
-groups that expand into their members when picked as a recipient; rules that
-run after each sync and only on new mail; signatures per mailbox.
+**Contacts, rules, signatures.** An address book with several numbers,
+addresses and postal addresses per contact, vCard import and export and
+collection from Sent; connected CardDAV address books (iCloud, Google or any
+other CardDAV server, in beta) that are read and written back line by line,
+with a question instead of an overwrite when a card changed on both sides;
+contact groups that expand into their members when picked as a recipient;
+rules that run after each sync and only on new mail; signatures per mailbox.
 
 **Housekeeping.** Trash and junk can empty themselves after a number of days —
 off by default, measured by how long a message has been in the folder, and

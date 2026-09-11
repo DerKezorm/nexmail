@@ -390,11 +390,10 @@ def _uebernehmen(
         db.flush()
 
     zeile.adressbuch_id = buch.id
+    # Alle Felder der Karte in die Zeile, dann die Adresse nach den Regeln
+    # oben: Die Liste traegt, was die Karte sagt, die Spalte, was hier gilt.
+    kontaktdienst.felder_anwenden(zeile, kontaktdienst.felder_pruefen_lose(felder))
     zeile.adresse = adresse
-    zeile.name = felder.get("name", "")[:320]
-    zeile.firma = felder.get("firma", "")[:320]
-    zeile.telefon = felder.get("telefon", "")[:120]
-    zeile.notiz = felder.get("notiz", "")
     zeile.uid = felder.get("uid", "")[:255]
     zeile.href = karte.url.rstrip("/")
     zeile.etag = karte.etag[:255]
@@ -493,13 +492,12 @@ def hochschieben(
     buch = _buch_von(db, kontakt)
     if buch is None:
         return
-    felder = {f: getattr(kontakt, f) for f in vcard.FELDER}
     if roh_neu is None:
-        if kontakt.roh:
-            vorher = kontaktdienst.felder_aus_vcard(kontakt.roh)
-            roh_neu = vcard.aktualisieren(kontakt.roh, vorher, felder, kontakt.uid)
-        else:
-            roh_neu = vcard.neu_bauen(felder, kontakt.uid)
+        # Auf der Rohkarte, die ein verschobener Kontakt mitbringt (Foto und
+        # Geburtstag gehoeren dem Menschen, nicht dem alten Buch), sonst frisch.
+        roh_neu = vcard.aktualisieren(
+            kontakt.roh or "", kontaktdienst.felder_der_zeile(kontakt), kontakt.uid
+        )
     if not kontakt.uid:
         kontakt.uid = kontaktdienst.felder_aus_vcard(roh_neu).get("uid", "")[:255]
     if not kontakt.href:
@@ -561,11 +559,8 @@ def fremde_fassung_uebernehmen(db: Session, kontakt: Kontakt) -> bool:
         )
         if anderer is not None:
             adresse = kontakt.adresse
+    kontaktdienst.felder_anwenden(kontakt, kontaktdienst.felder_pruefen_lose(felder))
     kontakt.adresse = adresse
-    kontakt.name = felder.get("name", "")[:320]
-    kontakt.firma = felder.get("firma", "")[:320]
-    kontakt.telefon = felder.get("telefon", "")[:120]
-    kontakt.notiz = felder.get("notiz", "")
     kontakt.roh = karte.roh
     kontakt.etag = karte.etag[:255]
     kontakt.schmutzig = False

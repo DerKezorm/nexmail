@@ -830,14 +830,40 @@ class Kontakt(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     benutzer_id: Mapped[str] = mapped_column(String(32), index=True)
 
+    #: Der Anzeigename (``FN``): „Vorname Nachname", bei einem Firmen-Kontakt
+    #: die Firma. Abgeleitet, nicht eingegeben — die Maske fragt seit dem
+    #: Felder-Schritt (11.09.2026) Vor- und Nachname getrennt, wie Apple.
     name: Mapped[str] = mapped_column(String(320), default="")
+    vorname: Mapped[str] = mapped_column(String(160), default="")
+    nachname: Mapped[str] = mapped_column(String(160), default="")
+    spitzname: Mapped[str] = mapped_column(String(160), default="")
     #: Immer kleingeschrieben abgelegt. Mail-Adressen sind im Domaenenteil
     #: ohnehin gleichbedeutend, und ein Adressbuch mit "Max@" und "max@"
     #: nebeneinander ist kaputt. Leer heisst: keine.
+    #: ⚠️ **Die bevorzugte aus ``adressen``**, abgeleitet beim Schreiben. Die
+    #: Spalte bleibt, weil Eindeutigkeit, Vorschlaege und Gruppen an ihr
+    #: haengen; die Liste traegt alle mit Art und Beschriftung.
     adresse: Mapped[str] = mapped_column(String(320), default="")
     firma: Mapped[str] = mapped_column(String(320), default="")
+    abteilung: Mapped[str] = mapped_column(String(160), default="")
+    #: Die Position („Leitung"), vCard ``TITLE``.
+    titel: Mapped[str] = mapped_column(String(160), default="")
+    #: Die bevorzugte aus ``nummern``, abgeleitet wie ``adresse``.
     telefon: Mapped[str] = mapped_column(String(120), default="")
+    #: ``JJJJ-MM-TT``; ohne Jahr ``--MM-TT``, wie Apple es haelt. Text, nicht
+    #: Datum: Ein Geburtstag ist ein Kalendertag ohne Zone.
+    geburtstag: Mapped[str] = mapped_column(String(32), default="")
+    webseite: Mapped[str] = mapped_column(String(320), default="")
     notiz: Mapped[str] = mapped_column(Text, default="")
+    #: --- Die Listen, als JSON ------------------------------------------- #
+    #: Je Eintrag Nummer/Adresse, ``art`` (cell, home, work, …), eigene
+    #: ``beschriftung`` und ``bevorzugt``; Anschriften mit ihren sieben
+    #: Teilen. Eine Spalte, keine Nebentabelle — dieselbe Ueberlegung wie bei
+    #: ``konto.aliase``: eine Handvoll je Kontakt, gesucht wird mit LIKE ueber
+    #: den Text, und Kontakte sind Hunderte, nicht Hunderttausende.
+    nummern: Mapped[str] = mapped_column(Text, default="[]")
+    adressen: Mapped[str] = mapped_column(Text, default="[]")
+    anschriften: Mapped[str] = mapped_column(Text, default="[]")
 
     #: ``hand`` oder ``gesammelt``.
     #: In welchem Buch er liegt. ⚠️ **Nie leer** — ``buecher_nachgetragen``

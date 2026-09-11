@@ -131,7 +131,8 @@ test('Kontakt anlegen, wiederfinden, entfernen', async ({ page }) => {
   await page.getByRole('button', { name: 'Neuer Kontakt' }).click()
 
   await page.getByRole('textbox', { name: 'E-Mail-Adresse' }).fill(adresse)
-  await page.getByRole('textbox', { name: 'Name' }).first().fill('ZZ Probe')
+  await page.getByRole('textbox', { name: 'Vorname' }).fill('ZZ')
+  await page.getByRole('textbox', { name: 'Nachname' }).fill('Probe')
   await page.getByRole('button', { name: 'Anlegen' }).click()
 
   await expect(

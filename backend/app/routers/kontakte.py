@@ -21,38 +21,79 @@ MAX_VCARD = 5 * 1024 * 1024
 
 
 class Nummer(BaseModel):
-    nummer: str
-    #: Die Typen der Karte, klein und mit Komma: ``cell,voice,pref``.
-    typen: str = ""
-    #: Eine eigene Beschriftung („Mutter") oder Apples Wort („Mobile").
-    beschriftung: str = ""
+    """Eine Nummer der Liste. ``art`` ist eine der bekannten Sorten (cell,
+    home, work, main, fax, pager, other), ``beschriftung`` eine eigene
+    („Zweitbüro"), ``bevorzugt`` der Stern: die Nummer, die die Liste zeigt."""
+
+    nummer: str = Field(max_length=120)
+    art: str = Field(default="", max_length=16)
+    beschriftung: str = Field(default="", max_length=80)
+    bevorzugt: bool = False
 
 
 class Adresse(BaseModel):
-    adresse: str
-    typen: str = ""
+    adresse: str = Field(max_length=320)
+    art: str = Field(default="", max_length=16)
+    beschriftung: str = Field(default="", max_length=80)
+    bevorzugt: bool = False
+
+
+class Anschrift(BaseModel):
+    """Die sieben Teile einer vCard-Anschrift. Die Maske zeigt Strasse, PLZ,
+    Ort und Land; Region, Postfach und Zusatz reisen mit, damit eine Karte
+    beim Speichern nichts davon verliert."""
+
+    strasse: str = Field(default="", max_length=200)
+    plz: str = Field(default="", max_length=40)
+    ort: str = Field(default="", max_length=120)
+    region: str = Field(default="", max_length=120)
+    land: str = Field(default="", max_length=120)
+    postfach: str = Field(default="", max_length=120)
+    zusatz: str = Field(default="", max_length=200)
+    art: str = Field(default="", max_length=16)
+    beschriftung: str = Field(default="", max_length=80)
+    bevorzugt: bool = False
+
+
+class Weiteres(BaseModel):
+    """Was die Karte ausserdem traegt und nexmail zeigt, aber nicht aendert:
+    Social-Profile, Messenger, weitere Daten, verwandte Namen. Nur Apple
+    kennt diese Zeilen; sie bleiben beim Speichern stehen."""
+
+    art: str
     beschriftung: str = ""
+    text: str = ""
 
 
 class Zeile(BaseModel):
     id: int
+    #: Der Anzeigename, abgeleitet: „Vorname Nachname", sonst die Firma.
     name: str
+    vorname: str = ""
+    nachname: str = ""
+    spitzname: str = ""
+    #: Die bevorzugte Adresse und Nummer, abgeleitet aus den Listen.
     adresse: str
-    firma: str
     telefon: str
+    firma: str
+    abteilung: str = ""
+    titel: str = ""
+    geburtstag: str = ""
+    webseite: str = ""
     notiz: str
     quelle: str
     verwendet: int
     #: In welchem Buch der Eintrag liegt.
     adressbuch_id: str | None = None
-    #: Alle Nummern und Adressen der Karte, **nur bei Kontakten aus
-    #: verbundenen Büchern**: Das Modell kennt eine Nummer, die Karte viele.
-    #: Ein lokaler Kontakt trägt seine Felder; seine Rohkarte könnte hinter
-    #: einer Änderung von Hand zurückliegen. Seit Lieferung 2 pflegt der
-    #: Zeilen-Editor die Rohkarte bei jeder Änderung mit, deshalb stimmen
-    #: beide auch nach dem Bearbeiten überein.
+    #: Die Listen, bei jedem Kontakt: Seit dem Felder-Schritt (11.09.2026)
+    #: pflegt nexmail sie selbst, und der Zeilen-Editor bringt sie in die
+    #: Karte. Vorher standen hier nur die gelesenen Nummern verbundener
+    #: Kontakte.
     nummern: list[Nummer] = Field(default_factory=list)
     adressen: list[Adresse] = Field(default_factory=list)
+    anschriften: list[Anschrift] = Field(default_factory=list)
+    #: Nur bei Kontakten aus verbundenen Büchern, aus der Rohkarte gelesen.
+    weiteres: list[Weiteres] = Field(default_factory=list)
 
 
 def _verbundene(db, person) -> set[str]:
@@ -61,25 +102,35 @@ def _verbundene(db, person) -> set[str]:
     return {b.id for b in adressbuecher.meine(db, person) if b.art}
 
 
-class Eingabe(BaseModel):
-    #: Leer heisst: kein Postfach. Der Dienst verlangt dann wenigstens Name,
-    #: Nummer oder Firma.
-    adresse: str = Field(default="", max_length=320)
-    name: str = Field(default="", max_length=320)
-    firma: str = Field(default="", max_length=320)
-    telefon: str = Field(default="", max_length=120)
-    notiz: str = Field(default="", max_length=5000)
+class Felder(BaseModel):
+    """Was ein Mensch an einem Kontakt eingibt. ``name``, ``adresse`` und
+    ``telefon`` einzeln sind der alte Weg: Ein Name wird geteilt, eine
+    einzelne Nummer oder Adresse wird zum Eintrag mit Stern."""
+
+    vorname: str | None = Field(default=None, max_length=160)
+    nachname: str | None = Field(default=None, max_length=160)
+    spitzname: str | None = Field(default=None, max_length=160)
+    firma: str | None = Field(default=None, max_length=320)
+    abteilung: str | None = Field(default=None, max_length=160)
+    titel: str | None = Field(default=None, max_length=160)
+    geburtstag: str | None = Field(default=None, max_length=32)
+    webseite: str | None = Field(default=None, max_length=320)
+    notiz: str | None = Field(default=None, max_length=5000)
+    nummern: list[Nummer] | None = Field(default=None, max_length=50)
+    adressen: list[Adresse] | None = Field(default=None, max_length=50)
+    anschriften: list[Anschrift] | None = Field(default=None, max_length=50)
+    adresse: str | None = Field(default=None, max_length=320)
+    name: str | None = Field(default=None, max_length=320)
+    telefon: str | None = Field(default=None, max_length=120)
+
+
+class Eingabe(Felder):
     #: In welches Buch. Leer heisst: das lokale. Ein verbundenes Buch schickt
     #: die Karte zuerst zum Anbieter.
     adressbuch_id: str | None = Field(default=None, max_length=32)
 
 
-class Aenderung(BaseModel):
-    adresse: str | None = Field(default=None, max_length=320)
-    name: str | None = Field(default=None, max_length=320)
-    firma: str | None = Field(default=None, max_length=320)
-    telefon: str | None = Field(default=None, max_length=120)
-    notiz: str | None = Field(default=None, max_length=5000)
+class Aenderung(Felder):
     #: ⚠️ **Die Antwort auf eine Rückfrage, kein Schalter.** „Meine Fassung
     #: gewinnt" im Konfliktfenster; ohne die Frage davor wäre es das
     #: stillschweigende Überbügeln, das der Abgleich ausdrücklich nicht tut.
@@ -98,26 +149,40 @@ class Konfliktbild(BaseModel):
     fremd: Zeile | None = None
 
 
-def _zeile(k, verbundene: set[str] | frozenset[str] = frozenset()) -> Zeile:
-    verbunden = k.adressbuch_id in verbundene
-    daten = (
-        kontaktdienst.kontaktdaten_aus_vcard(k.roh)
-        if verbunden and k.roh
-        else {"nummern": [], "adressen": []}
-    )
+def _zeile_aus_felder(k, felder: dict, weiteres: list[dict]) -> Zeile:
     return Zeile(
         id=k.id,
-        name=k.name,
-        adresse=k.adresse,
-        firma=k.firma,
-        telefon=k.telefon,
-        notiz=k.notiz,
+        name=felder.get("name", ""),
+        vorname=felder.get("vorname", ""),
+        nachname=felder.get("nachname", ""),
+        spitzname=felder.get("spitzname", ""),
+        adresse=felder.get("adresse", ""),
+        telefon=felder.get("telefon", ""),
+        firma=felder.get("firma", ""),
+        abteilung=felder.get("abteilung", ""),
+        titel=felder.get("titel", ""),
+        geburtstag=felder.get("geburtstag", ""),
+        webseite=felder.get("webseite", ""),
+        notiz=felder.get("notiz", ""),
         quelle=k.quelle,
         verwendet=k.verwendet,
         adressbuch_id=k.adressbuch_id,
-        nummern=[Nummer(**n) for n in daten["nummern"]],
-        adressen=[Adresse(**a) for a in daten["adressen"]],
+        nummern=[Nummer.model_validate(n) for n in felder.get("nummern", [])],
+        adressen=[Adresse.model_validate(a) for a in felder.get("adressen", [])],
+        anschriften=[Anschrift.model_validate(a) for a in felder.get("anschriften", [])],
+        weiteres=[Weiteres.model_validate(w) for w in weiteres],
     )
+
+
+def _zeile(k, verbundene: set[str] | frozenset[str] = frozenset()) -> Zeile:
+    felder = kontaktdienst.felder_der_zeile(k)
+    felder["name"] = k.name
+    weiteres = (
+        kontaktdienst.felder_aus_vcard(k.roh)["weiteres"]
+        if k.roh and k.adressbuch_id in verbundene
+        else []
+    )
+    return _zeile_aus_felder(k, felder, weiteres)
 
 
 @router.get("", response_model=list[Zeile])
@@ -128,9 +193,13 @@ def liste(person: AngemeldeterBenutzer, db: DbSession, suche: str = "") -> list[
 
 @router.get("/vorschlag", response_model=list[Zeile])
 def vorschlag(anfang: str, person: AngemeldeterBenutzer, db: DbSession) -> list[Zeile]:
-    """Für die Autovervollständigung im Verfassen-Fenster."""
+    """Für die Autovervollständigung im Verfassen-Fenster — je Adresse eine
+    Zeile, denn ein Kontakt hat seit dem Felder-Schritt mehrere."""
     verbundene = _verbundene(db, person)
-    return [_zeile(k, verbundene) for k in kontaktdienst.vorschlagen(db, person, anfang)]
+    return [
+        _zeile(k, verbundene).model_copy(update={"adresse": adresse})
+        for k, adresse in kontaktdienst.vorschlagen(db, person, anfang)
+    ]
 
 
 # --- Gruppen ---------------------------------------------------------------- #
@@ -212,18 +281,10 @@ def mitglieder_setzen(
 
 @router.post("", response_model=Zeile, status_code=status.HTTP_201_CREATED)
 def anlegen(eingabe: Eingabe, person: AngemeldeterBenutzer, db: DbSession) -> Zeile:
+    felder = eingabe.model_dump(exclude_none=True, exclude={"adressbuch_id"})
     try:
         return _zeile(
-            kontaktdienst.anlegen(
-                db,
-                person,
-                eingabe.adresse,
-                eingabe.name,
-                eingabe.firma,
-                eingabe.telefon,
-                eingabe.notiz,
-                adressbuch_id=eingabe.adressbuch_id,
-            ),
+            kontaktdienst.anlegen(db, person, adressbuch_id=eingabe.adressbuch_id, **felder),
             _verbundene(db, person),
         )
     except kontaktdienst.KontaktFehler as fehler:
@@ -291,24 +352,9 @@ def konflikt_ansehen(
         raise MeldungHttp(status.HTTP_502_BAD_GATEWAY, "konflikt_nicht_abrufbar", {}) from fehler
     if karte is None:
         return Konfliktbild(vorhanden=False)
-    felder = kontaktdienst.felder_aus_vcard(karte.roh)
-    daten = kontaktdienst.kontaktdaten_aus_vcard(karte.roh)
-    return Konfliktbild(
-        vorhanden=True,
-        fremd=Zeile(
-            id=eintrag.id,
-            name=felder.get("name", ""),
-            adresse=felder.get("adresse", ""),
-            firma=felder.get("firma", ""),
-            telefon=felder.get("telefon", ""),
-            notiz=felder.get("notiz", ""),
-            quelle=eintrag.quelle,
-            verwendet=eintrag.verwendet,
-            adressbuch_id=eintrag.adressbuch_id,
-            nummern=[Nummer(**n) for n in daten["nummern"]],
-            adressen=[Adresse(**a) for a in daten["adressen"]],
-        ),
-    )
+    gelesen = kontaktdienst.felder_aus_vcard(karte.roh)
+    felder = kontaktdienst.felder_pruefen_lose(gelesen)
+    return Konfliktbild(vorhanden=True, fremd=_zeile_aus_felder(eintrag, felder, gelesen["weiteres"]))
 
 
 @router.post("/{kontakt_id}/konflikt", response_model=Zeile)

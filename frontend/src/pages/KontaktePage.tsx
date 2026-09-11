@@ -17,11 +17,13 @@ import {
   Link2,
   Plus,
   RefreshCw,
+  Star,
   Trash2,
   Unlink,
   Upload,
   UserRoundPlus,
   Users,
+  X,
 } from 'lucide-react'
 import { ApiFehler, api } from '../api/client'
 import { Badge, Button, Checkbox, EmptyState, IconButton, Input, Select } from '../ds'
@@ -31,32 +33,64 @@ import type { Kontaktfassung } from '../components/Kontaktkonflikt'
 import { useNachfrage } from '../components/Nachfrage'
 import { appPfad } from '../lib/basis'
 import { PUNKT_KLASSE } from '../lib/farben'
-import { beschriftung, beschriftungFuer, sichtbareKontakte } from '../lib/kontaktanzeige'
+import { beschriftung, sichtbareKontakte } from '../lib/kontaktanzeige'
+import {
+  ADRESSE_ARTEN,
+  ANSCHRIFT_ARTEN,
+  EIGEN,
+  NUMMER_ARTEN,
+  artSetzen,
+  auswahlWert,
+  beschriftungText,
+  felderAusKontakt,
+  leereFelder,
+  mitStern,
+  neueAdresse,
+  neueAnschrift,
+  neueNummer,
+  sternSetzen,
+  zeileEntfernen,
+  zeileHinzufuegen,
+} from '../lib/kontaktfelder'
+import type { Adresse, Anschrift, Kontaktfelder, Nummer, Weiteres } from '../lib/kontaktfelder'
 import { servermeldung } from '../lib/servermeldung'
 import type { Postfachfarbe } from '../daten/typen'
 
-export interface Kontakt {
+export interface Kontakt extends Kontaktfelder {
   id: number
+  /** Der Anzeigename, abgeleitet: „Vorname Nachname", sonst die Firma. */
   name: string
+  /** Die bevorzugte Adresse und Nummer, abgeleitet aus den Listen. */
   adresse: string
-  firma: string
   telefon: string
-  notiz: string
   quelle: string
   verwendet: number
   /** In welchem Buch der Eintrag liegt. */
   adressbuch_id: string | null
-  /** Alle Nummern und Adressen der Karte, nur bei verbundenen Kontakten:
-   *  Das Modell kennt eine Nummer, die Karte viele. */
-  nummern: Karteneintrag[]
-  adressen: Karteneintrag[]
+  /** Was die Karte außerdem trägt, nur bei verbundenen Kontakten: nexmail
+   *  zeigt es, ändert es nicht. */
+  weiteres: Weiteres[]
 }
 
-export interface Karteneintrag {
-  nummer?: string
-  adresse?: string
-  typen: string
-  beschriftung: string
+/** Was das Konfliktfenster von beiden Fassungen zeigt. */
+function fassungAus(f: Kontaktfelder) {
+  return {
+    name: [f.vorname, f.nachname].filter(Boolean).join(' ') || f.firma,
+    adresse: mitStern(f.adressen)?.adresse ?? '',
+    telefon: mitStern(f.nummern)?.nummer ?? '',
+    firma: f.firma,
+    notiz: f.notiz,
+  }
+}
+
+/** Ein neuer Kontakt beginnt mit je einer leeren Zeile: Wer „Neu" drückt,
+ *  will tippen, nicht erst Zeilen anlegen. Leere Zeilen wirft der Server weg. */
+function neuerEntwurf(): Kontaktfelder {
+  return {
+    ...leereFelder(),
+    nummern: [{ ...neueNummer([]), bevorzugt: true }],
+    adressen: [{ ...neueAdresse(), bevorzugt: true }],
+  }
 }
 
 /* Ein Adressbuch: das lokale, das nicht wegkann, oder ein verbundenes (Beta;
@@ -93,21 +127,13 @@ export interface Gruppe {
   adressen: string[]
 }
 
-const LEER: Pick<Kontakt, 'name' | 'adresse' | 'firma' | 'telefon' | 'notiz'> = {
-  name: '',
-  adresse: '',
-  firma: '',
-  telefon: '',
-  notiz: '',
-}
-
 export function KontaktePage() {
   const { t, i18n } = useTranslation()
 
   const [liste, setListe] = useState<Kontakt[]>([])
   const [suche, setSuche] = useState('')
   const [gewaehlt, setGewaehlt] = useState<number | null>(null)
-  const [entwurf, setEntwurf] = useState<typeof LEER | null>(null)
+  const [entwurf, setEntwurf] = useState<Kontaktfelder | null>(null)
   const [gruppen, setGruppen] = useState<Gruppe[]>([])
   const [gruppeGewaehlt, setGruppeGewaehlt] = useState<number | null>(null)
   const [gruppeNeu, setGruppeNeu] = useState(false)
@@ -287,7 +313,7 @@ export function KontaktePage() {
     })
   }
 
-  async function speichern(felder: typeof LEER, buchId: string) {
+  async function speichern(felder: Kontaktfelder, buchId: string) {
     if (entwurf && gewaehlt === null) {
       /* Ein neuer Kontakt entsteht in dem Buch, das im Formular gewählt ist;
          in einem verbundenen zuerst beim Anbieter. Was der ablehnt, gibt es
@@ -308,7 +334,7 @@ export function KontaktePage() {
      hat die Karte am Telefon geändert, seit sie hier offen ist. Die eigene
      Eingabe bleibt im Formular stehen (als Entwurf), und das Fenster fragt,
      welche Fassung gilt — dasselbe Muster wie beim Termin. */
-  async function schreiben(id: number, felder: typeof LEER, erzwingen: boolean) {
+  async function schreiben(id: number, felder: Kontaktfelder, erzwingen: boolean) {
     const fertig = await mit(async () => {
       try {
         await api.flicken<Kontakt>(`/api/kontakte/${id}`, { ...felder, erzwingen })
@@ -316,7 +342,7 @@ export function KontaktePage() {
       } catch (f) {
         if (f instanceof ApiFehler && f.detail === 'kontakt_konflikt') {
           setEntwurf({ ...felder })
-          setKonflikt({ id, meine: felder })
+          setKonflikt({ id, meine: fassungAus(felder) })
           return false
         }
         throw f
@@ -327,10 +353,11 @@ export function KontaktePage() {
 
   async function konfliktEntscheiden(wahl: 'meine' | 'andere') {
     if (!konflikt) return
-    const { id, meine } = konflikt
+    const { id } = konflikt
     setKonflikt(null)
     if (wahl === 'meine') {
-      await schreiben(id, meine, true)
+      // Die eigene Eingabe steht als Entwurf im Formular; sie geht hinaus.
+      if (entwurf) await schreiben(id, entwurf, true)
       return
     }
     const uebernommen = await mit(() => api.senden<Kontakt>(`/api/kontakte/${id}/konflikt`, {}))
@@ -402,7 +429,7 @@ export function KontaktePage() {
               setGewaehlt(null)
               setGruppeGewaehlt(null)
               setGruppeNeu(false)
-              setEntwurf({ ...LEER })
+              setEntwurf(neuerEntwurf())
             }}
           />
           <IconButton
@@ -655,13 +682,7 @@ export function KontaktePage() {
         ) : entwurf || offen ? (
           <Formular
             key={gewaehlt ?? 'neu'}
-            werte={entwurf ?? {
-              name: offen!.name,
-              adresse: offen!.adresse,
-              firma: offen!.firma,
-              telefon: offen!.telefon,
-              notiz: offen!.notiz,
-            }}
+            werte={entwurf ?? felderAusKontakt(offen!)}
             neu={gewaehlt === null}
             laeuft={laeuft}
             fehler={fehler}
@@ -669,8 +690,7 @@ export function KontaktePage() {
             buecher={buecher}
             buchId={offen?.adressbuch_id ?? buecher.find((b) => b.ist_lokal)?.id ?? ''}
             herkunft={offen?.adressbuch_id ? (nachBuch.get(offen.adressbuch_id)?.herkunft ?? '') : ''}
-            nummern={offen?.nummern ?? []}
-            adressen={offen?.adressen ?? []}
+            weiteres={offen?.weiteres ?? []}
             aufSpeichern={speichern}
             aufVerschieben={offen ? (buchId) => void verschieben(offen, buchId) : undefined}
             aufEntfernen={offen ? () => void entfernen(offen) : undefined}
@@ -827,6 +847,10 @@ function GruppenFormular({
   )
 }
 
+/* Das Formular eines Kontakts: die Felder, die iCloud und Google beide
+ * kennen, dazu die drei Listen. Was nur Apple kennt, steht eingeklappt
+ * darunter, nur lesend. Die Regeln (Stern, „Eigene …", leere Zeilen) wohnen in
+ * `lib/kontaktfelder.ts`, ohne Browser. */
 function Formular({
   werte,
   neu,
@@ -836,13 +860,12 @@ function Formular({
   buecher,
   buchId,
   herkunft = '',
-  nummern = [],
-  adressen = [],
+  weiteres = [],
   aufSpeichern,
   aufVerschieben,
   aufEntfernen,
 }: {
-  werte: typeof LEER
+  werte: Kontaktfelder
   neu: boolean
   laeuft: boolean
   fehler: string
@@ -853,14 +876,13 @@ function Formular({
   buchId: string
   /** Der Anbieter, wenn der Kontakt in einem verbundenen Buch liegt. */
   herkunft?: string
-  nummern?: Karteneintrag[]
-  adressen?: Karteneintrag[]
-  aufSpeichern: (f: typeof LEER, buchId: string) => void
+  weiteres?: Weiteres[]
+  aufSpeichern: (f: Kontaktfelder, buchId: string) => void
   aufVerschieben?: (buchId: string) => void
   aufEntfernen?: () => void
 }) {
-  const { t } = useTranslation()
-  const [felder, setFelder] = useState(werte)
+  const { t, i18n } = useTranslation()
+  const [felder, setFelder] = useState<Kontaktfelder>(werte)
   /* Bei einem neuen Kontakt gehört das Buch zum Formular; bei einem
      bestehenden ist die Auswahl eine Handlung (verschieben) und zeigt den
      gespeicherten Stand. */
@@ -868,33 +890,85 @@ function Formular({
 
   useEffect(() => setFelder(werte), [werte])
 
-  const setzen = (teil: Partial<typeof LEER>) => setFelder((alt) => ({ ...alt, ...teil }))
-  const artText = (art: string) => t(`kontakte.art_${art}`)
+  const setzen = (teil: Partial<Kontaktfelder>) => setFelder((alt) => ({ ...alt, ...teil }))
+  const kennt = (s: string) => i18n.exists(s)
+  const artText = (art: string) => (art === 'other' ? t('kontakte.art_other') : t(`kontakte.art_${art}`))
+  /* Ein Geburtstag ohne Jahr („--06-14", wie Apple ihn hält) passt in kein
+     Datumsfeld; er steht dann als Text, und die Auswahl bleibt dem Telefon. */
+  const geburtstagAlsDatum = felder.geburtstag === '' || /^\d{4}-\d{2}-\d{2}$/.test(felder.geburtstag)
 
-  /* ⚠️ **Die Karte kennt mehr als das eine Feld.** Bei einem verbundenen
-     Kontakt stehen alle Nummern und Adressen darunter, mit Beschriftung;
-     sonst sieht ein Kontakt mit Handy und Festnetz aus wie halb geholt. */
-  const weitere = (eintraege: Karteneintrag[], schluessel: 'nummer' | 'adresse', titel: string) =>
-    eintraege.length > 1 && (
-      <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-semibold tracking-[0.06em] text-fg-3 uppercase">{titel}</span>
-        <ul className="flex flex-col gap-0.5 text-[13px] text-fg-1">
-          {eintraege.map((e, i) => {
-            const marke = beschriftungFuer(e, artText)
-            return (
-              <li key={`${e[schluessel]}-${i}`} className="flex gap-2">
-                <span className="w-24 shrink-0 truncate text-fg-4">{marke}</span>
-                <span className={schluessel === 'adresse' ? 'font-mono' : ''}>{e[schluessel]}</span>
-              </li>
-            )
-          })}
-        </ul>
-      </div>
+  const artWahl = (
+    eintrag: { art: string; beschriftung: string },
+    arten: readonly string[],
+    aufWahl: (wert: string) => void,
+  ) => (
+    <Select aria-label={t('kontakte.art_wahl')} value={auswahlWert(eintrag)} onChange={(e) => aufWahl(e.target.value)}>
+      {arten.map((a) => (
+        <option key={a} value={a}>
+          {artText(a)}
+        </option>
+      ))}
+      <option value={EIGEN}>{t('kontakte.art_eigen')}</option>
+    </Select>
+  )
+
+  const stern = (an: boolean, titel: string, aufKlick: () => void) => (
+    <button
+      type="button"
+      aria-pressed={an}
+      aria-label={titel}
+      title={titel}
+      onClick={aufKlick}
+      className={`fokusrahmen grid size-8 shrink-0 place-items-center rounded-md ${an ? 'text-accent-text' : 'text-fg-4 hover:bg-surface-2 hover:text-fg-2'}`}
+    >
+      <Star aria-hidden className="size-4" fill={an ? 'currentColor' : 'none'} />
+    </button>
+  )
+
+  const weg = (titel: string, aufKlick: () => void) => (
+    <button
+      type="button"
+      aria-label={titel}
+      title={titel}
+      onClick={aufKlick}
+      className="fokusrahmen grid size-8 shrink-0 place-items-center rounded-md text-fg-4 hover:bg-surface-2 hover:text-danger"
+    >
+      <X aria-hidden className="size-4" />
+    </button>
+  )
+
+  const eigenFeld = (eintrag: { art: string; beschriftung: string }, aufText: (text: string) => void) =>
+    auswahlWert(eintrag) === EIGEN && (
+      <input
+        aria-label={t('kontakte.beschriftung')}
+        placeholder={t('kontakte.beschriftung')}
+        value={eintrag.beschriftung}
+        onChange={(e) => aufText(e.target.value)}
+        className="fokusrahmen col-start-1 rounded-md border border-line bg-surface-1 px-3 py-1.5 text-sm text-fg-1 outline-none"
+      />
     )
+
+  const kopf = (titel: string, knopf: string, aufNeu: () => void) => (
+    <div className="flex items-center gap-2">
+      <span className="text-[11px] font-semibold tracking-[0.06em] text-fg-3 uppercase">{titel}</span>
+      <button
+        type="button"
+        onClick={aufNeu}
+        className="fokusrahmen ml-auto rounded-md px-2 py-1 text-[12.5px] font-medium text-accent-text hover:bg-accent-soft"
+      >
+        {knopf}
+      </button>
+    </div>
+  )
+
+  const nummernSetzen = (liste: Nummer[]) => setzen({ nummern: liste })
+  const adressenSetzen = (liste: Adresse[]) => setzen({ adressen: liste })
+  const anschriftenSetzen = (liste: Anschrift[]) => setzen({ anschriften: liste })
+  const feldKlasse = 'fokusrahmen w-full rounded-md border border-line bg-surface-1 px-3 py-1.5 text-sm text-fg-1 outline-none'
 
   return (
     <form
-      className="flex max-w-[560px] flex-col gap-4 p-6"
+      className="flex max-w-[640px] flex-col gap-4 p-6"
       onSubmit={(e) => {
         e.preventDefault()
         aufSpeichern(felder, neu ? buchNeu : buchId)
@@ -914,45 +988,126 @@ function Formular({
       {/* Das Buch steht nur zur Wahl, wenn es mehr als eines gibt: eine
           Auswahl mit einem Eintrag ist ein Klick, der nichts entscheidet. */}
       {buecher.length > 1 && (
-        <Select
-          label={t('kontakte.buch_feld')}
-          value={neu ? buchNeu : buchId}
-          onChange={(e) => {
-            if (neu) setBuchNeu(e.target.value)
-            else aufVerschieben?.(e.target.value)
-          }}
-        >
-          {buecher.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.art ? `${b.name} · ${b.herkunft}` : b.name}
-            </option>
-          ))}
-        </Select>
+        <div className="max-w-[300px]">
+          <Select
+            label={t('kontakte.buch_feld')}
+            value={neu ? buchNeu : buchId}
+            onChange={(e) => {
+              if (neu) setBuchNeu(e.target.value)
+              else aufVerschieben?.(e.target.value)
+            }}
+          >
+            {buecher.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.art ? `${b.name} · ${b.herkunft}` : b.name}
+              </option>
+            ))}
+          </Select>
+        </div>
       )}
-      <Input
-        label={t('kontakte.adresse')}
-        mono
-        autoComplete="email"
-        value={felder.adresse}
-        onChange={(e) => setzen({ adresse: e.target.value })}
-      />
-      <Input
-        label={t('kontakte.name')}
-        value={felder.name}
-        onChange={(e) => setzen({ name: e.target.value })}
-      />
-      <Input
-        label={t('kontakte.firma')}
-        value={felder.firma}
-        onChange={(e) => setzen({ firma: e.target.value })}
-      />
-      <Input
-        label={t('kontakte.telefon')}
-        value={felder.telefon}
-        onChange={(e) => setzen({ telefon: e.target.value })}
-      />
-      {weitere(nummern, 'nummer', t('kontakte.alle_nummern'))}
-      {weitere(adressen, 'adresse', t('kontakte.alle_adressen'))}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Input label={t('kontakte.vorname')} autoComplete="given-name" value={felder.vorname} onChange={(e) => setzen({ vorname: e.target.value })} />
+        <Input label={t('kontakte.nachname')} autoComplete="family-name" value={felder.nachname} onChange={(e) => setzen({ nachname: e.target.value })} />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Input label={t('kontakte.spitzname')} value={felder.spitzname} onChange={(e) => setzen({ spitzname: e.target.value })} />
+        <Input label={t('kontakte.position')} value={felder.titel} onChange={(e) => setzen({ titel: e.target.value })} />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Input label={t('kontakte.firma')} autoComplete="organization" value={felder.firma} onChange={(e) => setzen({ firma: e.target.value })} />
+        <Input label={t('kontakte.abteilung')} value={felder.abteilung} onChange={(e) => setzen({ abteilung: e.target.value })} />
+      </div>
+
+      {/* --- Telefon ------------------------------------------------ */}
+      <div className="flex flex-col gap-2" data-liste="nummern">
+        {kopf(t('kontakte.nummern'), t('kontakte.nummer_neu'), () =>
+          nummernSetzen(zeileHinzufuegen(felder.nummern, neueNummer(felder.nummern))),
+        )}
+        {felder.nummern.length === 0 && <p className="text-[13px] text-fg-4">{t('kontakte.keine_nummer')}</p>}
+        {felder.nummern.map((n, i) => (
+          <div key={i} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 sm:grid-cols-[128px_minmax(0,1fr)_auto_auto]">
+            {artWahl(n, NUMMER_ARTEN, (wert) => nummernSetzen(felder.nummern.map((x, j) => (j === i ? artSetzen(x, wert) : x))))}
+            <input
+              aria-label={t('kontakte.telefon')}
+              type="tel"
+              autoComplete="off"
+              value={n.nummer}
+              onChange={(e) => nummernSetzen(felder.nummern.map((x, j) => (j === i ? { ...x, nummer: e.target.value } : x)))}
+              className={`${feldKlasse} col-span-3 font-mono text-[13px] sm:col-span-1`}
+            />
+            {stern(n.bevorzugt, t('kontakte.stern_nummer'), () => nummernSetzen(sternSetzen(felder.nummern, i)))}
+            {weg(t('kontakte.zeile_entfernen'), () => nummernSetzen(zeileEntfernen(felder.nummern, i)))}
+            {eigenFeld(n, (text) => nummernSetzen(felder.nummern.map((x, j) => (j === i ? { ...x, beschriftung: text } : x))))}
+          </div>
+        ))}
+      </div>
+
+      {/* --- E-Mail ------------------------------------------------- */}
+      <div className="flex flex-col gap-2" data-liste="adressen">
+        {kopf(t('kontakte.adressen'), t('kontakte.adresse_neu'), () =>
+          adressenSetzen(zeileHinzufuegen(felder.adressen, neueAdresse())),
+        )}
+        {felder.adressen.length === 0 && <p className="text-[13px] text-fg-4">{t('kontakte.keine_adresse')}</p>}
+        {felder.adressen.map((a, i) => (
+          <div key={i} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 sm:grid-cols-[128px_minmax(0,1fr)_auto_auto]">
+            {artWahl(a, ADRESSE_ARTEN, (wert) => adressenSetzen(felder.adressen.map((x, j) => (j === i ? artSetzen(x, wert) : x))))}
+            <input
+              aria-label={t('kontakte.adresse')}
+              type="email"
+              autoComplete="email"
+              value={a.adresse}
+              onChange={(e) => adressenSetzen(felder.adressen.map((x, j) => (j === i ? { ...x, adresse: e.target.value } : x)))}
+              className={`${feldKlasse} col-span-3 font-mono text-[13px] sm:col-span-1`}
+            />
+            {stern(a.bevorzugt, t('kontakte.stern_adresse'), () => adressenSetzen(sternSetzen(felder.adressen, i)))}
+            {weg(t('kontakte.zeile_entfernen'), () => adressenSetzen(zeileEntfernen(felder.adressen, i)))}
+            {eigenFeld(a, (text) => adressenSetzen(felder.adressen.map((x, j) => (j === i ? { ...x, beschriftung: text } : x))))}
+          </div>
+        ))}
+      </div>
+
+      {/* --- Anschrift ---------------------------------------------- */}
+      <div className="flex flex-col gap-2" data-liste="anschriften">
+        {kopf(t('kontakte.anschriften'), t('kontakte.anschrift_neu'), () =>
+          anschriftenSetzen(zeileHinzufuegen(felder.anschriften, neueAnschrift())),
+        )}
+        {felder.anschriften.length === 0 && <p className="text-[13px] text-fg-4">{t('kontakte.keine_anschrift')}</p>}
+        {felder.anschriften.map((a, i) => {
+          const aendern = (teil: Partial<Anschrift>) =>
+            anschriftenSetzen(felder.anschriften.map((x, j) => (j === i ? { ...x, ...teil } : x)))
+          return (
+            <div key={i} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-start gap-2 sm:grid-cols-[128px_minmax(0,1fr)_auto_auto]">
+              {artWahl(a, ANSCHRIFT_ARTEN, (wert) => anschriftenSetzen(felder.anschriften.map((x, j) => (j === i ? artSetzen(x, wert) : x))))}
+              <div className="col-span-3 flex flex-col gap-2 sm:col-span-1">
+                <input aria-label={t('kontakte.strasse')} placeholder={t('kontakte.strasse')} autoComplete="street-address" value={a.strasse} onChange={(e) => aendern({ strasse: e.target.value })} className={feldKlasse} />
+                <div className="grid grid-cols-[110px_1fr] gap-2 sm:grid-cols-[110px_1fr_1fr]">
+                  <input aria-label={t('kontakte.plz')} placeholder={t('kontakte.plz')} autoComplete="postal-code" value={a.plz} onChange={(e) => aendern({ plz: e.target.value })} className={feldKlasse} />
+                  <input aria-label={t('kontakte.ort')} placeholder={t('kontakte.ort')} autoComplete="address-level2" value={a.ort} onChange={(e) => aendern({ ort: e.target.value })} className={feldKlasse} />
+                  <input aria-label={t('kontakte.land')} placeholder={t('kontakte.land')} autoComplete="country-name" value={a.land} onChange={(e) => aendern({ land: e.target.value })} className={`${feldKlasse} col-span-2 sm:col-span-1`} />
+                </div>
+              </div>
+              {stern(a.bevorzugt, t('kontakte.stern_anschrift'), () => anschriftenSetzen(sternSetzen(felder.anschriften, i)))}
+              {weg(t('kontakte.zeile_entfernen'), () => anschriftenSetzen(zeileEntfernen(felder.anschriften, i)))}
+              {eigenFeld(a, (text) => aendern({ beschriftung: text }))}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {geburtstagAlsDatum ? (
+          <Input label={t('kontakte.geburtstag')} type="date" value={felder.geburtstag} onChange={(e) => setzen({ geburtstag: e.target.value })} />
+        ) : (
+          <Input
+            label={`${t('kontakte.geburtstag')} · ${t('kontakte.geburtstag_ohne_jahr')}`}
+            value={felder.geburtstag}
+            onChange={(e) => setzen({ geburtstag: e.target.value })}
+          />
+        )}
+        <Input label={t('kontakte.webseite')} mono type="url" autoComplete="url" value={felder.webseite} onChange={(e) => setzen({ webseite: e.target.value })} />
+      </div>
+
       <label className="flex flex-col gap-1.5">
         <span className="text-[11px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
           {t('kontakte.notiz')}
@@ -964,6 +1119,29 @@ function Formular({
           className="fokusrahmen rounded-md border border-line bg-surface-1 px-3 py-2 text-sm text-fg-1 outline-none disabled:opacity-60"
         />
       </label>
+
+      {/* --- Was nur Apple kennt: zeigen, nicht ändern ---------------- */}
+      {weiteres.length > 0 && (
+        <details className="rounded-md border border-line-subtle bg-surface-2">
+          <summary className="cursor-pointer px-3 py-2 text-[13px] text-fg-2">
+            {t('kontakte.weiteres', { count: weiteres.length })}
+          </summary>
+          <div className="px-3 pb-3 text-[13px] text-fg-2">
+            <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+              {weiteres.map((w, i) => (
+                <div key={i} className="contents">
+                  <dt className="text-fg-4">
+                    {t(`kontakte.weiteres_${w.art}`)}
+                    {w.beschriftung ? ` · ${beschriftungText({ art: '', beschriftung: w.beschriftung }, t, kennt)}` : ''}
+                  </dt>
+                  <dd className="m-0 truncate">{w.text}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-2 text-[12px] text-fg-3">{t('kontakte.weiteres_hinweis')}</p>
+          </div>
+        </details>
+      )}
 
       {fehler && <p className="text-[13px] text-danger">{fehler}</p>}
       {meldung && <p className="text-[13px] text-accent-text">{meldung}</p>}

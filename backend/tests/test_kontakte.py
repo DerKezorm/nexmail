@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import json
+
 import pytest
 
 from app.models import Benutzer, Konto, Nachricht, Ordner, neue_id
@@ -96,7 +98,7 @@ def test_ohne_adresse_wird_nicht_vorgeschlagen(db, person):
     bekäme ein leeres Feld."""
     kontakte.anlegen(db, person, "", "Werkstatt Beispiel", telefon="030 1234")
     kontakte.anlegen(db, person, "werk@example.org", "Werkstatt Zwei")
-    assert [k.name for k in kontakte.vorschlagen(db, person, "werk")] == ["Werkstatt Zwei"]
+    assert [k.name for k, _ in kontakte.vorschlagen(db, person, "werk")] == ["Werkstatt Zwei"]
 
 
 def test_die_suche_findet_die_nummer(db, person):
@@ -134,7 +136,86 @@ def test_vorschlaege_kommen_nach_haeufigkeit(db, person):
     db.commit()
 
     vorschlaege = kontakte.vorschlagen(db, person, "ma")
-    assert [v.adresse for v in vorschlaege][0] == "martin@example.org"
+    assert [adresse for _, adresse in vorschlaege][0] == "martin@example.org"
+
+
+def test_vorschlaege_kennen_alle_adressen_eines_kontakts(db, person):
+    """Seit dem Felder-Schritt hat ein Kontakt mehrere Adressen; wer „arbeit"
+    tippt, meint die Arbeitsadresse, und wer den Namen tippt, bekommt alle,
+    die bevorzugte zuerst."""
+    kontakte.anlegen(
+        db, person, vorname="Anna", nachname="Beispiel",
+        adressen=[
+            {"adresse": "anna@example.org", "art": "home", "bevorzugt": True},
+            {"adresse": "anna.arbeit@example.net", "art": "work"},
+        ],
+    )
+    assert [a for _, a in kontakte.vorschlagen(db, person, "arbeit")] == ["anna.arbeit@example.net"]
+    assert [a for _, a in kontakte.vorschlagen(db, person, "anna b")] == [
+        "anna@example.org", "anna.arbeit@example.net",
+    ]
+
+
+def test_die_suche_findet_jede_nummer_und_adresse(db, person):
+    kontakte.anlegen(
+        db, person, vorname="Anna",
+        nummern=[{"nummer": "030 1", "art": "home", "bevorzugt": True}, {"nummer": "0170 777", "art": "cell"}],
+        adressen=[{"adresse": "anna@example.org"}, {"adresse": "zweit@example.net"}],
+    )
+    kontakte.anlegen(db, person, "b@example.org", "Bernd")
+    assert [k.name for k in kontakte.meine(db, person, "777")] == ["Anna"]
+    assert [k.name for k in kontakte.meine(db, person, "zweit@")] == ["Anna"]
+
+
+def test_die_listen_leiten_die_einzelfelder_ab_und_der_alte_weg_bleibt(db, person):
+    """⚠️ ``telefon`` und ``adresse`` bleiben als Spalten (Eindeutigkeit,
+    Vorschlaege, Gruppen); sie folgen dem Stern. Ein alter Aufrufer mit
+    ``telefon`` allein trifft den Eintrag mit Stern."""
+    k = kontakte.anlegen(
+        db, person, vorname="Anna", nachname="Beispiel",
+        nummern=[{"nummer": "030 1", "art": "home"}, {"nummer": "0170 7", "art": "cell", "bevorzugt": True}],
+    )
+    assert (k.name, k.telefon) == ("Anna Beispiel", "0170 7")
+    kontakte.aendern(db, person, k.id, telefon="0170 8")
+    db.refresh(k)
+    assert k.telefon == "0170 8"
+    assert [n["nummer"] for n in json.loads(k.nummern)] == ["030 1", "0170 8"]
+    kontakte.aendern(db, person, k.id, nummern=[{"nummer": "030 1", "art": "home", "bevorzugt": True}])
+    db.refresh(k)
+    assert k.telefon == "030 1" and len(json.loads(k.nummern)) == 1
+    # Ein Name ohne Vor- und Nachname wird geteilt, wie bisher.
+    kontakte.aendern(db, person, k.id, name="Anna Lena Muster")
+    db.refresh(k)
+    assert (k.vorname, k.nachname, k.name) == ("Anna Lena", "Muster", "Anna Lena Muster")
+
+
+def test_eine_kaputte_adresse_in_der_liste_wird_abgewiesen(db, person):
+    with pytest.raises(kontakte.KontaktFehler) as f:
+        kontakte.anlegen(db, person, vorname="Anna", adressen=[{"adresse": "kein-postfach"}])
+    assert f.value.kennung == "kontakt_adresse_ungueltig"
+    with pytest.raises(kontakte.KontaktFehler) as f:
+        kontakte.anlegen(db, person, vorname="Anna", geburtstag="12.04.1980")
+    assert f.value.kennung == "kontakt_geburtstag_ungueltig"
+    with pytest.raises(kontakte.KontaktFehler) as f:
+        kontakte.anlegen(db, person, vorname="Anna", nummern=[{"nummer": str(i)} for i in range(21)])
+    assert f.value.kennung == "kontakt_zu_viele_eintraege"
+
+
+def test_der_bestand_bekommt_seine_felder_einmal_nachgetragen(db, person):
+    """Zeilen von vor dem Felder-Schritt: Name geteilt, Nummer und Adresse als
+    Liste. ⚠️ Nur einmal — was schon Listen hat, bleibt unangetastet."""
+    k = kontakte.anlegen(db, person, "anna@example.org", "Anna Lena Muster", telefon="030 1")
+    k.vorname = k.nachname = ""
+    k.nummern = k.adressen = "[]"
+    db.commit()
+    assert kontakte.felder_nachtragen(db) == 1
+    db.refresh(k)
+    assert (k.vorname, k.nachname) == ("Anna Lena", "Muster")
+    assert json.loads(k.nummern) == [{"nummer": "030 1", "art": "", "beschriftung": "", "bevorzugt": True}]
+    assert json.loads(k.adressen)[0]["adresse"] == "anna@example.org"
+    k.nachname = "Anders"
+    db.commit()
+    assert kontakte.felder_nachtragen(db) == 0
 
 
 def test_leerer_anfang_schlaegt_nichts_vor(db, person):
@@ -407,16 +488,18 @@ def test_alle_nummern_kommen_mit_typen_und_beschriftung(db, person):
         "item3.X-ABLabel:Privat\r\n"
         "END:VCARD\r\n"
     )
-    daten = kontakte.kontaktdaten_aus_vcard(karte)
-    assert [(n["nummer"], n["typen"], n["beschriftung"]) for n in daten["nummern"]] == [
-        ("0241 111", "home,voice,pref", ""),
-        ("+49 170 222", "cell,voice", "Mobile"),
-        ("0241 333", "voice", "Werkstatt"),
-        ("0170 444", "cell,voice", ""),  # vCard 2.1: Typen ohne TYPE=
+    daten = kontakte.felder_aus_vcard(karte)
+    assert [(n["nummer"], n["art"], n["beschriftung"]) for n in daten["nummern"]] == [
+        ("0241 111", "home", ""),
+        ("+49 170 222", "cell", ""),
+        ("0241 333", "", "Werkstatt"),
+        ("0170 444", "cell", ""),  # vCard 2.1: Typen ohne TYPE=
     ]
-    assert [(a["adresse"], a["beschriftung"]) for a in daten["adressen"]] == [
-        ("b@example.org", ""),
-        ("jonas@example.org", "Privat"),
+    # Der Stern: das erste Handy, nicht Apples pref auf dem Festnetz.
+    assert [n["bevorzugt"] for n in daten["nummern"]] == [False, True, False, False]
+    assert [(a["adresse"], a["art"], a["beschriftung"]) for a in daten["adressen"]] == [
+        ("b@example.org", "work", ""),
+        ("jonas@example.org", "", "Privat"),
     ]
 
 
@@ -507,7 +590,7 @@ def test_ohne_adresse_schreibt_die_vcard_keine_email_zeile(db, person):
     kontakte.anlegen(db, person, "", "", telefon="030 5555")
     karte = kontakte.als_vcard(kontakte.meine(db, person))
     assert "EMAIL" not in karte
-    assert "FN:Werkstatt" in karte and "TEL:030 1234" in karte
+    assert "FN:Werkstatt" in karte and "TEL;type=VOICE:030 1234" in karte
     # Ohne Namen benennt die Nummer den Eintrag; FN ist Pflicht.
     assert "FN:030 5555" in karte
 

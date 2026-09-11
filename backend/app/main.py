@@ -241,6 +241,14 @@ async def lebenslauf(_: FastAPI):
 
             buchdienst.neu_lesen_erzwingen(db)
             einstellung_schreiben(db, "karten_neu_gelesen", "1")
+        # Die Felder des Felder-Schritts (Vor- und Nachname, Listen) fuer den
+        # Bestand einmal aus der Karte oder aus den alten Spalten fuellen.
+        # Einmal, gemerkt an einer Marke, wie darueber.
+        if einstellung_lesen(db, "kontaktfelder_nachgetragen") != "1":
+            from .services import kontakte as kontaktdienst
+
+            kontaktdienst.felder_nachtragen(db)
+            einstellung_schreiben(db, "kontaktfelder_nachgetragen", "1")
 
         # ⚠️ **``angekommen`` fuer den Bestand einmal auf „jetzt" setzen.**
         # Die Spalte kam nach den ersten Abgleichen dazu; Zeilen davor stehen

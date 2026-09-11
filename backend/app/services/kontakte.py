@@ -36,14 +36,10 @@ from ..models import (
     Ordner,
 )
 from ..meldung import Meldung
-from . import adressbuecher, caldav, carddav
-# Die vCard-Textregeln wohnen seit Lieferung 2 in ``vcard.py``, wo auch der
-# Zeilen-Editor auf der Rohkarte steht; hier bleiben die alten Namen, damit
-# die Leser weiter lesen wie bisher.
+from . import adressbuecher, caldav, carddav, vcard
+# Die vCard-Textregeln, der Leser und der Zeilen-Editor wohnen in ``vcard.py``;
+# hier steht, was daraus in die Datenbank geht und wieder heraus.
 from .vcard import entfalten
-from .vcard import entmaskieren as _entmaskieren
-from .vcard import felder_trennen as _felder_trennen
-from .vcard import maskieren as _vcard_maskieren
 
 logger = logging.getLogger("nexmail.kontakte")
 
@@ -82,6 +78,99 @@ def _etwas_muss_da_sein(adresse: str, name: str, telefon: str, firma: str) -> No
         raise KontaktFehler("kontakt_leer")
 
 
+# --- Die Felder einer Zeile ------------------------------------------------ #
+# Seit dem Felder-Schritt (11.09.2026) traegt ein Kontakt Vor- und Nachname,
+# Spitzname, Abteilung, Position, Geburtstag, Webseite und die drei Listen
+# (Nummern, Adressen, Anschriften), jeder Eintrag mit Art, eigener
+# Beschriftung und Stern. ``name``, ``adresse`` und ``telefon`` bleiben als
+# abgeleitete Spalten: der Anzeigename und je der Eintrag mit Stern. Die Regel
+# aus CLAUDE.md gilt: nur Felder, die iCloud und Google beide kennen.
+
+LISTEN = vcard.LISTEN
+#: Mehr Nummern hat kein Mensch; wer mehr braucht, hat einen Verteiler.
+GRENZE_LISTE = 20
+_LAENGE = {"vorname": 160, "nachname": 160, "spitzname": 160, "firma": 320, "abteilung": 160,
+           "titel": 160, "geburtstag": 32, "webseite": 320}
+_GEBURTSTAG = re.compile(r"(\d{4}|-)-\d{2}-\d{2}")
+
+
+def _json_liste(text) -> list[dict]:
+    """Eine JSON-Spalte als Liste von Woerterbuechern; Kaputtes ist leer, nicht
+    tot — es kommt aus der eigenen Datenbank, aber ein halb eingespieltes
+    Archiv ist denkbar."""
+    try:
+        wert = json.loads(text or "[]")
+    except (TypeError, ValueError):
+        return []
+    return [e for e in wert if isinstance(e, dict)] if isinstance(wert, list) else []
+
+
+def felder_der_zeile(k: Kontakt) -> dict:
+    """Alles, was nexmail an einer Zeile pflegt, als Feldersatz — fuer den
+    Schreiber, den Export und die Schnittstelle.
+
+    ⚠️ **Ohne ``name``.** Der ist abgeleitet; wer ihn mitgaebe, liesse
+    ``vcard.felder_normieren`` einen Firmen-Kontakt („Polizei Beispielstadt",
+    ohne Vor- und Nachname) beim naechsten Speichern in Vor- und Nachname
+    teilen.
+    """
+    felder = {f: getattr(k, f) or "" for f in vcard.FELDER}
+    felder["adresse"] = k.adresse
+    felder["telefon"] = k.telefon
+    for liste in LISTEN:
+        felder[liste] = _json_liste(getattr(k, liste))
+    return felder
+
+
+def felder_anwenden(k: Kontakt, felder: dict) -> None:
+    """Einen normierten Feldersatz in die Zeile schreiben. Ohne ``commit``."""
+    for f in vcard.FELDER:
+        setattr(k, f, (felder.get(f) or "")[: _LAENGE.get(f, 5000)])
+    k.name = (felder.get("name") or "")[:320]
+    k.adresse = (felder.get("adresse") or "")[:320]
+    k.telefon = (felder.get("telefon") or "")[:120]
+    for liste in LISTEN:
+        # ⚠️ ``ensure_ascii=False``, sonst steht „Zweitbüro" als ``\u00fc``
+        # in der Spalte, und die Suche mit LIKE findet es nie.
+        setattr(k, liste, json.dumps(felder.get(liste) or [], ensure_ascii=False))
+
+
+def felder_pruefen_lose(felder: dict) -> dict:
+    """Der Feldersatz einer Karte vom Anbieter: normiert, ohne zu werfen.
+    Eine kaputte Adresse in der Liste faellt heraus, statt die Karte
+    abzuweisen — der Rest ist etwas wert."""
+    neu = vcard.felder_normieren(felder)
+    neu["adressen"] = [a for a in neu["adressen"] if _ADRESSE.match(a["adresse"])]
+    neu["adresse"] = vcard.bevorzugte(neu["adressen"], "adresse")
+    for liste in LISTEN:
+        neu[liste] = neu[liste][:GRENZE_LISTE]
+    # Der Anzeigename der Karte gilt auch ohne Vor- und Nachname (Firma).
+    neu["name"] = neu["name"] or (felder.get("name") or "")
+    return neu
+
+
+def felder_pruefen(felder: dict, alt: dict | None = None) -> dict:
+    """Eingaben normieren und pruefen: Adressen echt, Listen gedeckelt,
+    Geburtstag in Form. ``alt`` ist der bisherige Feldersatz; was darin schon
+    so stand, wird nicht erneut geprueft — eine Karte vom Anbieter darf
+    Eigenheiten tragen, an denen ein Mensch sonst beim Speichern scheiterte."""
+    neu = vcard.felder_normieren(felder)
+    alt = alt or {}
+    for liste in LISTEN:
+        if len(neu[liste]) > GRENZE_LISTE:
+            raise KontaktFehler("kontakt_zu_viele_eintraege", max=GRENZE_LISTE)
+    bekannt = {a.get("adresse") for a in alt.get("adressen", [])}
+    for a in neu["adressen"]:
+        if a["adresse"] not in bekannt:
+            a["adresse"] = adresse_pruefen(a["adresse"])
+    if neu["geburtstag"] != alt.get("geburtstag", "") and neu["geburtstag"] and not _GEBURTSTAG.fullmatch(neu["geburtstag"]):
+        raise KontaktFehler("kontakt_geburtstag_ungueltig")
+    if neu["webseite"] and neu["webseite"] != alt.get("webseite", "") and " " in neu["webseite"]:
+        raise KontaktFehler("kontakt_webseite_ungueltig")
+    _etwas_muss_da_sein(neu["adresse"], neu["name"], neu["telefon"], neu["firma"])
+    return neu
+
+
 # --- Lesen ---------------------------------------------------------------- #
 
 
@@ -92,21 +181,31 @@ def meine(db: Session, person: Benutzer, suche: str = "") -> list[Kontakt]:
         frage = frage.where(
             or_(
                 func.lower(Kontakt.name).like(muster),
+                func.lower(Kontakt.spitzname).like(muster),
                 func.lower(Kontakt.adresse).like(muster),
                 func.lower(Kontakt.firma).like(muster),
-                # Ein Kontakt ohne Adresse ist oft nur eine Nummer mit Namen.
+                # Ein Kontakt ohne Adresse ist oft nur eine Nummer mit Namen —
+                # und seit dem Felder-Schritt steht jede Nummer in der Liste.
                 Kontakt.telefon.like(muster),
+                Kontakt.nummern.like(muster),
+                func.lower(Kontakt.adressen).like(muster),
             )
         )
     return list(db.execute(frage.order_by(Kontakt.name, Kontakt.adresse)).scalars().all())
 
 
-def vorschlagen(db: Session, person: Benutzer, anfang: str, grenze: int = 8) -> list[Kontakt]:
-    """Vorschläge beim Tippen einer Adresse.
+def vorschlagen(
+    db: Session, person: Benutzer, anfang: str, grenze: int = 8
+) -> list[tuple[Kontakt, str]]:
+    """Vorschläge beim Tippen einer Adresse, je Adresse einer.
 
     ⚠️ **Sortiert nach Häufigkeit, nicht alphabetisch.** Wer „ma" tippt, meint
     fast immer den, dem er ständig schreibt — nicht den, der zufällig vorne im
     Alphabet steht.
+
+    ⚠️ **Alle Adressen eines Kontakts, nicht nur die mit Stern.** Wer
+    „arbeit" tippt, meint die Arbeitsadresse; passt der Name, kommen alle,
+    die bevorzugte zuerst.
     """
     kern = anfang.strip().lower()
     if not kern:
@@ -116,15 +215,28 @@ def vorschlagen(db: Session, person: Benutzer, anfang: str, grenze: int = 8) -> 
         select(Kontakt)
         .where(
             Kontakt.benutzer_id == person.id,
-            # ⚠️ Nur, wem man schreiben kann. Ein Vorschlag ohne Adresse
-            # setzte ein leeres Feld ein.
-            Kontakt.adresse != "",
-            or_(func.lower(Kontakt.name).like(muster), func.lower(Kontakt.adresse).like(muster)),
+            or_(
+                func.lower(Kontakt.name).like(muster),
+                func.lower(Kontakt.adresse).like(muster),
+                func.lower(Kontakt.adressen).like(muster),
+            ),
         )
         .order_by(Kontakt.verwendet.desc(), Kontakt.name, Kontakt.adresse)
-        .limit(grenze)
+        .limit(grenze * 3)
     )
-    return list(db.execute(frage).scalars().all())
+    aus: list[tuple[Kontakt, str]] = []
+    for k in db.execute(frage).scalars().all():
+        # ⚠️ Nur, wem man schreiben kann. Ein Vorschlag ohne Adresse setzte
+        # ein leeres Feld ein.
+        kandidaten = [k.adresse] if k.adresse else []
+        kandidaten += [a["adresse"] for a in _json_liste(k.adressen) if a.get("adresse") and a["adresse"] not in kandidaten]
+        if kern not in k.name.lower():
+            kandidaten = [a for a in kandidaten if kern in a]
+        for adresse in kandidaten:
+            aus.append((k, adresse))
+            if len(aus) >= grenze:
+                return aus
+    return aus
 
 
 # --- Schreiben ------------------------------------------------------------ #
@@ -140,32 +252,32 @@ def anlegen(
     notiz: str = "",
     quelle: str = "hand",
     adressbuch_id: str | None = None,
+    **weitere,
 ) -> Kontakt:
     """Einen Kontakt anlegen, im lokalen Buch oder in einem verbundenen.
+
+    ``weitere`` sind die Felder seit dem Felder-Schritt (Vor- und Nachname,
+    Listen …); ``name``, ``telefon`` und ``adresse`` einzeln bleiben der alte
+    Weg und werden zu Listen mit einem Eintrag.
 
     ⚠️ **In einem verbundenen Buch geht die Karte zuerst zum Anbieter.** Was
     der ablehnt, steht hier gar nicht erst; die Zeile fällt mit dem Rollback.
     """
-    sauber = _adresse_oder_leer(adresse)
-    _etwas_muss_da_sein(sauber, name, telefon, firma)
-    if sauber:
+    if adresse:
+        adresse = _adresse_oder_leer(adresse)
+    neu = felder_pruefen(
+        {"adresse": adresse, "name": name, "firma": firma, "telefon": telefon, "notiz": notiz, **weitere}
+    )
+    if neu["adresse"]:
         vorhanden = db.execute(
-            select(Kontakt).where(Kontakt.benutzer_id == person.id, Kontakt.adresse == sauber)
+            select(Kontakt).where(Kontakt.benutzer_id == person.id, Kontakt.adresse == neu["adresse"])
         ).scalar_one_or_none()
         if vorhanden is not None:
-            raise KontaktFehler("adresse_schon_da", adresse=sauber)
+            raise KontaktFehler("adresse_schon_da", adresse=neu["adresse"])
 
     buch = _zielbuch(db, person, adressbuch_id)
-    eintrag = Kontakt(
-        benutzer_id=person.id,
-        adresse=sauber,
-        name=name.strip(),
-        firma=firma.strip(),
-        telefon=telefon.strip(),
-        notiz=notiz,
-        quelle=quelle,
-        adressbuch_id=buch.id,
-    )
+    eintrag = Kontakt(benutzer_id=person.id, quelle=quelle, adressbuch_id=buch.id)
+    felder_anwenden(eintrag, neu)
     db.add(eintrag)
     if buch.art:
         from . import adressbuchabgleich
@@ -218,6 +330,10 @@ def aendern(
 ) -> Kontakt:
     """Einen Kontakt ändern; bei einem verbundenen geht die Karte zuerst hinaus.
 
+    Nicht mitgeschickte Felder bleiben, wie sie sind. Ein einzelnes
+    ``telefon`` oder ``adresse`` (der alte Weg) meint den Eintrag mit Stern;
+    ein ``name`` ohne Vor- und Nachname wird geteilt.
+
     ``erzwingen`` ist die Antwort auf die Rückfrage im Konfliktfenster: „meine
     Fassung gewinnt". Dann wird auf der **frischen** fremden Karte geschrieben,
     nicht auf der alten — sonst sässe die eigene Änderung auf einem veralteten
@@ -227,57 +343,52 @@ def aendern(
     # ⚠️ Erst pruefen, dann anfassen. Wer die Zeile schon geaendert hat, wenn
     # die Pruefung wirft, laesst sie schmutzig in der Sitzung liegen, und der
     # naechste ``commit`` eines anderen schreibt sie mit.
-    neu = {
-        schluessel: felder[schluessel]
-        if schluessel in felder and felder[schluessel] is not None
-        else getattr(eintrag, schluessel)
-        for schluessel in ("name", "firma", "telefon", "notiz")
-    }
-    # Eine leere Adresse heisst „keine mehr", eine fehlende „unveraendert".
-    neue_adresse = eintrag.adresse
-    if "adresse" in felder and felder["adresse"] is not None:
-        neue_adresse = _adresse_oder_leer(felder["adresse"])
-        if neue_adresse and neue_adresse != eintrag.adresse:
-            doppelt = db.execute(
-                select(Kontakt).where(
-                    Kontakt.benutzer_id == person.id,
-                    Kontakt.adresse == neue_adresse,
-                    Kontakt.id != eintrag.id,
-                )
-            ).scalar_one_or_none()
-            if doppelt is not None:
-                raise KontaktFehler("adresse_bei_anderem", adresse=neue_adresse)
-    _etwas_muss_da_sein(neue_adresse, neu["name"], neu["telefon"], neu["firma"])
+    alt = felder_der_zeile(eintrag)
+    eingabe = {k: v for k, v in felder.items() if v is not None}
+    if "nummern" not in eingabe and "telefon" in eingabe:
+        eingabe["nummern"] = vcard.einzel_einmischen(
+            alt["nummern"], "nummer", str(eingabe.pop("telefon")).strip(), vcard.nummer_kern
+        )
+    if "adressen" not in eingabe and "adresse" in eingabe:
+        eingabe["adressen"] = vcard.einzel_einmischen(
+            alt["adressen"], "adresse", _adresse_oder_leer(str(eingabe.pop("adresse"))), str.lower
+        )
+    if "name" in eingabe and "vorname" not in eingabe and "nachname" not in eingabe:
+        eingabe["vorname"], eingabe["nachname"] = vcard.name_teilen(str(eingabe.pop("name")))
+    neu = felder_pruefen({**alt, **eingabe}, alt)
+
+    # Eine leere Adresse heisst „keine mehr", eine andere darf keinem anderen gehoeren.
+    if neu["adresse"] and neu["adresse"] != eintrag.adresse:
+        doppelt = db.execute(
+            select(Kontakt).where(
+                Kontakt.benutzer_id == person.id,
+                Kontakt.adresse == neu["adresse"],
+                Kontakt.id != eintrag.id,
+            )
+        ).scalar_one_or_none()
+        if doppelt is not None:
+            raise KontaktFehler("adresse_bei_anderem", adresse=neu["adresse"])
 
     if _ist_verbunden(db, eintrag):
-        from . import adressbuchabgleich, vcard
+        from . import adressbuchabgleich
 
         # Erst der Server, dann die eigene Datenbank. Die geänderte Karte
-        # entsteht auf der Rohkarte: geändert werden die Zeilen der fünf
-        # Felder, erkannt an den bisherigen Werten der Zeile.
-        vorher = {f: getattr(eintrag, f) for f in vcard.FELDER}
-        nachher = {**neu, "adresse": neue_adresse}
+        # entsteht auf der Rohkarte: geändert werden nur die Zeilen der
+        # Felder, die nexmail pflegt, erkannt an ihren Werten.
         try:
-            if erzwingen:
-                if adressbuchabgleich.frisch_machen(db, eintrag):
-                    # Auf der frischen fremden Karte sagen deren Werte, welche
-                    # Zeilen gemeint sind — nicht die veralteten der Zeile.
-                    vorher = felder_aus_vcard(eintrag.roh)
-                else:
-                    # ⚠️ Drüben gelöscht. „Meine Fassung" heisst dann: wieder
-                    # anlegen, unter derselben Adresse. Mit dem alten ETag
-                    # ginge ``If-Match`` hinaus, und das ist auf eine Karte,
-                    # die es nicht mehr gibt, ein zweiter Konflikt ohne Ende.
-                    eintrag.etag = ""
-            roh_neu = vcard.aktualisieren(eintrag.roh, vorher, nachher, eintrag.uid)
+            if erzwingen and not adressbuchabgleich.frisch_machen(db, eintrag):
+                # ⚠️ Drüben gelöscht. „Meine Fassung" heisst dann: wieder
+                # anlegen, unter derselben Adresse. Mit dem alten ETag
+                # ginge ``If-Match`` hinaus, und das ist auf eine Karte,
+                # die es nicht mehr gibt, ein zweiter Konflikt ohne Ende.
+                eintrag.etag = ""
+            roh_neu = vcard.aktualisieren(eintrag.roh, neu, eintrag.uid)
             adressbuchabgleich.hochschieben(db, eintrag, roh_neu)
         except _ANBIETERFEHLER as f:
             db.rollback()
             _anbieterfehler(f)
 
-    eintrag.adresse = neue_adresse
-    for schluessel, wert in neu.items():
-        setattr(eintrag, schluessel, wert)
+    felder_anwenden(eintrag, neu)
     # Wer einen Eintrag anfasst, hat ihn gepflegt - er ist nicht mehr
     # Aufgeschnapptes und darf beim Aufraeumen nicht mitgehen.
     eintrag.quelle = "hand"
@@ -448,16 +559,13 @@ def einsammeln(db: Session, person: Benutzer) -> dict[str, int]:
                 vorhanden.verwendet += 1
                 # ⚠️ Kein Ueberschreiben des Namens. Siehe Kopf der Datei.
                 if not vorhanden.name and name:
+                    vorhanden.vorname, vorhanden.nachname = vcard.name_teilen(name)
                     vorhanden.name = name
                 continue
             eintrag = Kontakt(
-                benutzer_id=person.id,
-                adresse=adresse,
-                name=name,
-                quelle="gesammelt",
-                verwendet=1,
-                adressbuch_id=lokal_id,
+                benutzer_id=person.id, quelle="gesammelt", verwendet=1, adressbuch_id=lokal_id
             )
+            felder_anwenden(eintrag, vcard.felder_normieren({"name": name, "adresse": adresse}))
             db.add(eintrag)
             bekannt[adresse] = eintrag
             neu += 1
@@ -640,173 +748,41 @@ def als_vcard(
 
     ⚠️ **Ein Kontakt aus einem verbundenen Buch geht als Original hinaus.**
     Seine Karte liegt in ``roh``, mit Foto, allen Nummern und allem, was
-    nexmail nicht kennt; ein Nachbau aus fuenf Feldern waere die halbe Karte.
+    nexmail nicht kennt; ein Nachbau aus den Feldern waere die halbe Karte.
     Dieselbe Zusage wie beim Kalender und bei mboxrd. Lokale Kontakte werden
-    nachgebaut: Ihre Felder duerfen hier geaendert sein, und ``roh`` waere
-    dann veraltet. Das zeilenweise Nachziehen ist Lieferung 2.
+    aus ihren Feldern gebaut — auf ihrer Rohkarte, wenn sie eine haben (aus
+    einem Import), sonst frisch; so gehen auch dort Foto und Geburtstag mit.
     """
     zeilen: list[str] = []
     for k in kontakte:
         if k.roh and k.adressbuch_id in verbundene:
             zeilen.extend(z for z in k.roh.replace("\r\n", "\n").split("\n") if z)
             continue
-        # ``FN`` ist Pflicht: der Name, sonst das Naechste, was den Eintrag
-        # benennt. ⚠️ Die Firma vor Adresse und Nummer: Ein Firmen-Kontakt
-        # von Apple traegt den Namen in ``ORG`` und sonst nichts; als Nummer
-        # betitelt findet ihn niemand wieder.
-        anzeige = k.name or k.firma or k.adresse or k.telefon
-        zeilen.append("BEGIN:VCARD")
-        zeilen.append("VERSION:3.0")
-        if k.uid:
-            # Die Kennung der Karte, damit ein zweites Einlesen sie
-            # wiedererkennt; ohne Adresse ist sie der einzige Schluessel.
-            zeilen.append(f"UID:{_vcard_maskieren(k.uid)}")
-        zeilen.append(f"FN:{_vcard_maskieren(anzeige)}")
-        zeilen.append(f"N:{_vcard_maskieren(anzeige)};;;;")
-        if k.adresse:
-            zeilen.append(f"EMAIL;TYPE=INTERNET:{_vcard_maskieren(k.adresse)}")
-        if k.firma:
-            zeilen.append(f"ORG:{_vcard_maskieren(k.firma)}")
-        if k.telefon:
-            zeilen.append(f"TEL:{_vcard_maskieren(k.telefon)}")
-        if k.notiz:
-            zeilen.append(f"NOTE:{_vcard_maskieren(k.notiz)}")
-        zeilen.append("END:VCARD")
+        # ⚠️ Ohne eigene UID keine erfundene: Die Kennung ist beim zweiten
+        # Einlesen der Schluessel fuer Kontakte ohne Adresse, und eine, die
+        # sich bei jedem Export aendert, legte jeden davon doppelt an.
+        karte = vcard.aktualisieren(k.roh or "", felder_der_zeile(k), k.uid, uid_ergaenzen=bool(k.uid))
+        zeilen.extend(z for z in karte.replace("\r\n", "\n").split("\n") if z)
     # ⚠️ CRLF ist in RFC 6350 vorgeschrieben. Manche Programme sind nachsichtig,
     # Outlook ist es nicht.
     return "\r\n".join(zeilen) + "\r\n"
 
 
-_APPLE_MARKE = re.compile(r"^_\$!<(.+)>!\$_$")
-
-
-def kontaktdaten_aus_vcard(inhalt: str) -> dict[str, list[dict[str, str]]]:
-    """Alle Nummern und Adressen einer Karte, jede mit Typen und Beschriftung.
-
-    ⚠️ **Das Modell kennt eine Nummer, die Karte viele.** Bis die Felder
-    mehrere tragen (der naechste Schritt, mit Maske vorher), zeigt die
-    Oberflaeche die uebrigen aus der Rohkarte, nur lesend. Ein Kontakt mit
-    Handy und Festnetz, von dem nur eines zu sehen war, sah aus wie halb
-    geholt; am 05.09.2026 genau so aus der Pruefinstanz gemeldet.
-
-    Typen kommen als ``TEL;type=CELL;type=pref`` (vCard 3), ``TEL;TYPE=cell``
-    (vCard 4) oder ``TEL;CELL`` (vCard 2.1). Apple beschriftet ueber Gruppen:
-    ``item1.TEL`` gehoert zu ``item1.X-ABLabel``; eigene Beschriftungen
-    stehen dort im Klartext, Apples eigene als ``_$!<Mobile>!$_``.
-    """
-    nummern: list[dict[str, str]] = []
-    adressen: list[dict[str, str]] = []
-    beschriftungen: dict[str, str] = {}
-    for zeile in entfalten(inhalt):
-        if ":" not in zeile:
-            continue
-        kopf, wert = zeile.split(":", 1)
-        teile = kopf.split(";")
-        name = teile[0].strip()
-        gruppe = ""
-        if "." in name:
-            gruppe, name = name.rsplit(".", 1)
-        name = name.upper()
-        typen: list[str] = []
-        for parameter in teile[1:]:
-            schluessel, _, werte = parameter.partition("=")
-            if not werte:
-                typen.append(schluessel.strip().lower())
-            elif schluessel.strip().upper() == "TYPE":
-                typen.extend(t.strip().lower() for t in werte.split(","))
-        wert = wert.strip()
-        if name == "X-ABLABEL" and gruppe:
-            marke = _APPLE_MARKE.match(wert)
-            beschriftungen[gruppe] = marke.group(1) if marke else _entmaskieren(wert)
-        elif name == "TEL" and wert:
-            nummern.append(
-                {"gruppe": gruppe, "typen": ",".join(typen), "nummer": _entmaskieren(wert)}
-            )
-        elif name == "EMAIL" and wert:
-            adressen.append(
-                {"gruppe": gruppe, "typen": ",".join(typen), "adresse": _entmaskieren(wert).lower()}
-            )
-    for eintrag in nummern + adressen:
-        eintrag["beschriftung"] = beschriftungen.get(eintrag.pop("gruppe"), "")
-    return {"nummern": nummern, "adressen": adressen}
-
-
-def _bevorzugt(eintraege: list[dict[str, str]], feld: str, lieber: tuple[str, ...]) -> str:
-    """Welche von mehreren das eine Feld bekommt.
-
-    ⚠️ Erst die Sorte, die der Aufrufer lieber hat (bei Nummern das Handy),
-    dann die vom Anbieter als ``pref`` markierte, sonst die erste. Vorher
-    gewann die erste Zeile der Karte, und bei Apple steht dort gern das
-    Festnetz: Ein Kontakt mit Handy und Festnetz zeigte nur das Festnetz.
-    """
-    if not eintraege:
-        return ""
-    for sorte in (lieber, ("pref",)):
-        for eintrag in eintraege:
-            if any(t in sorte for t in eintrag["typen"].split(",")):
-                return eintrag[feld]
-    return eintraege[0][feld]
-
-
-def felder_aus_vcard(inhalt: str) -> dict[str, str]:
-    """Die acht Felder, die nexmail kennt, aus **einer** Karte.
+def felder_aus_vcard(inhalt: str) -> dict:
+    """Alles, was nexmail kennt, aus **einer** Karte — der Leser aus
+    ``vcard.lesen``, unter dem Namen, den Abgleich und Import seit Lieferung 1
+    benutzen.
 
     ⚠️ **Eine Karte, nicht eine Datei.** Für eine Datei mit mehreren gibt es
     ``aus_vcard``; hier kommt genau das an, was CardDAV je Adresse liefert.
 
-    ⚠️ **Was nexmail nicht kennt, bleibt hier liegen — und muss anderswo
-    aufgehoben werden.** Foto, Geburtstag, weitere Anschriften, ``X-APPLE-…``:
-    Diese Funktion wirft sie weg, deshalb speichert der Abgleich die Karte
-    zusätzlich als ``kontakt.roh``. Wer sich auf diesen Rückgabewert allein
-    verlässt, hat beim ersten Zurückschreiben die Hälfte des Kontakts
-    gelöscht.
+    ⚠️ **Was nexmail nicht kennt, bleibt in der Karte liegen — und muss
+    anderswo aufgehoben werden.** Foto, Social-Profile, ``X-APPLE-…``: Der
+    Abgleich speichert die Karte deshalb zusätzlich als ``kontakt.roh``. Wer
+    sich auf diesen Rückgabewert allein verlässt, hat beim ersten
+    Zurückschreiben die Hälfte des Kontakts gelöscht.
     """
-    felder: dict[str, str] = {}
-    for zeile in entfalten(inhalt):
-        oben = zeile.strip().upper()
-        if oben in ("BEGIN:VCARD", "END:VCARD") or ":" not in zeile:
-            continue
-        kopf, roh_wert = zeile.split(":", 1)
-        # Parameter abtrennen: EMAIL;TYPE=INTERNET -> EMAIL
-        feld = kopf.split(";")[0].strip().upper()
-        # ⚠️ **Apple gruppiert beschriftete Zeilen:** ``item1.TEL`` gehoert
-        # zu ``item1.X-ABLabel:Mutter``. Der Name der Eigenschaft steht
-        # hinter dem Punkt; wer die Gruppe mitliest, findet weder Nummer noch
-        # Adresse. Am 05.09.2026 an einem echten iCloud-Buch aufgefallen.
-        if "." in feld:
-            feld = feld.rsplit(".", 1)[1]
-        roh_wert = roh_wert.strip()
-        if feld == "FN" and roh_wert:
-            # ⚠️ **Apple schreibt ``FN:`` leer und den Namen nur in ``N``.**
-            # Am 05.09.2026 an 185 echten iCloud-Karten gesehen: ``FN:`` ohne
-            # Wert, dahinter ``N:Nachname;Vorname;;;``. Ein leeres FN darf
-            # weder den Namen setzen noch das N danach sperren; vorher kamen
-            # 149 von 185 Karten ohne Namen an.
-            felder["name"] = _entmaskieren(roh_wert)
-        elif feld == "N" and "name" not in felder:
-            # N ist Nachname;Vorname;Zusatz;Anrede;Titel, nach Stellung, nicht
-            # nach Fuellung: ``;Vorname;;;`` ist ein Vorname ohne Nachnamen.
-            # Zusammengesetzt als „Vorname Nachname", weil FN fehlt oder leer
-            # ist. Apple laesst Leerzeichen am Ende der Teile stehen.
-            teile = [t.strip() for t in _felder_trennen(roh_wert)] + ["", ""]
-            felder["name"] = " ".join(t for t in (teile[1], teile[0]) if t)
-        elif feld == "ORG":
-            # ORG ist Firma;Abteilung - nur die Firma wird gebraucht.
-            felder["firma"] = _felder_trennen(roh_wert)[0]
-        elif feld == "NOTE":
-            felder["notiz"] = _entmaskieren(roh_wert)
-        elif feld == "UID" and "uid" not in felder:
-            felder["uid"] = roh_wert
-    # Nummern und Adressen kommen aus dem Leser, der alle kennt, samt Typen;
-    # das eine Feld bekommt die Handynummer, sonst die markierte, sonst die erste.
-    daten = kontaktdaten_aus_vcard(inhalt)
-    telefon = _bevorzugt(daten["nummern"], "nummer", ("cell", "iphone", "mobile"))
-    if telefon:
-        felder["telefon"] = telefon
-    adresse = _bevorzugt(daten["adressen"], "adresse", ("pref",))
-    if adresse:
-        felder["adresse"] = adresse
-    return felder
+    return vcard.lesen(inhalt)
 
 
 def aus_vcard(db: Session, person: Benutzer, inhalt: str) -> dict[str, int]:
@@ -839,19 +815,17 @@ def aus_vcard(db: Session, person: Benutzer, inhalt: str) -> dict[str, int]:
 
 
 def _uebernehmen(
-    db: Session, person: Benutzer, felder: dict[str, str], karte: list[str] | None = None
+    db: Session, person: Benutzer, felder: dict, karte: list[str] | None = None
 ) -> str:
     # ⚠️ Die Karte bleibt liegen, wie sie kam: die Rueckfahrkarte, auch beim
     # Import. Was nexmail nicht kennt, waere sonst mit dem Einlesen weg.
     roh = "BEGIN:VCARD\r\n" + "\r\n".join(karte) + "\r\nEND:VCARD\r\n" if karte else ""
-    adresse = felder.get("adresse", "").strip().lower()
-    if adresse and not _ADRESSE.match(adresse):
-        # Eine kaputte Adresse ist keine; der Rest der Karte ist trotzdem
-        # etwas wert.
-        adresse = ""
-    name = felder.get("name", "").strip()
-    telefon = felder.get("telefon", "").strip()
-    firma = felder.get("firma", "").strip()
+    neu = vcard.felder_normieren(felder)
+    # Eine kaputte Adresse ist keine; der Rest der Karte ist trotzdem etwas wert.
+    neu["adressen"] = [a for a in neu["adressen"] if _ADRESSE.match(a["adresse"])]
+    neu["adresse"] = vcard.bevorzugte(neu["adressen"], "adresse")
+    adresse = neu["adresse"]
+    name, telefon, firma = neu["name"], neu["telefon"], neu["firma"]
     if not (adresse or name or telefon or firma):
         return "uebersprungen"
 
@@ -862,35 +836,37 @@ def _uebernehmen(
     else:
         vorhanden = _ohne_adresse_wiedererkennen(db, person, felder.get("uid", ""), name, telefon)
     if vorhanden is not None:
-        # ⚠️ Ein Eintrag aus einem verbundenen Buch bleibt unangetastet: Was
-        # hier ergaenzt wuerde, ueberschriebe der naechste Abgleich, ohne dass
-        # es jemand saehe. Lieferung 1 liest nur.
+        # ⚠️ Ein Eintrag aus einem verbundenen Buch bleibt unangetastet:
+        # Hundert Karten einzeln hochzuschieben ist ein eigener Vorgang mit
+        # Fortschritt und Abbruch, wie der ICS-Import in einen CalDAV-Kalender.
         if vorhanden.adressbuch_id:
             heim = db.get(Adressbuch, vorhanden.adressbuch_id)
             if heim is not None and heim.art:
                 return "uebersprungen"
         # Nur fuellen, was leer ist. Eine Datei aus einem anderen Programm
         # weiss nicht besser, wie jemand heisst, als der eigene Eintrag.
-        for schluessel in ("name", "firma", "telefon", "notiz"):
-            if not getattr(vorhanden, schluessel) and felder.get(schluessel):
-                setattr(vorhanden, schluessel, felder[schluessel])
+        for schluessel in vcard.FELDER:
+            if not getattr(vorhanden, schluessel) and neu.get(schluessel):
+                setattr(vorhanden, schluessel, neu[schluessel][: _LAENGE.get(schluessel, 5000)])
+        if not vorhanden.name and neu["name"]:
+            vorhanden.name = neu["name"][:320]
+        for liste in LISTEN:
+            if not _json_liste(getattr(vorhanden, liste)) and neu[liste]:
+                setattr(vorhanden, liste, json.dumps(neu[liste], ensure_ascii=False))
+        if not vorhanden.telefon and telefon:
+            vorhanden.telefon = telefon[:120]
         vorhanden.quelle = "hand"
         return "ergaenzt"
 
-    db.add(
-        Kontakt(
-            benutzer_id=person.id,
-            adresse=adresse,
-            name=name,
-            firma=firma,
-            telefon=telefon,
-            notiz=felder.get("notiz", ""),
-            uid=felder.get("uid", "")[:255],
-            roh=roh,
-            quelle="hand",
-            adressbuch_id=adressbuecher.lokales(db, person).id,
-        )
+    eintrag = Kontakt(
+        benutzer_id=person.id,
+        uid=felder.get("uid", "")[:255],
+        roh=roh,
+        quelle="hand",
+        adressbuch_id=adressbuecher.lokales(db, person).id,
     )
+    felder_anwenden(eintrag, neu)
+    db.add(eintrag)
     return "neu"
 
 
@@ -915,6 +891,50 @@ def _ohne_adresse_wiedererkennen(
     )
 
 
+def felder_nachtragen(db: Session) -> int:
+    """Die Felder des Felder-Schritts fuer den Bestand einmal fuellen.
+
+    Bis 0.13.0 kannte eine Zeile einen Namen, eine Nummer, eine Adresse.
+    Was ein Kontakt aus einem verbundenen Buch wirklich hat, steht in seiner
+    Karte — die wird gelesen, so wie der Abgleich sie beim naechsten Mal laese.
+    Ein lokaler Kontakt bekommt seinen Namen geteilt und seine Nummer und
+    Adresse als Liste mit einem Eintrag; hat er eine Karte (aus einem Import),
+    kommen deren Listen dazu. ⚠️ Nur Zeilen, die noch nichts davon tragen:
+    Laeuft es aus einer Sicherung ein zweites Mal, ueberschreibt es nichts.
+    """
+    verbundene = {b.id for b in db.scalars(select(Adressbuch).where(Adressbuch.art != ""))}
+    zahl = 0
+    for k in db.scalars(select(Kontakt)).all():
+        if k.vorname or k.nachname or _json_liste(k.nummern) or _json_liste(k.adressen):
+            continue
+        if k.roh and k.adressbuch_id in verbundene:
+            felder = vcard.lesen(k.roh)
+        else:
+            basis = vcard.lesen(k.roh) if k.roh else {}
+            felder = {
+                **{f: basis.get(f, "") for f in vcard.FELDER},
+                "nummern": basis.get("nummern", []),
+                "adressen": basis.get("adressen", []),
+                "anschriften": basis.get("anschriften", []),
+                "firma": k.firma or basis.get("firma", ""),
+                "notiz": k.notiz or basis.get("notiz", ""),
+            }
+            felder["vorname"], felder["nachname"] = vcard.name_teilen(k.name) if k.name else (basis.get("vorname", ""), basis.get("nachname", ""))
+            felder["nummern"] = vcard.einzel_einmischen(felder["nummern"], "nummer", k.telefon, vcard.nummer_kern)
+            felder["adressen"] = vcard.einzel_einmischen(felder["adressen"], "adresse", k.adresse, str.lower)
+        neu = vcard.felder_normieren(felder)
+        # Ein Firmen-Kontakt ohne Vor- und Nachname behaelt seinen Anzeigenamen.
+        neu["name"] = neu["name"] or felder.get("name") or k.name
+        # Die Adresse der Zeile ist der Schluessel und bleibt, was sie war.
+        neu["adresse"] = k.adresse
+        felder_anwenden(k, neu)
+        zahl += 1
+    db.commit()
+    if zahl:
+        logger.info("Filled in the extended fields for %s contact(s).", zahl)
+    return zahl
+
+
 __all__ = [
     "KontaktFehler",
     "aendern",
@@ -924,7 +944,11 @@ __all__ = [
     "aus_vcard",
     "einsammeln",
     "entfernen",
+    "felder_anwenden",
     "felder_aus_vcard",
+    "felder_der_zeile",
+    "felder_nachtragen",
+    "felder_pruefen",
     "gesammelte_entfernen",
     "gruppe_anlegen",
     "gruppe_entfernen",
