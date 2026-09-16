@@ -26,12 +26,14 @@ Roundcube is webmail bolted onto one mailbox. Thunderbird does not run in a
 browser. Commercial clients want to pull your mail onto their servers. nexmail
 is the third option — and if you can use Outlook, you should feel at home.
 
-> **Version 0.8.0.** It reads, writes, searches, sorts, labels, sends,
-> schedules, prints, answers for you while you are away, keeps a calendar,
-> invites people to your own appointments, backs itself up and reaches you when
-> the browser is closed. It is used daily by its author against real iCloud and
-> IMAP mailboxes, and more than 1,390 automated tests watch over it — including
-> 145 that drive a real browser against a real mailbox. It is still young: try
+> **Version 0.16.0.** It reads, writes, searches, sorts, labels, sends,
+> schedules, prints, answers for you while you are away, keeps a calendar and
+> your address books in sync with iCloud or Google, invites people to your own
+> appointments, rephrases a draft with an AI service of your choice, backs
+> itself up and reaches you when the browser is closed, on the desktop and on
+> the phone. It is used daily by its author against real iCloud and IMAP
+> mailboxes, and more than 1,700 automated tests watch over it, including more
+> than 150 that drive a real browser against a real mailbox. It is still young: try
 > it on a mailbox you can afford to have trouble with before you point it at
 > the one that matters.
 
@@ -44,6 +46,18 @@ Every address in them is under `example.com`, `example.org` or
 **Mail.** Several mailboxes side by side, plus a merged *All inboxes* view.
 Read, reply, reply-all, forward, move, archive, delete, mark, flag, undo. Drag
 and drop between folders. Keyboard: `Del` to trash, `E` to archive.
+
+**Reading pane, or not.** A button next to the search field switches between
+three layouts: the reading pane to the right of the list, or no reading pane at
+all, with a message opening either in place of the list or in a window above
+it. Without the pane the list gets the full width, a click only selects, and a
+double-click or `Enter` opens.
+
+**On the phone.** A layout of its own rather than a squeezed desktop: list,
+then message, with the folders in a drawer. Swipe a row to archive or delete,
+long-press to select several and act on them from a bar within thumb reach.
+The calendar shows the month with a dot per calendar and the day's events
+below it, or the month as a running list.
 
 **Conversations.** Related messages fold into one row — matched by the reply
 chain first, subject only as a fallback and only when sender, subject and a
@@ -77,10 +91,11 @@ the task follows it by `Message-ID`; if the mail is deleted, the task stays and
 says so.
 
 **Contacts, rules, signatures.** An address book with several numbers,
-addresses and postal addresses per contact, vCard import and export and
-collection from Sent; connected CardDAV address books (iCloud, Google or any
-other CardDAV server, in beta) that are read and written back line by line,
-with a question instead of an overwrite when a card changed on both sides;
+addresses and postal addresses per contact, the card's photo, vCard import and
+export and collection from Sent; connected CardDAV address books (iCloud,
+Google or any other CardDAV server) that are read and written back line by
+line, with a question instead of an overwrite when a card changed on both
+sides, and a vCard file can be imported straight into one of them;
 contact groups that expand into their members when picked as a recipient;
 rules that run after each sync and only on new mail; signatures per mailbox.
 
@@ -165,6 +180,16 @@ gives consent for their own mailbox. No secret ships with nexmail — the
 repository is public, and both providers revoke a key they find in one, so
 each operator registers their own. The administration page says so plainly
 rather than letting you guess why nothing works.
+
+**Rephrasing with AI, if you want it.** Every user can connect their own AI
+service under *Settings*: an address, a key and a model. nexmail knows no
+provider; anything that speaks the common chat completions interface works,
+from Claude, Gemini or OpenAI to Ollama on a machine in your own network. In
+the editor it fixes spelling, translates, or rephrases in one of nine tones,
+and shows old and new side by side before anything is replaced. Quotes and
+your signature are never sent, and the AI page lists verbatim what went out.
+Off by default, and the operator can block it for the whole installation or
+for single accounts.
 
 **Moving between mailboxes.** Drag a message from one account to another.
 `MOVE` and `COPY` only work inside one connection, so this fetches, appends at
@@ -345,6 +370,12 @@ The invitation page offers both ways: set a password, or sign in through a
 provider. Not everyone has an account with your identity provider, and not
 everyone should need a password they will never use.
 
+A forgotten password can be reset through a link sent to the contact address
+stored on the account; the link lasts two hours and signs out every session
+when it is used. The operator role can be handed on to another user, after
+confirming with your own password, so an installation never ends up without
+someone who can administer it.
+
 ![Administration with users and open invitations](docs/screenshots/verwaltung-en.webp)
 
 Every user has their own mailboxes, contacts, rules and signatures. A guard test
@@ -386,7 +417,8 @@ cd frontend && npm install && npm run dev
 ```
 
 ```bash
-cd backend && python -m pytest        # ~1170 tests
+cd backend && python -m pytest        # ~1,470 tests
+cd frontend && npm test               # Vitest, no browser
 cd frontend && npm run test:ui        # Playwright, two viewports
 ```
 
