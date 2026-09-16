@@ -316,8 +316,15 @@ for (const anfang of ['Alle zwei Wochen', 'Monatlich am '] as const) {
 test('Eine fremde Regel wird benannt, nicht zerlegt', async ({ page }) => {
   /* ⚠️ **Der teuerste Fall.** „Am 15. jedes Monats" (`BYMONTHDAY`) bildet die
      Maske nicht ab. Sie trotzdem in Bausteine zu zwingen hiesse: Aus der Regel
-     würde beim Speichern „monatlich", und der Tag wäre weg. */
-  await anlegen(page, `${PROBE} Fremd`, 'FREQ=MONTHLY;BYMONTHDAY=15')
+     würde beim Speichern „monatlich", und der Tag wäre weg.
+
+     ⚠️ **Der Tag ist der von heute, nicht fest der 15.** Der Termin beginnt
+     heute; mit `BYMONTHDAY=15` lag sein erstes Vorkommen ab dem 16. im
+     nächsten Monat, und die Monatsansicht zeigte nichts zum Anklicken. Am
+     16.09.2026 im vollen Lauf rot geworden, ohne dass jemand etwas geändert
+     hatte. Fremd bleibt die Regel trotzdem: `BYMONTHDAY` bildet die Maske
+     nie ab. */
+  await anlegen(page, `${PROBE} Fremd`, `FREQ=MONTHLY;BYMONTHDAY=${new Date().getDate()}`)
   // ⚠️ Nach dem Neuladen steht die Mail-Ansicht da, nicht der Kalender —
   // der Reiter steckt nicht in der Adresse.
   await page.reload()
