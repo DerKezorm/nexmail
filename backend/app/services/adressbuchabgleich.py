@@ -71,7 +71,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from .. import crypto
 from ..meldung import Meldung
 from ..models import Adressbuch, Benutzer, Kontakt, utcnow
-from . import adressbuecher, caldav, carddav, vcard
+from . import adressbuecher, caldav, carddav, mailoauth, vcard
 from . import kontakte as kontaktdienst
 
 logger = logging.getLogger("nexmail.adressbuchabgleich")
@@ -257,7 +257,8 @@ def abgleichen(db: Session, buch: Adressbuch, erzwingen: bool = False) -> Runde:
         try:
             runde = _carddav_abgleichen(db, buch, erzwingen)
             buch.letzter_fehler = ""
-        except (carddav.CarddavFehler, caldav.CaldavFehler, AbgleichFehler) as f:
+        except (carddav.CarddavFehler, caldav.CaldavFehler, AbgleichFehler, mailoauth.OauthFehler) as f:
+            # Wie beim Kalender: Eine abgelaufene Zustimmung ist ein Zustand.
             # ⚠️ **Die Kennung, nicht der Satz.** Die Oberfläche übersetzt.
             buch.letzter_fehler = str(f)
             logger.info("Sync of address book %s failed: %s", kennung, f)

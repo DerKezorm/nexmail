@@ -385,7 +385,29 @@ def fuer_konto(db, konto, app_passwort_wo: str = "") -> IMAPClient:
             raise Verbindungsfehler(
                 Fehlerart.ANMELDUNG, "Die Zustimmung zu diesem Konto fehlt."
             )
-        token = mailoauth.zugriffstoken(db, zugang)
+        # ⚠️ **Eine abgelaufene Zustimmung ist eine abgewiesene Anmeldung,
+        # kein Programmfehler.** Jeder Weg zum Postfach kennt als erwarteten
+        # Fehler nur ``Verbindungsfehler``; eine ``OauthFehler`` flog an allen
+        # vorbei. Am 16.09.2026 nach einem geänderten Google-Passwort: Der
+        # Takt schrieb alle zwei Minuten einen Rückverfolg, „Aktualisieren"
+        # gab 500, und die Postfächer dahinter kamen nicht mehr dran. Nur ein
+        # unerreichbarer Anbieter ist vorübergehend; alles andere braucht
+        # jemanden, der neu zustimmt, und gehört damit an den roten Banner.
+        try:
+            token = mailoauth.zugriffstoken(db, zugang)
+        except mailoauth.OauthFehler as f:
+            if str(f) == "oauth_nicht_erreichbar":
+                raise Verbindungsfehler(
+                    Fehlerart.NICHT_ERREICHBAR,
+                    "Der Anmeldedienst des Anbieters antwortet gerade nicht.",
+                    str(f),
+                ) from f
+            raise Verbindungsfehler(
+                Fehlerart.ANMELDUNG,
+                "Die Zustimmung zu diesem Konto gilt nicht mehr. Unter "
+                "Einstellungen → Sicherheit neu verbinden.",
+                str(f),
+            ) from f
         return verbinden(
             konto.imap_server, konto.imap_port, konto.imap_sicherheit,
             konto.imap_benutzer, "", app_passwort_wo, token=token,

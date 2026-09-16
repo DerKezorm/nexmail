@@ -30,7 +30,7 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from .. import crypto
 from ..models import Benutzer, Kalender, Termin, utcnow
-from . import caldav, vevent
+from . import caldav, mailoauth, vevent
 from . import konten as kontendienst
 from ..meldung import Meldung
 
@@ -451,7 +451,9 @@ def abgleichen(db: Session, kalender: Kalender) -> Runde:
             else:
                 runde = _caldav_abgleichen(db, kalender)
             kalender.letzter_fehler = ""
-        except (caldav.CaldavFehler, AbgleichFehler) as f:
+        except (caldav.CaldavFehler, AbgleichFehler, mailoauth.OauthFehler) as f:
+            # ⚠️ ``OauthFehler`` gehört dazu: Eine abgelaufene Zustimmung ist
+            # ein Zustand des Kalenders, kein Programmfehler.
             # ⚠️ **Die Kennung, nicht der Satz.** Die Oberflaeche uebersetzt —
             # ein deutscher Satz aus dem Server bliebe auf Englisch deutsch.
             kalender.letzter_fehler = str(f)

@@ -543,3 +543,81 @@ def test_moeglich_steht_jedem_offen_und_verraet_nichts(db, welt, klient):
     assert next(z for z in zeilen if z["art"] == "microsoft")["eingerichtet"] is False
     # Client-ID, Mandant und Rückkehr-Adresse bleiben beim Betreiber.
     assert set(google) == {"art", "name", "eingerichtet"}
+
+
+# --- Eine abgelaufene Zustimmung im Abgleich ------------------------------- #
+
+
+def _abgelaufen(db, welt, anbieter):
+    """Eine Zustimmung, die Google zurückgezogen hat — etwa nach einem neuen
+    Passwort. Am 16.09.2026 genau so im Entwicklungsstand."""
+    zugang = mailoauth.einloesen(db, welt, "google", "code-1", "https://mail.example.com/z")
+    zugang.ablauf = datetime.now(timezone.utc) - timedelta(minutes=1)
+    db.commit()
+    anbieter.antworten.append(httpx.Response(400, json={"error": "invalid_grant"}))
+    return zugang
+
+
+def test_eine_abgelaufene_zustimmung_ist_eine_abgewiesene_anmeldung(db, welt, anbieter):
+    """⚠️ **Sonst ist es ein Programmfehler.** Alle 26 Wege zum Postfach gehen
+    durch ``fuer_konto`` und kennen als erwarteten Fehler nur
+    ``Verbindungsfehler``. Die ``OauthFehler`` flog an ihnen vorbei: Der Takt
+    schrieb alle zwei Minuten einen Rückverfolg, und „Aktualisieren" gab 500."""
+    from app.services import imap as imapdienst
+
+    zugang = _abgelaufen(db, welt, anbieter)
+    konto, _ = _postfach_und_kalender(db, welt, zugang)
+
+    with pytest.raises(imapdienst.Verbindungsfehler) as f:
+        imapdienst.fuer_konto(db, konto)
+    assert f.value.art == imapdienst.Fehlerart.ANMELDUNG
+
+
+def test_aktualisieren_ueberlebt_eine_abgelaufene_zustimmung(db, welt, anbieter, klient):
+    """Der Knopf „Aktualisieren" antwortete mit 500 — und die Postfächer nach
+    dem betroffenen wurden gar nicht mehr abgeglichen."""
+    from app.models import Konto
+
+    zugang = _abgelaufen(db, welt, anbieter)
+    _postfach_und_kalender(db, welt, zugang)
+
+    antwort = klient.post("/api/nachrichten/abgleichen")
+    assert antwort.status_code == 200, antwort.text
+
+    konto = db.query(Konto).one()
+    db.refresh(konto)
+    # ⚠️ Und es steht am Postfach, sonst sieht niemand, warum keine Post kommt.
+    assert konto.stoerung == "anmeldung"
+
+
+def test_der_kalender_benennt_eine_abgelaufene_zustimmung(db, welt, anbieter):
+    """Dieselbe Lücke im Kalender: „failed unexpectedly" samt Rückverfolg,
+    und am Kalender stand nichts."""
+    from app.services import kalenderabgleich
+
+    zugang = _abgelaufen(db, welt, anbieter)
+    _, kalender = _postfach_und_kalender(db, welt, zugang)
+
+    kalenderabgleich.abgleichen(db, kalender)
+
+    db.refresh(kalender)
+    assert kalender.letzter_fehler == "oauth_zustimmung_abgelaufen"
+
+
+def test_das_adressbuch_benennt_eine_abgelaufene_zustimmung(db, welt, anbieter):
+    from app.models import Adressbuch
+    from app.services import adressbuchabgleich
+
+    zugang = _abgelaufen(db, welt, anbieter)
+    buch = Adressbuch(
+        benutzer_id=welt.id, name="Google", art="carddav", herkunft="Google",
+        url="https://www.googleapis.com/carddav/v1/principals/x/lists/default/",
+        oauth_zugang_id=zugang.id,
+    )
+    db.add(buch)
+    db.commit()
+
+    adressbuchabgleich.abgleichen(db, buch)
+
+    db.refresh(buch)
+    assert buch.letzter_fehler == "oauth_zustimmung_abgelaufen"
