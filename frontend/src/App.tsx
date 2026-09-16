@@ -125,6 +125,8 @@ import { Schlagwortmarke } from './components/Schlagwortmarke'
 import { Umzugsfenster } from './components/Umzugsfenster'
 import { PUNKT_KLASSE } from './lib/farben'
 import { useGemerkt, useSchmal } from './lib/haken'
+import { lesemodusAus } from './lib/lesemodus'
+import type { Lesemodus } from './lib/lesemodus'
 import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from './lib/wischen'
 import type { WischAktion } from './lib/wischen'
 import { nachrichtDrucken } from './lib/drucken'
@@ -346,6 +348,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const [anreisserZeigen] = useGemerkt<boolean>('nexmail.anreisser', true)
   const [punkteZeigen] = useGemerkt<boolean>('nexmail.punkte', true)
   const [ordnerOffen, setOrdnerOffen] = useGemerkt('nexmail.ordnerOffen', true)
+  const [lesemodusGemerkt, setLesemodus] = useGemerkt<Lesemodus>('nexmail.lesemodus', 'rechts')
+  const lesemodus = lesemodusAus(lesemodusGemerkt)
   const [ordnerBreite, setOrdnerBreite] = useGemerkt('nexmail.ordnerBreite', 232)
   const [listeBreite, setListeBreite] = useGemerkt('nexmail.listeBreite', 380)
   const [schubladeOffen, setSchubladeOffen] = useState(false)
@@ -529,14 +533,33 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     void listeLaden()
   }, [listeLaden])
 
+  /* Ohne Lesebereich markiert ein Klick nur; offen ist erst, was per
+     Doppelklick aufging. Gemerkt wird die Kennung, nicht ein Ja/Nein: Mit
+     der Eingabetaste kommen Wahl und Öffnen im selben Durchgang, und eine
+     Wirkung „Wahl geändert, also zu" machte das Öffnen gleich wieder rückgängig. */
+  const [geoeffnetId, setGeoeffnetId] = useState<string | null>(null)
+  const geoeffnet = geoeffnetId !== null && geoeffnetId === gewaehlt
   useEffect(() => {
-    if (gewaehlt === null) {
+    // Wer woanders hinklickt, löscht oder den Ordner wechselt, hat die Mail
+    // zugemacht — sonst ginge sie beim nächsten Klick auf dieselbe Zeile
+    // von selbst wieder auf.
+    if (geoeffnetId !== null && geoeffnetId !== gewaehlt) setGeoeffnetId(null)
+  }, [gewaehlt, geoeffnetId])
+
+  const mitLesebereich = schmal || lesemodus === 'rechts'
+  /* ⚠️ **Geladen wird nur, was man sieht.** Eine bloß markierte Mail zu holen
+     hieße, dass die Regel „nach zwei Sekunden gelesen" auf eine Mail zielt,
+     die niemand vor sich hat. */
+  const anzeigeId = mitLesebereich || geoeffnet ? gewaehlt : null
+
+  useEffect(() => {
+    if (anzeigeId === null) {
       setOffene(null)
       return
     }
     let abgebrochen = false
     setOffeneLaedt(true)
-    nachrichtLaden(gewaehlt)
+    nachrichtLaden(anzeigeId)
       .then((voll) => {
         // Wer weiterklickt, während die Mail noch lädt, soll nicht plötzlich
         // die vorige vor sich haben.
@@ -551,7 +574,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     return () => {
       abgebrochen = true
     }
-  }, [gewaehlt])
+  }, [anzeigeId])
 
   /* --- Auswahl --------------------------------------------------------- */
 
@@ -1158,6 +1181,13 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       if (ziel?.closest('input, textarea, select, [contenteditable="true"]')) return
       if (verfassen.offen || menue) return
 
+      // Über der Liste geht die Mail mit Escape wieder zu. Das Fenster kann
+      // das selbst.
+      if (e.key === 'Escape' && !mitLesebereich && lesemodus === 'ganz' && geoeffnet) {
+        setGeoeffnetId(null)
+        return
+      }
+
       const ids = betroffene()
       if (ids.length === 0) return
 
@@ -1176,7 +1206,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     }
     document.addEventListener('keydown', beiTaste)
     return () => document.removeEventListener('keydown', beiTaste)
-  }, [betroffene, handeln, mehrfach.length, menue, t, verfassen.offen])
+  }, [betroffene, handeln, mehrfach.length, menue, t, verfassen.offen, mitLesebereich, lesemodus, geoeffnet])
 
   /* --- Abgleich -------------------------------------------------------- */
 
@@ -1830,6 +1860,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 schmal={schmal}
                 aufAbgleichen={() => void jetztAbgleichen()}
                 gleichtAb={gleichtAb}
+                lesemodus={lesemodus}
+                aufLesemodus={setLesemodus}
               />
 
               <MailPage
@@ -1925,6 +1957,20 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                     ),
                   )
                 }
+                lesemodus={lesemodus}
+                geoeffnet={geoeffnet}
+                aufOeffnen={(id) => {
+                  setGewaehlt(id)
+                  setMehrfach([])
+                  setGeoeffnetId(id)
+                }}
+                aufSchliessen={() => {
+                  // ⚠️ Escape schließt ein offenes Menü UND das Fenster
+                  // darunter, beide hören am Dokument. Steht ein Menü, gilt
+                  // die Taste nur ihm.
+                  if (menue) return
+                  setGeoeffnetId(null)
+                }}
                 auswahlleiste={
                   <Auswahlleiste
                     anzahl={mehrfach.length}
@@ -1970,6 +2016,9 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
               aufMail={(nachrichtId: number) => {
                 setAnsicht('mail')
                 setGewaehlt(String(nachrichtId))
+                // Ohne Lesebereich muss die Mail auch aufgehen, sonst führt
+                // der Klick nur zu einer markierten Zeile.
+                setGeoeffnetId(String(nachrichtId))
               }}
             />
           )}

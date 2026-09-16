@@ -724,7 +724,8 @@
     "buch_fehler_carddav_adresse_fehlt": "Please enter an address.",
     "buch_fehler_carddav_google_api_aus": "Google refused the request: the “Google Contacts CardDAV API” is not enabled in the Cloud project. It is a separate API next to the CalDAV API; the operator enables it under APIs & Services → Library.",
     "buch_fehler_adressbuch_schon_verbunden": "Those address books are already connected.",
-    "buch_fehler_oauth_zustimmung_fehlt": "This account has no consent."
+    "buch_fehler_oauth_zustimmung_fehlt": "This account has no consent.",
+    "buch_fehler_oauth_zustimmung_abgelaufen": "The consent is no longer valid. Please reconnect under Settings → Security."
   },
   "konto": {
     "absendername": "Sender name",
@@ -973,6 +974,12 @@
     "fehler_oidc_keine_adresse": "Without a public address there is no redirect URI. It lives in the administration under “Server”.",
     "fehler_oidc_keine_schluessel": "The provider’s keys could not be read.",
     "fehler_oidc_tausch": "The provider refused the exchange. Usually the client id, the secret or the redirect URI is wrong."
+  },
+  "lesemodus": {
+    "knopf": "Reading pane: {{jetzt}}. Click to switch to: {{danach}}",
+    "rechts": "right of the list",
+    "ganz": "off, double-click opens full width",
+    "fenster": "off, double-click opens a window"
   },
   "ordner": {
     "alle_posteingaenge": "All inboxes",

@@ -100,6 +100,10 @@ interface Props {
   /** Ob alle sichtbaren Zeilen gewählt sind — dann heißt der Knopf „Keine". */
   alleGewaehlt?: boolean
   aufAlleWaehlen?: () => void
+  /** Doppelklick oder Eingabetaste öffnet die Mail. Nur gesetzt, wenn der
+   *  Lesebereich ausgeblendet ist — dann markiert ein Klick nur. Mit
+   *  Lesebereich öffnet schon der Klick, und ein Doppelklick tut nichts. */
+  aufOeffnen?: (id: string) => void
 }
 
 export function Nachrichtenliste({
@@ -132,6 +136,7 @@ export function Nachrichtenliste({
   aufLangdruck,
   alleGewaehlt = false,
   aufAlleWaehlen,
+  aufOeffnen,
 }: Props) {
   /* Welche Stränge offen sind, samt ihrer Nachrichten.
      ⚠️ **Aufgeklappt bleibt aufgeklappt, bis man wieder klickt.** Ein Strang,
@@ -323,6 +328,7 @@ export function Nachrichtenliste({
                         gewaehlt={n.id === gewaehlt}
                         mitausgewaehlt={mehrfach.includes(n.id)}
                         onClick={(strg, umschalt) => aufWahl(n.id, strg, umschalt)}
+                        aufOeffnen={aufOeffnen ? () => aufOeffnen(n.id) : undefined}
                         aufKontext={aufKontext}
                         aufZiehen={aufZiehen}
                         kompakt={kompakt}
@@ -380,6 +386,7 @@ export function Nachrichtenliste({
                                 gewaehlt={m.id === gewaehlt}
                                 mitausgewaehlt={mehrfach.includes(m.id)}
                                 onClick={(strg, umschalt) => aufWahl(m.id, strg, umschalt)}
+                                aufOeffnen={aufOeffnen ? () => aufOeffnen(m.id) : undefined}
                                 aufKontext={aufKontext}
                                 aufZiehen={aufZiehen}
                                 kompakt
@@ -501,6 +508,8 @@ interface ZeileProps {
   gewaehlt: boolean
   mitausgewaehlt: boolean
   onClick: (strg: boolean, umschalt: boolean) => void
+  /** Doppelklick und Eingabetaste — nur ohne Lesebereich gesetzt. */
+  aufOeffnen?: () => void
   aufKontext: (e: React.MouseEvent, n: Nachricht) => void
   aufZiehen?: (n: Nachricht) => string[]
   kompakt?: boolean
@@ -555,6 +564,7 @@ function Zeile({
   gewaehlt,
   mitausgewaehlt,
   onClick,
+  aufOeffnen,
   aufKontext,
   aufZiehen,
   kompakt = false,
@@ -747,6 +757,21 @@ function Zeile({
           return
         }
         onClick(e.ctrlKey || e.metaKey, e.shiftKey)
+      }}
+      onDoubleClick={(e) => {
+        // Mit Strg oder Umschalt ist es ein schneller Doppelgriff beim
+        // Sammeln, kein Öffnen.
+        if (!aufOeffnen || e.ctrlKey || e.metaKey || e.shiftKey) return
+        aufOeffnen()
+      }}
+      onKeyDown={(e) => {
+        // ⚠️ **Die Tastatur braucht ihren eigenen Weg hinein.** Ein Knopf
+        // macht aus der Eingabetaste nur einen Klick, und der markiert hier
+        // bloß; ohne diese Zeile käme man ohne Maus an keine Mail.
+        if (!aufOeffnen || e.key !== 'Enter') return
+        e.preventDefault()
+        onClick(false, false)
+        aufOeffnen()
       }}
       onPointerDown={(e) => {
         druckBeginn(e)

@@ -1,6 +1,9 @@
 /* Die Mail-Ansicht.
  *
  * Breit: Ordner | Liste | Lesebereich, mit ziehbaren Griffen dazwischen.
+ * Ohne Lesebereich (`lesemodus` nicht `rechts`) bekommt die Liste die ganze
+ * Breite, und eine Mail geht per Doppelklick über der Liste oder als Fenster
+ * auf.
  * Schmal: zwei Ebenen - Liste, dann Nachricht - und die Ordner liegen in
  * einer Schublade von links. Kein drittes Layout dazwischen: Wer bei 1000 px
  * eine Sonderform baut, pflegt danach drei.
@@ -17,7 +20,8 @@ import type { Wischen } from '../components/Nachrichtenliste'
 import { Ordnerspalte } from '../components/Ordnerspalte'
 import type { Ziel } from '../components/Ordnerspalte'
 import type { MenueEintrag } from '../components/Kontextmenue'
-import { IconButton } from '../ds'
+import { Dialog, IconButton } from '../ds'
+import type { Lesemodus } from '../lib/lesemodus'
 import type { Ausgangseintrag, Konto, Nachricht, Ordner, Schlagwort } from '../daten/typen'
 import type { VolleNachricht } from '../api/laden'
 import type { Verfassart } from '../components/VerfassenFenster'
@@ -108,6 +112,13 @@ interface Props {
   alleGewaehlt?: boolean
   aufAlleWaehlen?: () => void
   auswahlleiste?: ReactNode
+  /** Wo eine Mail am Schreibtisch aufgeht. Schmal ohne Wirkung. */
+  lesemodus: Lesemodus
+  /** Ohne Lesebereich: Ist gerade eine Mail offen (über der Liste oder im
+   *  Fenster)? Mit Lesebereich bedeutungslos — dort ist die gewählte offen. */
+  geoeffnet: boolean
+  aufOeffnen: (id: string) => void
+  aufSchliessen: () => void
 }
 
 export function MailPage(p: Props) {
@@ -170,6 +181,21 @@ export function MailPage(p: Props) {
     ) : null
 
   const offene = p.offene
+  const ohneLesebereich = !p.schmal && p.lesemodus !== 'rechts'
+
+  const lesebereich = (
+    <Lesebereich
+      dunkelmodus={p.dunkelmodus}
+      nachricht={offene}
+      laedt={p.offeneLaedt}
+      aufVerfassen={(art, n) => p.aufVerfassen(art, n)}
+      istEntwurf={p.istEntwurf}
+      schlagworte={p.schlagworte}
+      aufSchlagwort={p.aufSchlagwort}
+      aufNeuesSchlagwort={p.aufNeuesSchlagwort}
+      wiedervorlageMenue={p.wiedervorlageMenue}
+    />
+  )
 
   /* Die mittlere Spalte. Beim Ziel „ausgang" zeigt sie die Warteschlange
      statt eines Ordners — einmal gebaut, damit schmal und breit nicht
@@ -208,6 +234,7 @@ export function MailPage(p: Props) {
         aufLangdruck={p.aufLangdruck}
         alleGewaehlt={p.alleGewaehlt}
         aufAlleWaehlen={p.aufAlleWaehlen}
+        aufOeffnen={ohneLesebereich ? p.aufOeffnen : undefined}
       />
     )
 
@@ -246,19 +273,7 @@ export function MailPage(p: Props) {
               <IconButton icon={<ArrowLeft />} label={t('aktion.zurueck')} onClick={() => p.aufWahl(null)} />
               <span className="truncate text-[13px] text-fg-3">{titel}</span>
             </div>
-            <div className="min-h-0 flex-1">
-              <Lesebereich
-                dunkelmodus={p.dunkelmodus}
-                nachricht={offene}
-                laedt={p.offeneLaedt}
-                aufVerfassen={(art, n) => p.aufVerfassen(art, n)}
-                istEntwurf={p.istEntwurf}
-                schlagworte={p.schlagworte}
-                aufSchlagwort={p.aufSchlagwort}
-                aufNeuesSchlagwort={p.aufNeuesSchlagwort}
-                wiedervorlageMenue={p.wiedervorlageMenue}
-              />
-            </div>
+            <div className="min-h-0 flex-1">{lesebereich}</div>
           </div>
         ) : (
           <div className="flex h-full flex-col">
@@ -319,31 +334,54 @@ export function MailPage(p: Props) {
         </>
       )}
 
-      <div style={{ width: p.listeBreite }} className="flex shrink-0 flex-col">
-        {hinweis}
-        {listenspalte}
-      </div>
-      <Griff
-        breite={p.listeBreite}
-        aufBreite={p.aufListeBreite}
-        min={280}
-        max={560}
-        label={t('griff.liste')}
-      />
+      {ohneLesebereich ? (
+        /* ⚠️ **Über der Liste heißt: an ihrer Stelle, wie am Telefon.** Die
+           Ordnerspalte bleibt stehen; ein Klick auf einen Ordner schließt die
+           Mail, denn er wählt ab. */
+        p.lesemodus === 'ganz' && p.geoeffnet ? (
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle bg-surface-1 px-2">
+              <IconButton icon={<ArrowLeft />} label={t('aktion.zurueck')} onClick={p.aufSchliessen} />
+              <span className="truncate text-[13px] text-fg-3">{titel}</span>
+            </div>
+            <div className="min-h-0 flex-1">{lesebereich}</div>
+          </div>
+        ) : (
+          <div className="flex min-w-0 flex-1 flex-col">
+            {hinweis}
+            {listenspalte}
+          </div>
+        )
+      ) : (
+        <>
+          <div style={{ width: p.listeBreite }} className="flex shrink-0 flex-col">
+            {hinweis}
+            {listenspalte}
+          </div>
+          <Griff
+            breite={p.listeBreite}
+            aufBreite={p.aufListeBreite}
+            min={280}
+            max={560}
+            label={t('griff.liste')}
+          />
 
-      <div className="min-w-0 flex-1">
-        <Lesebereich
-          dunkelmodus={p.dunkelmodus}
-          nachricht={offene}
-          laedt={p.offeneLaedt}
-          aufVerfassen={(art, n) => p.aufVerfassen(art, n)}
-          istEntwurf={p.istEntwurf}
-          schlagworte={p.schlagworte}
-          aufSchlagwort={p.aufSchlagwort}
-          aufNeuesSchlagwort={p.aufNeuesSchlagwort}
-          wiedervorlageMenue={p.wiedervorlageMenue}
-        />
-      </div>
+          <div className="min-w-0 flex-1">{lesebereich}</div>
+        </>
+      )}
+
+      {/* Das Fenster über der Liste. Die Liste dahinter bleibt, wie sie war —
+          wer es schließt, steht wieder an derselben Zeile. */}
+      {ohneLesebereich && p.lesemodus === 'fenster' && (
+        <Dialog
+          open={p.geoeffnet}
+          onClose={p.aufSchliessen}
+          closeLabel={t('aktion.schliessen')}
+          width="min(1100px, 100%)"
+        >
+          <div className="-mx-5 -my-4 h-[80vh]">{lesebereich}</div>
+        </Dialog>
+      )}
     </div>
   )
 }

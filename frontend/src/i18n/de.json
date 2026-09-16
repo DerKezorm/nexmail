@@ -724,7 +724,8 @@
     "buch_fehler_carddav_adresse_fehlt": "Bitte eine Adresse eingeben.",
     "buch_fehler_carddav_google_api_aus": "Google hat abgelehnt: Im Cloud-Projekt ist die „Google Contacts CardDAV API“ nicht eingeschaltet. Sie ist eine eigene neben der CalDAV API; der Betreiber schaltet sie unter APIs & Services → Library ein.",
     "buch_fehler_adressbuch_schon_verbunden": "Diese Adressbücher sind schon verbunden.",
-    "buch_fehler_oauth_zustimmung_fehlt": "Für dieses Konto fehlt die Zustimmung."
+    "buch_fehler_oauth_zustimmung_fehlt": "Für dieses Konto fehlt die Zustimmung.",
+    "buch_fehler_oauth_zustimmung_abgelaufen": "Die Zustimmung gilt nicht mehr. Bitte unter Einstellungen → Sicherheit neu verbinden."
   },
   "konto": {
     "absendername": "Absendername",
@@ -973,6 +974,12 @@
     "fehler_oidc_keine_adresse": "Ohne öffentliche Adresse gibt es keine Rückkehr-Adresse. Sie steht in der Verwaltung unter „Server“.",
     "fehler_oidc_keine_schluessel": "Die Schlüssel des Anbieters sind nicht lesbar.",
     "fehler_oidc_tausch": "Der Anbieter hat den Tausch abgelehnt. Meist stimmt Client-ID, Geheimnis oder Rückkehr-Adresse nicht."
+  },
+  "lesemodus": {
+    "knopf": "Lesebereich: {{jetzt}}. Klick wechselt zu: {{danach}}",
+    "rechts": "rechts neben der Liste",
+    "ganz": "aus, Doppelklick öffnet ganzseitig",
+    "fenster": "aus, Doppelklick öffnet ein Fenster"
   },
   "ordner": {
     "alle_posteingaenge": "Alle Posteingänge",

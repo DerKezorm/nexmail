@@ -48,6 +48,9 @@ export async function anmelden(seite: Page) {
       // rechts archivieren) — ein umgestellter Wert prüfte etwas anderes.
       'nexmail.wisch_links',
       'nexmail.wisch_rechts',
+      // Ohne Lesebereich öffnet ein Klick nichts mehr — jeder Test, der eine
+      // Zeile anklickt und die Mail erwartet, liefe ins Leere.
+      'nexmail.lesemodus',
     ]) {
       localStorage.removeItem(k)
     }

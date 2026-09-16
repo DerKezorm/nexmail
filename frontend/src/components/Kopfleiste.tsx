@@ -6,8 +6,16 @@
  */
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { PanelLeft, PenLine, RefreshCw, Search } from 'lucide-react'
+import { AppWindow, Maximize2, PanelLeft, PanelRight, PenLine, RefreshCw, Search } from 'lucide-react'
 import { Button, IconButton } from '../ds'
+import { naechsterLesemodus } from '../lib/lesemodus'
+import type { Lesemodus } from '../lib/lesemodus'
+
+const LESEMODUS_SYMBOL: Record<Lesemodus, typeof PanelRight> = {
+  rechts: PanelRight,
+  ganz: Maximize2,
+  fenster: AppWindow,
+}
 
 export type Suchbereich = 'ordner' | 'postfach' | 'alle'
 
@@ -24,6 +32,9 @@ interface Props {
   schmal: boolean
   aufAbgleichen: () => void
   gleichtAb: boolean
+  /** Wo eine Mail aufgeht. Nur breit; schmal fehlt der Knopf. */
+  lesemodus: Lesemodus
+  aufLesemodus: (m: Lesemodus) => void
 }
 
 export function Kopfleiste({
@@ -38,9 +49,18 @@ export function Kopfleiste({
   schmal,
   aufAbgleichen,
   gleichtAb,
+  lesemodus,
+  aufLesemodus,
 }: Props) {
   const { t } = useTranslation()
   const feld = useRef<HTMLInputElement>(null)
+  const LesemodusSymbol = LESEMODUS_SYMBOL[lesemodus]
+  // Wörtlich, nicht zusammengesetzt: Nur so sieht der Schlüssel-Wächter sie.
+  const lesemodusName: Record<Lesemodus, string> = {
+    rechts: t('lesemodus.rechts'),
+    ganz: t('lesemodus.ganz'),
+    fenster: t('lesemodus.fenster'),
+  }
 
   // Strg+F gehoert in einem Mail-Client der Suche der App, nicht der des
   // Browsers: Der Browser durchsucht nur, was gerade sichtbar ist - also
@@ -113,6 +133,20 @@ export function Kopfleiste({
           </select>
         )}
       </div>
+
+      {/* Ein Knopf, drei Modi, reihum. Symbol und Name sagen, was GERADE
+          gilt, und der Name nennt dazu, was ein Klick daraus macht. Ohne den
+          zweiten Teil wüsste man vor dem Klick nicht, wohin er führt. */}
+      {!schmal && (
+        <IconButton
+          icon={<LesemodusSymbol />}
+          label={t('lesemodus.knopf', {
+            jetzt: lesemodusName[lesemodus],
+            danach: lesemodusName[naechsterLesemodus(lesemodus)],
+          })}
+          onClick={() => aufLesemodus(naechsterLesemodus(lesemodus))}
+        />
+      )}
 
       <IconButton
         icon={<RefreshCw className={gleichtAb ? 'animate-spin' : undefined} />}

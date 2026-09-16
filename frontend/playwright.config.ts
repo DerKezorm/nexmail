@@ -58,6 +58,7 @@ const NUR_BREIT = [
   'durchtragen.spec.ts',
   'handeln.spec.ts',
   'kalender.spec.ts',
+  'lesemodus.spec.ts',
   'mehrbenutzer.spec.ts',
   'oauth.spec.ts',
   'sicherungen.spec.ts',
