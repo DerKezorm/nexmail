@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from ..config import get_settings
 from ..db import einstellung_lesen, einstellung_schreiben
 from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
-from ..services import bildfreigaben, systempost
+from ..services import bildfreigaben, netzfreigabe, systempost
 from ..services.aufraeumen import ERLAUBTE_TAGE
 from ..meldung import MeldungHttp
 
@@ -50,7 +50,11 @@ def lesen(_: AngemeldeterBenutzer, db: DbSession) -> Einstellungen:
 
 
 @router.put("", response_model=Einstellungen)
-def schreiben(eingabe: Einstellungen, _: AngemeldeterBenutzer, db: DbSession) -> Einstellungen:
+def schreiben(eingabe: Einstellungen, _: Betreiber, db: DbSession) -> Einstellungen:
+    # ⚠️ **Nur der Betreiber.** Bis zum 18.09.2026 genuegte hier eine
+    # Anmeldung. Aus der oeffentlichen Adresse entsteht der Link in der Mail
+    # „Kennwort vergessen"; wer sie umbiegen darf, schickt dem Betreiber einen
+    # Ruecksetz-Link auf einen fremden Server und liest dort den Schluessel ab.
     adresse = eingabe.oeffentliche_adresse.strip().rstrip("/")
     if adresse:
         teile = urlsplit(adresse)
@@ -74,6 +78,24 @@ def schreiben(eingabe: Einstellungen, _: AngemeldeterBenutzer, db: DbSession) ->
     einstellung_schreiben(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE, adresse)
     einstellung_schreiben(db, SCHLUESSEL_ZEITZONE, zone)
     return Einstellungen(oeffentliche_adresse=adresse, zeitzone=zone)
+
+
+# --- Kalender- und Adressbuchserver im eigenen Netz ---------------------- #
+
+
+class EigenesNetz(BaseModel):
+    erlaubt: bool = False
+
+
+@router.get("/eigenes-netz", response_model=EigenesNetz)
+def eigenes_netz_lesen(_: Betreiber, db: DbSession) -> EigenesNetz:
+    return EigenesNetz(erlaubt=netzfreigabe.erlaubt(db))
+
+
+@router.put("/eigenes-netz", response_model=EigenesNetz)
+def eigenes_netz_setzen(eingabe: EigenesNetz, _: Betreiber, db: DbSession) -> EigenesNetz:
+    """Der Riegel aus ``services/netzfreigabe.py``; dort steht, was er kostet."""
+    return EigenesNetz(erlaubt=netzfreigabe.erlauben(db, eingabe.erlaubt))
 
 
 # --- Aufraeumen: Papierkorb und Junk selbst leeren ------------------------ #

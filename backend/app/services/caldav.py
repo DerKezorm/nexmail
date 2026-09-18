@@ -41,6 +41,7 @@ from contextlib import contextmanager
 
 import httpx
 
+from . import netzfreigabe
 from .bildvermittler import Abgelehnt, adresse_pruefen
 from ..meldung import Meldung
 
@@ -121,7 +122,8 @@ _GRUENDE = {
 
 
 def _pruefen(url: str) -> None:
-    """⚠️ Nur ``http(s)``, und nichts im eigenen Netz."""
+    """⚠️ Nur ``http(s)``, und nichts im eigenen Netz, solange der Betreiber
+    es nicht freigegeben hat."""
     teile = urlparse(url)
     if teile.scheme not in ("https", "http") or not teile.hostname:
         raise CaldavFehler("caldav_adresse_ungueltig")
@@ -129,8 +131,20 @@ def _pruefen(url: str) -> None:
         # ⚠️ Dieselbe Pruefung wie beim Bildvermittler — sie nimmt die ganze
         # Adresse und sieht jede Antwort des Namensdienstes an, nicht die erste.
         adresse_pruefen(url)
+        return
     except Abgelehnt as f:
-        raise CaldavFehler(_GRUENDE.get(str(f), "caldav_nicht_erreichbar")) from f
+        grund = f
+    # ⚠️ **Das eigene Netz gibt nur der Betreiber frei** (siehe
+    # ``netzfreigabe.py``). Gefragt wird erst hier: Eine oeffentliche Adresse
+    # kostet damit keinen Blick in die Datenbank. Der zweite Durchgang laesst
+    # LAN und VPN zu, den eigenen Rechner und ``169.254.…`` weiterhin nicht.
+    if str(grund) == "bild_adresse_im_eigenen_netz" and netzfreigabe.erlaubt_jetzt():
+        try:
+            adresse_pruefen(url, eigenes_netz=True)
+            return
+        except Abgelehnt as f:
+            grund = f
+    raise CaldavFehler(_GRUENDE.get(str(grund), "caldav_nicht_erreichbar")) from grund
 
 
 class _BasicOderDigest(httpx.Auth):

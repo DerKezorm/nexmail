@@ -16,10 +16,10 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { KeyRound, ScrollText, Server } from 'lucide-react'
+import { KeyRound, Network, ScrollText, Server } from 'lucide-react'
 import { api } from '../api/client'
 import type { Ich } from '../api/client'
-import { Button, EmptyState, Input, Select, Tabs } from '../ds'
+import { Button, EmptyState, Input, Select, Switch, Tabs } from '../ds'
 import { Benutzerverwaltung } from './Benutzerverwaltung'
 import { OauthVerwaltung } from './OauthVerwaltung'
 import { OidcVerwaltung } from './OidcVerwaltung'
@@ -166,8 +166,69 @@ function Serverdaten() {
         {t('verwaltung.gilt_fuer_alle')}
       </p>
 
+      <EigenesNetz />
+
       <Postausgang />
     </div>
+  )
+}
+
+/** Der Riegel für Kalender- und Adressbuchserver im eigenen Netz.
+ *
+ * ⚠️ **Er wirkt beim Umlegen, nicht über „Speichern".** Ein Schalter, der erst
+ * nach einem zweiten Knopf gilt, steht auf „an" und tut nichts. Dieselbe Form
+ * wie der Riegel der API-Schlüssel: gleiche Entscheidung, gleiche Bedienung.
+ *
+ * ⚠️ **Der Preis steht im Hinweis, nicht in einer README.** Mit der Freigabe
+ * kann jeder Benutzer nexmail eine Adresse im Netz des Betreibers ansprechen
+ * lassen. Wer nexmail allein benutzt, verliert nichts; wer Fremde eingeladen
+ * hat, soll es lesen, bevor er umlegt.
+ */
+function EigenesNetz() {
+  const { t } = useTranslation()
+  const [erlaubt, setErlaubt] = useState<boolean | null>(null)
+  const [fehler, setFehler] = useState('')
+
+  useEffect(() => {
+    api
+      .holen<{ erlaubt: boolean }>('/api/einstellungen/eigenes-netz')
+      .then((e) => setErlaubt(e.erlaubt))
+      .catch((f) => setFehler(servermeldung(f, t('anmeldung.fehler_allgemein'))))
+  }, [t])
+
+  async function umlegen(an: boolean) {
+    setFehler('')
+    try {
+      const e = await api.aendern<{ erlaubt: boolean }>('/api/einstellungen/eigenes-netz', {
+        erlaubt: an,
+      })
+      setErlaubt(e.erlaubt)
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-[240px] flex-1 flex-col gap-1">
+          <span className="flex items-center gap-2 text-[13px] font-semibold text-fg-1">
+            <Network className="size-4 text-fg-4" aria-hidden />
+            {t('verwaltung.eigenes_netz')}
+          </span>
+          <p className="mb-0 text-[12px] text-fg-3">{t('verwaltung.eigenes_netz_hinweis')}</p>
+        </div>
+        <div className="shrink-0">
+          <Switch
+            label={t('verwaltung.eigenes_netz_erlauben')}
+            checked={erlaubt ?? false}
+            disabled={erlaubt === null}
+            onCheckedChange={(an) => void umlegen(an)}
+          />
+        </div>
+      </div>
+      {fehler && <p className="mb-0 text-[13px] text-danger">{fehler}</p>}
+    </section>
   )
 }
 

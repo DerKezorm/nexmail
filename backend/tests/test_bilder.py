@@ -149,6 +149,10 @@ def test_eine_alte_marke_gilt_nicht_mehr():
         # ⚠️ Die auf IPv4 abgebildete Schreibweise ist derselbe Rechner.
         "http://[::ffff:127.0.0.1]/",
         "http://0.0.0.0/",
+        # ⚠️ Der Bereich von Tailscale und CGNAT: fuer Python weder privat
+        # noch reserviert, und trotzdem kein Rechner im Internet.
+        "http://100.64.0.1/",
+        "http://100.100.20.30/",
     ],
 )
 def test_das_eigene_netz_bleibt_zu(adresse):

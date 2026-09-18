@@ -146,6 +146,9 @@ would stay in their calendars and they would turn up.
 
 **Calendar.** Month, week and day, with your own calendars in nexmail or
 connected over CalDAV to iCloud, Nextcloud or anything else that speaks it.
+A server on your own network or VPN is refused until the operator allows it
+under *Administration → Server*; the same switch covers address books and
+subscribed calendars.
 Google works too, through the same consent you gave for the mailbox. Recurring
 events are stored once and worked out for the window on screen, so a *every
 Monday* does not fill the database to the year 2031; *this one, this and

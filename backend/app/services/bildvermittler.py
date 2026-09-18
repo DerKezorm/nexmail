@@ -159,6 +159,13 @@ def _ist_erreichbar_von_aussen(roh: str) -> bool:
     ``is_global`` allein reicht nicht: Es sagt bei manchen Sonderbereichen
     (etwa ``0.0.0.0/8``) nicht das, was man erwartet. Deshalb zusaetzlich die
     ausdruecklichen Fragen.
+
+    ⚠️ **Die ausdruecklichen Fragen allein reichen aber auch nicht.**
+    ``100.64.0.0/10`` ist fuer Python weder privat noch reserviert, und genau
+    dort vergeben Tailscale und die Netzbetreiber (CGNAT) ihre Adressen. Bis
+    zum 18.09.2026 kam ein ``<img src="http://100.x.y.z/…">`` damit durch, und
+    der Vermittler reichte bis zu jedem Geraet im Tailnet. Verlangt wird
+    deshalb beides.
     """
     try:
         adresse = ipaddress.ip_address(roh)
@@ -166,7 +173,7 @@ def _ist_erreichbar_von_aussen(roh: str) -> bool:
         return False
     if isinstance(adresse, ipaddress.IPv6Address) and adresse.ipv4_mapped is not None:
         adresse = adresse.ipv4_mapped
-    return not (
+    return adresse.is_global and not (
         adresse.is_private
         or adresse.is_loopback
         or adresse.is_link_local
@@ -176,8 +183,50 @@ def _ist_erreichbar_von_aussen(roh: str) -> bool:
     )
 
 
-def adresse_pruefen(url: str) -> None:
+#: Der Bereich, aus dem Tailscale und die Netzbetreiber (CGNAT) vergeben.
+_GETEILT = ipaddress.ip_network("100.64.0.0/10")
+_NULLNETZ = ipaddress.ip_network("0.0.0.0/8")
+
+
+def im_heimnetz(roh: str) -> bool:
+    """Eine Adresse im LAN oder im VPN.
+
+    Das ist, was der Betreiber fuer Kalender- und Adressbuchserver freigeben
+    kann (``services/netzfreigabe.py``). ⚠️ **Enger als „nicht oeffentlich".**
+    Der eigene Rechner, ``169.254.…`` (dort liegen die Metadaten-Dienste der
+    Cloud-Anbieter, samt Zugangsdaten) und alles Reservierte bleiben auch mit
+    Freigabe zu: Dort steht kein Nextcloud, aber manches, das auf ein blosses
+    GET antwortet.
+    """
+    try:
+        adresse = ipaddress.ip_address(roh)
+    except ValueError:
+        return False
+    if isinstance(adresse, ipaddress.IPv6Address) and adresse.ipv4_mapped is not None:
+        adresse = adresse.ipv4_mapped
+    if (
+        adresse.is_loopback
+        or adresse.is_link_local
+        or adresse.is_multicast
+        or adresse.is_reserved
+        or adresse.is_unspecified
+    ):
+        return False
+    if isinstance(adresse, ipaddress.IPv4Address):
+        if adresse in _NULLNETZ:
+            return False
+        if adresse in _GETEILT:
+            return True
+    return adresse.is_private
+
+
+def adresse_pruefen(url: str, eigenes_netz: bool = False) -> None:
     """Darf nexmail hier hingreifen?
+
+    ``eigenes_netz`` laesst zusaetzlich Adressen im LAN und im VPN zu
+    (``im_heimnetz``). ⚠️ **Der Bildvermittler setzt es nie.** Dort kommt die
+    Adresse aus einer fremden Mail; bei einem Kalenderserver tippt sie ein
+    angemeldeter Mensch ein, und der Betreiber hat es freigegeben.
 
     ⚠️ **Der Vermittler waere sonst eine Fernbedienung fuers Heimnetz.** Eine
     Mail mit ``<img src="http://192.168.x.x/…">`` loest beim Klick auf „Bilder
@@ -212,7 +261,7 @@ def adresse_pruefen(url: str) -> None:
     except ValueError:
         pass
     else:
-        if not _ist_erreichbar_von_aussen(host.strip("[]")):
+        if not _zulaessig(host.strip("[]"), eigenes_netz):
             raise Abgelehnt("bild_adresse_im_eigenen_netz")
         return
 
@@ -226,8 +275,12 @@ def adresse_pruefen(url: str) -> None:
     # Adressen zeigen; wer nur die erste prueft, laesst sich mit einer
     # zweiten ins Heimnetz schicken.
     for eintrag in aufloesung:
-        if not _ist_erreichbar_von_aussen(eintrag[4][0]):
+        if not _zulaessig(eintrag[4][0], eigenes_netz):
             raise Abgelehnt("bild_adresse_im_eigenen_netz")
+
+
+def _zulaessig(roh: str, eigenes_netz: bool) -> bool:
+    return _ist_erreichbar_von_aussen(roh) or (eigenes_netz and im_heimnetz(roh))
 
 
 # --- Der Abruf ------------------------------------------------------------ #
