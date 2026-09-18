@@ -382,6 +382,38 @@ Every user has their own mailboxes, contacts, rules and signatures. A guard test
 walks the entire route table and checks that no address answers without
 authentication and none hands out another user's data.
 
+## Dashboards: read-only API keys
+
+A dashboard such as nexdeck can show how many unread messages are waiting and,
+if you allow it, sender and subject of the latest ones. It reads them with an
+API key that each user creates for their own mailboxes under
+*Settings → API keys*.
+
+**Off by default.** API keys are a way out of nexmail, so the operator decides
+whether they exist on an installation at all, with a switch on the same page.
+Turning it off stops every key immediately; no key is deleted.
+
+**Each key has two limits, set when it is created.** It sees only the
+mailboxes ticked on it, and it has one of two scopes: *count only*, or *count,
+sender and subject*. The text of a message is never available through a key.
+Keys are stored as hashes and shown once; revoking one takes effect on the
+next request.
+
+All addresses are `GET`, answer JSON and expect the key as
+`Authorization: Bearer nxm_…`. A browser session does not open them, and a key
+opens nothing else.
+
+| Address | Returns |
+|---|---|
+| `/api/v1/me` | owner, key name and scope (`count` or `headers`), the mailboxes the key may see |
+| `/api/v1/summary` | unread messages in the inbox, in total and per mailbox, with `status` `ok` or `sign_in_failed` |
+| `/api/v1/messages/latest` | sender, subject, date and read state of the newest inbox messages; needs scope `headers`. Optional: `mailbox=<id>` (repeatable), `limit=1..20` (default 5), `unread_only=true` |
+
+Errors come as `{"detail": "<code>"}`: `api_schluessel_fehlt` and
+`api_schluessel_ungueltig` (401), `api_schluessel_abgeschaltet` and
+`api_schluessel_nur_anzahl` (403), `postfach_unbekannt` (404). Counts are as
+fresh as nexmail's last sync with the mail server.
+
 ## Security, honestly
 
 **Two-factor is available and optional.** TOTP with replay protection, ten

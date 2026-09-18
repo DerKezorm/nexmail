@@ -57,7 +57,10 @@ export function Tabs({ tabs, activeId, onSelect, variant = 'underline' }: TabsPr
             aria-selected={an}
             onClick={() => onSelect?.(t.id)}
             className={
-              'inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium ' +
+              // nowrap/shrink-0: Eine Beschriftung bricht nie mitten im Wort um.
+              // Reicht der Platz nicht, läuft die Leiste über, und das misst
+              // `einstellungen.spec.ts`, statt es hinter zwei Zeilen zu verstecken.
+              'inline-flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium ' +
               'transition-colors duration-[var(--dur-fast)] ' +
               (an
                 ? 'border-accent text-fg-1'

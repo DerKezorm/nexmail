@@ -16,7 +16,8 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .models import Benutzer, Sitzung
+from .models import ApiSchluessel, Benutzer, Sitzung
+from .services import apischluessel as apidienst
 from .services import sitzung as sitzungsdienst
 
 DbSession = Annotated[Session, Depends(get_db)]
@@ -90,10 +91,50 @@ def nur_betreiber(person: Annotated[Benutzer, Depends(angemeldet)]) -> Benutzer:
     return person
 
 
+def api_zugriff(request: Request, db: DbSession) -> ApiSchluessel:
+    """Ein API-Schluessel statt einer Sitzung. Nur fuer ``/api/v1``.
+
+    ⚠️ **Kein Cookie, nur die Kopfzeile.** Diese Adressen sind fuer andere
+    Anwendungen gebaut; eine angemeldete Browsersitzung kommt hier nicht
+    hinein. Damit kann keine fremde Seite ueber das Cookie eines Angemeldeten
+    etwas abfragen, und umgekehrt oeffnet ein Schluessel keine einzige der
+    uebrigen Adressen.
+
+    ⚠️ **Der Riegel wird bei jeder Abfrage gefragt**, nicht beim Anlegen.
+    Macht der Betreiber zu, steht jedes Dashboard sofort still.
+
+    Keine Anmeldebremse: 256 Bit Zufall raet niemand, und ein gemeinsamer
+    Zaehler waere ein billiger Weg, alle Dashboards lahmzulegen. Dieselbe
+    Ueberlegung wie bei den Einladungen.
+    """
+    kopf = request.headers.get("authorization", "")
+    art, _, wert = kopf.partition(" ")
+    if art.lower() != "bearer" or not wert.strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="api_schluessel_fehlt",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not apidienst.erlaubt(db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="api_schluessel_abgeschaltet",
+        )
+    schluessel = apidienst.finden(db, wert.strip())
+    if schluessel is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="api_schluessel_ungueltig",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return schluessel
+
+
 AngemeldeterBenutzer = Annotated[Benutzer, Depends(angemeldet)]
 Betreiber = Annotated[Benutzer, Depends(nur_betreiber)]
 AktiveSitzung = Annotated[Sitzung, Depends(angemeldete_sitzung)]
 HalbeSitzung = Annotated[Sitzung, Depends(halbe_sitzung)]
+ApiZugriff = Annotated[ApiSchluessel, Depends(api_zugriff)]
 
 
 def nur_meine(abfrage, benutzer: Benutzer, spalte):

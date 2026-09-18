@@ -32,9 +32,12 @@ def test_jede_adresse_ist_entschieden():
     # ``angemeldete_sitzung``, und der Test meldete /api/auth/abmelden als
     # ungeschuetzt - obwohl es das nicht war. Ein Waechter, der falschen Alarm
     # schlaegt, wird abgeschaltet; deshalb steht die Liste hier vollstaendig.
-    from app.deps import angemeldet, angemeldete_sitzung, halbe_sitzung
+    from app.deps import angemeldet, angemeldete_sitzung, api_zugriff, halbe_sitzung
 
-    geschuetzt = {angemeldet, angemeldete_sitzung, halbe_sitzung}
+    # ``api_zugriff`` ist der vierte: ``/api/v1`` nimmt einen API-Schluessel
+    # statt einer Sitzung. Er ist kein schwaecherer Schutz, sondern ein
+    # anderer - und nur lesend, siehe routers/api_v1.py.
+    geschuetzt = {angemeldet, angemeldete_sitzung, halbe_sitzung, api_zugriff}
     unentschieden: list[str] = []
 
     for route in _api_routen():

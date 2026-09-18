@@ -1714,3 +1714,52 @@ class OauthZugang(Base):
     #: Die Kalender, die ueber diese Zustimmung laufen. Nur zum Zaehlen —
     #: geloescht wird ueber die Dienste, damit die Reihenfolge stimmt.
     kalender: Mapped[list["Kalender"]] = relationship(lazy="selectin", viewonly=True)
+
+
+class ApiSchluessel(Base):
+    """Ein Schluessel, mit dem eine andere Anwendung lesend hineinsieht.
+
+    Gedacht fuer Dashboards wie nexdeck: die Zahl der ungelesenen Mails, und
+    auf Wunsch Betreff und Absender der neuesten.
+
+    ⚠️ **Der Schluessel liegt nur als Hash da.** Er oeffnet Postfaecher, also
+    ist er ein Passwort. Er wird genau einmal angezeigt, beim Anlegen; wer ihn
+    verliert, legt einen neuen an. SHA-256 statt Argon2 wie bei den
+    Sitzungen: 256 Bit Zufall lassen sich nicht erraten, und ein langsamer
+    Hash kostete jede einzelne Abfrage eines Dashboards.
+
+    ⚠️ **Die Postfaecher stehen am Schluessel, nicht im Widget.** Was ein
+    Schluessel sehen darf, entscheidet der Mensch, dem die Postfaecher
+    gehoeren. Ein Dashboard, das mehr anfragt, bekommt nicht mehr.
+
+    ⚠️ **Die Stufe ist die zweite Grenze.** ``anzahl`` gibt nur Zahlen heraus,
+    ``betreff`` dazu Absender und Betreff. Den Text einer Mail gibt es ueber
+    diesen Weg gar nicht: Ein Dashboard haengt oft an einem Bildschirm, den
+    jeder im Raum sieht.
+    """
+
+    __tablename__ = "api_schluessel"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    #: Wozu der Schluessel dient, z. B. „nexdeck im Flur". Nur zum
+    #: Wiedererkennen in der Liste.
+    name: Mapped[str] = mapped_column(String(80))
+    schluessel_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    #: Die ersten Zeichen des Schluessels, damit man ihn in der Liste dem
+    #: Eintrag im Dashboard zuordnen kann. Zu kurz, um etwas zu verraten.
+    praefix: Mapped[str] = mapped_column(String(16))
+    #: ``anzahl`` | ``betreff``
+    stufe: Mapped[str] = mapped_column(String(16), default="anzahl")
+    #: JSON-Liste der Postfach-Kennungen. ⚠️ **Gelesen wird immer im Schnitt
+    #: mit den Postfaechern des Besitzers**: Ein entferntes Postfach faellt so
+    #: von selbst heraus, und eine fremde Kennung findet nie etwas.
+    konten_json: Mapped[str] = mapped_column(Text, default="[]")
+
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    #: ⚠️ Nicht bei jeder Abfrage geschrieben, sondern hoechstens einmal je
+    #: Minute: Ein Dashboard fragt alle paar Sekunden, und jede Abfrage wuerde
+    #: sonst zum Schreibvorgang.
+    zuletzt_benutzt: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)

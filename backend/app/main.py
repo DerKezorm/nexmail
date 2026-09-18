@@ -33,6 +33,8 @@ from .middleware import (
 )
 from .routers import (
     abwesenheit as abwesenheit_router,
+    api_v1 as api_v1_router,
+    apischluessel as apischluessel_router,
     aufgaben as aufgaben_router,
     mailoauth as mailoauth_router,
     austausch as austausch_router,
@@ -440,6 +442,12 @@ app.include_router(austausch_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(erinnerungen_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(kalender_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(push_router.router, dependencies=NUR_ANGEMELDET)
+app.include_router(apischluessel_router.router, dependencies=NUR_ANGEMELDET)
+# ⚠️ **Ohne ``NUR_ANGEMELDET``, und das ist keine Nachlaessigkeit.** Diese
+# Adressen sind fuer andere Anwendungen und nehmen nur einen API-Schluessel,
+# keine Sitzung. Jede einzelne haengt an ``deps.api_zugriff``; der Waechter
+# in ``test_waechter.py`` zaehlt das als Schutz.
+app.include_router(api_v1_router.router)
 # ⚠️ **Nicht als Ganzes geschuetzt.** Der Rueckweg vom Anbieter ist eine
 # Navigation von fremder Seite; er traegt seinen eigenen Nachweis (Anlauf-
 # Cookie plus signierter Zustand) und darf deshalb ohne Sitzung ankommen.
