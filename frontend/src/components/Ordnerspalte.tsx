@@ -23,13 +23,14 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Archive,
-  Clock,
-  Flag,
   ChevronDown,
   ChevronRight,
+  Clock,
   FileText,
+  Flag,
   Folder,
   Inbox,
+  MoreHorizontal,
   Plus,
   Send,
   ShieldAlert,
@@ -106,6 +107,10 @@ interface Props {
   ziehtAusKonto?: string
   /** Ein Satz, warum ein Ordner den Zug nicht annehmen kann. */
   aufAbweisung?: (grund: string) => void
+  /** Gesetzt heißt: Jeder Ordner trägt ein sichtbares „…", das sein Menü als
+   *  Blatt öffnet. ⚠️ Nur schmal gesetzt: Am Telefon gibt es keinen
+   *  Rechtsklick, und ein langer Druck wäre ein Griff, den man nicht sieht. */
+  aufMenue?: (o: Ordner) => void
   /* ⚠️ **Das gewählte Schlagwort wohnt oben, nicht hier.** Es beschränkt
      nicht nur den Baum, sondern auch „Alle Posteingänge" und „Markierte" —
      und die holt `App` beim Server. Ein Zustand nur in dieser Spalte hieße:
@@ -132,6 +137,7 @@ export function Ordnerspalte({
   aufZiel,
   aufPostfachHinzufuegen,
   aufKontext,
+  aufMenue,
   favoriten,
   eingeklappt,
   aufEinklappen,
@@ -297,6 +303,7 @@ export function Ordnerspalte({
                 aktiv={ziel.typ === 'ordner' && ziel.id === o.id}
                 onClick={() => aufZiel({ typ: 'ordner', id: o.id })}
                 onContextMenu={(e) => aufKontext(e, o)}
+                aufMenue={aufMenue ? () => aufMenue(o) : undefined}
                 ablegbar={Boolean(aufAblegen)}
                 abweisung={abweisungFuer(o)}
                 ueber={ueber === o.id}
@@ -354,6 +361,7 @@ export function Ordnerspalte({
                     stern={favoriten.includes(o.id)}
                     aktiv={ziel.typ === 'ordner' && ziel.id === o.id}
                     onContextMenu={(e) => aufKontext(e, o)}
+                    aufMenue={aufMenue ? () => aufMenue(o) : undefined}
                     onClick={() => aufZiel({ typ: 'ordner', id: o.id })}
                     ablegbar={Boolean(aufAblegen)}
                     abweisung={abweisungFuer(o)}
@@ -392,6 +400,8 @@ interface ZeileProps {
   aktiv: boolean
   onClick: () => void
   onContextMenu?: (e: React.MouseEvent) => void
+  /** Öffnet das Menü dieses Ordners als Blatt; gesetzt nur am Telefon. */
+  aufMenue?: () => void
   /** Postfach-Punkt — nur bei Favoriten, wo die Herkunft sonst fehlt. */
   punkt?: 1 | 2 | 3 | 4 | 5 | 6
   /** Kleiner Stern im Baum, wenn der Ordner oben angeheftet ist. */
@@ -491,6 +501,7 @@ function Zeile({
   aktiv,
   onClick,
   onContextMenu,
+  aufMenue,
   punkt,
   stern,
   tiefe = 0,
@@ -502,7 +513,7 @@ function Zeile({
   aufAbweisungZeile,
 }: ZeileProps) {
   const { t } = useTranslation()
-  return (
+  const knopf = (
     <button
       type="button"
       onClick={onClick}
@@ -546,7 +557,7 @@ function Zeile({
       // Zeile anklickbar und als Ablageziel erreichbar.
       style={tiefe > 0 ? { paddingLeft: 8 + tiefe * 14 } : undefined}
       className={
-        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] ' +
+        'flex w-full min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] ' +
         'transition-colors duration-[var(--dur-fast)] [&>svg]:size-4 [&>svg]:shrink-0 ' +
         (ueber && abweisung
           ? 'bg-danger-soft ring-1 ring-danger ring-inset text-danger cursor-not-allowed'
@@ -578,5 +589,24 @@ function Zeile({
         <span className="shrink-0 text-[11px] font-semibold tabular-nums text-fg-3">{ungelesen}</span>
       )}
     </button>
+  )
+  if (!aufMenue) return knopf
+
+  /* ⚠️ **Neben der Zeile, nicht in ihr.** Die Zeile ist selbst ein Knopf, und
+     ein Knopf in einem Knopf ist kein gültiges Dokument: Der innere wäre für
+     die Tastatur und für Vorlesehilfen nicht erreichbar. */
+  return (
+    <div className="flex items-center gap-0.5">
+      {knopf}
+      <button
+        type="button"
+        aria-label={t('ordner.mehr_zu', { name })}
+        title={t('ordner.mehr_zu', { name })}
+        onClick={aufMenue}
+        className="flex size-8 shrink-0 items-center justify-center rounded-md text-fg-3 transition-colors duration-[var(--dur-fast)] hover:bg-surface-3 hover:text-fg-1 [&_svg]:size-4"
+      >
+        <MoreHorizontal aria-hidden />
+      </button>
+    </div>
   )
 }

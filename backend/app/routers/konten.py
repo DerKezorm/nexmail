@@ -140,6 +140,9 @@ class OrdnerAntwort(BaseModel):
     pfad: str
     name: str
     rolle: str
+    #: Was ein Mensch zugewiesen hat; leer heisst „selbst erkannt". Die
+    #: Oberflaeche setzt daran den Haken im Menue „Verwenden als".
+    rolle_von_hand: str = ""
     waehlbar: bool
     #: Wie viele Nachrichten nexmail von diesem Ordner kennt.
     anzahl: int = 0
@@ -448,6 +451,7 @@ def ordner(konto_id: str, person: AngemeldeterBenutzer, db: DbSession) -> list[O
             pfad=o.pfad,
             name=o.name,
             rolle=o.rolle,
+            rolle_von_hand=o.rolle_von_hand or "",
             waehlbar=o.waehlbar,
             abonniert=o.abonniert,
             anzahl=stand.get(o.id, (0, 0))[0],
@@ -547,6 +551,44 @@ def ordner_umbenennen(
         waehlbar=neu.waehlbar,
         abonniert=neu.abonniert,
     )
+
+
+class OrdnerRolle(BaseModel):
+    #: Eine Rolle aus ``ZUWEISBARE_ROLLEN``; leer heisst „wieder selbst erkennen".
+    rolle: str = Field(default="", max_length=16)
+
+
+@router.put("/{konto_id}/ordner/{ordner_id}/rolle", response_model=list[OrdnerAntwort])
+def ordner_rolle(
+    konto_id: str,
+    ordner_id: int,
+    wunsch: OrdnerRolle,
+    person: AngemeldeterBenutzer,
+    db: DbSession,
+) -> list[OrdnerAntwort]:
+    """Einem Ordner von Hand sagen, was er ist: Papierkorb, Archiv, …
+
+    ⚠️ **Die Antwort ist der ganze Baum, nicht der eine Ordner.** Eine
+    Zuweisung aendert bis zu drei Zeilen: den Ordner selbst, den erkannten
+    Ordner derselben Rolle (er tritt zurueck) und eine aeltere Zuweisung von
+    Hand (sie faellt). Wer nur eine Zeile zurueckgibt, laesst die Oberflaeche
+    zwei Papierkoerbe zeigen, bis jemand neu laedt.
+    """
+    try:
+        konto = kontendienst.eines(db, person, konto_id)
+    except (kontendienst.KontoFehler, aliasdienst.AliasFehler) as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
+
+    ziel = next((o for o in konto.ordner if o.id == ordner_id), None)
+    if ziel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    try:
+        ordnerdienst.rolle_zuweisen(db, konto, ziel, wunsch.rolle.strip())
+    except ordnerdienst.OrdnerFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+
+    return ordner(konto_id, person, db)
 
 
 @router.delete("/{konto_id}/ordner/{ordner_id}")

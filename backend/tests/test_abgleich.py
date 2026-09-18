@@ -56,8 +56,39 @@ class FalscherServer:
         # erlaubt Keywords, mancher Ordner anderswo nicht.
         self.eigene_keywords = True
 
-    def anlegen(self, pfad: str, uidvalidity: int = 100):
-        self.ordner[pfad] = {"uidvalidity": uidvalidity, "nachrichten": {}}
+    def anlegen(self, pfad: str, uidvalidity: int = 100, kennzeichen: tuple[bytes, ...] = ()):
+        self.ordner[pfad] = {
+            "uidvalidity": uidvalidity,
+            "nachrichten": {},
+            # SPECIAL-USE, wie ein Server es meldet: ``(rb"\Archive",)``.
+            "kennzeichen": tuple(kennzeichen),
+        }
+
+    # ⚠️ **Der Doppelgaenger nennt seine Ordner, wie ein echter Server.** Seit
+    # dem 18.09.2026 zieht jeder Abgleich die Ordnerliste nach. Ein
+    # Doppelgaenger ohne ``LIST`` haette jeden Test hier umgeworfen; einer,
+    # der immer dieselbe Liste nennt, haette das Nachziehen nie geprueft.
+    #: Gesetzt heisst: ``LIST`` scheitert, wie bei einem Server, der klemmt.
+    liste_klemmt = False
+    #: Gesetzt heisst: ``LIST`` antwortet, aber ohne jeden Ordner.
+    liste_leer = False
+
+    def list_folders(self):
+        if self.liste_klemmt:
+            from imapclient.exceptions import IMAPClientError
+
+            raise IMAPClientError("LIST failed")
+        if self.liste_leer:
+            return []
+        return [
+            ((rb"\HasNoChildren", *e.get("kennzeichen", ())), b"/", pfad)
+            for pfad, e in self.ordner.items()
+        ]
+
+    def list_sub_folders(self):
+        if self.liste_leer:
+            return []
+        return [((), b"/", pfad) for pfad in self.ordner]
 
     def einwerfen(
         self,
@@ -741,11 +772,13 @@ def test_eine_gelingende_anmeldung_raeumt_die_marke_weg(klient, db, monkeypatch)
         o.abonniert = False
     db.commit()
 
-    class Attrappe:
-        def logout(self):
-            pass
+    # ⚠️ Seit dem 18.09.2026 fragt jeder Abgleich nach der Ordnerliste. Diese
+    # Attrappe nennt keine; dann bleibt der Bestand, wie er ist (siehe
+    # ``test_ordnerliste.py``), und es bleibt bei „verbinden und auflegen".
+    attrappe = FalscherServer()
+    attrappe.liste_leer = True
 
-    monkeypatch.setattr(imapdienst, "verbinden", lambda *a, **k: Attrappe())
+    monkeypatch.setattr(imapdienst, "verbinden", lambda *a, **k: attrappe)
     abgleich.konto_abgleichen(db, konto, nur_posteingang=True)
 
     db.refresh(konto)

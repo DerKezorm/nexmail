@@ -233,11 +233,29 @@ KENNZEICHEN = {
 #: iCloud hier ueberhaupt auftaucht:** Dort heissen die Ordner „Sent Messages"
 #: und „Deleted Messages", nicht „Sent" und „Trash". Wer nur auf die englischen
 #: Kurzformen prueft, zeigt bei iCloud fuenf Ordner als „eigen" an.
+#:
+#: ⚠️ **Nur Namen, die ein Anbieter selbst vergibt.** Die Liste entscheidet,
+#: welchen Ordner das Aufraeumen endgueltig leert; ein Name, den sich auch ein
+#: Mensch fuer seine Ablage ausdenkt, gehoert nicht hinein. Was hier fehlt,
+#: weist man von Hand zu („Verwenden als", ``ordner.rolle_zuweisen``). Am
+#: 18.09.2026 erweitert, nachdem bei einem Server ohne SPECIAL-USE weder
+#: „Löschen" noch „Archivieren" ein Ziel fand: Exchange und Outlook.com
+#: sagen „Deleted" und „Gelöschte Elemente", GMX und WEB.DE „Gelöscht" und
+#: „Spamverdacht".
 NAMEN: dict[str, tuple[str, ...]] = {
-    "gesendet": ("sent", "sent messages", "sent items", "gesendet", "gesendete objekte"),
+    "gesendet": (
+        "sent", "sent messages", "sent items", "sent mail",
+        "gesendet", "gesendete objekte", "gesendete elemente",
+    ),
     "entwuerfe": ("drafts", "draft", "entwürfe", "entwuerfe"),
-    "papierkorb": ("trash", "deleted messages", "deleted items", "papierkorb", "gelöschte objekte"),
-    "junk": ("junk", "spam", "junk e-mail", "bulk mail"),
+    "papierkorb": (
+        "trash", "deleted", "deleted messages", "deleted items",
+        "papierkorb", "gelöscht", "gelöschte objekte", "gelöschte elemente",
+    ),
+    "junk": (
+        "junk", "spam", "junk e-mail", "junk email", "junk-e-mail", "bulk mail",
+        "spamverdacht",
+    ),
     "archiv": ("archive", "archiv", "archives"),
 }
 

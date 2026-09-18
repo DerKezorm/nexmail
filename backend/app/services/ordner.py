@@ -234,6 +234,52 @@ def umbenennen(db: Session, konto: Konto, ordner: Ordner, name: str) -> Ordner:
     return neuer
 
 
+def rolle_zuweisen(db: Session, konto: Konto, ordner: Ordner, rolle: str) -> Ordner:
+    """Einem Ordner von Hand sagen, was er ist.
+
+    ``rolle`` ist eine aus ``ZUWEISBARE_ROLLEN``, oder leer fuer „wieder selbst
+    erkennen". ``eigen`` ist eine echte Zuweisung: „das ist KEIN Papierkorb",
+    auch wenn der Ordner so heisst.
+
+    ⚠️ **Nichts davon geht zum Server.** IMAP kennt keinen Befehl, mit dem ein
+    Client ein SPECIAL-USE-Kennzeichen setzt (``CREATE … USE`` gilt nur beim
+    Anlegen, und kaum ein Server nimmt es an). Die Zuweisung lebt in nexmail,
+    wie in jedem anderen Mailprogramm auch.
+
+    ⚠️ **Je Rolle hoechstens EINE Zuweisung von Hand.** Wer einen zweiten
+    Ordner zum Papierkorb macht, meint „der statt dem", nicht „beide"; der
+    erste faellt auf die Erkennung zurueck.
+    """
+    if rolle and rolle not in kontendienst.ZUWEISBARE_ROLLEN:
+        raise OrdnerFehler("ordner_rolle_unbekannt")
+    if "posteingang" in (ordner.rolle, ordner.rolle_erkannt):
+        raise OrdnerFehler("ordner_rolle_posteingang")
+
+    besonders = rolle not in ("", "eigen")
+    if besonders and not ordner.waehlbar:
+        # Ein reiner Zwischenknoten nimmt keine Nachrichten auf; als
+        # Papierkorb waere er ein Ziel, an dem jedes Loeschen scheitert.
+        raise OrdnerFehler("ordner_rolle_nicht_waehlbar", name=ordner.name)
+
+    from .wiedervorlage import ORDNER_NAME as wiedervorlage_ordner  # kreisfrei erst hier
+
+    if besonders and ordner.pfad == wiedervorlage_ordner:
+        # ⚠️ Was dort liegt, hat ein Mensch bewusst weggelegt. Als Papierkorb
+        # oder Junk leerte das Aufraeumen es endgueltig.
+        raise OrdnerFehler("ordner_rolle_wiedervorlage")
+
+    alle = list(konto.ordner)
+    if besonders:
+        for anderer in alle:
+            if anderer is not ordner and anderer.rolle_von_hand == rolle:
+                anderer.rolle_von_hand = ""
+    ordner.rolle_von_hand = rolle
+    kontendienst.rollen_setzen(alle)
+    db.commit()
+    logger.info("A folder role was %s.", "assigned by hand" if rolle else "reset to detection")
+    return ordner
+
+
 __all__ = [
     "GESCHUETZTE_ROLLEN",
     "MAX_NAME",
@@ -241,5 +287,6 @@ __all__ = [
     "anlegen",
     "entfernen",
     "name_pruefen",
+    "rolle_zuweisen",
     "umbenennen",
 ]

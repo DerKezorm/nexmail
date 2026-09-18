@@ -63,10 +63,16 @@ const NUR_BREIT = [
   'lesemodus.spec.ts',
   'mehrbenutzer.spec.ts',
   'oauth.spec.ts',
+  'ordnerrolle.spec.ts',
   'sicherungen.spec.ts',
   'umzug.spec.ts',
 ]
-const NUR_SCHMAL = ['auswahl.spec.ts', 'kalender_schmal.spec.ts', 'wischen.spec.ts']
+const NUR_SCHMAL = [
+  'auswahl.spec.ts',
+  'kalender_schmal.spec.ts',
+  'ordner_schmal.spec.ts',
+  'wischen.spec.ts',
+]
 
 export default defineConfig({
   testDir: './tests',

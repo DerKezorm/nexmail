@@ -237,6 +237,33 @@ export function postfach(seite: Page, name: string = TESTPOSTFACH) {
   return seite.locator('section').filter({ hasText: name }).first()
 }
 
+/** Jede Zuweisung von Hand im Testpostfach zurücknehmen, über die Schnittstelle.
+ *
+ * ⚠️ **Aus Schaden entstanden, am Tag des Baus.** Die Mutationsprobe „vor
+ * Papierkorb wird nicht gefragt" machte das Archiv des Testpostfachs wirklich
+ * zum Papierkorb: Ohne Rückfrage ging der Klick zum Server durch, der Test
+ * wurde wie verlangt rot, und die Zuweisung blieb stehen. Der volle Lauf danach
+ * meldete drei Fehler in drei Dateien („Das Archivieren kam nicht durch"), und
+ * keiner davon lag am Code. Ein Test, der den Bestand ändert, räumt deshalb
+ * **vor und nach** jedem Fall auf, nicht nur am Ende des guten Wegs. */
+export async function zuweisungenWeg(page: Page) {
+  const konten = (await (await page.request.get('/api/konten')).json()) as Array<{
+    id: string
+    anzeigename: string
+  }>
+  for (const konto of konten.filter((k) => k.anzeigename === TESTPOSTFACH)) {
+    const ordner = (await (
+      await page.request.get(`/api/konten/${konto.id}/ordner`)
+    ).json()) as Array<{ id: number; rolle_von_hand?: string }>
+    for (const o of ordner.filter((o) => o.rolle_von_hand)) {
+      const antwort = await page.request.put(`/api/konten/${konto.id}/ordner/${o.id}/rolle`, {
+        data: { rolle: '' },
+      })
+      expect(antwort.status(), 'Das Aufräumen der Zuweisung ging nicht.').toBe(200)
+    }
+  }
+}
+
 /** Jeder Knopf muss einen Namen haben, den man vorlesen kann.
  *
  * ⚠️ Ein Knopf aus lauter `aria-hidden`-Symbolen ist für eine Vorlesehilfe

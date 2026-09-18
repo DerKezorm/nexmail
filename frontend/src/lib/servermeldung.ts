@@ -17,6 +17,16 @@
 import i18next from 'i18next'
 import { ApiFehler } from '../api/client'
 
+/* ⚠️ **Auch ein Wert kann eine Kennung sein.** `rolle_ohne_ordner` nennt die
+   Rolle, und die heißt im Server `papierkorb`. Bis 0.17.0 stand sie so im
+   Satz, auf Englisch also „no folder for “papierkorb”“. Die Ordnernamen hat
+   der Katalog längst; ein Wert, den er nicht kennt, bleibt, wie er kam. */
+function werteUebersetzt(werte: Record<string, unknown>): Record<string, unknown> {
+  const rolle = werte.rolle
+  if (typeof rolle !== 'string' || !i18next.exists(`ordner.${rolle}`)) return werte
+  return { ...werte, rolle: i18next.t(`ordner.${rolle}`) }
+}
+
 /** Der Satz zu einem Fehler — oder ein tragfähiger Rückfall. */
 export function servermeldung(fehler: unknown, rueckfall?: string): string {
   if (!(fehler instanceof ApiFehler)) {
@@ -31,7 +41,7 @@ export function servermeldung(fehler: unknown, rueckfall?: string): string {
      „serverfehler.ordner_name_fehlt". Ein Rückfall ist hässlich, das ist
      kaputt. */
   if (kennung && i18next.exists(schluessel)) {
-    return i18next.t(schluessel, fehler.werte ?? {})
+    return i18next.t(schluessel, werteUebersetzt(fehler.werte ?? {}))
   }
 
   /* ⚠️ **Eine unbekannte Kennung ist ein Fehler bei uns, kein Betriebsfall.**

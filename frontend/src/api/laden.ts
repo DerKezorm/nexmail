@@ -138,6 +138,7 @@ export async function ordnerLaden(konten: Konto[]): Promise<Ordner[]> {
         pfad: o.pfad,
         name: o.name,
         rolle: o.rolle as OrdnerRolle,
+        rolleVonHand: o.rolle_von_hand ?? '',
         // ⚠️ **Vom Server, nicht aus der geladenen Liste.** Die Oberfläche
         // hält nur die Nachrichten des offenen Ordners — wer daraus zählt,
         // zeigt bei allen anderen null.
@@ -228,6 +229,17 @@ export async function ordnerUmbenennen(
   name: string,
 ): Promise<void> {
   await api.aendern(`/api/konten/${kontoId}/ordner/${ordnerId}`, { name })
+}
+
+/** Einem Ordner von Hand sagen, was er ist. Leer heisst: wieder selbst
+ *  erkennen. Der Server antwortet mit dem ganzen Baum des Postfachs, weil eine
+ *  Zuweisung bis zu drei Ordner aendert; hier genuegt es, danach neu zu laden. */
+export async function ordnerRolleSetzen(
+  kontoId: string,
+  ordnerId: number,
+  rolle: string,
+): Promise<void> {
+  await api.aendern(`/api/konten/${kontoId}/ordner/${ordnerId}/rolle`, { rolle })
 }
 
 export async function ordnerAlsGelesen(ordnerId: string): Promise<number> {

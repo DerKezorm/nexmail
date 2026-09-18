@@ -91,6 +91,9 @@ interface Props {
   aufPostfachHinzufuegen: () => void
   aufNachrichtKontext: (e: React.MouseEvent, n: Nachricht) => void
   aufOrdnerKontext: (e: React.MouseEvent, o: Ordner) => void
+  /** Das Blatt mit denselben Einträgen — der Weg am Telefon, wo es keinen
+   *  Rechtsklick gibt. */
+  aufOrdnerMenue: (o: Ordner) => void
   favoriten: string[]
   eingeklappt: string[]
   aufEinklappen: (kontoId: string) => void
@@ -254,6 +257,7 @@ export function MailPage(p: Props) {
       }}
       aufPostfachHinzufuegen={p.aufPostfachHinzufuegen}
       aufKontext={p.aufOrdnerKontext}
+      aufMenue={p.schmal ? p.aufOrdnerMenue : undefined}
       favoriten={p.favoriten}
       aufAblegen={p.aufAblegen}
       ziehtAusKonto={p.ziehtAusKonto}

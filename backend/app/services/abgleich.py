@@ -727,6 +727,63 @@ def _stoerung_merken(db: Session, konto: Konto, art: str) -> None:
             logger.info("Sign-in to the mailbox works again; the flag was cleared.")
 
 
+def _ordnerliste_nachziehen(klient, db: Session, konto: Konto) -> None:
+    """Die Ordnerliste des Servers uebernehmen, bevor abgeglichen wird.
+
+    Bis zum 18.09.2026 las nexmail sie nur beim Anlegen des Postfachs und
+    wenn HIER ein Ordner angelegt, umbenannt oder entfernt wurde. Ein Ordner
+    vom Telefon oder aus dem Webmail tauchte nie auf, und einer, der dort
+    geloescht wurde, blieb stehen und scheiterte bei jedem Abgleich. Die
+    Meldung „lege ihn auf dem Server an" war damit ein Rat, der nicht half.
+
+    Es kostet ``LIST`` und ``LSUB`` auf der Verbindung, die ohnehin offen ist;
+    Apple laesst je Postfach nur eine zu, eine zweite waere ein Rauswurf.
+
+    ⚠️ **Uebernehmen heisst auch loeschen.** ``ordner_uebernehmen`` wirft die
+    Zeile eines verschwundenen Ordners weg, samt ihren Nachrichten. Das ist
+    richtig, wenn der Ordner wirklich fort ist, und ein Datenverlust auf Zeit,
+    wenn der Server nur gerade Unsinn antwortet. Deshalb zwei Riegel:
+
+    * **Ein Fehler beim Lesen laesst alles, wie es ist.** Der Abgleich laeuft
+      mit den bekannten Ordnern weiter.
+    * **Eine Liste ohne Posteingang ist keine Liste.** ``INBOX`` gibt es auf
+      jedem Server; fehlt er, stimmt mit der Antwort etwas nicht, und nach ihr
+      wird nichts geloescht.
+
+    ⚠️ **Eine Zuweisung von Hand uebersteht das**, siehe
+    ``konten.rollen_setzen``. Ohne das haette jeder Takt die Rolle
+    zurueckgesetzt, die jemand einem Ordner gegeben hat.
+    """
+    try:
+        angaben = imapdienst.ordner_lesen(klient)
+    except imapdienst.Verbindungsfehler as fehler:
+        logger.info(
+            "The folder list could not be read (%s); the known folders stay.", fehler.art
+        )
+        return
+
+    if not any(a.rolle == "posteingang" for a in angaben):
+        logger.warning(
+            "The server listed %d folder(s) and no inbox among them; "
+            "the known folders stay as they are.",
+            len(angaben),
+        )
+        return
+
+    bekannt = {o.pfad for o in konto.ordner}
+    gelesen = {a.pfad for a in angaben}
+    kontendienst.ordner_uebernehmen(db, konto, angaben)
+    # ⚠️ Ohne das sieht ``konto.ordner`` weder den neuen Ordner noch das
+    # Fehlen des alten: Die Sitzung laeuft mit ``expire_on_commit=False``.
+    db.refresh(konto)
+    if bekannt != gelesen:
+        logger.info(
+            "Folder list refreshed: %d new, %d gone.",
+            len(gelesen - bekannt),
+            len(bekannt - gelesen),
+        )
+
+
 def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -> dict[str, Runde]:
     """Alle (oder nur den wichtigsten) Ordner eines Kontos abgleichen."""
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
@@ -740,6 +797,7 @@ def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -
             raise
         _stoerung_merken(db, konto, "")
         try:
+            _ordnerliste_nachziehen(klient, db, konto)
             ordner = [o for o in konto.ordner if o.waehlbar and o.abonniert]
             if nur_posteingang:
                 ordner = [o for o in ordner if o.rolle == "posteingang"]

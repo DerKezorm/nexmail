@@ -483,7 +483,19 @@ class Ordner(Base):
     #: Was in der Oberflaeche steht - der letzte Teil des Pfades.
     name: Mapped[str] = mapped_column(String(255))
     #: posteingang | gesendet | entwuerfe | archiv | junk | papierkorb | eigen
+    #:
+    #: ⚠️ **Das ist die GELTENDE Rolle, und alle lesen nur sie.** Sie entsteht
+    #: aus den beiden Spalten darunter (``konten.rollen_setzen``): Was ein
+    #: Mensch zugewiesen hat, schlaegt die Erkennung.
     rolle: Mapped[str] = mapped_column(String(16), default="eigen")
+    #: Was Server und Namensliste sagen. Wird bei jedem Ordnerlesen neu
+    #: gesetzt. Leer heisst: Zeile von vor dieser Spalte, dann gilt ``rolle``.
+    rolle_erkannt: Mapped[str] = mapped_column(String(16), default="")
+    #: Was ein Mensch zugewiesen hat, ``eigen`` eingeschlossen („das ist KEIN
+    #: Papierkorb"). Leer heisst: selbst erkennen. ⚠️ Das Ordnerlesen fasst
+    #: diese Spalte nie an; sonst waere die Zuweisung nach dem naechsten
+    #: angelegten Ordner wieder weg.
+    rolle_von_hand: Mapped[str] = mapped_column(String(16), default="")
 
     abonniert: Mapped[bool] = mapped_column(Boolean, default=True)
     #: Ob der Ordner Nachrichten aufnehmen kann. Manche Server haben reine

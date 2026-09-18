@@ -391,6 +391,44 @@ def pruefen(daten: Zugangsdaten, app_passwort_wo: str = "", token: str = "") -> 
     return Befund(imap=imap_befund, smtp=smtp_befund, ordner=ordner, faehigkeiten=koennen)
 
 
+#: Was sich einem Ordner von Hand zuweisen laesst. ⚠️ **Der Posteingang
+#: nicht:** ``INBOX`` legt das Protokoll fest, nicht der Anbieter und nicht der
+#: Mensch davor.
+ZUWEISBARE_ROLLEN = ("gesendet", "entwuerfe", "archiv", "junk", "papierkorb", "eigen")
+
+
+def rollen_setzen(ordner: list[Ordner]) -> None:
+    """Aus Erkennung und Zuweisung von Hand die geltende Rolle machen.
+
+    Die Erkennung kennt SPECIAL-USE und eine kurze Namensliste. Ein Server
+    ohne das eine, mit Ordnern ausserhalb des anderen („Deleted", „Gelöschte
+    Elemente"), hatte bis zum 18.09.2026 weder Papierkorb noch Archiv, und
+    „Löschen" wie „Archivieren" endeten in einer Absage.
+
+    ⚠️ **Von Hand schlaegt erkannt, und zwar fuer das ganze Postfach.** Wer
+    „Ablage" zum Archiv macht, waehrend der Server daneben ein ``\\Archive``
+    fuehrt, haette sonst zwei Ordner mit derselben Rolle, und welcher gilt,
+    entschiede die Reihenfolge in der Datenbank. Der erkannte tritt deshalb
+    zurueck, solange die Zuweisung steht, und kommt von selbst wieder, wenn
+    sie faellt. Das zaehlt doppelt bei Papierkorb und Junk: Das Aufraeumen
+    leert **alle** Ordner der Rolle endgueltig.
+    """
+    for o in ordner:
+        if not o.rolle_erkannt:
+            # Eine Zeile von vor der Spalte: Was dasteht, hat die Erkennung
+            # gesetzt, denn eine Zuweisung von Hand gab es noch nicht.
+            o.rolle_erkannt = o.rolle or "eigen"
+
+    vergeben = {o.rolle_von_hand for o in ordner if o.rolle_von_hand not in ("", None, "eigen")}
+    for o in ordner:
+        if o.rolle_von_hand:
+            o.rolle = o.rolle_von_hand
+        elif o.rolle_erkannt in vergeben:
+            o.rolle = "eigen"
+        else:
+            o.rolle = o.rolle_erkannt
+
+
 def ordner_uebernehmen(db: Session, konto: Konto, angaben: list[imapdienst.Ordnerangabe]) -> None:
     """Die gelesene Ordnerliste in die Datenbank spiegeln.
 
@@ -399,21 +437,28 @@ def ordner_uebernehmen(db: Session, konto: Konto, angaben: list[imapdienst.Ordne
     """
     vorhanden = {o.pfad: o for o in konto.ordner}
     gesehen = set()
+    bleiben: list[Ordner] = []
 
     for angabe in angaben:
         gesehen.add(angabe.pfad)
         zeile = vorhanden.get(angabe.pfad)
         if zeile is None:
-            zeile = Ordner(konto_id=konto.id, pfad=angabe.pfad)
+            zeile = Ordner(konto_id=konto.id, pfad=angabe.pfad, rolle_von_hand="")
             db.add(zeile)
         zeile.name = angabe.name
-        zeile.rolle = angabe.rolle
+        # ⚠️ Nur die ERKANNTE Rolle. Die geltende macht ``rollen_setzen``
+        # daraus; bis zum 18.09.2026 stand hier ``zeile.rolle = …``, und eine
+        # Zuweisung von Hand haette das naechste Ordnerlesen nicht ueberlebt.
+        zeile.rolle_erkannt = angabe.rolle
         zeile.waehlbar = angabe.waehlbar
         zeile.abonniert = "abonniert" in angabe.kennzeichen
+        bleiben.append(zeile)
 
     for pfad, zeile in vorhanden.items():
         if pfad not in gesehen:
             db.delete(zeile)
+
+    rollen_setzen(bleiben)
 
     konto.zuletzt_geprueft = utcnow()
     konto.letzter_fehler = ""

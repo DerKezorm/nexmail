@@ -52,6 +52,8 @@ export interface Ordner {
   pfad: string
   name: string
   rolle: OrdnerRolle
+  /** Von Hand zugewiesen („Verwenden als"); leer heisst: selbst erkannt. */
+  rolleVonHand?: string
   ungelesen: number
   anzahl: number
 }

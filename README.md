@@ -45,7 +45,11 @@ Every address in them is under `example.com`, `example.org` or
 
 **Mail.** Several mailboxes side by side, plus a merged *All inboxes* view.
 Read, reply, reply-all, forward, move, archive, delete, mark, flag, undo. Drag
-and drop between folders. Keyboard: `Del` to trash, `E` to archive.
+and drop between folders. Keyboard: `Del` to trash, `E` to archive. Which
+folder is the trash or the archive nexmail reads from the server's SPECIAL-USE
+flags and from the usual names; where a server has neither, right-click the
+folder and pick *Use as* (on a phone: the *…* next to the folder). Folders
+created or removed elsewhere show up with the next sync.
 
 **Reading pane, or not.** A button next to the search field switches between
 three layouts: the reading pane to the right of the list, or no reading pane at

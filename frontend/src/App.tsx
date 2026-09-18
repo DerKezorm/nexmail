@@ -25,6 +25,7 @@ import {
   Flag,
   ListChecks,
   FolderInput,
+  FolderCog,
   FolderPlus,
   FolderX,
   Paperclip,
@@ -106,6 +107,7 @@ import {
   ordnerLaden,
   ordnerAnlegen,
   ordnerEntfernen,
+  ordnerRolleSetzen,
   ordnerUmbenennen,
   ordnerAlsGelesen,
   ordnerLeeren,
@@ -127,6 +129,7 @@ import { PUNKT_KLASSE } from './lib/farben'
 import { useGemerkt, useSchmal } from './lib/haken'
 import { lesemodusAus } from './lib/lesemodus'
 import type { Lesemodus } from './lib/lesemodus'
+import { ZUWEISBARE_ROLLEN } from './lib/ordnerrollen'
 import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from './lib/wischen'
 import type { WischAktion } from './lib/wischen'
 import { nachrichtDrucken } from './lib/drucken'
@@ -1531,160 +1534,229 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     }
   }
 
-  function ordnerKontext(e: React.MouseEvent, o: Ordner) {
-    e.preventDefault()
+  async function rolleZuweisen(o: Ordner, rolle: string) {
+    if (rolle === o.rolle && o.rolleVonHand === rolle) return
+    /* ⚠️ **Nur hier wird gefragt.** Papierkorb und Junk sind die beiden
+       Rollen, deren Ordner das Aufraeumen endgueltig leert. Wer einen Ordner
+       mit Bestand dazu macht, soll das vorher lesen und nicht hinterher. */
+    if (rolle === 'papierkorb' || rolle === 'junk') {
+      const ja = await fragen({
+        titel: t('ordner.rolle_sicher_titel', { name: o.name, rolle: t(`ordner.${rolle}`) }),
+        text: t('ordner.rolle_sicher_text', { name: o.name }),
+        knopf: t('ordner.rolle_sicher_knopf'),
+      })
+      if (ja !== true) return
+    }
+    try {
+      await ordnerRolleSetzen(o.kontoId, Number(o.id), rolle)
+      await stammLaden()
+    } catch (f) {
+      setStoerung(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    }
+  }
+
+  /* Was man mit einem Ordner tun kann.
+     ⚠️ **Eine Quelle, zwei Formen.** Am Schreibtisch steht die Liste im
+     Kontextmenü, am Telefon im Blatt von unten; wer hier einen Eintrag
+     ergänzt, gibt ihn beiden. Dieselbe Regel wie bei `nachrichtEintraege`
+     und beim Kalender. */
+  function ordnerEintraege(o: Ordner): MenueEintrag[] {
     const istFavorit = favoriten.includes(o.id)
-    setMenue({
-      x: e.clientX,
-      y: e.clientY,
-      eintraege: [
+    return [
+    {
+      id: 'favorit',
+      text: istFavorit ? t('ordner.favorit_weg') : t('ordner.favorit_hinzu'),
+      symbol: istFavorit ? <StarOff /> : <Star />,
+      tun: () =>
+        setFavoriten(istFavorit ? favoriten.filter((id) => id !== o.id) : [...favoriten, o.id]),
+    },
+    {
+      id: 'neu',
+      trennerDavor: true,
+      text: t('ordner.neu'),
+      symbol: <FolderPlus />,
+      tun: () => void neuerOrdner(o.kontoId, null),
+    },
+    {
+      id: 'neu_unter',
+      text: t('ordner.neu_unter'),
+      symbol: <FolderPlus />,
+      tun: () => void neuerOrdner(o.kontoId, o),
+    },
+    {
+      id: 'einklappen',
+      trennerDavor: true,
+      text: eingeklappt.includes(o.kontoId)
+        ? t('ordner.postfach_ausklappen')
+        : t('ordner.postfach_einklappen'),
+      symbol: <ChevronsDownUp />,
+      tun: () => einklappenUmschalten(o.kontoId),
+    },
+    {
+      id: 'alles_gelesen',
+      trennerDavor: true,
+      text: t('ordner.alles_gelesen'),
+      symbol: <MailOpen />,
+      // Nichts Ungelesenes: Dann wäre der Eintrag ein Klick ins Leere.
+      deaktiviert: o.ungelesen === 0,
+      tun: () =>
+        void (async () => {
+          try {
+            await ordnerAlsGelesen(o.id)
+            await stammLaden()
+            await listeLaden()
+          } catch (f) {
+            setStoerung(
+              servermeldung(f, t('anmeldung.fehler_allgemein')),
+            )
+          }
+        })(),
+    },
+    {
+      id: 'leeren',
+      trennerDavor: true,
+      text: t('ordner.leeren'),
+      symbol: <Trash2 />,
+      gefaehrlich: true,
+      // ⚠️ Der einzige Vorgang ohne Rückweg - deshalb nur Papierkorb
+      // und Junk, und deshalb wird gefragt.
+      deaktiviert: o.rolle !== 'papierkorb' && o.rolle !== 'junk',
+      tun: () =>
+        void (async () => {
+          const ja = await fragen({
+            titel: t('ordner.leeren'),
+            text: t('ordner.leeren_sicher', { name: o.name }),
+            knopf: t('ordner.leeren'),
+            gefaehrlich: true,
+          })
+          if (ja !== true) return
+          await handeln(async () => {
+            const ergebnis = await ordnerLeeren(o.id)
+            return { bewegt: ergebnis.bewegt, rueckweg: null }
+          }, '')
+        })(),
+    },
+    /* ⚠️ **Die Rolle gehoert an den Ordner.** Erkannt wird sie am
+       Kennzeichen des Servers und an einer kurzen Namensliste; ein Server
+       ohne das eine und mit einem „Deleted" ausserhalb des anderen hatte
+       bis 0.17.0 keinen Papierkorb, und „Löschen" endete in einer Absage.
+       Der Haken steht an dem, was der Ordner gerade IST, egal ob erkannt
+       oder zugewiesen. */
+    {
+      id: 'verwenden_als',
+      trennerDavor: true,
+      text: t('ordner.verwenden_als'),
+      symbol: <FolderCog />,
+      // Den Posteingang legt das Protokoll fest, nicht der Mensch davor.
+      deaktiviert: o.rolle === 'posteingang',
+      unter: [
+        ...ZUWEISBARE_ROLLEN.map((rolle) => ({
+          id: `rolle_${rolle}`,
+          text: rolle === 'eigen' ? t('ordner.rolle_eigen') : t(`ordner.${rolle}`),
+          aktiv: o.rolle === rolle,
+          trennerDavor: rolle === 'eigen',
+          tun: () => void rolleZuweisen(o, rolle),
+        })),
         {
-          id: 'favorit',
-          text: istFavorit ? t('ordner.favorit_weg') : t('ordner.favorit_hinzu'),
-          symbol: istFavorit ? <StarOff /> : <Star />,
-          tun: () =>
-            setFavoriten(istFavorit ? favoriten.filter((id) => id !== o.id) : [...favoriten, o.id]),
-        },
-        {
-          id: 'neu',
+          id: 'rolle_selbst',
           trennerDavor: true,
-          text: t('ordner.neu'),
-          symbol: <FolderPlus />,
-          tun: () => void neuerOrdner(o.kontoId, null),
-        },
-        {
-          id: 'neu_unter',
-          text: t('ordner.neu_unter'),
-          symbol: <FolderPlus />,
-          tun: () => void neuerOrdner(o.kontoId, o),
-        },
-        {
-          id: 'einklappen',
-          trennerDavor: true,
-          text: eingeklappt.includes(o.kontoId)
-            ? t('ordner.postfach_ausklappen')
-            : t('ordner.postfach_einklappen'),
-          symbol: <ChevronsDownUp />,
-          tun: () => einklappenUmschalten(o.kontoId),
-        },
-        {
-          id: 'alles_gelesen',
-          trennerDavor: true,
-          text: t('ordner.alles_gelesen'),
-          symbol: <MailOpen />,
-          // Nichts Ungelesenes: Dann wäre der Eintrag ein Klick ins Leere.
-          deaktiviert: o.ungelesen === 0,
-          tun: () =>
-            void (async () => {
-              try {
-                await ordnerAlsGelesen(o.id)
-                await stammLaden()
-                await listeLaden()
-              } catch (f) {
-                setStoerung(
-                  servermeldung(f, t('anmeldung.fehler_allgemein')),
-                )
-              }
-            })(),
-        },
-        {
-          id: 'leeren',
-          trennerDavor: true,
-          text: t('ordner.leeren'),
-          symbol: <Trash2 />,
-          gefaehrlich: true,
-          // ⚠️ Der einzige Vorgang ohne Rückweg - deshalb nur Papierkorb
-          // und Junk, und deshalb wird gefragt.
-          deaktiviert: o.rolle !== 'papierkorb' && o.rolle !== 'junk',
-          tun: () =>
-            void (async () => {
-              const ja = await fragen({
-                titel: t('ordner.leeren'),
-                text: t('ordner.leeren_sicher', { name: o.name }),
-                knopf: t('ordner.leeren'),
-                gefaehrlich: true,
-              })
-              if (ja !== true) return
-              await handeln(async () => {
-                const ergebnis = await ordnerLeeren(o.id)
-                return { bewegt: ergebnis.bewegt, rueckweg: null }
-              }, '')
-            })(),
-        },
-        /* ⚠️ **Der Umzug gehoert an den Ordner, nicht in die Einstellungen.**
-           Beides fasst genau diesen einen Ordner an — eine Seite, auf der man
-           ihn erst wieder auswaehlen muesste, waere ein Umweg. Thunderbird
-           haelt es ebenso. */
-        {
-          id: 'einspielen',
-          trennerDavor: true,
-          text: t('umzug.einspielen'),
-          symbol: <Upload />,
-          tun: () => setUmzug({ ordner: o, art: 'ein' }),
-        },
-        {
-          id: 'herunterladen',
-          text: t('umzug.herunterladen'),
-          symbol: <Download />,
-          tun: () => setUmzug({ ordner: o, art: 'aus' }),
-        },
-        {
-          id: 'umbenennen',
-          trennerDavor: true,
-          text: t('ordner.umbenennen'),
-          symbol: <PenLine />,
-          // ⚠️ Sonderordner nicht: Bei manchen Servern hängt ihre Rolle am
-          // Namen, und ein umbenannter Papierkorb wäre danach keiner mehr.
-          deaktiviert: o.rolle !== 'eigen',
-          tun: () =>
-            void (async () => {
-              const name = await fragen({
-                titel: t('ordner.umbenennen'),
-                text: t('ordner.umbenennen_hinweis'),
-                eingabe: { beschriftung: t('ordner.name'), vorgabe: o.name },
-                knopf: t('ordner.umbenennen'),
-              })
-              if (typeof name !== 'string' || !name.trim() || name.trim() === o.name) return
-              try {
-                await ordnerUmbenennen(o.kontoId, Number(o.id), name.trim())
-                await stammLaden()
-              } catch (f) {
-                setStoerung(
-                  servermeldung(f, t('anmeldung.fehler_allgemein')),
-                )
-              }
-            })(),
-        },
-        {
-          id: 'entfernen',
-          text: t('ordner.entfernen'),
-          symbol: <FolderX />,
-          gefaehrlich: true,
-          // ⚠️ Sonderordner nicht: Wer seinen Papierkorb löscht, kann danach
-          // keine Mail mehr löschen — und die Meldung dabei bringt niemand
-          // mit dieser Handlung in Verbindung.
-          deaktiviert: o.rolle !== 'eigen',
-          tun: () =>
-            void (async () => {
-              const drin = nachrichten.filter((n) => n.ordnerId === o.id).length
-              const ja = await fragen({
-                titel: t('ordner.entfernen'),
-                text: t('ordner.entfernen_sicher', { name: o.name, count: drin }),
-                knopf: t('ordner.entfernen'),
-                gefaehrlich: true,
-              })
-              if (ja !== true) return
-              try {
-                await ordnerEntfernen(o.kontoId, Number(o.id))
-                await stammLaden()
-              } catch (f) {
-                setStoerung(
-                  servermeldung(f, t('anmeldung.fehler_allgemein')),
-                )
-              }
-            })(),
+          text: t('ordner.rolle_selbst'),
+          // Ohne Zuweisung von Hand gibt es nichts zurueckzunehmen.
+          deaktiviert: !o.rolleVonHand,
+          tun: () => void rolleZuweisen(o, ''),
         },
       ],
+    },
+    /* ⚠️ **Der Umzug gehoert an den Ordner, nicht in die Einstellungen.**
+       Beides fasst genau diesen einen Ordner an — eine Seite, auf der man
+       ihn erst wieder auswaehlen muesste, waere ein Umweg. Thunderbird
+       haelt es ebenso. */
+    {
+      id: 'einspielen',
+      trennerDavor: true,
+      text: t('umzug.einspielen'),
+      symbol: <Upload />,
+      tun: () => setUmzug({ ordner: o, art: 'ein' }),
+    },
+    {
+      id: 'herunterladen',
+      text: t('umzug.herunterladen'),
+      symbol: <Download />,
+      tun: () => setUmzug({ ordner: o, art: 'aus' }),
+    },
+    {
+      id: 'umbenennen',
+      trennerDavor: true,
+      text: t('ordner.umbenennen'),
+      symbol: <PenLine />,
+      // ⚠️ Sonderordner nicht: Bei manchen Servern hängt ihre Rolle am
+      // Namen, und ein umbenannter Papierkorb wäre danach keiner mehr.
+      deaktiviert: o.rolle !== 'eigen',
+      tun: () =>
+        void (async () => {
+          const name = await fragen({
+            titel: t('ordner.umbenennen'),
+            text: t('ordner.umbenennen_hinweis'),
+            eingabe: { beschriftung: t('ordner.name'), vorgabe: o.name },
+            knopf: t('ordner.umbenennen'),
+          })
+          if (typeof name !== 'string' || !name.trim() || name.trim() === o.name) return
+          try {
+            await ordnerUmbenennen(o.kontoId, Number(o.id), name.trim())
+            await stammLaden()
+          } catch (f) {
+            setStoerung(
+              servermeldung(f, t('anmeldung.fehler_allgemein')),
+            )
+          }
+        })(),
+    },
+    {
+      id: 'entfernen',
+      text: t('ordner.entfernen'),
+      symbol: <FolderX />,
+      gefaehrlich: true,
+      // ⚠️ Sonderordner nicht: Wer seinen Papierkorb löscht, kann danach
+      // keine Mail mehr löschen — und die Meldung dabei bringt niemand
+      // mit dieser Handlung in Verbindung.
+      deaktiviert: o.rolle !== 'eigen',
+      tun: () =>
+        void (async () => {
+          const drin = nachrichten.filter((n) => n.ordnerId === o.id).length
+          const ja = await fragen({
+            titel: t('ordner.entfernen'),
+            text: t('ordner.entfernen_sicher', { name: o.name, count: drin }),
+            knopf: t('ordner.entfernen'),
+            gefaehrlich: true,
+          })
+          if (ja !== true) return
+          try {
+            await ordnerEntfernen(o.kontoId, Number(o.id))
+            await stammLaden()
+          } catch (f) {
+            setStoerung(
+              servermeldung(f, t('anmeldung.fehler_allgemein')),
+            )
+          }
+        })(),
+    },
+    ]
+  }
+
+  function ordnerKontext(e: React.MouseEvent, o: Ordner) {
+    e.preventDefault()
+    setMenue({ x: e.clientX, y: e.clientY, eintraege: ordnerEintraege(o) })
+  }
+
+  /* ⚠️ **Am Telefon hatte ein Ordner bis 0.17.0 gar kein Menü.** Die Spalte
+     kannte nur `onContextMenu`, und das gibt es dort nicht: Weder „Neuer
+     Ordner" noch Favorit noch „Verwenden als" waren erreichbar. Der Weg ist
+     ein sichtbares „…" je Ordner, kein langer Druck; der wäre ein Griff, den
+     man nicht sieht. */
+  function ordnerBlatt(o: Ordner) {
+    setBlatt({
+      titel: o.rolle === 'posteingang' ? t('ordner.posteingang') : o.name,
+      eintraege: ordnerEintraege(o),
     })
   }
 
@@ -1932,6 +2004,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 aufPostfachHinzufuegen={postfachHinzufuegen}
                 aufNachrichtKontext={nachrichtKontext}
                 aufOrdnerKontext={ordnerKontext}
+                aufOrdnerMenue={ordnerBlatt}
                 favoriten={favoriten}
                 eingeklappt={eingeklappt}
                 aufEinklappen={einklappenUmschalten}

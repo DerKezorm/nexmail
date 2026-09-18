@@ -211,6 +211,9 @@ export interface OrdnerZeile {
   pfad: string
   name: string
   rolle: string
+  /** Von Hand zugewiesen; leer heisst „selbst erkannt". Fehlt beim
+   *  Verbindungstest. */
+  rolle_von_hand?: string
   waehlbar: boolean
   abonniert: boolean
 }
