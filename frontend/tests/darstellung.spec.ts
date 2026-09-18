@@ -413,8 +413,14 @@ test('Der Kopf über der Liste schneidet nichts ab', async ({ page }) => {
      ⚠️ **`keinTextLaeuftUeber` hätte es nie gefunden** — es überspringt alles
      mit `text-overflow: ellipsis`, und genau das war der Ordnername. Ein
      `<select>` beschneidet seinen Text ohnehin lautlos. Gemessen wird deshalb
-     hier von Hand: die Breite, die der Text wirklich braucht. */
+     hier von Hand: die Breite, die der Text wirklich braucht.
+
+     ⚠️ **Erst messen, wenn die Liste steht.** Bis zum 18.09.2026 maß der Test
+     direkt nach dem Anmelden, also eine leere Liste: ohne „Auswählen", ohne
+     Ungelesen-Teil, mit Platz für alles. Am Telefon bekam der Ordnername
+     währenddessen null Pixel, und dieser Test war grün. */
   await anmelden(page)
+  await page.waitForLoadState('networkidle')
 
   const zu_eng = await page.evaluate(() => {
     function breite(el: HTMLElement, text: string) {
@@ -528,6 +534,92 @@ test('Der Lesebereich hat keinen toten Raum unter der Mail', async ({ page }) =>
 
   const m = await passt()
   expect(m!.inhalt, 'Die gestellte Mail sollte lang sein').toBeGreaterThan(1000)
+})
+
+test('Am Telefon steht der Ordnername im Kopf, und die Zeile läuft nicht über', async ({ page }, info) => {
+  test.skip(info.project.name !== 'schmal', 'Der enge Kopf ist der des Telefons.')
+  /* ⚠️ **Gemessen am 18.09.2026, nicht geschätzt:** Zahlen mit Ungelesen-Teil
+     (138 px), „Auswählen" (77), „Gespräche" (92) und die Abstände brauchten
+     331 px; die Zeile hat am Telefon 271 bis 301. Der Ordnername war das
+     einzige Element, das schrumpfen durfte, und bekam 0 px; bei 360 bis
+     390 px lief die Zeile seitlich über. Aufgefallen ist es nur, weil ein
+     anderer Test auf die Überschrift „Archiv" wartete.
+
+     ⚠️ **360 px, nicht die 420 des Projekts.** Bei 420 passt auch der alte
+     Kopf gerade so; die meisten Telefone sind schmaler. */
+  await page.setViewportSize({ width: 360, height: 800 })
+  await page.waitForLoadState('networkidle')
+
+  async function kopf() {
+    return page.evaluate(() => {
+      const titel = document.querySelector<HTMLElement>('h2.truncate')
+      const zeile = titel?.parentElement
+      const zahlen = titel?.nextElementSibling as HTMLElement | null
+      const knopf = Array.from(zeile?.querySelectorAll('button') ?? []).find(
+        (b) => b.getAttribute('aria-pressed') !== null,
+      )
+      if (!titel || !zeile || !zahlen) return null
+      return {
+        name: titel.textContent ?? '',
+        nameAbgeschnitten: titel.scrollWidth > titel.clientWidth + 1,
+        nameBreite: titel.clientWidth,
+        zahlenAbgeschnitten: zahlen.scrollWidth > zahlen.clientWidth + 1,
+        // `innerText` lässt weg, was ausgeblendet ist; `textContent` nicht.
+        zahlenSichtbar: zahlen.innerText,
+        zahlenGanz: zahlen.textContent ?? '',
+        zeileLaeuftUeber: zeile.scrollWidth > zeile.clientWidth + 1,
+        gespraecheBreite: knopf ? Math.round(knopf.getBoundingClientRect().width) : -1,
+        gespraecheName: knopf?.getAttribute('aria-label') ?? '',
+      }
+    })
+  }
+
+  /* 1. Der längste Name, den nexmail selbst vergibt. Hier zeigt sich, wer
+        zuerst weicht: Die Zahlen dürfen enden, der Name nicht. */
+  const sammel = await kopf()
+  expect(sammel, 'Der Listenkopf wurde nicht gefunden.').not.toBeNull()
+  expect(sammel!.name).toBe('Alle Posteingänge')
+  expect(sammel!.nameAbgeschnitten, `„${sammel!.name}" ist abgeschnitten (${sammel!.nameBreite} px).`).toBe(false)
+  expect(sammel!.zeileLaeuftUeber, 'Die erste Zeile des Kopfs läuft seitlich über.').toBe(false)
+
+  /* 2. Ein kurzer Name mit Post darin: Dann muss ALLES passen, auch die Zahl. */
+  await page.getByRole('button', { name: 'Ordner ausklappen' }).click()
+  const bereich = page.locator('aside section').filter({ hasText: TESTPOSTFACH }).last()
+  await expect(bereich).toBeVisible()
+  const postfachKopf = bereich.getByRole('button').first()
+  if ((await postfachKopf.getAttribute('aria-expanded')) === 'false') await postfachKopf.click()
+  await bereich.getByRole('button', { name: /^Archiv( \d+)?$/ }).first().click()
+  await expect(page.getByRole('heading', { name: 'Archiv', exact: true })).toBeVisible({ timeout: 15_000 })
+  await expect
+    .poll(() => page.locator('button[draggable="true"]').count(), {
+      message: 'Im Archiv des Testpostfachs liegt nichts; der volle Kopf lässt sich so nicht messen.',
+      timeout: 15_000,
+    })
+    .toBeGreaterThan(0)
+
+  const archiv = await kopf()
+  expect(archiv!.nameAbgeschnitten, `„Archiv" ist abgeschnitten (${archiv!.nameBreite} px).`).toBe(false)
+  expect(archiv!.zahlenAbgeschnitten, `Die Zahl ist abgeschnitten: „${archiv!.zahlenSichtbar}"`).toBe(false)
+  expect(archiv!.zeileLaeuftUeber, 'Die erste Zeile des Kopfs läuft seitlich über.').toBe(false)
+
+  /* 3. „Gespräche" ist hier nur sein Symbol, behält aber seinen Namen. */
+  expect(archiv!.gespraecheName).toBe('Gespräche')
+  expect(archiv!.gespraecheBreite, 'Der Knopf „Gespräche" trägt am Telefon noch sein Wort.').toBeLessThan(60)
+  expect(archiv!.gespraecheBreite).toBeGreaterThan(0)
+
+  /* 4. Der Ungelesen-Teil steht am Telefon nicht im Kopf; der Umschalter
+        darunter sagt dasselbe. ⚠️ Das prüft nur etwas, wenn es Ungelesenes
+        gibt. Sonst steht es im Bericht, statt grün zu schweigen. */
+  const mitUngelesen = [sammel!, archiv!].filter((k) => k.zahlenGanz.includes('ungelesen'))
+  if (mitUngelesen.length === 0) {
+    info.annotations.push({
+      type: 'nicht geprüft',
+      description: 'Weder „Alle Posteingänge" noch das Archiv hatten Ungelesenes; Punkt 4 lief leer.',
+    })
+  }
+  for (const k of mitUngelesen) {
+    expect(k.zahlenSichtbar, `Im Kopf von „${k.name}" steht der Ungelesen-Teil.`).not.toContain('ungelesen')
+  }
 })
 
 test('Im Rahmen steht immer die Mail, die oben im Kopf steht', async ({ page }, info) => {

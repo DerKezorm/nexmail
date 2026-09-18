@@ -152,6 +152,10 @@ export function Nachrichtenliste({
   const zeigtSchlagwortfilter =
     filter !== undefined && filter !== 'markiert' && Boolean(aufSchlagwortFilter) && schlagworte.length > 0
   const zeigtGruppiert = gruppiert !== undefined && Boolean(aufGruppiert)
+  /* Den Auswahlmodus reicht nur die schmale Ansicht herein. Er ist zugleich
+     der Grund, warum die erste Zeile dort eng wird: „Auswählen" steht nur am
+     Telefon in ihr. */
+  const amTelefon = Boolean(aufAuswahlmodus)
 
   return (
     <div className="flex h-full min-h-0 flex-col border-r border-line-subtle bg-surface-1">
@@ -196,15 +200,33 @@ export function Nachrichtenliste({
         </div>
       ) : (
       <div className="shrink-0 border-b border-line-subtle px-3 py-1.5">
+        {/* ⚠️ **Der Name weicht zuletzt, nicht zuerst.** Bis 0.17.0 war das
+            `h2` das einzige Element dieser Zeile, das schrumpfen durfte, und
+            es stand auf `flex-1`, also mit der Grundbreite null. Am Telefon
+            kam „Auswählen" dazu: Zahlen (138 px mit Ungelesen-Teil), „Auswählen"
+            (77), „Gespräche" (92) und die Abstände brauchen 331 px, die Zeile
+            hat 271 bis 301. Gemessen am 18.09.2026: Der Ordnername bekam
+            **0 px**, und bei 360 bis 390 px lief die Zeile seitlich über.
+            Man sah, wie viel in einem Ordner liegt, aber nicht, in welchem.
+
+            Jetzt meldet der Name seine Breite an (`flex-auto`), und die Zahlen
+            geben zuerst nach (`shrink-[100]`). Am Telefon fällt außerdem der
+            Ungelesen-Teil weg (der Umschalter darunter sagt dasselbe), und
+            „Gespräche" ist nur noch sein Symbol. Ab 640 px ist wieder Platz
+            für alles. */}
         <div className="flex h-6 items-center gap-2">
-          <h2 className="min-w-0 flex-1 truncate font-display text-[15px] font-medium text-fg-1">
+          <h2 className="min-w-0 flex-auto truncate font-display text-[15px] font-medium text-fg-1">
             {titel}
           </h2>
-          <span className="shrink-0 text-[11px] tabular-nums text-fg-4">
+          <span className="min-w-0 shrink-[100] truncate text-[11px] tabular-nums text-fg-4">
             {nachrichten.length === 1
               ? t('liste.anzahl_eine')
               : t('liste.anzahl_viele', { count: nachrichten.length })}
-            {ungelesen > 0 && ` · ${t('liste.ungelesen', { count: ungelesen })}`}
+            {ungelesen > 0 && (
+              <span className={amTelefon ? 'hidden sm:inline' : undefined}>
+                {` · ${t('liste.ungelesen', { count: ungelesen })}`}
+              </span>
+            )}
           </span>
 
           {/* ⚠️ **Ein sichtbarer Weg in den Auswahlmodus**, neben dem langen
@@ -227,6 +249,10 @@ export function Nachrichtenliste({
             <button
               type="button"
               aria-pressed={gruppiert}
+              /* ⚠️ Ein Symbol, das eine Beschriftung ersetzt, braucht einen
+                 Namen. Am Telefon ist das Wort ausgeblendet; ohne das hier
+                 wäre der Knopf für Vorlesehilfen namenlos. */
+              aria-label={t('liste.gruppiert')}
               title={t('liste.gruppiert_hinweis')}
               onClick={() => aufGruppiert(!gruppiert)}
               className={
@@ -237,8 +263,10 @@ export function Nachrichtenliste({
                   : 'border border-line text-fg-3 hover:bg-surface-3 hover:text-fg-1')
               }
             >
-              <MessagesSquare aria-hidden className="size-3" />
-              {t('liste.gruppiert')}
+              <MessagesSquare aria-hidden className={amTelefon ? 'size-3.5 sm:size-3' : 'size-3'} />
+              <span className={amTelefon ? 'hidden sm:inline' : undefined}>
+                {t('liste.gruppiert')}
+              </span>
             </button>
           )}
         </div>
