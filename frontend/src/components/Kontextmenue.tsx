@@ -132,8 +132,20 @@ export function Kontextmenue({ x, y, eintraege, aufSchliessen }: Props) {
     document.addEventListener('keydown', beiTaste, true)
     window.addEventListener('blur', zu)
     window.addEventListener('resize', zu)
-    document.addEventListener('scroll', zu, true)
+    /* ⚠️ **Scrollen erst ab dem nächsten Bild.** Ein Scroll-Ereignis wird
+     * nicht beim Scrollen zugestellt, sondern im nächsten Bild. Der
+     * Rechtsklick rendert Auswahl und Menü aber in einem Block von gut 100 ms;
+     * ein Scrollen von kurz davor kam damit erst an, als das Menü schon hing,
+     * und schloss es im selben Augenblick. Wartende Scroll-Ereignisse gehen
+     * im Bildzyklus vor den `requestAnimationFrame`-Rückrufen hinaus, also
+     * hört der Wächter erst von dort an zu.
+     *
+     * Gefunden am 19.09.2026, weil „Ein Untermenü bleibt im Bild, auch am
+     * unteren Rand" in jedem dritten Lauf rot war: Playwright scrollt die
+     * Zeile vor dem Klick ins Bild, und genau dieses Scrollen kam zu spät. */
+    const bild = requestAnimationFrame(() => document.addEventListener('scroll', zu, true))
     return () => {
+      cancelAnimationFrame(bild)
       document.removeEventListener('pointerdown', zu, true)
       document.removeEventListener('keydown', beiTaste, true)
       window.removeEventListener('blur', zu)
