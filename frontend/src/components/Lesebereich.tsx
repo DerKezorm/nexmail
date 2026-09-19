@@ -73,6 +73,13 @@ interface Props {
    *  der Liste, aus derselben Quelle in `App` gebaut. Fehlt der Rückruf
    *  (eigenes Fenster), gibt es den Eintrag nicht. */
   wiedervorlageMenue?: (n: Nachricht) => MenueEintrag[]
+  /** Archivieren, Löschen und Markieren aus der Kopfleiste — dieselben Wege
+   *  wie Kontextmenü und Tasten, in `App` verdrahtet.
+   *
+   *  ⚠️ **Fehlt der Rückruf (eigenes Fenster), fehlen die Knöpfe.** Bis 0.18.0
+   *  standen sie ohne `onClick` da und taten nichts (Issue #3); ein Knopf ohne
+   *  Wirkung ist schlimmer als keiner. */
+  aufAktion?: (aktion: 'archivieren' | 'loeschen' | 'markieren', n: Nachricht) => void
   /** Steht die Anwendung dunkel?
    *
    * ⚠️ **Als Eigenschaft, nicht aus dem DOM.** Der Modus wohnt als Zustand in
@@ -95,6 +102,7 @@ export function Lesebereich({
   aufSchlagwort,
   aufNeuesSchlagwort,
   wiedervorlageMenue,
+  aufAktion,
   dunkelmodus,
 }: Props) {
   const { t, i18n } = useTranslation()
@@ -274,10 +282,20 @@ export function Lesebereich({
             <IconButton icon={<CornerUpRight />} label={t('aktion.weiterleiten')} onClick={() => aufVerfassen('weiter', nachricht)} />
           </>
         )}
-        <span aria-hidden className="mx-1 h-5 w-px bg-line" />
-        <IconButton icon={<Archive />} label={t('aktion.archivieren')} />
-        <IconButton icon={<Trash2 />} label={t('aktion.loeschen')} />
-        <IconButton icon={<Flag />} label={t('aktion.markieren')} active={nachricht.markiert} />
+        {aufAktion && (
+          <>
+            <span aria-hidden className="mx-1 h-5 w-px bg-line" />
+            <IconButton icon={<Archive />} label={t('aktion.archivieren')} onClick={() => aufAktion('archivieren', nachricht)} />
+            <IconButton icon={<Trash2 />} label={t('aktion.loeschen')} onClick={() => aufAktion('loeschen', nachricht)} />
+            <IconButton
+              icon={<Flag />}
+              label={nachricht.markiert ? t('aktion.markierung_entfernen') : t('aktion.markieren')}
+              active={nachricht.markiert}
+              aria-pressed={nachricht.markiert}
+              onClick={() => aufAktion('markieren', nachricht)}
+            />
+          </>
+        )}
         <span className="flex-1" />
 
         {/* ⚠️ **Beides führt an nexmail vorbei — mit Absicht.**

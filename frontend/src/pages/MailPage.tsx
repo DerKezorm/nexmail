@@ -106,6 +106,8 @@ interface Props {
   aufwachZeiten?: Record<string, string>
   /** Das Untermenü „Wiedervorlage" für „Weitere Aktionen" im Lesebereich. */
   wiedervorlageMenue?: (n: Nachricht) => MenueEintrag[]
+  /** Archivieren, Löschen, Markieren aus der Kopfleiste des Lesebereichs. */
+  aufLeseAktion?: (aktion: 'archivieren' | 'loeschen' | 'markieren', n: Nachricht) => void
   /** Der Auswahlmodus der schmalen Ansicht, samt seiner Leiste unten. `App`
    *  baut die Leiste mit ihren Handgriffen; hier bekommt sie nur ihren Platz
    *  unter der Liste. Am Schreibtisch bleibt alles davon leer. */
@@ -197,6 +199,7 @@ export function MailPage(p: Props) {
       aufSchlagwort={p.aufSchlagwort}
       aufNeuesSchlagwort={p.aufNeuesSchlagwort}
       wiedervorlageMenue={p.wiedervorlageMenue}
+      aufAktion={p.aufLeseAktion}
     />
   )
 

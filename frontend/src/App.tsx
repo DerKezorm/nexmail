@@ -2013,6 +2013,17 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 wiedervorlageZahlen={wiedervorlageZahlen}
                 aufwachZeiten={aufwachZeiten}
                 wiedervorlageMenue={(n) => wiedervorlageUntermenue([n.id])}
+                /* Die Kopfleiste des Lesebereichs: dieselben Wege wie
+                   Kontextmenü, Entf und E. Gemeint ist die offene Mail. */
+                aufLeseAktion={(aktion, n) => {
+                  if (aktion === 'markieren') {
+                    void flagSetzen(n.id, { markiert: !n.markiert })
+                  } else if (aktion === 'loeschen') {
+                    void handeln(() => zug('loeschen', [n.id]), t('rueck.geloescht'))
+                  } else {
+                    void handeln(() => zug('archivieren', [n.id]), t('rueck.archiviert'))
+                  }
+                }}
                 /* Der Auswahlmodus — nur schmal. Die Leiste wirkt über
                    dieselben Wege wie Tasten und Kontextmenü am Rechner. */
                 auswahlmodus={schmal && auswahlmodus}

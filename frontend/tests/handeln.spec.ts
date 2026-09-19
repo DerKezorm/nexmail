@@ -281,3 +281,54 @@ test('Ein Untermenü bleibt im Bild, auch am unteren Rand', async ({ page }) => 
   ).toBeLessThanOrEqual(sicht.height)
   expect(Math.round(kasten.y), 'Das Untermenü ist oben herausgerutscht.').toBeGreaterThanOrEqual(0)
 })
+
+/* ⚠️ **Issue #3, 19.09.2026: Die Knöpfe über der Mail taten nichts.**
+ *
+ * Archivieren, Löschen und Markieren im Kopf des Lesebereichs hatten seit
+ * der Attrappe kein `onClick`. Rechtsklick, Entf und E gingen, deshalb fiel
+ * es niemandem auf; gemeldet wurde es erst, als die Ordnerrollen stimmten und
+ * der Unterschied sichtbar war. Geprüft wird hier die Antwort des Servers,
+ * nicht der Klick.
+ *
+ * Löschen hat keinen eigenen Fall: Der Ordner mit Post ist oft der
+ * Papierkorb, und dort wäre es womöglich endgültig. Es läuft durch denselben
+ * Rückruf wie Archivieren. */
+test('Markieren im Kopf des Lesebereichs erreicht den Server', async ({ page }) => {
+  const absagen = serverabsagen(page)
+  await page.locator('button[draggable="true"]').first().click()
+  const kopf = page.locator('article')
+  const knopf = kopf.getByRole('button', { name: /^(Markieren|Markierung entfernen)$/ })
+  await expect(knopf).toBeVisible()
+  const vorher = await knopf.getAttribute('aria-label')
+
+  const hin = page.waitForResponse((r) => r.url().includes('/flags') && r.request().method() !== 'GET')
+  await knopf.click()
+  expect((await hin).status(), 'Das Flag kam nicht durch.').toBe(200)
+  await expect(knopf, 'Der Knopf zeigt den neuen Stand nicht.').not.toHaveAttribute('aria-label', vorher ?? '')
+
+  const zurueck = page.waitForResponse((r) => r.url().includes('/flags') && r.request().method() !== 'GET')
+  await knopf.click()
+  expect((await zurueck).status()).toBe(200)
+  await absagen.pruefen()
+})
+
+test('Archivieren im Kopf des Lesebereichs erreicht den Server', async ({ page }) => {
+  const titel = await page.locator('h2').first().innerText()
+  test.skip(/^Archiv\b/.test(titel), 'Im Archiv selbst gibt es nichts zu archivieren.')
+  const absagen = serverabsagen(page)
+  await page.locator('button[draggable="true"]').first().click()
+
+  const befehl = page.waitForResponse((r) => r.url().includes('/api/nachrichten/archivieren'))
+  await page.locator('article').getByRole('button', { name: 'Archivieren' }).click()
+  const antwort = await befehl
+  expect(antwort.status(), 'Das Archivieren kam nicht durch.').toBe(200)
+  expect(((await antwort.json()) as { bewegt: number }).bewegt, 'Der Server hat nichts bewegt.').toBe(1)
+  await expect(page.getByRole('status').filter({ hasText: 'Archiviert' })).toBeVisible()
+  await absagen.pruefen()
+
+  // Zurück, damit das Testpostfach so dasteht wie vorher.
+  const rueck = page.waitForResponse((r) => r.url().includes('/api/nachrichten/') && r.request().method() === 'POST')
+  await page.getByRole('button', { name: 'Rückgängig' }).click()
+  expect((await rueck).status(), 'Das Zurückholen kam nicht durch.').toBe(200)
+  await expect(page.getByRole('status').filter({ hasText: 'Archiviert' })).toHaveCount(0)
+})
