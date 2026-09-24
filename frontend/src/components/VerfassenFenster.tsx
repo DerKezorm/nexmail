@@ -26,6 +26,8 @@ import { KiFenster } from './KiFenster'
 import type { KiAuswahl } from './KiFenster'
 import { eigenesHtml } from '../lib/eigenerteil'
 import type { TextvorlagenZeile } from '../pages/Textvorlagen'
+import { textAlsHtml } from '../lib/leselinks'
+import type { Vorbelegung } from '../lib/leselinks'
 import { useNachfrage } from './Nachfrage'
 import { api } from '../api/client'
 import type { Konto, Nachricht } from '../daten/typen'
@@ -96,6 +98,10 @@ interface Props {
   /** Gesetzt beim Wieder-Öffnen nach „Rückgängig": Der Inhalt kommt aus dem
    *  Speicher, nicht vom Server — Vorlage und Signatur werden nicht geholt. */
   wiederauf?: Sendedaten | null
+  /** Gesetzt nach einem Klick auf einen `mailto:`-Link in einer Mail. Gilt
+   *  nur für eine neue Nachricht; die Signatur kommt wie sonst dazu.
+   *  `kontoId` ist das Postfach der Mail, in der der Link stand. */
+  vorbelegt?: (Vorbelegung & { kontoId?: string }) | null
   aufSchliessen: () => void
   aufGesendet?: () => void
   /** Die Nachricht ist mit Aufschub eingereiht — bis `bis` (ms-Zeitstempel)
@@ -120,6 +126,7 @@ export function VerfassenFenster({
   bezug,
   konten,
   wiederauf,
+  vorbelegt,
   aufSchliessen,
   aufGesendet,
   aufRueckholbar,
@@ -347,14 +354,27 @@ export function VerfassenFenster({
     }
 
     if (art === 'neu' || !bezug) {
-      const konto = konten[0]?.id ?? ''
+      /* ⚠️ **Aus einem `mailto:`-Link: gesendet wird aus dem Postfach der
+         Mail, in der er stand**, wie bei einer Antwort. Gibt es das Postfach
+         nicht mehr, gilt das erste. */
+      const v = vorbelegt ?? null
+      const konto =
+        (v?.kontoId && konten.some((k) => k.id === v.kontoId) ? v.kontoId : konten[0]?.id) ?? ''
+      const liste = (a: string[]) => (a.length ? a.join(', ') + ', ' : '')
       setKontoId(konto)
       setVonAdresse('')
-      setAn('')
-      setKopie('')
-      setKopieZeigen(false)
-      setBetreff('')
-      setHtml('<p></p>')
+      setAn(liste(v?.an ?? []))
+      setKopie(liste(v?.kopie ?? []))
+      setKopieZeigen((v?.kopie ?? []).length > 0)
+      /* ⚠️ **Eine Blindkopie aus dem Link steht sichtbar da.** Ein Link in
+         einer fremden Mail kann eine setzen; läge sie in einer zugeklappten
+         Zeile, ginge die eigene Mail unbemerkt auch an den Absender des
+         Links. */
+      setBlindkopie(liste(v?.blindkopie ?? []))
+      setBlindZeigen((v?.blindkopie ?? []).length > 0)
+      setBetreff(v?.betreff ?? '')
+      const anfang = textAlsHtml(v?.text ?? '') || '<p></p>'
+      setHtml(anfang)
       // Die Signatur kommt aus dem Server — eine neue Nachricht hat keine
       // Bezugsnachricht und geht deshalb nicht über /vorlage.
       if (konto) {
@@ -362,7 +382,7 @@ export function VerfassenFenster({
           .holen<{ html: string }>(`/api/verfassen/signatur/${konto}`)
           .then((s) => {
             setSignaturHtml(s.html ?? '')
-            setHtml(s.html ? `<p></p>${s.html}` : '<p></p>')
+            setHtml(s.html ? `${anfang}${s.html}` : anfang)
           })
           .catch(() => undefined)
       }

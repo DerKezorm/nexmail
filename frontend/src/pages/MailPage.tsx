@@ -25,6 +25,7 @@ import type { Lesemodus } from '../lib/lesemodus'
 import type { Ausgangseintrag, Konto, Nachricht, Ordner, Schlagwort } from '../daten/typen'
 import type { VolleNachricht } from '../api/laden'
 import type { Verfassart } from '../components/VerfassenFenster'
+import type { Vorbelegung } from '../lib/leselinks'
 
 interface Props {
   /** Steht die Anwendung dunkel? Nur durchgereicht — siehe `Lesebereich`. */
@@ -55,6 +56,8 @@ interface Props {
   schubladeOffen: boolean
   aufSchublade: (offen: boolean) => void
   aufVerfassen: (art: Verfassart, n: Nachricht | null) => void
+  /** Ein `mailto:`-Link in der offenen Mail. Siehe `Lesebereich`. */
+  aufMailto?: (v: Vorbelegung, n: Nachricht) => void
   /** Ziehen beginnt — welche Nachrichten kommen mit? */
   aufZiehen?: (n: Nachricht) => string[]
   kompakt?: boolean
@@ -194,6 +197,7 @@ export function MailPage(p: Props) {
       nachricht={offene}
       laedt={p.offeneLaedt}
       aufVerfassen={(art, n) => p.aufVerfassen(art, n)}
+      aufMailto={p.aufMailto}
       istEntwurf={p.istEntwurf}
       schlagworte={p.schlagworte}
       aufSchlagwort={p.aufSchlagwort}

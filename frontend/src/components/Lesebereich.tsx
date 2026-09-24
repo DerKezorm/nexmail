@@ -49,6 +49,8 @@ import { nachrichtDrucken } from '../lib/drucken'
 import { lesegrund } from '../lib/lesegrund'
 import type { Lesegrund } from '../lib/lesegrund'
 import { leseseite } from '../lib/leserahmen'
+import { ankername, linkart, mailtoLesen } from '../lib/leselinks'
+import type { Vorbelegung } from '../lib/leselinks'
 import { useGemerkt } from '../lib/haken'
 
 interface Props {
@@ -90,6 +92,9 @@ interface Props {
    * schon hell stand. Ohne Vorgabewert, damit eine vergessene Stelle im Bau
    * auffällt und nicht im Betrieb. */
   dunkelmodus: boolean
+  /** Ein Klick auf einen `mailto:`-Link in der Mail. Fehlt der Rückruf, tut
+   *  der Link nichts, statt die Mail durch eine Fehlerseite zu ersetzen. */
+  aufMailto?: (v: Vorbelegung, n: Nachricht) => void
 }
 
 export function Lesebereich({
@@ -104,6 +109,7 @@ export function Lesebereich({
   wiedervorlageMenue,
   aufAktion,
   dunkelmodus,
+  aufMailto,
 }: Props) {
   const { t, i18n } = useTranslation()
   const [freigegeben, setFreigegeben] = useState<string | null>(null)
@@ -213,6 +219,62 @@ export function Lesebereich({
     if (!d?.body) return
     const gemessen = Math.max(d.body.scrollHeight, Math.ceil(d.body.getBoundingClientRect().height))
     setHoehe((vorher) => (Math.abs(vorher - gemessen) > 1 ? gemessen : vorher))
+  }, [])
+
+  /* Die Links der Mail, verdrahtet, sobald der Rahmen geladen ist
+   * (Issue #5; was vorher geschah, steht in `lib/leselinks.ts`).
+   *
+   * ⚠️ **Eine Seite draußen öffnet der Browser selbst**, mit `target` und
+   * `rel` an jedem Link. So gehen auch Mittelklick, Strg-Klick und die
+   * Eingabetaste den gewohnten Weg; ein nachgebautes `window.open` kennte nur
+   * den einen Klick. `rel` steht schon aus der Bereinigung im Server da und
+   * wird hier trotzdem gesetzt: Ohne `noreferrer` erführe der Absender die
+   * Adresse dieser nexmail-Installation.
+   *
+   * ⚠️ **Der Rest wird abgefangen, auch beim Mittelklick.** Eine Sprungmarke
+   * oder eine relative Adresse löst sich in einem `srcdoc` gegen nexmail
+   * selbst auf; ungebremst stünde nexmail im Rahmen oder in einem neuen
+   * Reiter.
+   *
+   * ⚠️ **Die Zuhörer hängen am Dokument des Rahmens**, und das funktioniert
+   * ohne `allow-scripts`: Sie gehören dem Elternfenster, genau wie die
+   * `load`-Zuhörer an den Bildern unten. Ein neues Dokument (etwa nach
+   * „Bilder anzeigen") löst ein neues `load` aus und wird neu verdrahtet. */
+  const mailtoRef = useRef(aufMailto)
+  mailtoRef.current = aufMailto
+  const nachrichtRef = useRef(nachricht)
+  nachrichtRef.current = nachricht
+  const linksVerdrahten = useCallback(() => {
+    const d = rahmen.current?.contentDocument
+    if (!d?.body) return
+    for (const a of Array.from(d.querySelectorAll('a[href]'))) {
+      if (linkart(a.getAttribute('href')) === 'extern') {
+        a.setAttribute('target', '_blank')
+        a.setAttribute('rel', 'noopener noreferrer nofollow')
+      } else {
+        a.removeAttribute('target')
+      }
+    }
+    const abfangen = (e: MouseEvent) => {
+      const a = (e.target as Element | null)?.closest?.('a[href]')
+      if (!a) return
+      const href = a.getAttribute('href') ?? ''
+      const art = linkart(href)
+      if (art === 'extern') return
+      e.preventDefault()
+      if (e.type !== 'click') return
+      if (art === 'anker') {
+        const name = ankername(href)
+        const ziel = d.getElementById(name) ?? d.getElementsByName(name)[0]
+        ziel?.scrollIntoView({ block: 'start' })
+      } else if (art === 'mail') {
+        const v = mailtoLesen(href)
+        const n = nachrichtRef.current
+        if (v && n) mailtoRef.current?.(v, n)
+      }
+    }
+    d.addEventListener('click', abfangen)
+    d.addEventListener('auxclick', abfangen)
   }, [])
 
   /* ⚠️ **Einmal beim Laden reicht nicht.** Die Bilder kommen nach — jedes
@@ -552,6 +614,14 @@ export function Lesebereich({
           </div>
         )}
 
+        {/* ⚠️ **`allow-popups` samt `allow-popups-to-escape-sandbox`** lassen
+            einen Link einen neuen Reiter öffnen (Issue #5). Ohne das erste
+            verwarf der Browser jeden Link stumm; ohne das zweite erbte die
+            geöffnete Seite die Abschottung und liefe ohne Skripte, also
+            kaputt. Skripte in der Mail bleiben aus, und einen Reiter öffnet
+            nur ein Klick: Ohne Skript kann die Mail keinen selbst aufmachen.
+            Am 24.09.2026 gemessen: neuer Reiter, `window.opener` leer, kein
+            Referrer. */}
         {/* ⚠️ **`allow-same-origin`, aber weiterhin ohne `allow-scripts`.**
             Der Rahmen muss dem Elternfenster seine Höhe sagen können, sonst
             steckt jede Mail in einem 420-px-Fenster mit eigenem Rollbalken und
@@ -573,9 +643,12 @@ export function Lesebereich({
           key={nachricht.id}
           ref={rahmen}
           title={nachricht.betreff}
-          sandbox="allow-same-origin"
+          sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
           srcDoc={seite}
-          onLoad={hoeheNachziehen}
+          onLoad={() => {
+            hoeheNachziehen()
+            linksVerdrahten()
+          }}
           style={{ height: hoehe ? `${hoehe}px` : undefined }}
           className="w-full border-0 bg-transparent px-2"
         />

@@ -69,6 +69,7 @@ const VerfassenFenster = lazy(() =>
   import('./components/VerfassenFenster').then((m) => ({ default: m.VerfassenFenster })),
 )
 import type { Sendedaten, Verfassart } from './components/VerfassenFenster'
+import type { Vorbelegung } from './lib/leselinks'
 import type { Ziel } from './components/Ordnerspalte'
 import { Lesebereich } from './components/Lesebereich'
 import { MailPage } from './pages/MailPage'
@@ -367,7 +368,14 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     /** Gesetzt nach „Rückgängig" beim Senden: Das Fenster öffnet mit diesem
      *  Inhalt aus dem Speicher, statt eine Vorlage zu holen. */
     wiederauf?: Sendedaten | null
+    /** Gesetzt nach einem Klick auf einen `mailto:`-Link in einer Mail. */
+    vorbelegt?: (Vorbelegung & { kontoId?: string }) | null
   }>({ offen: false, art: 'neu', bezug: null })
+
+  /** Ein `mailto:`-Link in einer Mail öffnet eine neue Nachricht aus dem
+   *  Postfach, in dem die Mail liegt. */
+  const mailtoOeffnen = (v: Vorbelegung, n: Nachricht) =>
+    setVerfassen({ offen: true, art: 'neu', bezug: null, vorbelegt: { ...v, kontoId: n.kontoId } })
 
   /* ⚠️ **Ein Riegel, keine Bedingung.** Sobald das Fenster einmal offen war,
      bleibt es im Baum — von da an verhält sich alles wie vorher, samt „Senden
@@ -1826,6 +1834,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
             laedt={soloStand === 'laedt'}
             imEigenenFenster
             aufVerfassen={(art, n) => setVerfassen({ offen: true, art, bezug: n })}
+            aufMailto={mailtoOeffnen}
           />
         )}
 
@@ -1837,6 +1846,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           bezug={verfassen.bezug}
           konten={konten}
           wiederauf={verfassen.wiederauf ?? null}
+          vorbelegt={verfassen.vorbelegt ?? null}
           aufRueckholbar={(ausgangId, bis, daten) => setSendeRueck({ ausgangId, bis, daten })}
           kiAktiv={ich?.ki_aktiv ?? false}
           aufSchliessen={() => setVerfassen((v) => ({ ...v, offen: false }))}
@@ -1961,6 +1971,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 schubladeOffen={schubladeOffen}
                 aufSchublade={setSchubladeOffen}
                 aufVerfassen={(art, n) => setVerfassen({ offen: true, art, bezug: n })}
+                aufMailto={mailtoOeffnen}
                 istEntwurf={offeneIstEntwurf}
                 kompakt={dichte === 'kompakt'}
                 anreisserZeigen={anreisserZeigen}
@@ -2313,6 +2324,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         bezug={verfassen.bezug}
         konten={konten}
         wiederauf={verfassen.wiederauf ?? null}
+        vorbelegt={verfassen.vorbelegt ?? null}
         aufRueckholbar={(ausgangId, bis, daten) => setSendeRueck({ ausgangId, bis, daten })}
         kiAktiv={ich?.ki_aktiv ?? false}
         aufSchliessen={() => setVerfassen((v) => ({ ...v, offen: false }))}
