@@ -235,3 +235,74 @@ def test_aus_zwei_ordnern_auf_einmal_geht_nicht(db, welt):
     nachrichten[1].ordner_id = quelle.id + 99
     with pytest.raises(handeln.HandelnFehler):
         handeln.verschieben(db, nachrichten, ziel)
+
+
+# --- Rückgängig über die Grenze ------------------------------------------- #
+
+
+def _zeilen(db, ordner: Ordner) -> list[str]:
+    db.expire_all()
+    return sorted(n.betreff for n in db.query(Nachricht).filter_by(ordner_id=ordner.id))
+
+
+def test_rueckgaengig_holt_die_mail_aus_dem_anderen_postfach(klient, db, welt):
+    """⚠️ **Bis zum 27.09.2026 ging das ins Leere.** Der Rückweg trug
+    ``ziel_konto_id``, die Adresse ``/zurueck`` verwarf das Feld still, und
+    gesucht wurde im QUELLpostfach unter dem Pfad des Ziels. Gefunden wurde
+    nichts, gemeldet wurde 0, und die Mail blieb im anderen Postfach.
+
+    Geprüft über die Adresse, nicht über den Dienst: Genau dort ging das Feld
+    verloren.
+    """
+    quelle_srv, ziel_srv, quelle, ziel, nachrichten = welt
+    weg = handeln.verschieben(db, nachrichten, ziel)
+    assert len(ziel_srv.ordner["Archiv"]["nachrichten"]) == 2
+
+    antwort = klient.post("/api/nachrichten/zurueck", json=weg.__dict__)
+
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json()["bewegt"] == 2
+    # Auf beiden Servern ...
+    assert ziel_srv.ordner["Archiv"]["nachrichten"] == {}
+    assert len(quelle_srv.ordner["INBOX"]["nachrichten"]) == 2
+    # ... und in nexmails Datenbank, ohne dass jemand abgleicht.
+    assert _zeilen(db, quelle) == ["Nummer 1", "Nummer 2"]
+    assert _zeilen(db, ziel) == []
+
+
+def test_rueckgaengig_fasst_kein_fremdes_postfach_an(klient, db, welt):
+    """⚠️ **``ziel_konto_id`` kommt aus dem Browser.** Ungeprüft hieße das:
+    Wer die Kennung eines fremden Postfachs einsetzt, holt dessen Post in
+    seins. Geprüft wird wie beim ersten Postfach, nicht geglaubt."""
+    from app.models import Benutzer
+
+    quelle_srv, ziel_srv, quelle, ziel, nachrichten = welt
+    weg = handeln.verschieben(db, nachrichten, ziel)
+    fremd = Benutzer(id="f" * 32, benutzername="fremd", anzeigename="Fremd", passwort_hash="x")
+    db.add(fremd)
+    db.flush()
+    db.get(Konto, "kb").benutzer_id = fremd.id
+    db.commit()
+
+    antwort = klient.post("/api/nachrichten/zurueck", json=weg.__dict__)
+
+    assert antwort.status_code == 404, antwort.text
+    assert len(ziel_srv.ordner["Archiv"]["nachrichten"]) == 2
+    assert quelle_srv.ordner["INBOX"]["nachrichten"] == {}
+
+
+def test_rueckgaengig_ohne_verbindung_ist_502(klient, db, welt, monkeypatch):
+    """Wie jede andere Handlung: Ein Mailserver, der nicht antwortet, ist ein
+    502 mit dem Satz dazu, kein 500 ohne Erklärung."""
+    _, _, _, ziel, nachrichten = welt
+    weg = handeln.verschieben(db, nachrichten, ziel)
+
+    def kein_netz(*a, **k):
+        raise imapdienst.Verbindungsfehler(art="netz", text="Server not reachable.")
+
+    monkeypatch.setattr(imapdienst, "verbinden", kein_netz)
+
+    antwort = klient.post("/api/nachrichten/zurueck", json=weg.__dict__)
+
+    assert antwort.status_code == 502, antwort.text
+    assert antwort.json()["detail"] == "Server not reachable."

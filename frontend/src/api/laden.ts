@@ -367,6 +367,9 @@ export interface Rueckweg {
   ziel_pfad: string
   message_ids: string[]
   text: string
+  /** Nur bei einem Zug über die Kontogrenze. Geht unverändert an `/zurueck`
+   *  zurück; ohne das Feld suchte der Server im falschen Postfach. */
+  ziel_konto_id?: string
 }
 
 export interface Zugergebnis {

@@ -1010,6 +1010,10 @@ class Rueckwunsch(BaseModel):
     ziel_pfad: str
     message_ids: list[str]
     text: str = ""
+    #: Gesetzt, wenn der Zug über eine Kontogrenze ging. ⚠️ Fehlte bis zum
+    #: 27.09.2026: Pydantic verwarf das Feld still, und Rückgängig suchte im
+    #: falschen Postfach.
+    ziel_konto_id: str = ""
 
 
 @router.post("/zurueck", response_model=Zugergebnis)
@@ -1019,15 +1023,19 @@ def zurueck(wunsch: Rueckwunsch, person: AngemeldeterBenutzer, db: DbSession) ->
     ⚠️ Das Postfach wird geprüft, nicht geglaubt: Die Oberfläche schickt hier
     zurück, was sie bekommen hat — und das kommt aus dem Browser.
     """
-    konto = db.get(Konto, wunsch.konto_id)
-    if konto is None or konto.benutzer_id != person.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    # ⚠️ **Beide Postfächer**, nicht nur das erste: Mit einer fremden
+    # ``ziel_konto_id`` holte man sonst fremde Post in das eigene.
+    for kennung in {wunsch.konto_id, wunsch.ziel_konto_id} - {""}:
+        konto = db.get(Konto, kennung)
+        if konto is None or konto.benutzer_id != person.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
     weg = handeln.Rueckweg(
         konto_id=wunsch.konto_id,
         quelle_pfad=wunsch.quelle_pfad,
         ziel_pfad=wunsch.ziel_pfad,
         message_ids=wunsch.message_ids,
+        ziel_konto_id=wunsch.ziel_konto_id,
     )
     try:
         anzahl = handeln.zurueck(db, weg)

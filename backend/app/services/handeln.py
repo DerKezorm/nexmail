@@ -314,6 +314,8 @@ def zurueck(db: Session, weg: Rueckweg) -> int:
     konto = db.get(Konto, weg.konto_id)
     if konto is None:
         raise HandelnFehler("postfach_weg")
+    if weg.ziel_konto_id and weg.ziel_konto_id != weg.konto_id:
+        return _zurueck_ueber_konten(db, konto, weg)
 
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     zurueckgeholt = 0
@@ -351,6 +353,48 @@ def zurueck(db: Session, weg: Rueckweg) -> int:
 
     logger.info("%s message(s) moved back to %s.", zurueckgeholt, weg.quelle_pfad)
     return zurueckgeholt
+
+
+def _zurueck_ueber_konten(db: Session, konto: Konto, weg: Rueckweg) -> int:
+    """Einen Zug über die Kontogrenze zurücknehmen.
+
+    ⚠️ **Bis zum 27.09.2026 ging das ins Leere.** ``zurueck`` suchte im
+    Quellpostfach unter dem Pfad des Ziels, fand nichts und meldete 0; die
+    Mail blieb im anderen Postfach.
+
+    ⚠️ **Derselbe Weg wie hin, nur umgekehrt**, also über ``ueber_konten``:
+    holen, anhängen, nachsehen, erst dann löschen. Ein eigener, kürzerer Weg
+    zurück wäre genau die Stelle, an der Post verlorengeht. ``ueber_konten``
+    zieht dabei beide Ordner nach.
+
+    Gefunden werden die Mails an den Zeilen des Zielordners, die
+    ``ueber_konten`` beim Hinweg angelegt hat, über die ``Message-ID``.
+    """
+    ziel_konto = db.get(Konto, weg.ziel_konto_id)
+    if ziel_konto is None:
+        raise HandelnFehler("postfach_weg")
+    abgelegt = next((o for o in ziel_konto.ordner if o.pfad == weg.ziel_pfad), None)
+    ursprung = next((o for o in konto.ordner if o.pfad == weg.quelle_pfad), None)
+    if abgelegt is None or ursprung is None:
+        return 0
+
+    nachrichten = (
+        db.query(Nachricht)
+        .filter(
+            Nachricht.ordner_id == abgelegt.id,
+            Nachricht.message_id.in_(weg.message_ids),
+        )
+        .all()
+    )
+    if not nachrichten:
+        return 0
+
+    zurueck_weg = ueber_konten(db, nachrichten, ursprung)
+    logger.info(
+        "%s message(s) moved back to another mailbox (%s).",
+        len(zurueck_weg.message_ids), weg.quelle_pfad,
+    )
+    return len(zurueck_weg.message_ids)
 
 
 def ordner_als_gelesen(db: Session, konto: Konto, ordner: Ordner) -> int:

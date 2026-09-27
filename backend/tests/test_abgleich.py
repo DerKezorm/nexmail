@@ -10,6 +10,7 @@ der Abgleich benutzt — und er kann die beiden Dinge, die im Betrieb wehtun:
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 import pytest
@@ -155,6 +156,14 @@ class FalscherServer:
                     "Anja Kessler <anja@example.org>",
                     datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc),
                 )
+                # ⚠️ **Trägt die Mail eine Message-ID, steht DIE im Umschlag**,
+                # wie bei einem echten Server. Der erfundene Wert aus dem
+                # Betreff verdeckte am 27.09.2026, dass ein Rückweg über zwei
+                # Postfächer seine Mails nicht wiederfand.
+                kennung = re.search(rb"^Message-ID:\s*(\S+)", eintrag.get("roh") or b"",
+                                    re.MULTILINE | re.IGNORECASE)
+                if kennung:
+                    zeile[b"ENVELOPE"].message_id = kennung.group(1)
                 zeile[b"RFC822.SIZE"] = 4096
                 zeile[b"BODYSTRUCTURE"] = eintrag.get("struktur") or (
                     "text",
