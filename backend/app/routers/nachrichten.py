@@ -27,6 +27,7 @@ from ..deps import AngemeldeterBenutzer, DbSession
 from ..models import Anhang, Konto, Nachricht, Ordner
 from ..services import (
     abgleich,
+    absenderpruefung,
     bereinigen,
     bildfreigaben,
     bildvermittler,
@@ -100,6 +101,10 @@ class Zeile(BaseModel):
     #: Die Schlagwort-Atome dieser Mail — die Oberflaeche macht daraus die
     #: Farbmarken (Definitionen kommen aus /api/schlagworte).
     schlagworte: list[str] = []
+    #: Hat die Mail die Absenderpruefung beim gewohnten Pruefer ihres
+    #: Postfachs bestanden? Nur dann fragt die Oberflaeche nach dem
+    #: Markenlogo (``services/absenderpruefung.py``, Diskussion #4).
+    absender_geprueft: bool = False
 
 
 class AnhangZeile(BaseModel):
@@ -137,7 +142,12 @@ def _personen(roh: str) -> list[Person]:
         return []
 
 
-def _zeile(n: Nachricht) -> Zeile:
+def _vertraut(db, nachrichten) -> dict[str, str]:
+    """Die gewohnten Pruefer der Postfaecher dieser Zeilen, einmal je Abruf."""
+    return absenderpruefung.vertraute_pruefer(db, {n.konto_id for n in nachrichten})
+
+
+def _zeile(n: Nachricht, vertraut: dict[str, str] | None = None) -> Zeile:
     return Zeile(
         id=n.id,
         konto_id=n.konto_id,
@@ -154,6 +164,7 @@ def _zeile(n: Nachricht) -> Zeile:
         groesse=n.groesse,
         thread_key=n.thread_key,
         schlagworte=schlagwortdienst.atome_lesen(n),
+        absender_geprueft=absenderpruefung.geprueft(n, vertraut or {}),
     )
 
 
@@ -274,7 +285,9 @@ def liste(
         return _gruppiert(db, person, abfrage, grenze, versatz)
 
     abfrage = abfrage.limit(grenze).offset(versatz)
-    return [_zeile(n) for n in db.execute(abfrage).scalars().all()]
+    gefunden = list(db.execute(abfrage).scalars().all())
+    vertraut = _vertraut(db, gefunden)
+    return [_zeile(n, vertraut) for n in gefunden]
 
 
 def _gruppiert(db, person, abfrage, grenze: int, versatz: int) -> list[Zeile]:
@@ -327,9 +340,10 @@ def _gruppiert(db, person, abfrage, grenze: int, versatz: int) -> list[Zeile]:
             zaehler[key] = (int(anzahl or 0), int(ungelesen or 0))
 
     heraus = []
+    vertraut = _vertraut(db, kopfzeilen)
     for n in kopfzeilen:
         anzahl, ungelesen = zaehler.get(n.thread_key, (1, 0 if n.gelesen else 1))
-        zeile = _zeile(n)
+        zeile = _zeile(n, vertraut)
         zeile.strang_anzahl = anzahl
         zeile.strang_ungelesen = ungelesen
         heraus.append(zeile)
@@ -349,7 +363,8 @@ def strang(schluessel: str, person: AngemeldeterBenutzer, db: DbSession) -> list
         .order_by(Nachricht.datum, Nachricht.id)
         .limit(200)
     ).scalars().all()
-    return [_zeile(n) for n in zeilen]
+    vertraut = _vertraut(db, zeilen)
+    return [_zeile(n, vertraut) for n in zeilen]
 
 
 class SchlagwortAuswahl(BaseModel):
@@ -540,7 +555,7 @@ def eine(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Voll
     _koerper_sicherstellen(db, nachricht)
 
     freigegeben = bildfreigaben.darf_laden(db, person, nachricht.von_adresse)
-    grund = _zeile(nachricht).model_dump()
+    grund = _zeile(nachricht, _vertraut(db, [nachricht])).model_dump()
     return Voll(
         **grund,
         an=_personen(nachricht.an_json),

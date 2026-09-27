@@ -74,6 +74,10 @@ class Ich(BaseModel):
     #: fuer die ganze Installation sperren, und dann darf der Knopf nicht
     #: dastehen.
     ki_aktiv: bool = False
+    #: Ob die Liste Logos der Absenderdomains holt. Reist am ``ich`` mit wie
+    #: ``ki_aktiv``: Die Bildadresse traegt den Stand, und wer umschaltet,
+    #: sieht es ohne F5.
+    absenderlogos: bool = False
     #: Ob dieses Konto KI-Dienste ueberhaupt benutzen darf (Installation
     #: UND Konto). Daran haengt der Punkt in der Leiste.
     ki_erlaubt: bool = False
@@ -414,6 +418,7 @@ def ich(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
         offene_codes=zwei_faktor.offene_codes(person),
         kontaktadresse=person.kontaktadresse,
         ki_aktiv=person.ki_aktiv and kidienst.erlaubt_fuer(db, person),
+        absenderlogos=person.absenderlogos_laden,
         ki_erlaubt=kidienst.erlaubt_fuer(db, person),
     )
 

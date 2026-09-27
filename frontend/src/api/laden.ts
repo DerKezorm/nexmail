@@ -43,6 +43,7 @@ interface ApiZeile {
   thread_key?: string
   groesse: number
   schlagworte?: string[]
+  absender_geprueft?: boolean
 }
 
 interface ApiAnhang {
@@ -92,6 +93,7 @@ function zeile(z: ApiZeile): Nachricht {
     strangUngelesen: z.strang_ungelesen,
     strangSchluessel: z.thread_key,
     schlagworte: z.schlagworte ?? [],
+    absenderGeprueft: z.absender_geprueft ?? false,
   }
 }
 

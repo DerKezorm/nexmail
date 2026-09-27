@@ -286,7 +286,7 @@ def _zulaessig(roh: str, eigenes_netz: bool) -> bool:
 # --- Der Abruf ------------------------------------------------------------ #
 
 
-def holen(url: str) -> tuple[bytes, str]:
+def holen(url: str, max_bytes: int = MAX_BYTES, zeitgrenze: float = ZEITGRENZE) -> tuple[bytes, str]:
     """Ein Bild holen. Rueckgabe: Inhalt und MIME-Typ.
 
     ⚠️ **Ohne Kopfzeilen aus der Mail.** Kein Verweis auf die Herkunft, kein
@@ -294,11 +294,38 @@ def holen(url: str) -> tuple[bytes, str]:
     dieses Servers und der Zeitpunkt — und dass jemand auf einen Knopf
     gedrueckt hat. Genau das steht im Hinweisbalken.
     """
+
+    def ist_bild(typ: str) -> bool:
+        return typ.startswith("image/") and typ not in VERBOTENE_TYPEN
+
+    return _abrufen(url, "image/*", ist_bild, "bild_kein_bild", max_bytes, zeitgrenze)
+
+
+def datei_holen(url: str, max_bytes: int, zeitgrenze: float = ZEITGRENZE) -> bytes:
+    """Eine kleine Datei holen, gleich welchen Typs, mit derselben Wache.
+
+    Gebraucht fuer das Markenzertifikat hinter einem BIMI-Eintrag
+    (``services/absenderbild.py``). Den Typ entscheidet dort das Zerlegen:
+    Anbieter liefern PEM als ``application/x-pem-file``, ``text/plain`` oder
+    ``application/octet-stream``, und keiner davon ist falsch.
+    """
+    inhalt, _ = _abrufen(url, "*/*", lambda _typ: True, "bild_kein_bild", max_bytes, zeitgrenze)
+    return inhalt
+
+
+def _abrufen(
+    url: str,
+    annehmen: str,
+    typ_ok,
+    kennung_falscher_typ: str,
+    max_bytes: int,
+    zeitgrenze: float,
+) -> tuple[bytes, str]:
     ziel = url
     with httpx.Client(
-        timeout=ZEITGRENZE,
+        timeout=zeitgrenze,
         follow_redirects=False,
-        headers={"user-agent": "nexmail", "accept": "image/*"},
+        headers={"user-agent": "nexmail", "accept": annehmen},
     ) as klient:
         for _ in range(MAX_SPRUENGE + 1):
             adresse_pruefen(ziel)
@@ -313,15 +340,15 @@ def holen(url: str) -> tuple[bytes, str]:
                     if antwort.status_code >= 400:
                         raise Abgelehnt("bild_nicht_erreichbar")
                     typ = antwort.headers.get("content-type", "").split(";")[0].strip().lower()
-                    if not typ.startswith("image/") or typ in VERBOTENE_TYPEN:
-                        raise Abgelehnt("bild_kein_bild")
+                    if not typ_ok(typ):
+                        raise Abgelehnt(kennung_falscher_typ)
                     inhalt = bytearray()
                     for stueck in antwort.iter_bytes():
                         inhalt += stueck
                         # ⚠️ **Waehrend des Lesens abbrechen, nicht danach.**
                         # ``content-length`` ist eine Behauptung des fremden
                         # Servers; wer ihr glaubt, hat die Grenze nicht.
-                        if len(inhalt) > MAX_BYTES:
+                        if len(inhalt) > max_bytes:
                             raise Abgelehnt("bild_zu_gross")
                     return bytes(inhalt), typ
             except httpx.HTTPError:

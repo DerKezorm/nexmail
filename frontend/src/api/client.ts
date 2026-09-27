@@ -166,6 +166,9 @@ export interface Ich {
    *  Punkt in der Leiste — er muss auch dastehen, wenn noch nichts
    *  eingeschaltet ist. */
   ki_erlaubt: boolean
+  /** Ob Logos der Absenderdomains geholt werden (Darstellung → Bilder).
+   *  Die Bildadresse trägt den Stand, damit Umschalten ohne F5 wirkt. */
+  absenderlogos: boolean
 }
 
 export interface Schritt {

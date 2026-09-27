@@ -41,6 +41,8 @@ interface Aufraeumen {
 interface Bilder {
   immer_laden: boolean
   absender: string[]
+  /** Logos der Absenderdomains holen (Diskussion #4). */
+  logos: boolean
 }
 
 const AUFRAEUMEN_STUFEN = [0, 7, 14, 30, 90] as const
@@ -49,11 +51,21 @@ const AUFRAEUMEN_STUFEN = [0, 7, 14, 30, 90] as const
    Vorgaben: aus, dann die beiden Aufraeum-Wege, dann der Umschalter. */
 const WISCH_AKTIONEN: WischAktion[] = ['aus', 'archivieren', 'loeschen', 'gelesen']
 
-export function Darstellung() {
+interface Props {
+  /** Nach dem Logo-Schalter: `ich` trägt seinen Stand, und die Liste baut
+   *  daraus die Bildadresse. Ohne Auffrischen wirkte er erst nach F5. */
+  ichNeuLaden?: () => void
+}
+
+export function Darstellung({ ichNeuLaden }: Props = {}) {
   const { t } = useTranslation()
   const [dichte, setDichte] = useGemerkt<Dichte>('nexmail.dichte', 'normal')
   const [anreisser, setAnreisser] = useGemerkt<boolean>('nexmail.anreisser', true)
   const [punkte, setPunkte] = useGemerkt<boolean>('nexmail.punkte', true)
+  /* Der Kreis vor jedem Absender. Im Browser: ob die Liste dafür Platz
+     hergibt, ist eine Frage des Bildschirms. Was darin steht und ob dafür
+     etwas geholt wird, steht unten bei den Bildern und liegt im Server. */
+  const [absenderbilder, setAbsenderbilder] = useGemerkt<boolean>('nexmail.absenderbilder', true)
   /* ⚠️ **Im Browser, nicht im Server — anders als „Bilder immer laden"
      weiter unten.** Ob eine fremde Mail eingedunkelt wird, entscheidet der
      Bildschirm, vor dem man sitzt: am hellen Arbeitsplatz will man das weiße
@@ -144,6 +156,21 @@ export function Darstellung() {
         setBilderFehler(
           servermeldung(f, t('anmeldung.fehler_allgemein')),
         )
+        bilderLaden()
+      })
+  }
+
+  const logosStellen = (an: boolean) => {
+    if (!bilder) return
+    setBilder({ ...bilder, logos: an })
+    api
+      .aendern<Bilder>('/api/einstellungen/bilder', { logos: an })
+      .then((neu) => {
+        setBilder(neu)
+        ichNeuLaden?.()
+      })
+      .catch((f) => {
+        setBilderFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
         bilderLaden()
       })
   }
@@ -246,6 +273,13 @@ export function Darstellung() {
       />
 
       <Switch
+        checked={absenderbilder}
+        label={t('darstellung.absenderbilder')}
+        description={t('darstellung.absenderbilder_hinweis')}
+        onCheckedChange={setAbsenderbilder}
+      />
+
+      <Switch
         checked={punkte}
         label={t('darstellung.punkte')}
         description={t('darstellung.punkte_hinweis')}
@@ -330,6 +364,13 @@ export function Darstellung() {
               label={t('darstellung.bilder_immer')}
               description={t('darstellung.bilder_immer_hinweis')}
               onCheckedChange={bilderStellen}
+            />
+
+            <Switch
+              checked={bilder.logos}
+              label={t('darstellung.logos')}
+              description={t('darstellung.logos_hinweis')}
+              onCheckedChange={logosStellen}
             />
 
             <div className="flex flex-col gap-2">

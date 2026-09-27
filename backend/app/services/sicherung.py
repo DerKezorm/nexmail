@@ -163,6 +163,9 @@ def _schlank_machen(db_datei: Path) -> dict:
         # Befehl leert ihn wirklich.
         verbindung.execute("insert into nachricht_fts(nachricht_fts) values('delete-all')")
         verbindung.execute("delete from sitzung")
+        # Die Absenderlogos sind ein Zwischenspeicher wie die Nachrichten: Die
+        # Websites geben sie beim naechsten Blick wieder her.
+        verbindung.execute("delete from absenderlogo")
         verbindung.execute("update ordner set hoechste_uid = 0, uidvalidity = 0")
         verbindung.execute("update ordner set anzahl = 0, ungelesen = 0")
         # Die Straenge entstehen beim Schreiben. Ohne Nachrichten gibt es

@@ -101,9 +101,11 @@ class FalscherServer:
         kopfzeilen: dict[str, str] | None = None,
         schlagworte: list[str] | None = None,
         struktur=None,
+        von: str = "Anja Kessler <anja@example.org>",
     ):
         self.ordner[pfad]["nachrichten"][uid] = {
             "betreff": betreff,
+            "von": von,
             "gelesen": gelesen,
             "markiert": False,
             "roh": roh,
@@ -153,7 +155,7 @@ class FalscherServer:
             if any("ENVELOPE" in str(f) for f in felder):
                 zeile[b"ENVELOPE"] = Umschlag(
                     eintrag["betreff"],
-                    "Anja Kessler <anja@example.org>",
+                    eintrag.get("von", "Anja Kessler <anja@example.org>"),
                     datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc),
                 )
                 # ⚠️ **Trägt die Mail eine Message-ID, steht DIE im Umschlag**,
@@ -191,10 +193,13 @@ class FalscherServer:
                 verlangt = {
                     w.upper() for w in name[name.index("(") + 1 : name.index(")")].split()
                 }
+                # Ein Wert darf eine Liste sein: mehrere Zeilen desselben
+                # Namens, in der Reihenfolge der Mail (Authentication-Results).
                 zeilen = [
-                    f"{k}: {w}"
+                    f"{k}: {einzeln}"
                     for k, w in eintrag.get("kopfzeilen", {}).items()
                     if k.upper() in verlangt
+                    for einzeln in (w if isinstance(w, list) else [w])
                 ]
                 schluessel = name.replace("BODY.PEEK[", "BODY[", 1).encode()
                 zeile[schluessel] = ("\r\n".join(zeilen) + "\r\n\r\n").encode() if zeilen else b""

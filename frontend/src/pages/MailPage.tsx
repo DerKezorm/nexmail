@@ -63,6 +63,9 @@ interface Props {
   kompakt?: boolean
   anreisserZeigen?: boolean
   punkteZeigen?: boolean
+  /** Das Bild je Absender, für Liste und Lesebereich (Diskussion #4).
+   *  Fehlt es, ist es unter Darstellung abgeschaltet. */
+  bildQuelle?: (n: Nachricht) => string
   /** Gewähltes Schlagwort. Leer heißt: alle Postfächer. */
   gruppe: string
   aufGruppe: (wort: string) => void
@@ -204,6 +207,7 @@ export function MailPage(p: Props) {
       aufNeuesSchlagwort={p.aufNeuesSchlagwort}
       wiedervorlageMenue={p.wiedervorlageMenue}
       aufAktion={p.aufLeseAktion}
+      bildQuelle={p.bildQuelle}
     />
   )
 
@@ -226,6 +230,7 @@ export function MailPage(p: Props) {
         aufZiehen={p.aufZiehen}
         kompakt={p.kompakt}
         anreisserZeigen={p.anreisserZeigen}
+        bildQuelle={p.bildQuelle}
         filter={ziel.typ === 'markiert' ? 'markiert' : p.filter}
         aufFilter={p.aufFilter}
         schlagworte={p.schlagworte}

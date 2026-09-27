@@ -131,6 +131,8 @@ import { useGemerkt, useSchmal } from './lib/haken'
 import { lesemodusAus } from './lib/lesemodus'
 import type { Lesemodus } from './lib/lesemodus'
 import { danachAus, danachWaehlen } from './lib/danach'
+import { absenderbildQuelle } from './lib/absenderbild'
+import { appPfad } from './lib/basis'
 import type { Danach } from './lib/danach'
 import { ZUWEISBARE_ROLLEN } from './lib/ordnerrollen'
 import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from './lib/wischen'
@@ -353,6 +355,19 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const [wischRechts] = useGemerkt<WischAktion>('nexmail.wisch_rechts', WISCH_RECHTS_VORGABE)
   const [anreisserZeigen] = useGemerkt<boolean>('nexmail.anreisser', true)
   const [punkteZeigen] = useGemerkt<boolean>('nexmail.punkte', true)
+  /* Das Bild vor jedem Absender (Diskussion #4). Ob es überhaupt dasteht,
+     gehört zum Gerät; ob Logos von draußen geholt werden, entscheidet der
+     Server je Benutzer und reist am `ich` mit. */
+  const [absenderbilder] = useGemerkt<boolean>('nexmail.absenderbilder', true)
+  const absenderlogos = ich?.absenderlogos ?? false
+  /* ⚠️ **Das Logo nur an geprüften Mails.** Eine Mail, die die
+     Absenderprüfung nicht bestanden hat, fragt gar nicht erst danach; so
+     bekommt eine gefälschte Bank-Mail nie das Logo der Bank. */
+  const bildQuelle = useCallback(
+    (n: Nachricht) =>
+      absenderbildQuelle(n.von.adresse, absenderlogos && n.absenderGeprueft === true, appPfad),
+    [absenderlogos],
+  )
   const [ordnerOffen, setOrdnerOffen] = useGemerkt('nexmail.ordnerOffen', true)
   const [lesemodusGemerkt, setLesemodus] = useGemerkt<Lesemodus>('nexmail.lesemodus', 'rechts')
   const lesemodus = lesemodusAus(lesemodusGemerkt)
@@ -1891,6 +1906,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
             imEigenenFenster
             aufVerfassen={(art, n) => setVerfassen({ offen: true, art, bezug: n })}
             aufMailto={mailtoOeffnen}
+            bildQuelle={absenderbilder ? bildQuelle : undefined}
           />
         )}
 
@@ -2032,6 +2048,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 kompakt={dichte === 'kompakt'}
                 anreisserZeigen={anreisserZeigen}
                 punkteZeigen={punkteZeigen}
+                bildQuelle={absenderbilder ? bildQuelle : undefined}
                 filter={listenfilter}
                 aufFilter={setListenfilter}
                 schlagworte={schlagworte}

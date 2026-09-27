@@ -54,6 +54,8 @@ export async function anmelden(seite: Page) {
       // Sonst ginge nach jedem Archivieren eine andere Mail auf, und ein
       // Test, der danach einen leeren Lesebereich erwartet, fände keinen.
       'nexmail.danach',
+      // Sonst fehlt der Kreis vor den Zeilen, und der Test dazu misst nichts.
+      'nexmail.absenderbilder',
     ]) {
       localStorage.removeItem(k)
     }

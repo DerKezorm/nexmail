@@ -35,11 +35,12 @@ import {
   Trash2,
 } from 'lucide-react'
 import type { Nachricht, Schlagwort } from '../daten/typen'
+import { Absenderbild } from './Absenderbild'
 import type { VolleNachricht } from '../api/laden'
 import type { Einladung } from '../api/laden'
 import { absenderVergessen, bilderAnzeigen, einladungLaden } from '../api/laden'
 import { Einladungskarte } from './Einladungskarte'
-import { anzeigename, groesse, initialen, langesDatum } from '../lib/format'
+import { anzeigename, groesse, langesDatum } from '../lib/format'
 import { Schlagwortmarke } from './Schlagwortmarke'
 import { Button, EmptyState, IconButton } from '../ds'
 import { Kontextmenue } from './Kontextmenue'
@@ -95,6 +96,9 @@ interface Props {
   /** Ein Klick auf einen `mailto:`-Link in der Mail. Fehlt der Rückruf, tut
    *  der Link nichts, statt die Mail durch eine Fehlerseite zu ersetzen. */
   aufMailto?: (v: Vorbelegung, n: Nachricht) => void
+  /** Die Bildadresse des Absenders, dieselbe wie in der Liste. Fehlt sie,
+   *  stehen nur die Initialen da. */
+  bildQuelle?: (n: Nachricht) => string
 }
 
 export function Lesebereich({
@@ -110,6 +114,7 @@ export function Lesebereich({
   aufAktion,
   dunkelmodus,
   aufMailto,
+  bildQuelle,
 }: Props) {
   const { t, i18n } = useTranslation()
   const [freigegeben, setFreigegeben] = useState<string | null>(null)
@@ -532,12 +537,7 @@ export function Lesebereich({
           )}
 
           <div className="flex items-start gap-3">
-            <span
-              aria-hidden
-              className="flex size-9 shrink-0 items-center justify-center rounded-pill bg-surface-3 text-[12px] font-semibold text-fg-2"
-            >
-              {initialen(nachricht.von)}
-            </span>
+            <Absenderbild person={nachricht.von} quelle={bildQuelle?.(nachricht)} groesse="gross" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-x-2">
                 <span className="text-sm font-medium text-fg-1">{anzeigename(nachricht.von)}</span>

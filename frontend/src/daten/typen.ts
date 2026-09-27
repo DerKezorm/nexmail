@@ -98,6 +98,9 @@ export interface Nachricht {
   /** Die Schlagwort-Atome dieser Mail — die Definitionen dazu kommen aus
    *  `/api/schlagworte`. */
   schlagworte: string[]
+  /** Absenderprüfung beim gewohnten Prüfer bestanden: Nur dann darf die
+   *  Zeile nach dem Markenlogo fragen (Diskussion #4). */
+  absenderGeprueft?: boolean
 }
 
 /** Ein Eintrag im Postausgang — geplant oder liegen geblieben.

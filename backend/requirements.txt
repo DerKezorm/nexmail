@@ -132,3 +132,12 @@ py-vapid==1.9.4
 # Haengt ebenfalls nur an `cryptography`.
 # Am 03.09.2026 gegen api.osv.dev geprueft: null Meldungen.
 http-ece==1.2.1
+
+# Markenlogos (BIMI): den TXT-Eintrag ``default._bimi.<domain>`` lesen.
+#
+# ⚠️ **Eine Bibliothek, weil Python keinen TXT-Abruf kennt.** ``socket`` loest
+# nur Adressen auf. Die Alternative waere DNS ueber HTTPS bei einem fremden
+# Dienst gewesen, und der erfuehre dann jede Absenderdomain aus der Post.
+# Reines Python, ohne eigene Abhaengigkeiten. Am 27.09.2026 gegen api.osv.dev
+# geprueft: null Meldungen.
+dnspython==2.8.0

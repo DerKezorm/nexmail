@@ -182,7 +182,7 @@ export function EinstellungenPage({
             <Benachrichtigungen />
           ) : (
             // Alle Reiter sind gebaut — hier gibt es keinen Rest mehr.
-            <Darstellung />
+            <Darstellung ichNeuLaden={ichNeuLaden} />
           )}
         </div>
       </div>

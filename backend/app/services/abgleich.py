@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..models import Anhang, Konto, Nachricht, Ordner, utcnow
 from . import (
+    absenderpruefung,
     abwesenheit as abwesenheitsdienst,
     bereinigen,
     imap as imapdienst,
@@ -261,6 +262,10 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
                 # nach Absender in einer von zweien. Beide holen, sonst gilt
                 # eine Outlook-Mail als normal und eine Thunderbird-Mail nicht.
                 b"BODY.PEEK[HEADER.FIELDS (IMPORTANCE X-PRIORITY)]",
+                # Die Absenderpruefung des empfangenden Servers, fuer das
+                # Markenlogo (``services/absenderpruefung.py``). Im selben
+                # Abruf, keine zusaetzliche Runde.
+                b"BODY.PEEK[HEADER.FIELDS (AUTHENTICATION-RESULTS)]",
             ],
         )
         frische = []
@@ -406,6 +411,14 @@ def _aus_fetch(db: Session, konto: Konto, ordner: Ordner, uid: int, felder: dict
             if eintrag.get("adresse"):
                 beteiligte.add(eintrag["adresse"].lower())
 
+    von_adresse = von[0].adresse if von else ""
+    pruefer, dmarc_bestanden = absenderpruefung.deuten(
+        absenderpruefung.oberste_zeile(
+            felder.get(b"BODY[HEADER.FIELDS (AUTHENTICATION-RESULTS)]") or b""
+        ),
+        von_adresse.rpartition("@")[2],
+    )
+
     thread = straenge.schluessel(
         db,
         konto,
@@ -445,6 +458,8 @@ def _aus_fetch(db: Session, konto: Konto, ordner: Ordner, uid: int, felder: dict
             felder.get(b"BODY[HEADER.FIELDS (IMPORTANCE X-PRIORITY)]")
         ),
         anreisser=_anriss_aus_teil(felder.get(b"BODY[1]<0>"), struktur),
+        pruefer=pruefer[:255],
+        dmarc_bestanden=dmarc_bestanden,
     )
 
 

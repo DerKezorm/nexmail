@@ -158,17 +158,25 @@ class Bilder(BaseModel):
 
     immer_laden: bool = False
     absender: list[str] = []
+    #: Logos der Absenderdomains, vom Server geholt (``services/absenderbild``).
+    logos: bool = False
 
 
 def _bilder(db, ich) -> Bilder:
     return Bilder(
         immer_laden=ich.bilder_immer_laden,
+        logos=ich.absenderlogos_laden,
         absender=[f.adresse for f in bildfreigaben.liste(db, ich)],
     )
 
 
 class BilderEingabe(BaseModel):
-    immer_laden: bool = False
+    """⚠️ **Nicht mitgeschickt heisst unveraendert**, wie beim Passwort: Die
+    beiden Schalter liegen nebeneinander, und wer den einen umlegt, soll den
+    anderen nicht still zuruecksetzen."""
+
+    immer_laden: bool | None = None
+    logos: bool | None = None
 
 
 class Absender(BaseModel):
@@ -182,7 +190,10 @@ def bilder_lesen(ich: AngemeldeterBenutzer, db: DbSession) -> Bilder:
 
 @router.put("/bilder", response_model=Bilder)
 def bilder_schreiben(eingabe: BilderEingabe, ich: AngemeldeterBenutzer, db: DbSession) -> Bilder:
-    ich.bilder_immer_laden = eingabe.immer_laden
+    if eingabe.immer_laden is not None:
+        ich.bilder_immer_laden = eingabe.immer_laden
+    if eingabe.logos is not None:
+        ich.absenderlogos_laden = eingabe.logos
     db.commit()
     return _bilder(db, ich)
 

@@ -23,6 +23,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     TypeDecorator,
@@ -166,6 +167,12 @@ class Benutzer(Base):
     #: Hause, wuesste nie, warum ein Absender einmal Bescheid weiss und einmal
     #: nicht. Vorgabe aus — wer sie einschaltet, hat den Satz daneben gelesen.
     bilder_immer_laden: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: „Firmenlogos laden" — das Bildchen der Absenderdomain vor jeder Zeile
+    #: (Diskussion #4). Holt der **Server**, einmal je Domain, siehe
+    #: ``services/absenderbild.py``. Aus demselben Grund im Server wie der
+    #: Schalter darueber, und aus demselben Grund ab Werk aus: nexmail funkt
+    #: niemanden an, den der Mensch davor nicht angefunkt haben will.
+    absenderlogos_laden: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # --- Web Push --------------------------------------------------------- #
     #
@@ -636,6 +643,16 @@ class Nachricht(Base):
     #: mal die andere schreiben. Gespeichert wird das Ergebnis, nicht die
     #: Kopfzeile: Die Liste soll nicht bei jeder Zeile deuten muessen.
     wichtigkeit: Mapped[str] = mapped_column(String(10), default="normal")
+
+    #: Die Absenderpruefung des empfangenden Servers, aus der **obersten**
+    #: ``Authentication-Results``-Zeile (``services/absenderpruefung.py``):
+    #: wer geprueft hat (``authserv-id``) und ob DMARC fuer die Absenderdomain
+    #: bestanden ist. Daran haengt das Markenlogo (BIMI): Eine gefaelschte
+    #: Mail bekommt nie das Logo der Firma, deren Namen sie traegt.
+    #: ⚠️ **Leer bei allem, was vor 0.20.0 abgeglichen wurde.** Diese Mails
+    #: bekommen kein Logo; nachgeholt wird die Zeile nicht.
+    pruefer: Mapped[str] = mapped_column(String(255), default="")
+    dmarc_bestanden: Mapped[bool] = mapped_column(Boolean, default=False)
 
     anreisser: Mapped[str] = mapped_column(Text, default="")
     koerper_text: Mapped[str] = mapped_column(Text, default="")
@@ -1232,6 +1249,28 @@ class OidcAnbieter(Base):
     scopes: Mapped[str] = mapped_column(String(300), default="openid email profile")
     aktiv: Mapped[bool] = mapped_column(Boolean, default=True)
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Absenderlogo(Base):
+    """Das Bildchen einer Absenderdomain, einmal geholt, fuer alle Benutzer.
+
+    ⚠️ **Je Domain, nicht je Benutzer.** Was ``dkb.de`` als Symbol zeigt, ist
+    fuer jeden dasselbe, und ein zweiter Abruf verriete der Domain nur ein
+    zweites Mal, dass hier jemand Post von ihr bekommt.
+
+    ⚠️ **Auch „nichts gefunden" steht hier** (``inhalt`` leer). Sonst fragte
+    jede Liste mit derselben Rechnung wieder bei einer Domain an, die kein
+    Symbol hat, und das waeren bei 60 Zeilen 60 vergebliche Abrufe je Blick.
+
+    Ein Zwischenspeicher, kein Bestand: Die schlanke Sicherung laesst ihn weg.
+    """
+
+    __tablename__ = "absenderlogo"
+
+    domain: Mapped[str] = mapped_column(String(253), primary_key=True)
+    inhalt: Mapped[bytes | None] = mapped_column(LargeBinary, default=None)
+    typ: Mapped[str] = mapped_column(String(40), default="")
+    geholt_am: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
 class Bildfreigabe(Base):

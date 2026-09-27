@@ -32,6 +32,7 @@ from .middleware import (
     VorgangMiddleware,
 )
 from .routers import (
+    absenderbild as absenderbild_router,
     abwesenheit as abwesenheit_router,
     api_v1 as api_v1_router,
     apischluessel as apischluessel_router,
@@ -430,6 +431,7 @@ app.include_router(konten.router, dependencies=NUR_ANGEMELDET)
 app.include_router(kontakte.router, dependencies=NUR_ANGEMELDET)
 app.include_router(adressbuecher_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(nachrichten.router, dependencies=NUR_ANGEMELDET)
+app.include_router(absenderbild_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(regeln.router, dependencies=NUR_ANGEMELDET)
 app.include_router(schlagworte_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(protokoll_router.router, dependencies=NUR_ANGEMELDET)

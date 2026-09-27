@@ -30,6 +30,7 @@ import { Schlagwortmarke } from './Schlagwortmarke'
 import type { WischAktion } from '../lib/wischen'
 import { wischSchwelle } from '../lib/wischen'
 import type { Konto, Nachricht, Postfachfarbe, Schlagwort } from '../daten/typen'
+import { Absenderbild } from './Absenderbild'
 import { EmptyState, Select } from '../ds'
 import { Check, Inbox } from 'lucide-react'
 import { LANGDRUCK_MS, zuWeitGewandert } from '../lib/auswahl'
@@ -104,6 +105,9 @@ interface Props {
    *  Lesebereich ausgeblendet ist — dann markiert ein Klick nur. Mit
    *  Lesebereich öffnet schon der Klick, und ein Doppelklick tut nichts. */
   aufOeffnen?: (id: string) => void
+  /** Die Bildadresse je Absender (Diskussion #4). Fehlt sie, steht kein
+   *  Kreis vor der Zeile — so ist es unter Darstellung abgeschaltet. */
+  bildQuelle?: (n: Nachricht) => string
 }
 
 export function Nachrichtenliste({
@@ -120,6 +124,7 @@ export function Nachrichtenliste({
   anreisserZeigen = true,
   filter,
   aufFilter,
+  bildQuelle,
   schlagworte = [],
   schlagwortFilter = '',
   aufSchlagwortFilter,
@@ -361,6 +366,7 @@ export function Nachrichtenliste({
                         aufZiehen={aufZiehen}
                         kompakt={kompakt}
                         anreisserZeigen={anreisserZeigen}
+                        bildQuelle={bildQuelle}
                         sprache={i18n.language}
                         keinBetreff={t('liste.kein_betreff')}
                         wichtigHoch={t('liste.wichtig_hoch')}
@@ -542,6 +548,7 @@ interface ZeileProps {
   aufZiehen?: (n: Nachricht) => string[]
   kompakt?: boolean
   anreisserZeigen?: boolean
+  bildQuelle?: (n: Nachricht) => string
   sprache: string
   keinBetreff: string
   /** Vorlesbarer Name des Ausrufezeichens bei hoher Wichtigkeit. */
@@ -597,6 +604,7 @@ function Zeile({
   aufZiehen,
   kompakt = false,
   anreisserZeigen = true,
+  bildQuelle,
   sprache,
   keinBetreff,
   wichtigHoch,
@@ -888,6 +896,14 @@ function Zeile({
           <span aria-hidden className={`size-2 rounded-full ${PUNKT_KLASSE[farbe]}`} />
         )}
       </div>
+
+      {/* Das Bild des Absenders (Diskussion #4). ⚠️ **Nicht kompakt und nicht
+          im Auswahlmodus**, wie in Outlook und Gmail: Kompakt ist für mehr
+          Zeilen auf einmal da, und im Auswahlmodus nimmt der Kreis links den
+          Platz ein. Eine Zeile mit zwei Kreisen liest man falsch. */}
+      {bildQuelle && !kompakt && !auswahlmodus && (
+        <Absenderbild person={n.von} quelle={bildQuelle(n)} groesse="klein" />
+      )}
 
       {/* ⚠️ **Ein eigener Knopf, kein Klick auf die Zeile.** Die Zeile öffnet
           die Mail — das darf das Aufklappen nicht überschreiben, sonst kommt

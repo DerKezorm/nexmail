@@ -54,6 +54,7 @@ if (existsSync(zugang)) {
  * hier gegen die `test.skip`-Zeilen in den Dateien.
  */
 const NUR_BREIT = [
+  'absenderbild.spec.ts',
   'adressfeld.spec.ts',
   'danach.spec.ts',
   'durchtragen.spec.ts',
