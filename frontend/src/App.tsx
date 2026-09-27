@@ -130,6 +130,8 @@ import { PUNKT_KLASSE } from './lib/farben'
 import { useGemerkt, useSchmal } from './lib/haken'
 import { lesemodusAus } from './lib/lesemodus'
 import type { Lesemodus } from './lib/lesemodus'
+import { danachAus, danachWaehlen } from './lib/danach'
+import type { Danach } from './lib/danach'
 import { ZUWEISBARE_ROLLEN } from './lib/ordnerrollen'
 import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from './lib/wischen'
 import type { WischAktion } from './lib/wischen'
@@ -354,6 +356,10 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const [ordnerOffen, setOrdnerOffen] = useGemerkt('nexmail.ordnerOffen', true)
   const [lesemodusGemerkt, setLesemodus] = useGemerkt<Lesemodus>('nexmail.lesemodus', 'rechts')
   const lesemodus = lesemodusAus(lesemodusGemerkt)
+  /* Was nach Löschen, Archivieren, Verschieben aufgeht. Eingestellt unter
+     Darstellung, ab Werk nichts — siehe `lib/danach.ts`. */
+  const [danachGemerkt] = useGemerkt<Danach>('nexmail.danach', 'nichts')
+  const danach = danachAus(danachGemerkt)
   const [ordnerBreite, setOrdnerBreite] = useGemerkt('nexmail.ordnerBreite', 232)
   const [listeBreite, setListeBreite] = useGemerkt('nexmail.listeBreite', 380)
   const [schubladeOffen, setSchubladeOffen] = useState(false)
@@ -467,10 +473,13 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     ? schlagwortFilter
     : ''
 
-  const listeLaden = useCallback(async () => {
+  /* `grenze` setzt nur eine Handlung: Wer bis Zeile 100 nachgeladen hat und
+     dort löscht, soll nicht auf 60 Zeilen zurückfallen. Sonst fehlte auch
+     die nächste Mail, die danach aufgehen soll (siehe `lib/danach.ts`). */
+  const listeLaden = useCallback(async (grenze = SEITE): Promise<Nachricht[]> => {
     // Der Ausgang ist keine Nachrichtenliste - er kommt aus der eigenen
     // Warteschlange, nicht aus einem Ordner. Hier gibt es nichts zu holen.
-    if (ziel.typ === 'ausgang') return
+    if (ziel.typ === 'ausgang') return []
     const id = ziel.typ === 'ordner' ? Number(ziel.id) : null
     // ⚠️ Nur die Sammelansichten werden eingeschränkt. Wer einen bestimmten
     // Ordner anklickt, hat sein Postfach schon gewählt — dort noch einmal zu
@@ -482,7 +491,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       ziel.typ === 'markiert',
       nurDiese,
       '',
-      SEITE,
+      grenze,
       // ⚠️ Nicht bei „Markierte": Dort ist die Auswahl die Aussage — ein
       // Gespräch daraus zu machen versteckte gerade die markierte Mail.
       gruppiert && ziel.typ !== 'markiert',
@@ -492,7 +501,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     // ⚠️ **Am Ende ist man, wenn die Seite nicht voll war** — nicht erst, wenn
     // eine leere zurückkommt. Sonst braucht jedes Ende eine überflüssige
     // Anfrage, und der Fuß behauptet so lange, es gebe noch etwas.
-    setAmEnde(seite.length < SEITE)
+    setAmEnde(seite.length < grenze)
+    return seite
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ziel, listenfilter, gruppiert, wirksamesSchlagwort, gefilterteKontoIds.join(',')])
 
@@ -556,6 +566,43 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     // von selbst wieder auf.
     if (geoeffnetId !== null && geoeffnetId !== gewaehlt) setGeoeffnetId(null)
   }, [gewaehlt, geoeffnetId])
+
+  /* Spiegel der Auswahl für die Handlungen. Ein Menü, das vor dem Klick
+     gebaut wurde, trägt sonst die Auswahl von damals mit. */
+  const auswahlRef = useRef({ gewaehlt, geoeffnetId })
+  useEffect(() => {
+    auswahlRef.current = { gewaehlt, geoeffnetId }
+  }, [gewaehlt, geoeffnetId])
+
+  /** Vor einer Handlung, die Mails aus der Liste nimmt: was dastand und
+   *  was offen war. */
+  const vorDerHandlung = useCallback(() => {
+    const { gewaehlt: offen, geoeffnetId: aufgemacht } = auswahlRef.current
+    return {
+      alt: nachrichtenRef.current.map((n) => n.id),
+      offen,
+      aufgemacht: offen !== null && aufgemacht === offen,
+    }
+  }, [])
+
+  /** Danach: Liste neu holen und wählen, was die Einstellung sagt. Ohne
+   *  Lesebereich geht die neue Mail nur auf, wenn die alte offen war; eine
+   *  bloß markierte wird von der nächsten Markierung abgelöst. */
+  const nachDerHandlung = useCallback(
+    async (vorher: ReturnType<typeof vorDerHandlung>) => {
+      // 500 ist die Grenze des Servers je Abruf.
+      const neu = await listeLaden(Math.min(Math.max(SEITE, vorher.alt.length), 500))
+      const ziel = danachWaehlen(
+        danach,
+        vorher.alt,
+        neu.map((n) => n.id),
+        vorher.offen,
+      )
+      setGewaehlt(ziel)
+      if (ziel !== null && vorher.aufgemacht) setGeoeffnetId(ziel)
+    },
+    [danach, listeLaden],
+  )
 
   const mitLesebereich = schmal || lesemodus === 'rechts'
   /* ⚠️ **Geladen wird nur, was man sieht.** Eine bloß markierte Mail zu holen
@@ -864,6 +911,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
    *  Verschieben, entsteht keiner, und der Grund steht hier. */
   const wiedervorlegenAusfuehren = useCallback(
     async (ids: string[], wann: Date) => {
+      const vorher = vorDerHandlung()
       try {
         for (const id of ids) await wiedervorlegen(id, wann.toISOString())
       } catch (f) {
@@ -884,10 +932,10 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       setGewaehlt(null)
       setMehrfach([])
       await stammLaden()
-      await listeLaden()
+      await nachDerHandlung(vorher)
       await wiedervorlagenNachsehen()
     },
-    [stammLaden, listeLaden, wiedervorlagenNachsehen, t],
+    [vorDerHandlung, stammLaden, nachDerHandlung, wiedervorlagenNachsehen, t],
   )
 
   /** „Eigener Zeitpunkt …": datetime-local über die Nachfrage — der Browser
@@ -1056,6 +1104,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       tun: () => Promise<{ bewegt: number; rueckweg: Rueckweg | null }>,
       text: string,
     ) => {
+      const vorher = vorDerHandlung()
       try {
         const ergebnis = await tun()
         merkeRueckweg(text, ergebnis.rueckweg)
@@ -1070,12 +1119,14 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           servermeldung(f, t('anmeldung.fehler_allgemein')),
         )
       }
+      // ⚠️ **Erst leer, dann die nächste.** Stünde die alte Mail bis zum
+      // Neuladen da, träfe ein zweites Entf dieselbe noch einmal.
       setGewaehlt(null)
       setMehrfach([])
-      await listeLaden()
+      await nachDerHandlung(vorher)
       await stammLaden()
     },
-    [merkeRueckweg, listeLaden, stammLaden, t],
+    [vorDerHandlung, merkeRueckweg, nachDerHandlung, stammLaden, t],
   )
 
   /* Was ein Wisch tut — dieselben Wege wie die Tasten Entf und E bzw. das

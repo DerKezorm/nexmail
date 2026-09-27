@@ -55,6 +55,7 @@ if (existsSync(zugang)) {
  */
 const NUR_BREIT = [
   'adressfeld.spec.ts',
+  'danach.spec.ts',
   'durchtragen.spec.ts',
   'eigenesnetz.spec.ts',
   'einstellungen.spec.ts',

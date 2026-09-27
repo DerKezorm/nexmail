@@ -51,6 +51,9 @@ export async function anmelden(seite: Page) {
       // Ohne Lesebereich öffnet ein Klick nichts mehr — jeder Test, der eine
       // Zeile anklickt und die Mail erwartet, liefe ins Leere.
       'nexmail.lesemodus',
+      // Sonst ginge nach jedem Archivieren eine andere Mail auf, und ein
+      // Test, der danach einen leeren Lesebereich erwartet, fände keinen.
+      'nexmail.danach',
     ]) {
       localStorage.removeItem(k)
     }

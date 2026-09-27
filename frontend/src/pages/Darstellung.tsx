@@ -20,6 +20,8 @@ import { api } from '../api/client'
 import { useGemerkt } from '../lib/haken'
 import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from '../lib/wischen'
 import type { WischAktion } from '../lib/wischen'
+import { DANACH_REIHE, danachAus } from '../lib/danach'
+import type { Danach } from '../lib/danach'
 import { servermeldung } from '../lib/servermeldung'
 
 export type Dichte = 'kompakt' | 'normal'
@@ -64,6 +66,11 @@ export function Darstellung() {
      soll sich hier zu Hause fühlen" — und diese Einstellung ist genau die,
      die dort jeder kennt, der sie je gesucht hat. */
   const [gelesenNach, setGelesenNach] = useGemerkt<number>('nexmail.gelesen_nach', 2)
+  /* Was nach Löschen, Archivieren oder Verschieben aufgeht. Wieder Outlooks
+     Einstellung, dazu „die neueste" (Issue #6). ⚠️ Derselbe Schlüssel wie in
+     `App`, der ab dem nächsten Handgriff gilt, ohne F5. */
+  const [danachGemerkt, setDanach] = useGemerkt<Danach>('nexmail.danach', 'nichts')
+  const danach = danachAus(danachGemerkt)
   /* „Senden rückholen" — wie viele Sekunden eine gesendete Nachricht noch
      zurückzuholen ist. Der Wert wird beim Senden als Aufschub mitgeschickt
      (`senden_ab = jetzt + Aufschub`); der Server hält sie so lange im Ausgang.
@@ -179,6 +186,19 @@ export function Darstellung() {
         <option value="5">{t('darstellung.gelesen_sekunden', { n: 5 })}</option>
         <option value="10">{t('darstellung.gelesen_sekunden', { n: 10 })}</option>
         <option value="-1">{t('darstellung.gelesen_hand')}</option>
+      </Select>
+
+      <Select
+        label={t('darstellung.danach')}
+        hint={t('darstellung.danach_hinweis')}
+        value={danach}
+        onChange={(e) => setDanach(e.target.value as Danach)}
+      >
+        {DANACH_REIHE.map((d) => (
+          <option key={d} value={d}>
+            {t(`darstellung.danach_${d}`)}
+          </option>
+        ))}
       </Select>
 
       <Select
