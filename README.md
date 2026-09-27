@@ -26,14 +26,14 @@ Roundcube is webmail bolted onto one mailbox. Thunderbird does not run in a
 browser. Commercial clients want to pull your mail onto their servers. nexmail
 is the third option — and if you can use Outlook, you should feel at home.
 
-> **Version 0.16.0.** It reads, writes, searches, sorts, labels, sends,
+> **Version 0.19.0.** It reads, writes, searches, sorts, labels, sends,
 > schedules, prints, answers for you while you are away, keeps a calendar and
 > your address books in sync with iCloud or Google, invites people to your own
 > appointments, rephrases a draft with an AI service of your choice, backs
 > itself up and reaches you when the browser is closed, on the desktop and on
 > the phone. It is used daily by its author against real iCloud and IMAP
-> mailboxes, and more than 1,700 automated tests watch over it, including more
-> than 150 that drive a real browser against a real mailbox. It is still young: try
+> mailboxes, and more than 1,800 automated tests watch over it, including more
+> than 180 that drive a real browser against a real mailbox. It is still young: try
 > it on a mailbox you can afford to have trouble with before you point it at
 > the one that matters.
 
@@ -55,7 +55,9 @@ created or removed elsewhere show up with the next sync.
 three layouts: the reading pane to the right of the list, or no reading pane at
 all, with a message opening either in place of the list or in a window above
 it. Without the pane the list gets the full width, a click only selects, and a
-double-click or `Enter` opens.
+double-click or `Enter` opens. What opens after you delete, archive or move
+the open message is up to you, as in Outlook: nothing, the next message, the
+previous one or the newest (Settings, Appearance).
 
 **On the phone.** A layout of its own rather than a squeezed desktop: list,
 then message, with the folders in a drawer. Swipe a row to archive or delete,
