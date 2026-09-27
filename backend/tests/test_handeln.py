@@ -203,6 +203,33 @@ def test_zurueck_holt_die_mail_wieder(db, welt):
     assert len(server.ordner["INBOX"]["nachrichten"]) == 3
 
 
+def test_zurueck_zieht_beide_ordner_nach(db, welt):
+    """⚠️ **Aus dem Betrieb, 27.09.2026.** ``zurueck`` holte die Mail auf dem
+    Server zurück und fasste die eigene Datenbank nicht an. In der Liste fehlte
+    sie danach bis zum nächsten Takt, und im Archiv stand ein Geist: Nach zwölf
+    Hin-und-zurück zeigte der Posteingang 3 statt 6. Dieselbe Regel wie beim
+    Verschieben: Fertig ist eine Handlung erst, wenn die Datenbank es weiß.
+    """
+    server, konto, posteingang = welt
+    archiv = next(o for o in konto.ordner if o.rolle == "archiv")
+
+    weg = handeln.verschieben(db, [_mail(db, "Zweite")], archiv)
+    assert [n.betreff for n in db.query(Nachricht).filter_by(ordner_id=archiv.id)] == ["Zweite"]
+
+    handeln.zurueck(db, weg)
+    db.expire_all()
+
+    im_posteingang = sorted(n.betreff for n in db.query(Nachricht).filter_by(ordner_id=posteingang.id))
+    assert im_posteingang == ["Dritte", "Erste", "Zweite"], (
+        "Die zurückgeholte Mail fehlt im Posteingang, bis der Takt kommt."
+    )
+    im_archiv = [n.betreff for n in db.query(Nachricht).filter_by(ordner_id=archiv.id)]
+    assert im_archiv == [], "Im Archiv steht die zurückgeholte Mail noch als Geist."
+    # Die Zahlen am Ordnerbaum kommen aus denselben Zeilen.
+    assert db.get(Ordner, posteingang.id).anzahl == 3
+    assert db.get(Ordner, archiv.id).anzahl == 0
+
+
 def test_verschieben_zwischen_postfaechern_geht_einen_anderen_weg(db, welt, klient):
     """⚠️ **Diese Regel wurde am 02.09.2026 aufgehoben, nicht vergessen.**
 

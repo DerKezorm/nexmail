@@ -318,6 +318,13 @@ def zurueck(db: Session, weg: Rueckweg) -> int:
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
     zurueckgeholt = 0
 
+    # Die Pfade kommen aus dem Browser; nachgezogen wird nur, was es in diesem
+    # Postfach wirklich gibt.
+    betroffen = [
+        o for pfad in (weg.quelle_pfad, weg.ziel_pfad)
+        if (o := next((o for o in konto.ordner if o.pfad == pfad), None)) is not None
+    ]
+
     with abgleich.HALTER.schloss(konto.id):
         klient = imapdienst.fuer_konto(db, konto)
         try:
@@ -328,6 +335,14 @@ def zurueck(db: Session, weg: Rueckweg) -> int:
             if gefunden:
                 _verschieben_auf_dem_server(klient, gefunden, weg.quelle_pfad)
                 zurueckgeholt = len(gefunden)
+
+                # ⚠️ **Beide Ordner nachziehen**, wie beim Verschieben. Bis
+                # zum 27.09.2026 fehlte das: Die Mail war auf dem Server
+                # zurück, in der Liste fehlte sie bis zum nächsten Takt, und
+                # im Archiv stand ein Geist. Der Quellordner holt sie unter
+                # ihrer neuen Nummer, der Zielordner wirft die alte Zeile weg.
+                for ordner in betroffen:
+                    abgleich.ordner_abgleichen(klient, db, konto, ordner)
         finally:
             try:
                 klient.logout()

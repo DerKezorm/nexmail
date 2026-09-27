@@ -1152,8 +1152,13 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     window.clearTimeout(rueckUhr.current)
     try {
       await zurueckholen(weg)
+    } catch (f) {
+      // Nicht schlucken, dieselbe Regel wie in `handeln`: Ein Rückgängig,
+      // das still scheitert, sieht aus wie eines, das nichts tut.
+      setStoerung(servermeldung(f, t('anmeldung.fehler_allgemein')))
     } finally {
-      await listeLaden()
+      // So viele Zeilen wie vorher, wie nach jeder Handlung (lib/danach.ts).
+      await listeLaden(Math.min(Math.max(SEITE, nachrichtenRef.current.length), 500))
       await stammLaden()
     }
   }
