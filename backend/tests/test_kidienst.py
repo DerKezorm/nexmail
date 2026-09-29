@@ -558,6 +558,141 @@ def test_ein_stummer_dienst_wirft_keine_rohe_ausnahme(bereit):
     assert str(f.value) == "ki_nicht_erreichbar"
 
 
+#: Wörtlich, wie ein Dienst am 29.09.2026 für eines seiner neueren Modelle
+#: geantwortet hat.
+TEMPERATUR_ABGELEHNT = {
+    "type": "error",
+    "error": {
+        "type": "invalid_request_error",
+        "message": "`temperature` is deprecated for this model.",
+    },
+}
+
+
+class Waehlerisch(TextDoppelgaenger):
+    """Weist jeden Rumpf mit ``temperature`` ab, wie ein neueres Modell."""
+
+    absage = TEMPERATUR_ABGELEHNT
+
+    def transport(self):
+        weiter = super().transport()
+
+        def antworten(anfrage: httpx.Request) -> httpx.Response:
+            if "temperature" in json.loads(anfrage.content or b"{}"):
+                self.anfragen.append((str(anfrage.url), {}, json.loads(anfrage.content)))
+                return httpx.Response(400, json=self.absage)
+            return weiter.handle_request(anfrage)
+
+        return httpx.MockTransport(antworten)
+
+
+def test_ein_modell_ohne_temperatur_wird_ein_zweites_mal_gefragt(bereit, db):
+    """⚠️ **Genau einmal, und nur ohne ``temperature``.** Sonst scheitert jeder
+    Handgriff an einem Modell, das die Temperatur selbst wählt."""
+    server = Waehlerisch(inhalt="<p>Korrigiert.</p>")
+    raus = dienst.text_bearbeiten(
+        bereit, "<p>Hallo, hier steht Text</p>", auftrag="rechtschreibung",
+        transport=server.transport(), db=db,
+    )
+
+    assert raus == "<p>Korrigiert.</p>"
+    erste, zweite = (rumpf for _, _, rumpf in server.anfragen)
+    assert "temperature" in erste and "temperature" not in zweite
+    assert {k: v for k, v in erste.items() if k != "temperature"} == zweite
+    # In der Liste steht der Rumpf, der die Antwort gebracht hat.
+    assert "temperature" not in dienst.vorgaenge_lesen(db, bereit)[0]["rumpf"]
+
+    # Groß oder klein geschrieben, der Satz meint dasselbe.
+    server = Waehlerisch()
+    server.absage = {"error": {"message": "Temperature is not supported."}}
+    assert _mit(bereit, server) == "<p>Sauber.</p>"
+    assert len(server.anfragen) == 2
+
+
+def test_ohne_temperatur_wird_nicht_endlos_nachgefragt(bereit):
+    """Weist der Dienst auch den zweiten Rumpf mit demselben Satz ab, ist
+    Schluss: zwei Anfragen, dann der Fehler mit seinem Satz."""
+    anfragen = []
+
+    def stur(anfrage):
+        anfragen.append(json.loads(anfrage.content))
+        return httpx.Response(400, json=TEMPERATUR_ABGELEHNT)
+
+    with pytest.raises(dienst.KiFehler) as f:
+        _mit(bereit, transport=httpx.MockTransport(stur))
+    assert len(anfragen) == 2
+    assert f.value.kennung == "ki_dienst_sagt"
+
+
+def test_eine_andere_400_geht_nicht_noch_einmal_hinaus(bereit):
+    """Nur der Satz über die Temperatur rechtfertigt einen zweiten Versuch;
+    jeder zweite Versuch kostet den Benutzer Geld."""
+    for koerper in (
+        {"error": {"message": "max_tokens: 8000 > 4096"}},
+        {"error": {"message": "prompt is too long"}},
+        None,
+    ):
+        server = TextDoppelgaenger(code=400, roh=koerper)
+        with pytest.raises(dienst.KiFehler):
+            _mit(bereit, server)
+        assert len(server.anfragen) == 1, koerper
+
+
+def test_der_satz_des_dienstes_kommt_mit_dem_fehler_zurueck(
+    bereit, klient, monkeypatch, caplog
+):
+    """⚠️ **Ein nacktes „400" sagt nicht, wo man suchen soll.** Der Satz des
+    Dienstes geht in die Antwort, auf einer Zeile und gekürzt, aber nicht ins
+    Protokoll."""
+    satz = "temperature:\n  not\x00 allowed " + "x" * 400
+    server = TextDoppelgaenger(code=400, roh={"error": {"message": satz}})
+    echt = dienst.text_bearbeiten
+    monkeypatch.setattr(
+        dienst, "text_bearbeiten",
+        lambda *a, **k: echt(*a, **{**k, "transport": server.transport()}),
+    )
+
+    with caplog.at_level("DEBUG"):
+        antwort = klient.post(
+            "/api/ki/text",
+            json={"text": "<p>Hallo, hier steht Text</p>", "auftrag": "rechtschreibung"},
+        )
+
+    daten = antwort.json()
+    assert daten["detail"] == "ki_dienst_sagt"
+    assert daten["werte"]["code"] == 400
+    gesagt = daten["werte"]["gesagt"]
+    assert gesagt.startswith("temperature: not allowed xxx")
+    assert len(gesagt) == dienst.MAX_GESAGT
+    # Bodenschwelle: Das Protokoll kommt hier an, sonst prüfte die Zeile danach nichts.
+    assert "answered 400" in caplog.text
+    assert "not allowed" not in caplog.text
+    # Und die Liste „Was hinausging" bekommt dieselben Werte.
+    zeile = klient.get("/api/ki/vorgaenge").json()[0]
+    assert (zeile["fehler"], zeile["fehler_werte"]) == ("ki_dienst_sagt", daten["werte"])
+
+
+def test_ohne_lesbaren_satz_bleibt_es_bei_der_zahl(bereit):
+    """Eine HTML-Seite vom Proxy oder ein leerer Rumpf ist kein Satz des
+    Dienstes; dann steht nur der Status da, nicht Rohtext."""
+    for koerper in (None, {"fehler": "kaputt"}, {"error": {"message": 42}}, ["x"]):
+        server = TextDoppelgaenger(code=500, roh=koerper)
+        with pytest.raises(dienst.KiFehler) as f:
+            _mit(bereit, server)
+        assert (f.value.kennung, f.value.werte) == (
+            "ki_dienst_antwortet_nicht", {"code": 500}
+        ), koerper
+    html = httpx.MockTransport(lambda a: httpx.Response(502, text="<html>busy</html>"))
+    with pytest.raises(dienst.KiFehler) as f:
+        _mit(bereit, transport=html)
+    assert f.value.kennung == "ki_dienst_antwortet_nicht"
+    # Ollama schreibt den Satz direkt unter ``error``; auch der zählt.
+    server = TextDoppelgaenger(code=500, roh={"error": "model 'm-1' not found"})
+    with pytest.raises(dienst.KiFehler) as f:
+        _mit(bereit, server)
+    assert f.value.werte == {"code": 500, "gesagt": "model 'm-1' not found"}
+
+
 def _mit(person, server=None, *, transport=None):
     """Ein Lauf mit vorbereitetem Benutzer — spart in jedem Test vier Zeilen.
 
@@ -650,6 +785,70 @@ def test_auch_ein_fehlschlag_steht_in_der_liste(bereit, db):
     liste = dienst.vorgaenge_lesen(db, bereit)
     assert len(liste) == 1
     assert liste[0]["fehler"] == "ki_schluessel_abgewiesen"
+
+
+def test_jeder_fehlschlag_nach_dem_senden_steht_in_der_liste(bereit, db):
+    """⚠️ **Auch eine unlesbare oder leere Antwort.** Der Text war draußen;
+    bis 29.09.2026 fehlten genau diese beiden Ausgänge in der Liste."""
+    faelle = (
+        (TextDoppelgaenger(roh={"nichts": "davon"}), "ki_antwort_unlesbar"),
+        (TextDoppelgaenger(inhalt="   "), "ki_antwort_leer"),
+        (TextDoppelgaenger(inhalt="<script>alert(1)</script>"), "ki_antwort_leer"),
+        (TextDoppelgaenger(code=500), "ki_dienst_antwortet_nicht"),
+    )
+    for server, kennung in faelle:
+        with pytest.raises(dienst.KiFehler):
+            dienst.text_bearbeiten(
+                bereit, "<p>x y z</p>", auftrag="rechtschreibung",
+                transport=server.transport(), db=db,
+            )
+        assert dienst.vorgaenge_lesen(db, bereit)[0]["fehler"] == kennung
+    assert len(dienst.vorgaenge_lesen(db, bereit)) == len(faelle)
+
+
+def test_die_werte_des_fehlers_stehen_verschluesselt_in_der_liste(bereit, db):
+    """⚠️ **Ohne Werte zeigte die Liste „mit {{code}} geantwortet".** Sie
+    liegen verschlüsselt: ``gesagt`` ist fremder Text."""
+    satz = "prompt mentions Probewort7"
+    server = TextDoppelgaenger(code=400, roh={"error": {"message": satz}})
+    with pytest.raises(dienst.KiFehler):
+        dienst.text_bearbeiten(
+            bereit, "<p>x y z</p>", auftrag="rechtschreibung",
+            transport=server.transport(), db=db,
+        )
+
+    def platzen(anfrage):
+        raise httpx.ReadTimeout("zu langsam")
+
+    with pytest.raises(dienst.KiFehler):
+        dienst.text_bearbeiten(
+            bereit, "<p>x y z</p>", auftrag="rechtschreibung",
+            transport=httpx.MockTransport(platzen), db=db,
+        )
+
+    zeit, sagt = dienst.vorgaenge_lesen(db, bereit)
+    assert (zeit["fehler"], zeit["fehler_werte"]) == (
+        "ki_zeitueberschreitung", {"sekunden": int(dienst.ZEITGRENZE_TEXT)}
+    )
+    assert (sagt["fehler"], sagt["fehler_werte"]) == (
+        "ki_dienst_sagt", {"code": 400, "gesagt": satz}
+    )
+    roh = [z.fehler_werte for z in db.query(KiVorgang).all()]
+    assert all(roh) and not any("Probewort7" in z or "sekunden" in z for z in roh)
+
+
+def test_ein_erfolg_und_eine_unlesbare_zeile_haben_leere_werte(bereit, db):
+    """Ohne Fehler keine Werte; und eine Zeile, deren Werte sich nicht mehr
+    entschlüsseln lassen, kostet nicht die Liste."""
+    dienst.text_bearbeiten(
+        bereit, "<p>x y z</p>", auftrag="rechtschreibung",
+        transport=TextDoppelgaenger().transport(), db=db,
+    )
+    assert dienst.vorgaenge_lesen(db, bereit)[0]["fehler_werte"] == {}
+    zeile = db.query(KiVorgang).one()
+    zeile.fehler, zeile.fehler_werte = "ki_dienst_sagt", "kaputt"
+    db.commit()
+    assert dienst.vorgaenge_lesen(db, bereit)[0]["fehler_werte"] == {}
 
 
 def test_was_gar_nicht_hinausging_steht_nicht_darin(bereit, db):

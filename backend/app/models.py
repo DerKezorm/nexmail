@@ -1666,6 +1666,11 @@ class KiVorgang(Base):
     #: hinaus; eine Liste, die nur die gelungenen zeigt, beantwortet die Frage
     #: „was hat mein Rechner verschickt" falsch.
     fehler: Mapped[str] = mapped_column(String(60), default="")
+    #: Die Werte zur Kennung (``code``, ``gesagt``, ``sekunden``) als JSON,
+    #: verschlüsselt wie der Rumpf. ⚠️ **Ohne sie zeigte die Liste den Satz mit
+    #: rohem Platzhalter** („mit {{code}} geantwortet"). Verschlüsselt, weil
+    #: ``gesagt`` fremder Text ist und Teile des Entwurfs wiederholen kann.
+    fehler_werte: Mapped[str] = mapped_column(Text, default="")
 
 
 class PushAnmeldung(Base):

@@ -123,7 +123,42 @@ def _antwort_deuten(antwort: httpx.Response) -> None:
     if antwort.status_code == 429:
         raise KiFehler("ki_zu_viele_anfragen")
     logger.info("The AI service answered %s.", antwort.status_code)
+    # ⚠️ **Der Satz des Dienstes geht mit, sonst bleibt nur die Zahl.** Ein
+    # nacktes „400" sagt nicht, wo man suchen soll; „`temperature` is
+    # deprecated for this model" sagt es. Ins Protokoll kommt er nicht, nur in
+    # die Antwort an den Menschen, der die Anfrage geschickt hat.
+    gesagt = _gesagt(antwort)
+    if gesagt:
+        raise KiFehler("ki_dienst_sagt", code=antwort.status_code, gesagt=gesagt)
     raise KiFehler("ki_dienst_antwortet_nicht", code=antwort.status_code)
+
+
+#: Wie viel vom Satz des Dienstes zurückgeht.
+MAX_GESAGT = 300
+
+
+def _gesagt(antwort: httpx.Response) -> str:
+    """Was der Dienst selbst zu seinem Fehler sagt, auf einer Zeile.
+
+    ⚠️ **Fast alle schreiben ``{"error": {"message": …}}``**, auch hinter
+    einer OpenAI-förmigen Schicht. Was keine solche Form hat (eine
+    HTML-Seite vom Proxy, ein leerer Rumpf), gibt nichts zurück statt Rohtext.
+
+    ⚠️ **Fremder Text.** Steuerzeichen und Zeilenumbrüche fallen, und nach
+    ``MAX_GESAGT`` Zeichen ist Schluss: Ein Dienst soll keinen Roman in die
+    Fehlerzeile schreiben können.
+    """
+    try:
+        daten = antwort.json()
+    except ValueError:
+        return ""
+    gefunden = daten.get("error") if isinstance(daten, dict) else None
+    if isinstance(gefunden, dict):
+        gefunden = gefunden.get("message")
+    if not isinstance(gefunden, str):
+        return ""
+    zeile = "".join(z if z.isprintable() else " " for z in gefunden)
+    return " ".join(zeile.split())[:MAX_GESAGT]
 
 
 def modelle_holen(
@@ -532,7 +567,7 @@ def text_bearbeiten(
     # aendert daran nichts mehr — deshalb wird der Vorgang von hier an in
     # JEDEM Ausgang gemerkt, auch im Fehlerfall. Eine Liste, die nur die
     # gelungenen zeigt, beantwortet „was hat mein Rechner verschickt" falsch.
-    def merken(rein: int = 0, hinaus: int = 0, fehler: str = "") -> None:
+    def merken(rein: int = 0, hinaus: int = 0, fehler: KiFehler | None = None) -> None:
         if db is not None:
             vorgang_merken(
                 db,
@@ -543,56 +578,20 @@ def text_bearbeiten(
                 rumpf=rumpf,
                 rein=rein,
                 raus=hinaus,
-                fehler=fehler,
+                fehler=fehler.kennung if fehler else "",
+                werte=fehler.werte if fehler else None,
             )
 
+    # ⚠️ **Jeder Fehler ab hier wird gemerkt, samt seinen Werten.** Vorher
+    # fehlten zwei Ausgänge ganz (unlesbare und leere Antwort, der Text war
+    # trotzdem draußen), und die Liste zeigte „mit {{code}} geantwortet“, weil
+    # nur die Kennung gespeichert wurde. Ein Fang um alles statt eines
+    # ``merken`` je Ausgang: Einen vergessenen Ausgang gibt es dann nicht.
     try:
-        with httpx.Client(
-            timeout=ZEITGRENZE_TEXT, follow_redirects=True, transport=transport
-        ) as klient:
-            antwort = klient.post(
-                ziel_adresse, headers=_kopfzeilen(schluessel), json=rumpf
-            )
-    # ⚠️ **Nur ReadTimeout, nicht TimeoutException.** Der Unterschied ist der
-    # ganze Punkt: Bei ConnectTimeout kam die Verbindung nie zustande, da ist
-    # "nicht erreichbar" richtig und der Blick gehört auf Adresse und Port. Bei
-    # ReadTimeout steht die Verbindung, der Dienst schreibt, nur zu langsam.
-    # Wer beides zusammenwirft, schickt den Benutzer im zweiten Fall zur
-    # Adresse, wo nichts zu finden ist. Und vor HTTPError, denn sie erbt davon.
-    except httpx.ReadTimeout as fehler:
-        logger.info("The AI service did not answer in time: %s", type(fehler).__name__)
-        merken(fehler="ki_zeitueberschreitung")
-        raise KiFehler(
-            "ki_zeitueberschreitung", sekunden=int(ZEITGRENZE_TEXT)
-        ) from fehler
-    except httpx.HTTPError as fehler:
-        logger.info("The AI service was unreachable: %s", type(fehler).__name__)
-        merken(fehler="ki_nicht_erreichbar")
-        raise KiFehler("ki_nicht_erreichbar") from fehler
-
-    try:
-        _antwort_deuten(antwort)
+        sauber, daten = _schicken(ziel_adresse, schluessel, rumpf, transport)
     except KiFehler as fehler:
-        merken(fehler=str(fehler))
+        merken(fehler=fehler)
         raise
-
-    try:
-        daten = antwort.json()
-        roh = daten["choices"][0]["message"]["content"]
-    except (ValueError, KeyError, IndexError, TypeError) as fehler:
-        raise KiFehler("ki_antwort_unlesbar") from fehler
-
-    # ⚠️ **Manche Dienste liefern den Inhalt als Liste von Blöcken.** Wer nur
-    # die Zeichenkette erwartet, schreibt dort deren Python-Darstellung in den
-    # Entwurf.
-    if isinstance(roh, list):
-        roh = "".join(teil.get("text", "") for teil in roh if isinstance(teil, dict))
-    if not isinstance(roh, str) or not roh.strip():
-        raise KiFehler("ki_antwort_leer")
-
-    sauber = bereinigen.saeubern(_zaun_abtragen(roh.strip()))
-    if not sauber.strip():
-        raise KiFehler("ki_antwort_leer")
 
     # ⚠️ **Der Verbrauch gehört ins Protokoll.** Wer seinen eigenen Schlüssel
     # bezahlt, will sehen können, was ihn ein Handgriff kostet — und ohne diese
@@ -613,6 +612,70 @@ def text_bearbeiten(
         (verbrauch or {}).get("completion_tokens", "?"),
     )
     return sauber
+
+
+def _schicken(
+    ziel_adresse: str, schluessel: str, rumpf: dict, transport: object | None
+) -> tuple[str, dict]:
+    """Den Rumpf hinausschicken und die gesäuberte Antwort zurückgeben.
+
+    Jeder Fehlschlag ist eine ``KiFehler``; ``text_bearbeiten`` merkt ihn.
+    ⚠️ **``rumpf`` kann sich dabei ändern** (``temperature`` fällt beim
+    zweiten Versuch), und gemerkt wird danach genau dieser Rumpf.
+    """
+    try:
+        with httpx.Client(
+            timeout=ZEITGRENZE_TEXT, follow_redirects=True, transport=transport
+        ) as klient:
+            antwort = klient.post(
+                ziel_adresse, headers=_kopfzeilen(schluessel), json=rumpf
+            )
+            # ⚠️ **Neuere Modelle wählen die Temperatur selbst** und weisen
+            # eine Anfrage ab, die sie setzt („`temperature` is deprecated for
+            # this model", 400, am 29.09.2026 gemessen). Dann genau einmal
+            # ohne; ältere Modelle und andere Dienste nehmen sie weiter. Jede
+            # andere 400 geht nicht noch einmal hinaus. In der Liste steht
+            # danach der zweite Rumpf, denn der hat die Antwort gebracht.
+            if antwort.status_code == 400 and "temperature" in _gesagt(antwort).lower():
+                del rumpf["temperature"]
+                antwort = klient.post(
+                    ziel_adresse, headers=_kopfzeilen(schluessel), json=rumpf
+                )
+    # ⚠️ **Nur ReadTimeout, nicht TimeoutException.** Der Unterschied ist der
+    # ganze Punkt: Bei ConnectTimeout kam die Verbindung nie zustande, da ist
+    # "nicht erreichbar" richtig und der Blick gehört auf Adresse und Port. Bei
+    # ReadTimeout steht die Verbindung, der Dienst schreibt, nur zu langsam.
+    # Wer beides zusammenwirft, schickt den Benutzer im zweiten Fall zur
+    # Adresse, wo nichts zu finden ist. Und vor HTTPError, denn sie erbt davon.
+    except httpx.ReadTimeout as fehler:
+        logger.info("The AI service did not answer in time: %s", type(fehler).__name__)
+        raise KiFehler(
+            "ki_zeitueberschreitung", sekunden=int(ZEITGRENZE_TEXT)
+        ) from fehler
+    except httpx.HTTPError as fehler:
+        logger.info("The AI service was unreachable: %s", type(fehler).__name__)
+        raise KiFehler("ki_nicht_erreichbar") from fehler
+
+    _antwort_deuten(antwort)
+
+    try:
+        daten = antwort.json()
+        roh = daten["choices"][0]["message"]["content"]
+    except (ValueError, KeyError, IndexError, TypeError) as fehler:
+        raise KiFehler("ki_antwort_unlesbar") from fehler
+
+    # ⚠️ **Manche Dienste liefern den Inhalt als Liste von Blöcken.** Wer nur
+    # die Zeichenkette erwartet, schreibt dort deren Python-Darstellung in den
+    # Entwurf.
+    if isinstance(roh, list):
+        roh = "".join(teil.get("text", "") for teil in roh if isinstance(teil, dict))
+    if not isinstance(roh, str) or not roh.strip():
+        raise KiFehler("ki_antwort_leer")
+
+    sauber = bereinigen.saeubern(_zaun_abtragen(roh.strip()))
+    if not sauber.strip():
+        raise KiFehler("ki_antwort_leer")
+    return sauber, daten
 
 
 # --- Was hinausging -------------------------------------------------------- #
@@ -646,6 +709,7 @@ def vorgang_merken(
     rein: int = 0,
     raus: int = 0,
     fehler: str = "",
+    werte: dict | None = None,
 ) -> None:
     """Einen Handgriff festhalten — wortwoertlich, wie er hinausging.
 
@@ -666,6 +730,11 @@ def vorgang_merken(
                 rein=rein,
                 raus=raus,
                 fehler=fehler,
+                fehler_werte=crypto.verschluesseln(
+                    json.dumps(werte, ensure_ascii=False), _vorgang_kontext(person)
+                )
+                if werte
+                else "",
             )
         )
         db.commit()
@@ -696,6 +765,15 @@ def vorgaenge_lesen(db: Session, person: Benutzer) -> list[dict]:
             rumpf = json.loads(crypto.entschluesseln(zeile.rumpf, kontext))
         except Exception:  # noqa: BLE001
             rumpf = None
+        # ⚠️ **Leer, wenn es keine gibt oder sie unlesbar sind**; die
+        # Oberfläche zeigt dann einen Satz ohne Einzelheiten statt Platzhaltern.
+        werte: dict = {}
+        if zeile.fehler_werte:
+            try:
+                gelesen = json.loads(crypto.entschluesseln(zeile.fehler_werte, kontext))
+                werte = gelesen if isinstance(gelesen, dict) else {}
+            except Exception:  # noqa: BLE001
+                werte = {}
         raus.append(
             {
                 "id": zeile.id,
@@ -706,6 +784,7 @@ def vorgaenge_lesen(db: Session, person: Benutzer) -> list[dict]:
                 "rein": zeile.rein,
                 "raus": zeile.raus,
                 "fehler": zeile.fehler,
+                "fehler_werte": werte,
                 "rumpf": rumpf,
             }
         )

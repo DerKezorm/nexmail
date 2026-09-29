@@ -17,6 +17,7 @@ import { api } from '../api/client'
 import { Button } from '../ds'
 import { useNachfrage } from './Nachfrage'
 import { servermeldung } from '../lib/servermeldung'
+import { vorgangFehler } from '../lib/kivorgang'
 
 interface Nachricht {
   role: string
@@ -38,6 +39,7 @@ interface Vorgang {
   rein: number
   raus: number
   fehler: string
+  fehler_werte?: Record<string, unknown>
   rumpf: Rumpf | null
 }
 
@@ -127,7 +129,7 @@ export function KiVorgaenge({ tage }: { tage: number }) {
                 </span>
                 {v.fehler ? (
                   <span className="shrink-0 text-[12px] text-danger">
-                    {t(`serverfehler.${v.fehler}`, { defaultValue: v.fehler })}
+                    {vorgangFehler(i18n, v.fehler, v.fehler_werte)}
                   </span>
                 ) : (
                   <span className="shrink-0 text-[12px] text-fg-4 tabular-nums">

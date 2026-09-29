@@ -505,6 +505,7 @@
     "zur_anmeldung": "Zurück zur Anmeldung"
   },
   "ki": {
+    "fehlgeschlagen": "Fehlgeschlagen",
     "adresse": "Adresse",
     "anweisung": "Anweisung an das Modell",
     "dein_text": "Dein Text",
@@ -1382,6 +1383,7 @@
     "ki_antwort_unlesbar": "Die Antwort des Dienstes ließ sich nicht lesen.",
     "ki_auftrag_unbekannt": "Diesen Auftrag kennt der Server nicht.",
     "ki_dienst_antwortet_nicht": "Der Dienst hat mit {{code}} geantwortet.",
+    "ki_dienst_sagt": "Der Dienst hat mit einem Fehler geantwortet ({{code}}: {{gesagt}}).",
     "ki_kein_text": "Da ist kein Text zum Bearbeiten.",
     "ki_keine_modelle": "Der Dienst hat kein einziges Modell genannt.",
     "ki_kennt_keine_liste": "Dieser Dienst listet seine Modelle nicht.",

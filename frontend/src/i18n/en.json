@@ -505,6 +505,7 @@
     "zur_anmeldung": "Back to sign in"
   },
   "ki": {
+    "fehlgeschlagen": "Failed",
     "adresse": "Address",
     "anweisung": "Instruction to the model",
     "dein_text": "Your text",
@@ -1382,6 +1383,7 @@
     "ki_antwort_unlesbar": "The answer from the service could not be read.",
     "ki_auftrag_unbekannt": "The server does not know this task.",
     "ki_dienst_antwortet_nicht": "The service answered with {{code}}.",
+    "ki_dienst_sagt": "The service answered with an error ({{code}}: {{gesagt}}).",
     "ki_kein_text": "There is no text to edit.",
     "ki_keine_modelle": "The service named no model at all.",
     "ki_kennt_keine_liste": "This service does not list its models.",

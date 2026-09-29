@@ -200,6 +200,9 @@ class Vorgang(BaseModel):
     raus: int
     #: Leer heisst: hat geklappt.
     fehler: str
+    #: Die Werte zur Kennung, damit der Satz vollständig dasteht. Leer bei
+    #: älteren Zeilen und wenn es keine gibt.
+    fehler_werte: dict
     #: ``None``, wenn die Zeile nicht mehr zu entschluesseln ist.
     rumpf: dict | None
 
