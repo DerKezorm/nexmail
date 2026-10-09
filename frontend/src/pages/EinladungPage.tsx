@@ -43,9 +43,30 @@ export function EinladungPage({
   const [laeuft, setLaeuft] = useState(false)
 
   /* Die Anbieter, über die man die Einladung auch annehmen kann.
-     ⚠️ Der Schlüssel wird dabei **nicht** gebraucht: nexmail findet die offene
-     Einladung über die bestätigte Adresse, die der Anbieter meldet. */
+     ⚠️ **Der Schlüssel fährt mit**, per POST, nicht in der Adresse. Bis zum
+     09.10.2026 fand nexmail die Einladung über die bestätigte Adresse beim
+     Anbieter; Entra schickt keine Bestätigung, und in authentik kann jeder
+     seine Adresse selbst ändern. */
   const [anbieter, setAnbieter] = useState<Array<{ kuerzel: string; anzeigename: string }>>([])
+  const [unterwegs, setUnterwegs] = useState('')
+  const [anbieterFehler, setAnbieterFehler] = useState('')
+
+  async function mitAnbieter(kuerzel: string) {
+    setAnbieterFehler('')
+    setUnterwegs(kuerzel)
+    try {
+      const { ziel } = await api.senden<{ ziel: string }>(
+        `/api/oidc/${encodeURIComponent(kuerzel)}/einladung`,
+        { schluessel },
+      )
+      // Das Ziel ist der Anbieter oder, bei einem Fehler davor, die eigene
+      // Anmeldeseite mit `oidc_fehler`. Beides ist eine ganze Navigation.
+      window.location.assign(ziel)
+    } catch (f) {
+      setAnbieterFehler(servermeldung(f, t('oidc.fehler_allgemein')))
+      setUnterwegs('')
+    }
+  }
   useEffect(() => {
     api
       .holen<Array<{ kuerzel: string; anzeigename: string }>>('/api/oidc/knoepfe')
@@ -177,15 +198,22 @@ export function EinladungPage({
         <div className="mt-5 flex flex-col gap-2 border-t border-line-subtle pt-5">
           <p className="mb-0 text-center text-[12px] text-fg-4">{t('einladung.oder')}</p>
           {anbieter.map((a) => (
-            <a
+            <button
               key={a.kuerzel}
-              href={appPfad(`/api/oidc/${a.kuerzel}/start`)}
-              className="flex h-[var(--control-h-lg)] items-center justify-center gap-2 rounded-md border border-line bg-surface-2 text-sm font-medium text-fg-1 no-underline transition-colors duration-[var(--dur-fast)] hover:border-accent"
+              type="button"
+              disabled={Boolean(unterwegs)}
+              onClick={() => void mitAnbieter(a.kuerzel)}
+              className="flex h-[var(--control-h-lg)] items-center justify-center gap-2 rounded-md border border-line bg-surface-2 text-sm font-medium text-fg-1 transition-colors duration-[var(--dur-fast)] hover:border-accent disabled:opacity-60"
             >
               <KeyRound aria-hidden className="size-4" />
               {t('oidc.anmelden_mit', { name: a.anzeigename })}
-            </a>
+            </button>
           ))}
+          {anbieterFehler && (
+            <p role="alert" className="mb-0 text-center text-[13px] text-danger">
+              {anbieterFehler}
+            </p>
+          )}
         </div>
       )}
     </Torbogen>

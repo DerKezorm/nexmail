@@ -65,6 +65,10 @@ class Attrappe:
     #: der Verfahrensliste, wuerde er angenommen — und den oeffentlichen
     #: Schluessel kennt jeder, er steht im JWKS.
     alg_verwechslung: bool = False
+    #: Entra ID: Was im Ausweis als ``iss`` steht, wenn es nicht ``issuer``
+    #: ist (bei ``common`` der echte Mandant), und die Kennung ``tid``.
+    aussteller_im_ausweis: str = ""
+    tid: str | None = None
 
     subject: str = "sub-anna-123"
     name: str = "Anna Beispiel"
@@ -110,7 +114,7 @@ class Attrappe:
 
     def ausweis(self) -> str:
         inhalt: dict[str, Any] = {
-            "iss": self.issuer,
+            "iss": self.aussteller_im_ausweis or self.issuer,
             "sub": self.subject,
             "aud": self.client_id,
             "exp": int(time.time()) + 300,
@@ -118,6 +122,8 @@ class Attrappe:
             "nonce": self.falscher_nonce or self._nonce,
             "name": self.name,
         }
+        if self.tid is not None:
+            inhalt["tid"] = self.tid
         if self.email is not None:
             inhalt["email"] = self.email
         if self.email_bestaetigt is not None:

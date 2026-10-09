@@ -350,10 +350,22 @@ cookie sent over http and then nobody gets in.
 
 ## Signing in through an external provider
 
-nexmail speaks OpenID Connect: Keycloak, Authentik, Authelia, Pocket ID and
-anything else that follows the spec. Add a provider under *Administration →
-OIDC*; the redirect URI to register with the provider is shown there with a copy
-button.
+nexmail speaks OpenID Connect: authentik, Microsoft Entra ID, Keycloak,
+Authelia, Pocket ID and anything else that follows the spec. Add a provider
+under *Administration → OIDC*; the redirect URI to register with the provider is
+shown there with a copy button.
+
+**authentik in one step.** On the same tab, enter the address of your authentik
+and a one-time API token that may create applications. nexmail creates the
+signing key, provider and application in authentik and adds itself as a
+provider. The token is used for these calls only and never stored. If you would
+rather not hand over a token, download the blueprint instead and import it in
+authentik.
+
+**Microsoft Entra ID** works with a single tenant
+(`https://login.microsoftonline.com/<tenant ID>/v2.0`) as well as with `common`
+or `organizations`. Entra only sends an email address as an optional claim;
+nexmail does not need one.
 
 ![The sign-in tab with one registered provider](docs/screenshots/oidc-en.webp)
 
@@ -361,17 +373,15 @@ button.
 
 1. **An existing link.** You create it while signed in, under *Settings →
    Security → Link*.
-2. **An open invitation to exactly that address.** The account is created from
-   the invitation, and the invitation is spent.
+2. **An invitation.** On the invitation page, the provider button takes the
+   invitation key along. The account is created from the invitation, and the
+   invitation is spent.
 
-> ⚠️ **There is deliberately no matching against existing accounts by email.**
-> That would be the place where a provider claiming an address it does not own
-> could open somebody else's account. An invitation is a decision the operator
-> made on purpose.
-
-The address still has to be marked verified by the provider — otherwise a
-provider that lets anyone enter any address would be enough to claim an
-invitation meant for someone else.
+> ⚠️ **No email address opens anything, not even an invitation.** Matching
+> by address would be the place where a provider claiming an address it does
+> not own could open somebody else's account; in authentik, for instance, users
+> can change their own address. An invitation is a decision the operator made
+> on purpose, and the key from the invitation mail is the proof.
 
 > ⚠️ **The issuer must be one address that both the browser and the server can
 > reach.** The browser fetches the sign-in page; the container fetches the
@@ -386,7 +396,7 @@ which needs an outgoing mail server of its own under *Administration → Server*
 deliberately not the operator's mailbox, so that removing that mailbox does not
 take the invitations with it.
 
-The invitation page offers both ways: set a password, or sign in through a
+The invitation page offers both ways: set a password, or accept it through a
 provider. Not everyone has an account with your identity provider, and not
 everyone should need a password they will never use.
 

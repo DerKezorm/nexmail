@@ -21,7 +21,7 @@ import logging
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -31,7 +31,8 @@ from ..db import einstellung_lesen
 from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
 from ..models import Benutzer, OidcAnbieter, OidcVerknuepfung
 from ..routers.einstellungen import SCHLUESSEL_OEFFENTLICHE_ADRESSE
-from ..services import anmeldebremse, oidc
+from ..services import anmeldebremse, authentik_einrichtung, oidc
+from ..services import einladung as einladungsdienst
 from ..services import oidc_konten as kontendienst
 from ..services import sitzung as sitzungsdienst
 
@@ -105,6 +106,62 @@ async def starten(kuerzel: str, request: Request, db: DbSession) -> Response:
         )
 
     antwort = RedirectResponse(ziel, status_code=status.HTTP_303_SEE_OTHER)
+    _anlauf_merken(antwort, request, anlauf)
+    return antwort
+
+
+class EinladungsAnlauf(BaseModel):
+    schluessel: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/{kuerzel}/einladung")
+async def einladung_starten(
+    kuerzel: str, eingabe: EinladungsAnlauf, request: Request, db: DbSession
+) -> JSONResponse:
+    """Eine Einladung über den Anbieter annehmen: wohin der Browser jetzt geht.
+
+    ⚠️ **Der Schlüssel aus der Mail ist der Nachweis, nicht die Adresse beim
+    Anbieter.** Bis zum 09.10.2026 fand nexmail die Einladung über die
+    bestätigte Adresse. Das trug zweimal nicht: Entra schickt gar kein
+    ``email_verified``, und in authentik kann jeder seine Adresse selbst
+    ändern, also auch auf die einer fremden offenen Einladung.
+
+    ⚠️ **POST, nicht GET mit dem Schlüssel in der Adresse.** Eine Adresse
+    landet im Protokoll des Servers und jedes Proxys davor. Zurück kommt nur,
+    wohin der Browser jetzt soll; das Anlauf-Cookie trägt die Kennung der
+    Einladung, signiert, nicht den Schlüssel.
+    """
+    anbieter = _anbieter(db, kuerzel)
+    # ⚠️ Dieselbe Bremse wie beim Ansehen und Annehmen mit Kennwort. Sonst
+    # wäre das hier der Weg, Schlüssel ohne Bremse durchzuprobieren.
+    wache = anmeldebremse.torwaechter(request, "einladung", eingabe.schluessel[:12])
+    einladung = einladungsdienst.finden(db, eingabe.schluessel)
+    if einladung is None:
+        wache.fehlgeschlagen()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="einladung_abgelaufen")
+    wache.geschafft()
+
+    try:
+        rueckkehr = _rueckkehr(db, kuerzel)
+        beschreibung = await oidc.beschreibung_holen(anbieter.issuer)
+        anlauf = oidc.anlauf_erzeugen(kuerzel, "einladung", einladung_id=einladung.id)
+        ziel = oidc.weiterleitung_bauen(
+            beschreibung,
+            client_id=anbieter.client_id,
+            scopes=anbieter.scopes,
+            rueckkehr=rueckkehr,
+            anlauf=anlauf,
+        )
+    except oidc.OidcFehler as fehler:
+        logger.warning("OIDC: invitation start via %r failed: %s", kuerzel, fehler.text)
+        return JSONResponse({"ziel": _oberflaeche(f"/?{urlencode({'oidc_fehler': fehler.code})}")})
+
+    antwort = JSONResponse({"ziel": ziel})
+    _anlauf_merken(antwort, request, anlauf)
+    return antwort
+
+
+def _anlauf_merken(antwort: Response, request: Request, anlauf: dict) -> None:
     antwort.set_cookie(
         oidc.COOKIE_NAME,
         oidc.zustand_schreiben(anlauf),
@@ -122,7 +179,6 @@ async def starten(kuerzel: str, request: Request, db: DbSession) -> Response:
         # meldet ihn in **seinem** Konto an.
         secure=sitzungsdienst._secure(request),
     )
-    return antwort
 
 
 # --- Der Rückweg ---------------------------------------------------------- #
@@ -203,7 +259,10 @@ async def zurueck(
             beschreibung, id_token, client_id=anbieter.client_id, nonce=zustand["nonce"]
         )
         auskunft = await oidc.nachfragen(beschreibung, zugang, str(ausweis.get("sub"))) if zugang else {}
-        ident = oidc.identitaet_bauen(ausweis, auskunft, str(beschreibung.get("issuer") or anbieter.issuer))
+        # ⚠️ **Der Aussteller aus dem Ausweis**, nicht aus der Selbstauskunft.
+        # Er ist oben gegen sie geprueft; bei Entra mit ``common`` traegt nur
+        # er den echten Mandanten, die Selbstauskunft den Platzhalter.
+        ident = oidc.identitaet_bauen(ausweis, auskunft, str(ausweis.get("iss") or ""))
     except oidc.OidcFehler as fehler:
         wache.fehlgeschlagen()
         return scheitern(fehler.code, fehler.text)
@@ -234,7 +293,10 @@ async def zurueck(
         return antwort
 
     try:
-        person = kontendienst.aufloesen(db, ident)
+        if zustand.get("absicht") == "einladung":
+            person = kontendienst.einladung_einloesen(db, ident, str(zustand.get("einladung_id") or ""))
+        else:
+            person = kontendienst.aufloesen(db, ident)
     except oidc.OidcFehler as fehler:
         return scheitern(fehler.code, fehler.text)
 
@@ -385,6 +447,48 @@ def anbieter_entfernen(anbieter_id: str, _: Betreiber, db: DbSession) -> None:
     logger.warning("An OIDC provider was removed.")
 
 
+# --- authentik in einem Schritt ------------------------------------------- #
+
+
+class AuthentikEingabe(BaseModel):
+    adresse: str = Field(min_length=8, max_length=300)
+    #: ⚠️ Wird nur für diesen Lauf benutzt, nie gespeichert, nie protokolliert.
+    token: str = Field(min_length=1, max_length=500)
+
+
+def _authentik_rueckkehr(db) -> str:
+    try:
+        return _rueckkehr(db, authentik_einrichtung.KUERZEL)
+    except oidc.OidcFehler as fehler:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="oidc_keine_adresse") from fehler
+
+
+@router.post("/authentik/einrichten")
+async def authentik_einrichten(eingabe: AuthentikEingabe, betreiber: Betreiber, db: DbSession) -> dict:
+    """Provider und Anwendung in authentik anlegen und den Anbieter hier eintragen.
+
+    ⚠️ **Antwortet immer mit 200 und der Liste der Schritte**, auch wenn einer
+    scheitert: Was davor geklappt hat, ist in authentik angelegt, und der
+    Betreiber soll sehen, wo es stehen blieb.
+    """
+    adresse = eingabe.adresse.strip().rstrip("/")
+    if not adresse.startswith(("http://", "https://")):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="anbieter_adresse_ohne_schema")
+    rueckkehr = _authentik_rueckkehr(db)
+    logger.info("authentik setup started by the operator.")
+    ergebnis = await authentik_einrichtung.einrichten(db, adresse, eingabe.token.strip(), rueckkehr)
+    return ergebnis.als_dict()
+
+
+@router.get("/authentik/blueprint")
+def authentik_blueprint(_: Betreiber, db: DbSession) -> dict[str, str]:
+    """Ein Blueprint, der dasselbe in authentik anlegt, für alle ohne Token."""
+    return {
+        "dateiname": "nexmail-authentik.yaml",
+        "inhalt": authentik_einrichtung.blueprint(_authentik_rueckkehr(db)),
+    }
+
+
 # --- Die eigenen Verknüpfungen -------------------------------------------- #
 
 
@@ -415,27 +519,32 @@ def meine(person: AngemeldeterBenutzer, db: DbSession) -> list[VerknuepfungZeile
     # Profil stand weiter „Verknuepfen" — die Zuordnung fand ihren Anbieter
     # nicht und fiel auf die rohe Adresse zurueck. Der Fehler sah damit aus
     # wie ein misslungenes Verknuepfen, obwohl nur die Anzeige irrte.
-    def gleich(adresse: str) -> str:
-        return adresse.rstrip("/")
+    #
+    # ⚠️ **Und Entra mit ``common``:** Der Anbieter steht mit ``common`` da,
+    # die Verknuepfung mit dem echten Mandanten. ``gehoert_zum_anbieter``
+    # kennt beide Faelle.
+    alle = db.execute(select(OidcAnbieter)).scalars().all()
 
-    anbieter = {
-        gleich(a.issuer): a for a in db.execute(select(OidcAnbieter)).scalars().all()
-    }
-    return [
-        VerknuepfungZeile(
-            id=v.id,
-            issuer=v.issuer,
-            anzeigename=(
-                anbieter[gleich(v.issuer)].anzeigename
-                if gleich(v.issuer) in anbieter
-                else v.issuer
-            ),
-            kuerzel=(
-                anbieter[gleich(v.issuer)].kuerzel if gleich(v.issuer) in anbieter else ""
-            ),
+    def zugehoerig(v: OidcVerknuepfung) -> OidcAnbieter | None:
+        # Wer genau so eingetragen ist, geht vor; erst dann ``common``.
+        genau = [a for a in alle if a.issuer.rstrip("/") == v.issuer.rstrip("/")]
+        return next(
+            iter(genau or [a for a in alle if oidc.gehoert_zum_anbieter(a.issuer, v.issuer)]),
+            None,
         )
-        for v in zeilen
-    ]
+
+    zeilen_aus: list[VerknuepfungZeile] = []
+    for v in zeilen:
+        a = zugehoerig(v)
+        zeilen_aus.append(
+            VerknuepfungZeile(
+                id=v.id,
+                issuer=v.issuer,
+                anzeigename=a.anzeigename if a else v.issuer,
+                kuerzel=a.kuerzel if a else "",
+            )
+        )
+    return zeilen_aus
 
 
 @router.delete("/meine/{verknuepfung_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Check, Copy, KeyRound, Pencil, Trash2 } from 'lucide-react'
+import { AlertTriangle, Check, Copy, Download, KeyRound, Pencil, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Badge, Button, Dialog, IconButton, Input, Switch } from '../ds'
@@ -123,6 +123,10 @@ export function OidcVerwaltung() {
         </Button>
       </div>
 
+      {/* Unter den Anbietern, wie in den anderen Apps der Familie: Wer den Knopf
+          drückt, sieht den neuen Eintrag darüber erscheinen. */}
+      <AuthentikEinrichtung aufFertig={() => void laden()} />
+
       {offen && (
         <Formular
           bestehend={offen === 'neu' ? null : offen}
@@ -136,6 +140,161 @@ export function OidcVerwaltung() {
 
       {nachfrage}
     </div>
+  )
+}
+
+interface Einrichtungsergebnis {
+  ok: boolean
+  schritte: Array<{ kennung: string; ok: boolean; text: string }>
+  client_id: string
+  issuer: string
+}
+
+/** authentik in einem Schritt: Adresse plus Einmal-Token, oder der Blueprint.
+ *
+ * ⚠️ **Das Token lebt nur in diesem Formular.** Nach dem Lauf wird das Feld
+ * geleert; der Server speichert es nicht.
+ *
+ * ⚠️ **Jeder Schritt steht da, auch die gelungenen.** Scheitert einer, ist
+ * das davor in authentik angelegt, und der Betreiber soll sehen, wo es stehen
+ * blieb. Der Grund daneben ist englisch und technisch (Pfad und HTTP-Status),
+ * er gehört dem, der bei authentik nachsieht; übersetzt wird der Name des
+ * Schritts.
+ */
+function AuthentikEinrichtung({ aufFertig }: { aufFertig: () => void }) {
+  const { t } = useTranslation()
+  const [adresse, setAdresse] = useState('')
+  const [token, setToken] = useState('')
+  const [laeuft, setLaeuft] = useState(false)
+  const [laedt, setLaedt] = useState(false)
+  const [fehler, setFehler] = useState('')
+  const [ergebnis, setErgebnis] = useState<Einrichtungsergebnis | null>(null)
+
+  /* ⚠️ Wörtliche Schlüssel statt `t('oidc.schritt_' + kennung)`: Nur die sieht
+     der Wächter `schluessel-vorhanden.test.ts`. Eine unbekannte Kennung zeigt
+     sich selbst, nicht einen rohen Schlüssel. */
+  function schrittName(kennung: string): string {
+    const namen: Record<string, string> = {
+      erreicht: t('oidc.schritt_erreicht'),
+      schluessel: t('oidc.schritt_schluessel'),
+      zuordnungen: t('oidc.schritt_zuordnungen'),
+      provider: t('oidc.schritt_provider'),
+      anwendung: t('oidc.schritt_anwendung'),
+      eingetragen: t('oidc.schritt_eingetragen'),
+    }
+    return namen[kennung] ?? kennung
+  }
+
+  async function einrichten() {
+    setFehler('')
+    setErgebnis(null)
+    setLaeuft(true)
+    try {
+      const antwort = await api.senden<Einrichtungsergebnis>('/api/oidc/authentik/einrichten', {
+        adresse: adresse.trim(),
+        token: token.trim(),
+      })
+      setErgebnis(antwort)
+      setToken('')
+      aufFertig()
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    } finally {
+      setLaeuft(false)
+    }
+  }
+
+  async function blueprint() {
+    setFehler('')
+    setLaedt(true)
+    try {
+      const { dateiname, inhalt } = await api.holen<{ dateiname: string; inhalt: string }>(
+        '/api/oidc/authentik/blueprint',
+      )
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(new Blob([inhalt], { type: 'application/yaml' }))
+      link.download = dateiname
+      link.click()
+      window.setTimeout(() => URL.revokeObjectURL(link.href), 1000)
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    } finally {
+      setLaedt(false)
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby="authentik-titel"
+      className="flex flex-col gap-3 rounded-lg border border-line bg-surface-1 px-4 py-4"
+    >
+      <div>
+        <h3 id="authentik-titel" className="mb-1 text-sm font-semibold text-fg-1">
+          {t('oidc.authentik_titel')}
+        </h3>
+        <p className="mb-0 text-[13px] text-fg-3">{t('oidc.authentik_text')}</p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Input
+          label={t('oidc.authentik_adresse')}
+          placeholder="https://auth.example.com"
+          value={adresse}
+          onChange={(e) => setAdresse(e.target.value)}
+        />
+        <Input
+          label={t('oidc.authentik_token')}
+          type="password"
+          autoComplete="off"
+          hint={t('oidc.authentik_token_hinweis')}
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+        />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="primary"
+          loading={laeuft}
+          disabled={!adresse.trim() || !token.trim()}
+          onClick={() => void einrichten()}
+        >
+          {t('oidc.authentik_einrichten')}
+        </Button>
+        <Button variant="ghost" loading={laedt} onClick={() => void blueprint()}>
+          {!laedt && <Download aria-hidden className="size-4" />}
+          {t('oidc.authentik_blueprint')}
+        </Button>
+      </div>
+      <p className="mb-0 text-[12px] text-fg-4">{t('oidc.authentik_blueprint_hinweis')}</p>
+
+      {fehler && (
+        <p role="alert" className="mb-0 text-[13px] text-danger">
+          {fehler}
+        </p>
+      )}
+
+      {ergebnis && (
+        <div className="flex flex-col gap-2" data-testid="authentik-schritte">
+          <ol className="m-0 flex list-none flex-col gap-1 p-0 text-[13px]">
+            {ergebnis.schritte.map((s) => (
+              <li key={s.kennung} className="flex items-start gap-2">
+                {s.ok ? (
+                  <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-success" />
+                ) : (
+                  <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-danger" />
+                )}
+                <span className="min-w-0">
+                  <span className="text-fg-1">{schrittName(s.kennung)}</span>
+                  {s.text && <span className="block break-words font-mono text-[11px] text-fg-4">{s.text}</span>}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <p role="status" className={`mb-0 text-[13px] ${ergebnis.ok ? 'text-success' : 'text-danger'}`}>
+            {ergebnis.ok ? t('oidc.authentik_fertig') : t('oidc.authentik_gescheitert')}
+          </p>
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -246,6 +405,7 @@ function Formular({
           value={f.issuer}
           onChange={(e) => setF({ ...f, issuer: e.target.value })}
         />
+        <p className="-mt-2 mb-0 text-[12px] text-fg-4">{t('oidc.entra_hinweis')}</p>
         <div className="grid grid-cols-2 gap-3">
           <Input
             label={t('oidc.client_id')}

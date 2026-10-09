@@ -27,11 +27,13 @@ Stelle. Wer hier etwas vereinfacht, sollte erst den zugehoerigen Absatz lesen.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
 import json
 import logging
+import re
 import secrets
 import time
 from dataclasses import dataclass
@@ -70,6 +72,17 @@ ZEITGRENZE = 10
 #: im Haus um zehn Sekunden, fuer eine Auskunft, die vielleicht nie kommt.
 NACHFRAGE_ZEITGRENZE = 5
 
+#: ⚠️ **Entra ID mit ``common`` oder ``organizations``.** Dann nennt die
+#: Selbstauskunft ``https://login.microsoftonline.com/{tenantid}/v2.0``, mit
+#: genau diesem Platzhalter. Der echte Aussteller steht erst im Ausweis, mit
+#: der Kennung aus ``tid``. Der Platzhalter selbst gilt **nie** als Aussteller.
+#: Gefunden am 09.10.2026 in nexbeat; bis dahin lehnte nexmail Entra mit
+#: ``common`` schon bei der Selbstauskunft ab.
+MANDANT_PLATZHALTER = "{tenantid}"
+_MANDANT = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+#: Was bei Entra statt einer Mandanten-Kennung in der eingetragenen Adresse stehen darf.
+_SAMMELMANDANTEN = ("common", "organizations", "consumers")
+
 COOKIE_NAME = "nexmail_oidc"
 #: Wie lange ein angefangener Lauf gilt. Laenger waere sinnlos: Wer zehn
 #: Minuten beim Anbieter steht, faengt ohnehin neu an.
@@ -94,6 +107,9 @@ class OidcFehler(Exception):
 class Identitaet:
     """Was am Ende eines Laufs feststeht."""
 
+    #: ⚠️ **Der Aussteller aus dem geprueften Ausweis**, nicht aus der
+    #: Selbstauskunft. Bei Entra mit ``common`` steht dort nur der Platzhalter,
+    #: und eine Verknuepfung darauf galte fuer jeden Mandanten.
     issuer: str
     subject: str
     adresse: str = ""
@@ -150,7 +166,9 @@ def zustand_lesen(wert: str | None) -> dict[str, Any] | None:
     return daten
 
 
-def anlauf_erzeugen(kuerzel: str, absicht: str, benutzer_id: str = "") -> dict[str, str]:
+def anlauf_erzeugen(
+    kuerzel: str, absicht: str, benutzer_id: str = "", *, einladung_id: str = ""
+) -> dict[str, str]:
     """Die drei Zufallswerte plus PKCE-Praegewert.
 
     ⚠️ **Beim Verknuepfen gehoert die Benutzerkennung hier hinein**, nicht in
@@ -168,6 +186,10 @@ def anlauf_erzeugen(kuerzel: str, absicht: str, benutzer_id: str = "") -> dict[s
     Hinweg, wo die Sitzung noch da war, und laesst sich unterwegs nicht
     umschreiben. Das Anlauf-Cookie ist ``SameSite=lax`` — deshalb kommt es
     zurueck, waehrend das Sitzungs-Cookie draussen bleibt.
+
+    ⚠️ **Beim Annehmen einer Einladung faehrt deren Kennung mit**, aus
+    demselben Grund signiert: Wer sie unterwegs gegen eine andere tauschen
+    koennte, loeste eine Einladung ein, deren Schluessel er nie hatte.
     """
     verifier = secrets.token_urlsafe(64)
     praege = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
@@ -175,6 +197,7 @@ def anlauf_erzeugen(kuerzel: str, absicht: str, benutzer_id: str = "") -> dict[s
         "kuerzel": kuerzel,
         "absicht": absicht,
         "benutzer_id": benutzer_id,
+        "einladung_id": einladung_id,
         "state": secrets.token_urlsafe(24),
         "nonce": secrets.token_urlsafe(24),
         "verifier": verifier,
@@ -275,13 +298,74 @@ async def beschreibung_holen(issuer: str) -> dict[str, Any]:
 
     daten = _json_deuten(antwort, "der Selbstauskunft", adresse)
     gemeldet = str(daten.get("issuer") or "")
-    if gemeldet.rstrip("/") != issuer.rstrip("/"):
+    if not aussteller_passt_zur_vorlage(issuer, gemeldet):
         raise OidcFehler(
             "oidc_falscher_aussteller",
             f"The provider calls itself {gemeldet!r}, but {issuer!r} is configured. "
             "The two have to match.",
         )
     return daten
+
+
+def aussteller_passt_zur_vorlage(eingetragen: str, gemeldet: str) -> bool:
+    """Ob die Selbstauskunft zur eingetragenen Adresse gehoert.
+
+    Gleich (ohne abschliessenden Schraegstrich), oder: Die Selbstauskunft
+    traegt den Entra-Platzhalter ``{tenantid}``, und an seiner Stelle steht in
+    der eingetragenen Adresse ``common``, ``organizations``, ``consumers`` oder
+    eine Mandanten-Kennung. Alles andere muss Zeichen fuer Zeichen stimmen.
+    """
+    eingetragen, gemeldet = eingetragen.rstrip("/"), gemeldet.rstrip("/")
+    if not gemeldet:
+        return False
+    if eingetragen == gemeldet:
+        return True
+    if gemeldet.count(MANDANT_PLATZHALTER) != 1:
+        return False
+    vorne, _, hinten = gemeldet.partition(MANDANT_PLATZHALTER)
+    if not (eingetragen.startswith(vorne) and eingetragen.endswith(hinten)):
+        return False
+    mitte = eingetragen[len(vorne) : len(eingetragen) - len(hinten)]
+    return mitte in _SAMMELMANDANTEN or bool(_MANDANT.fullmatch(mitte))
+
+
+def zugelassene_aussteller(beschreibung: dict[str, Any], ausweis: dict[str, Any]) -> set[str]:
+    """Wer diesen Ausweis ausgestellt haben darf.
+
+    Der Aussteller der Selbstauskunft, Zeichen fuer Zeichen. Traegt er den
+    Entra-Platzhalter, wird die Kennung aus ``tid`` desselben, schon
+    unterschriebenen Ausweises eingesetzt. Welche Mandanten hineinduerfen,
+    regelt dort die App-Registrierung (ein Mandant oder mehrere); nexmail
+    laesst ohnehin nur herein, wer verknuepft oder eingeladen ist.
+    """
+    gemeldet = str(beschreibung.get("issuer") or "")
+    if MANDANT_PLATZHALTER not in gemeldet:
+        return {gemeldet} if gemeldet else set()
+    mandant = str(ausweis.get("tid") or "")
+    if not _MANDANT.fullmatch(mandant):
+        return set()
+    return {gemeldet.replace(MANDANT_PLATZHALTER, mandant)}
+
+
+def gehoert_zum_anbieter(anbieter_issuer: str, verknuepft_issuer: str) -> bool:
+    """Ob eine Verknuepfung zu einem eingetragenen Anbieter gehoert.
+
+    Fuer die Anzeige im Profil. Gleich ohne Schraegstrich, oder Entra: Der
+    Anbieter steht mit ``common`` (oder ``organizations``, ``consumers``) da,
+    die Verknuepfung traegt den echten Mandanten an derselben Stelle.
+    """
+    a, v = anbieter_issuer.rstrip("/"), verknuepft_issuer.rstrip("/")
+    if a == v:
+        return True
+    teile_a, teile_v = a.split("/"), v.split("/")
+    if len(teile_a) != len(teile_v):
+        return False
+    anders = [i for i, (x, y) in enumerate(zip(teile_a, teile_v)) if x != y]
+    return (
+        len(anders) == 1
+        and teile_a[anders[0]] in _SAMMELMANDANTEN
+        and bool(_MANDANT.fullmatch(teile_v[anders[0]]))
+    )
 
 
 async def code_tauschen(
@@ -342,6 +426,27 @@ async def code_tauschen(
     return id_token, zugang if isinstance(zugang, str) and zugang else None
 
 
+def _symmetrisch_benennen(id_token: str, fehler: Exception) -> None:
+    """Einen mit dem Client-Geheimnis unterschriebenen Ausweis beim Namen nennen.
+
+    ⚠️ **authentik ohne gewaehlten Signierschluessel** unterschreibt mit HS256
+    und veroeffentlicht eine leere Schluesselliste (nexdeck, Issue #11). Ohne
+    diesen Satz hiesse das nur „Schluessel nicht lesbar", und man sucht am
+    Netz statt am Provider. Angenommen wird der Ausweis trotzdem nie: Das
+    entscheidet ``VERFAHREN``, hier wird nur die Meldung genauer.
+    """
+    try:
+        verfahren = str(jwt.get_unverified_header(id_token).get("alg") or "")
+    except Exception:  # noqa: BLE001
+        return
+    if verfahren.upper().startswith("HS"):
+        raise OidcFehler(
+            "oidc_ausweis_hs256",
+            f"The ID token is signed with {verfahren}, that is with the client secret. "
+            "Choose a signing key at the provider; in authentik that is 'Signing Key'.",
+        ) from fehler
+
+
 async def ausweis_pruefen(
     beschreibung: dict[str, Any], id_token: str, *, client_id: str, nonce: str
 ) -> dict[str, Any]:
@@ -352,50 +457,52 @@ async def ausweis_pruefen(
 
     try:
         klient = jwt.PyJWKClient(jwks, timeout=ZEITGRENZE)
-        schluessel = klient.get_signing_key_from_jwt(id_token)
+        # ⚠️ **In einem eigenen Faden.** PyJWKClient holt mit urllib, also
+        # blockierend; im Hauptfaden stuende der ganze Server still, solange
+        # der Anbieter braucht.
+        schluessel = await asyncio.to_thread(klient.get_signing_key_from_jwt, id_token)
+        # ⚠️ **Den Aussteller prueft nexmail unten selbst**, wegen Entra. Das
+        # ``options``-Woerterbuch entsteht bei jedem Aufruf neu: PyJWT
+        # veraendert es an Ort und Stelle (GHSA-gvp8-978c-rx2q), und ein
+        # geteiltes naehme Pruefungen von einem Aufruf in den naechsten mit.
         daten = jwt.decode(
             id_token,
             schluessel.key,
             algorithms=VERFAHREN,
             audience=client_id,
-            issuer=str(beschreibung.get("issuer") or ""),
-            options={"require": ["exp", "iat", "sub"]},
+            options={"require": ["exp", "iat", "sub", "iss"], "verify_iss": False},
         )
     except jwt.InvalidTokenError as fehler:
         logger.warning("OIDC: the id_token could not be verified: %r", fehler)
-
-        # ⚠️ **Beim Aussteller die beiden Werte nennen.** „Invalid issuer"
-        # allein laesst einen raten, und die haeufigste Ursache ist eine
-        # Kleinigkeit: authentik schreibt je nach Einstellung entweder die
-        # Adresse der Anwendung oder die des Servers in den Ausweis, und wer
-        # zwei Anwendungen hat, traegt leicht die Kennung der einen mit der
-        # Adresse der anderen ein. Am 01.09.2026 genau dort haengengeblieben.
-        if isinstance(fehler, jwt.InvalidIssuerError):
-            erwartet = str(beschreibung.get("issuer") or "")
-            try:
-                gefunden = str(
-                    jwt.decode(id_token, options={"verify_signature": False}).get("iss") or ""
-                )
-            except Exception:  # noqa: BLE001
-                gefunden = ""
-            logger.warning(
-                "OIDC: issuer mismatch - the token says %r, the discovery document says %r",
-                gefunden,
-                erwartet,
-            )
-            raise OidcFehler(
-                "oidc_ausweis",
-                f"The ID token names {gefunden!r} as issuer, the discovery document "
-                f"{erwartet!r}. The two have to match; with authentik the "
-                "provider setting 'Issuer mode' decides this.",
-            ) from fehler
-
+        _symmetrisch_benennen(id_token, fehler)
         raise OidcFehler(
             "oidc_ausweis", "The provider's ID token could not be verified."
         ) from fehler
     except Exception as fehler:  # noqa: BLE001
         logger.warning("OIDC: keys at %r could not be read: %r", jwks, fehler)
+        _symmetrisch_benennen(id_token, fehler)
         raise OidcFehler("oidc_keine_schluessel", "The provider's keys could not be read.") from fehler
+
+    # ⚠️ **Beim Aussteller die beiden Werte nennen.** „Invalid issuer" allein
+    # laesst einen raten, und die haeufigste Ursache ist eine Kleinigkeit:
+    # authentik schreibt je nach Einstellung entweder die Adresse der Anwendung
+    # oder die des Servers in den Ausweis, und wer zwei Anwendungen hat, traegt
+    # leicht die Kennung der einen mit der Adresse der anderen ein. Am
+    # 01.09.2026 genau dort haengengeblieben.
+    gefunden = str(daten.get("iss") or "")
+    if gefunden not in zugelassene_aussteller(beschreibung, daten):
+        erwartet = str(beschreibung.get("issuer") or "")
+        logger.warning(
+            "OIDC: issuer mismatch - the token says %r, the discovery document says %r",
+            gefunden,
+            erwartet,
+        )
+        raise OidcFehler(
+            "oidc_ausweis",
+            f"The ID token names {gefunden!r} as issuer, the discovery document "
+            f"{erwartet!r}. The two have to match; with authentik the "
+            "provider setting 'Issuer mode' decides this.",
+        )
 
     # ⚠️ **Mehrere Empfaenger verlangen ``azp``** (OIDC Core 3.1.3.7) — und die
     # Pruefung gilt, **sobald** ``azp`` dasteht, nicht erst bei mehreren.

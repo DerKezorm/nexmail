@@ -147,6 +147,11 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
         "Geschuetzt ist er ueber das signierte Anlauf-Cookie (state, nonce, "
         "PKCE), nicht ueber eine Anmeldung; die entsteht ja gerade erst."
     ),
+    "/api/oidc/{kuerzel}/einladung": (
+        "Eine Einladung ueber einen Anbieter annehmen. Wer eingeladen ist, hat "
+        "noch kein Konto; der Schluessel aus der Mail ist der Nachweis, genau "
+        "wie beim Annehmen mit Kennwort, und dieselbe Bremse steht davor."
+    ),
     "/api/einladung/{schluessel}": (
         "Eine Einladung ansehen und annehmen. Wer sie annimmt, hat noch kein "
         "Konto — der Schlüssel aus der Mail ist der ganze Nachweis. Deshalb "

@@ -3,11 +3,14 @@
 Der Weg zur Identitaet liegt in ``services/oidc``; hier steht nur noch die
 Frage „wer ist das, und bekommt diese Person ein nexmail-Konto?".
 
-⚠️ **Die Adress-Bruecke zaehlt nur bei bestaetigter Adresse.** Ein
-OIDC-Anbieter sagt ausdrueckisch dazu, ob er fuer die Adresse buergt
-(``email_verified``) — und bei „nein" waere die Bruecke eine offene Tuer: Wer
-sich bei irgendeinem Anbieter ein Konto mit fremder Adresse anlegt, uebernaehme
-darueber das fremde nexmail-Konto samt allen Postfaechern.
+⚠️ **Eine Adresse oeffnet hier nichts mehr, auch keine Einladung.** Bis zum
+09.10.2026 fand eine Anmeldung ueber den Anbieter eine offene Einladung an
+ihre bestaetigte Adresse (``email_verified``). Das trug zweimal nicht: Entra ID
+schickt gar kein ``email_verified``, also ging es dort nie, und in authentik
+kann jeder seine Adresse selbst aendern, also auch auf die einer fremden
+offenen Einladung. Jetzt ist der Schluessel aus der Einladungsmail der
+Nachweis, wie beim Annehmen mit Kennwort; die Einladungsseite nimmt ihn mit
+zum Anbieter (``routers/oidc.einladung_starten``).
 """
 
 from __future__ import annotations
@@ -62,12 +65,12 @@ def verknuepfen(db: Session, person: Benutzer, ident: Identitaet) -> OidcVerknue
 
 
 def aufloesen(db: Session, ident: Identitaet) -> Benutzer:
-    """Wer ist das? — zwei Wege, mehr nicht.
+    """Wer ist das? — ueber die Anmeldeseite nur noch eine Antwort.
 
-    1. **Eine bestehende Verknuepfung.** Der Normalfall ab der zweiten
-       Anmeldung; sie entsteht, wenn jemand sich angemeldet verknuepft.
-    2. **Eine offene Einladung an genau diese Adresse.** Daraus entsteht das
-       Konto, und die Einladung gilt als angenommen.
+    **Eine bestehende Verknuepfung.** Sie entsteht, wenn jemand sich angemeldet
+    verknuepft oder eine Einladung ueber den Anbieter annimmt
+    (``einladung_einloesen``). Der zweite Weg herein ist die Einladungsseite,
+    nicht diese hier.
 
     ⚠️ **Kein Abgleich mit bestehenden Konten** (so entschieden am 01.09.2026).
     Vorher galt: „bestaetigte Adresse trifft vorhandenes Konto" — das war die
@@ -90,16 +93,50 @@ def aufloesen(db: Session, ident: Identitaet) -> Benutzer:
         else:
             return person
 
-    einladung = _offene_einladung(db, ident)
-    if einladung is None:
-        raise OidcFehler(
-            "oidc_kein_konto",
-            "No nexmail account matches this sign-in. Sign in with a password and "
-            "link the provider in the settings, or ask the operator for an "
-            "invitation.",
-        )
+    raise OidcFehler(
+        "oidc_kein_konto",
+        # ⚠️ Nicht „with a password and …" schreiben: Die Zensur im Protokoll
+        # schwaerzt das Wort nach „password", und heraus kam „password *****".
+        "No nexmail account matches this sign-in. Link the provider under "
+        "Security once signed in, or open the invitation link from the "
+        "operator's mail.",
+    )
 
+
+def einladung_einloesen(db: Session, ident: Identitaet, einladung_id: str) -> Benutzer:
+    """Aus der Einladung, deren Kennung im signierten Anlauf steht, ein Konto machen.
+
+    ⚠️ **Die Einladung wird hier noch einmal geprueft.** Zwischen Hin- und
+    Rueckweg liegen Minuten beim Anbieter; in der Zeit kann sie jemand mit
+    Kennwort angenommen oder der Betreiber sie zurueckgezogen haben.
+
+    ⚠️ **Eine schon verknuepfte Identitaet loest keine zweite Einladung
+    ein.** Sonst haette ein Mensch zwei Konten, und die Anmeldung fuehrte nur
+    noch in eins davon.
+    """
     from datetime import datetime, timezone
+
+    from ..models import Einladung
+    from .einladung import abgelaufen
+
+    einladung = db.get(Einladung, einladung_id) if einladung_id else None
+    if einladung is None or einladung.eingeloest is not None or abgelaufen(einladung):
+        raise OidcFehler(
+            "oidc_einladung_ungueltig",
+            "The invitation was redeemed, withdrawn or has expired in the meantime.",
+        )
+    if verknuepfung_suchen(db, ident) is not None:
+        raise OidcFehler(
+            "oidc_fremd_verknuepft",
+            "This identity already belongs to a different nexmail account.",
+        )
+    # ⚠️ Dieselbe Pruefung wie beim Annehmen mit Kennwort: Der Name kann in
+    # der Zwischenzeit vergeben worden sein.
+    if benutzerdienst.finden(db, einladung.benutzername) is not None:
+        raise OidcFehler(
+            "oidc_benutzername_vergeben",
+            "The user name of this invitation was taken in the meantime.",
+        )
 
     neuer = benutzerdienst.anlegen(
         db,
@@ -121,21 +158,3 @@ def aufloesen(db: Session, ident: Identitaet) -> Benutzer:
     verknuepfen(db, neuer, ident)
     logger.info("An invitation was redeemed through an OIDC provider.")
     return neuer
-
-
-def _offene_einladung(db: Session, ident: Identitaet):
-    """Eine offene Einladung an genau diese Adresse — oder ``None``.
-
-    ⚠️ **Die Adresse muss bestaetigt sein.** Sonst genuegte ein Anbieter, bei
-    dem man sich eine beliebige Adresse eintragen darf, um eine fremde
-    Einladung einzuloesen. Die Einladung nennt eine Adresse; der Anbieter muss
-    dafuer buergen.
-    """
-    if not ident.adresse or not ident.adresse_bestaetigt:
-        return None
-    from .einladung import abgelaufen, offene
-
-    for e in offene(db):
-        if e.adresse.strip().lower() == ident.adresse and not abgelaufen(e):
-            return e
-    return None

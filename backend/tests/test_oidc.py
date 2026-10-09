@@ -47,21 +47,31 @@ def anbieter_da(klient, monkeypatch):
     return antwort.json()
 
 
-def _lauf(klient, attrappe, monkeypatch, *, kuerzel="keycloak"):
-    """Hin- und Rueckweg — wie ein Browser ihn geht."""
+def _lauf(klient, attrappe, monkeypatch, *, kuerzel="keycloak", einladung=""):
+    """Hin- und Rueckweg — wie ein Browser ihn geht.
+
+    Mit ``einladung`` geht der Hinweg wie auf der Einladungsseite: POST mit
+    dem Schluessel, zurueck kommt das Ziel als JSON.
+    """
     einspannen(monkeypatch, attrappe)
 
-    hin = klient.get(f"/api/oidc/{kuerzel}/start", follow_redirects=False)
-    assert hin.status_code == 303, hin.text
+    if einladung:
+        hin = klient.post(f"/api/oidc/{kuerzel}/einladung", json={"schluessel": einladung})
+        assert hin.status_code == 200, hin.text
+        ziel = hin.json()["ziel"]
+    else:
+        hin = klient.get(f"/api/oidc/{kuerzel}/start", follow_redirects=False)
+        assert hin.status_code == 303, hin.text
+        ziel = hin.headers["location"]
 
     from urllib.parse import parse_qs, urlparse
 
     # ⚠️ Scheitert schon der Hinweg, ist **das** das Ergebnis — sonst
     # scheitert der Test an einem ``KeyError: nonce`` statt an der Sache.
-    if "oidc_fehler" in hin.headers["location"]:
+    if "oidc_fehler" in ziel:
         return hin
 
-    frage = parse_qs(urlparse(hin.headers["location"]).query)
+    frage = parse_qs(urlparse(ziel).query)
     attrappe._nonce = frage["nonce"][0]
     zustand = frage["state"][0]
 
@@ -73,14 +83,14 @@ def _lauf(klient, attrappe, monkeypatch, *, kuerzel="keycloak"):
 # --- Hilfen --------------------------------------------------------------- #
 
 
-def _einladung(db, adresse: str = "anna@example.com", benutzername: str = "anna"):
-    """Eine offene Einladung anlegen - ohne Mailversand."""
+def _einladung(db, adresse: str = "anna@example.com", benutzername: str = "anna") -> str:
+    """Eine offene Einladung anlegen - ohne Mailversand. Gibt den Schluessel aus der Mail."""
     from app.services import einladung as einladungsdienst
 
-    gebot, _ = einladungsdienst.aussprechen(
+    _, schluessel = einladungsdienst.aussprechen(
         db, benutzername=benutzername, adresse=adresse, anzeigename="Anna Beispiel"
     )
-    return gebot
+    return schluessel
 
 
 # --- Der gute Weg --------------------------------------------------------- #
@@ -130,17 +140,18 @@ def test_ein_zweiter_lauf_geht_ueber_die_verknuepfung(klient, anbieter_da, monke
 
 
 def test_eine_offene_einladung_wird_eingeloest(klient, anbieter_da, monkeypatch, db):
-    """Der zweite und einzige andere Weg herein.
+    """Der zweite und einzige andere Weg herein: die Einladungsseite.
 
-    Eine Einladung IST die Erlaubnis, und der Betreiber hat sie bewusst an
-    genau diese Adresse ausgesprochen.
+    Eine Einladung IST die Erlaubnis, und der Schluessel aus der Mail ist der
+    Nachweis, genau wie beim Annehmen mit Kennwort.
     """
-    _einladung(db)
+    schluessel = _einladung(db)
     klient.cookies.clear()
 
-    antwort = _lauf(klient, Attrappe(email="anna@example.com"), monkeypatch)
+    antwort = _lauf(klient, Attrappe(email="jemand-anderes@example.com"), monkeypatch, einladung=schluessel)
 
     assert "oidc_fehler" not in antwort.headers["location"], antwort.headers["location"]
+    assert klient.get("/api/auth/ich").json()["benutzername"] == "anna"
     neuer = db.query(Benutzer).filter(Benutzer.benutzername == "anna").one()
     # Kein zufaelliges Passwort - das waere ein Zugang, den niemand kennt.
     assert neuer.passwort_hash == ""
@@ -151,24 +162,35 @@ def test_eine_offene_einladung_wird_eingeloest(klient, anbieter_da, monkeypatch,
     assert neuer.kontaktadresse == "anna@example.com"
 
 
-def test_die_adresse_darf_auch_nur_aus_userinfo_kommen(klient, anbieter_da, monkeypatch, db):
-    """Authelia und Zitadel.
+def test_eine_einladung_braucht_keine_adresse_vom_anbieter(klient, anbieter_da, monkeypatch, db):
+    """Entra ID ohne optionalen Claim ``email``, Authelia ohne ``userinfo``.
 
-    Authelia legt ``email`` gar nicht in den Ausweis; Zitadel liefert sie dort
-    nur bei einem anderen Ablauf. Ohne die Nachfrage faende keine Einladung je
-    ihren Menschen.
+    ⚠️ **Bis zum 09.10.2026 ging das nicht:** Die Einladung wurde ueber die
+    bestaetigte Adresse gefunden, und Entra schickt nie ``email_verified``.
+    Die Kontaktadresse kommt trotzdem aus der Einladung.
     """
-    _einladung(db)
+    schluessel = _einladung(db)
     klient.cookies.clear()
-    attrappe = Attrappe(
-        email=None,
-        email_bestaetigt=None,
-        userinfo={"email": "anna@example.com", "email_verified": True},
-    )
-    antwort = _lauf(klient, attrappe, monkeypatch)
+    attrappe = Attrappe(email=None, email_bestaetigt=None, ohne_userinfo=True)
+    antwort = _lauf(klient, attrappe, monkeypatch, einladung=schluessel)
 
     assert "oidc_fehler" not in antwort.headers["location"], antwort.headers["location"]
-    assert db.query(Benutzer).filter(Benutzer.benutzername == "anna").count() == 1
+    neuer = db.query(Benutzer).filter(Benutzer.benutzername == "anna").one()
+    assert neuer.kontaktadresse == "anna@example.com"
+    assert db.query(OidcVerknuepfung).filter(OidcVerknuepfung.benutzer_id == neuer.id).count() == 1
+
+
+def test_die_einladung_ist_danach_verbraucht(klient, anbieter_da, monkeypatch, db):
+    """Ein zweiter Lauf mit demselben Schluessel legt kein zweites Konto an."""
+    schluessel = _einladung(db)
+    klient.cookies.clear()
+    _lauf(klient, Attrappe(), monkeypatch, einladung=schluessel)
+
+    klient.cookies.clear()
+    antwort = klient.post("/api/oidc/keycloak/einladung", json={"schluessel": schluessel})
+    assert antwort.status_code == 404
+    assert antwort.json()["detail"] == "einladung_abgelaufen"
+    assert db.query(Benutzer).count() == 2
 
 
 # --- Was NICHT durchkommen darf ------------------------------------------- #
@@ -195,25 +217,44 @@ def test_eine_adresse_oeffnet_kein_bestehendes_konto(klient, anbieter_da, monkey
     assert db.query(OidcVerknuepfung).count() == 0
 
 
-def test_eine_unbestaetigte_adresse_loest_keine_einladung_ein(klient, anbieter_da, monkeypatch, db):
-    """Sonst genuegte ein Anbieter, bei dem man sich eine beliebige Adresse
-    eintragen darf, um eine fremde Einladung einzuloesen."""
+def test_eine_bestaetigte_adresse_allein_loest_keine_einladung_ein(klient, anbieter_da, monkeypatch, db):
+    """⚠️ **Der Fall, fuer den der Umbau vom 09.10.2026 da ist.**
+
+    In authentik kann jeder seine Adresse selbst aendern, und eine Zuordnung
+    mit ``email_verified: True`` (wie sie nexbeats Knopf anlegt) buergt fuer
+    jede. Wer ueber die Anmeldeseite mit der Adresse einer fremden offenen
+    Einladung kommt, bekommt kein Konto.
+    """
     _einladung(db)
     klient.cookies.clear()
 
-    antwort = _lauf(klient, Attrappe(email_bestaetigt=False), monkeypatch)
+    antwort = _lauf(klient, Attrappe(email="anna@example.com", email_bestaetigt=True), monkeypatch)
 
     assert "oidc_kein_konto" in antwort.headers["location"]
     assert db.query(Benutzer).count() == 1
 
 
-def test_eine_einladung_an_eine_andere_adresse_zaehlt_nicht(klient, anbieter_da, monkeypatch, db):
-    _einladung(db, adresse="berta@example.com", benutzername="berta")
+def test_ein_falscher_schluessel_fuehrt_nicht_zum_anbieter(klient, anbieter_da, monkeypatch, db):
+    _einladung(db)
+    einspannen(monkeypatch, Attrappe())
     klient.cookies.clear()
 
-    antwort = _lauf(klient, Attrappe(email="anna@example.com"), monkeypatch)
-    assert "oidc_kein_konto" in antwort.headers["location"]
-    assert db.query(Benutzer).count() == 1
+    antwort = klient.post("/api/oidc/keycloak/einladung", json={"schluessel": "geraten-123"})
+    assert antwort.status_code == 404
+    assert "nexmail_oidc" not in antwort.headers.get("set-cookie", "")
+
+
+def test_falsche_schluessel_laufen_in_die_bremse(klient, anbieter_da, monkeypatch, db):
+    """⚠️ Sonst waere das hier der Weg, Schluessel ohne Bremse durchzuprobieren."""
+    einspannen(monkeypatch, Attrappe())
+    klient.cookies.clear()
+
+    codes = [
+        klient.post("/api/oidc/keycloak/einladung", json={"schluessel": "geraten-123"}).status_code
+        for _ in range(6)
+    ]
+    assert codes[0] == 404
+    assert 429 in codes, codes
 
 
 def test_eine_abgelaufene_einladung_zaehlt_nicht(klient, anbieter_da, monkeypatch, db):
@@ -221,15 +262,71 @@ def test_eine_abgelaufene_einladung_zaehlt_nicht(klient, anbieter_da, monkeypatc
 
     from app.models import Einladung
 
-    _einladung(db)
+    schluessel = _einladung(db)
     zeile = db.query(Einladung).one()
     zeile.laeuft_ab = datetime.now(timezone.utc) - timedelta(minutes=1)
     db.commit()
 
+    einspannen(monkeypatch, Attrappe())
     klient.cookies.clear()
-    antwort = _lauf(klient, Attrappe(email="anna@example.com"), monkeypatch)
-    assert "oidc_kein_konto" in antwort.headers["location"]
+    antwort = klient.post("/api/oidc/keycloak/einladung", json={"schluessel": schluessel})
+    assert antwort.status_code == 404
     assert db.query(Benutzer).count() == 1
+
+
+def test_eine_unterwegs_verbrauchte_einladung_zaehlt_nicht(klient, anbieter_da, monkeypatch, db):
+    """Zwischen Hin- und Rueckweg liegen Minuten beim Anbieter.
+
+    In der Zeit kann jemand sie mit Kennwort angenommen haben.
+    """
+    from datetime import datetime, timezone
+
+    from app.models import Einladung
+
+    schluessel = _einladung(db)
+    klient.cookies.clear()
+    attrappe = Attrappe()
+    einspannen(monkeypatch, attrappe)
+    ziel = klient.post("/api/oidc/keycloak/einladung", json={"schluessel": schluessel}).json()["ziel"]
+
+    db.query(Einladung).one().eingeloest = datetime.now(timezone.utc)
+    db.commit()
+
+    from urllib.parse import parse_qs, urlparse
+
+    frage = parse_qs(urlparse(ziel).query)
+    attrappe._nonce = frage["nonce"][0]
+    antwort = klient.get(
+        f"/api/oidc/keycloak/zurueck?code=abc&state={frage['state'][0]}", follow_redirects=False
+    )
+    assert "oidc_einladung_ungueltig" in antwort.headers["location"]
+    assert db.query(Benutzer).count() == 1
+
+
+def test_eine_schon_verknuepfte_identitaet_loest_keine_zweite_einladung_ein(
+    klient, anbieter_da, monkeypatch, db
+):
+    """Sonst haette ein Mensch zwei Konten, und die Anmeldung fuehrte nur in eins."""
+    _lauf(klient, Attrappe(), monkeypatch)  # der Betreiber verknuepft sich
+    schluessel = _einladung(db)
+    klient.cookies.clear()
+
+    antwort = _lauf(klient, Attrappe(), monkeypatch, einladung=schluessel)
+    assert "oidc_fremd_verknuepft" in antwort.headers["location"]
+    assert db.query(Benutzer).count() == 1
+
+
+def test_ein_inzwischen_vergebener_name_wird_benannt(klient, anbieter_da, monkeypatch, db):
+    from app.services import benutzer as benutzerdienst
+
+    schluessel = _einladung(db)
+    benutzerdienst.anlegen(db, "anna", "noch-ein-kennwort-789")
+    klient.cookies.clear()
+
+    antwort = _lauf(klient, Attrappe(), monkeypatch, einladung=schluessel)
+    assert "oidc_benutzername_vergeben" in antwort.headers["location"]
+    assert db.query(OidcVerknuepfung).count() == 0
+    assert db.query(Benutzer).count() == 2
 
 
 def test_ohne_konto_und_ohne_einladung_kommt_niemand_herein(klient, anbieter_da, monkeypatch, db):
@@ -278,22 +375,28 @@ def test_ein_anderer_aussteller_wird_abgewiesen(klient, anbieter_da, monkeypatch
     assert "oidc_falscher_aussteller" in antwort.headers["location"]
 
 
-def test_userinfo_mit_fremdem_sub_wird_verworfen(klient, anbieter_da, monkeypatch, db):
+def test_userinfo_mit_fremdem_sub_wird_verworfen(monkeypatch):
     """⚠️ **OIDC Core 5.3.2.** Ohne die Pruefung liesse sich einer beglaubigten
-    Anmeldung die Adresse einer fremden anhaengen."""
-    person = db.query(Benutzer).one()
-    person.benutzername = "anna@example.com"
-    db.commit()
+    Anmeldung die Auskunft ueber einen anderen Menschen anhaengen.
 
-    klient.cookies.clear()
-    attrappe = Attrappe(
-        email=None,
-        email_bestaetigt=None,
-        userinfo={"email": "anna@example.com", "email_verified": True},
-        userinfo_fremdes_sub=True,
+    ⚠️ **Direkt an ``nachfragen`` geprueft**, seit eine Adresse keine Tuer mehr
+    oeffnet (09.10.2026): Ueber den ganzen Lauf endete der Test vorher in
+    „kein Konto", und das tut er jetzt in jedem Fall. Er waere grün, auch
+    wenn die Pruefung fehlte.
+    """
+    import asyncio
+
+    auskunft = {"email": "anna@example.com", "email_verified": True}
+    fremd = Attrappe(userinfo=auskunft, userinfo_fremdes_sub=True)
+    einspannen(monkeypatch, fremd)
+    assert asyncio.run(oidc.nachfragen(fremd.beschreibung(), "zugang", fremd.subject)) == {}
+
+    # Gegenprobe: mit passendem sub kommt die Auskunft an.
+    passend = Attrappe(userinfo=auskunft)
+    einspannen(monkeypatch, passend)
+    assert asyncio.run(oidc.nachfragen(passend.beschreibung(), "zugang", passend.subject))["email"] == (
+        "anna@example.com"
     )
-    antwort = _lauf(klient, attrappe, monkeypatch)
-    assert "oidc_kein_konto" in antwort.headers["location"]
 
 
 def test_ohne_anlauf_cookie_geht_nichts(klient, anbieter_da, monkeypatch):
@@ -439,9 +542,9 @@ def test_die_rueckkehr_adresse_steht_zum_abschreiben_da(klient, anbieter_da):
 
 def test_die_letzte_verknuepfung_laesst_sich_nicht_loesen(klient, anbieter_da, monkeypatch, db):
     """Wer kein Kennwort hat, sperrt sich damit selbst aus."""
-    _einladung(db)
+    schluessel = _einladung(db)
     klient.cookies.clear()
-    _lauf(klient, Attrappe(email="anna@example.com"), monkeypatch)
+    _lauf(klient, Attrappe(), monkeypatch, einladung=schluessel)
 
     meine = klient.get("/api/oidc/meine").json()
     assert len(meine) == 1
