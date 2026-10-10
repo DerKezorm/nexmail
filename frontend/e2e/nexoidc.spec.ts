@@ -143,5 +143,8 @@ test('34: add, edit and remove a provider; the authentik card lists its steps', 
   const schritte = page.getByTestId('authentik-steps')
   await expect(schritte).toContainText('Verbindung zu authentik')
   await expect(schritte).toContainText('authentik ist unter dieser Adresse nicht erreichbar.')
+  // Die übernommene Adresse bleibt gespeichert, auch wenn authentik nicht antwortet, und Karte 1 zeigt sie.
+  await expect(page.getByLabel('Öffentliche Adresse')).toHaveValue('http://127.0.0.1:8496')
+  await expect(page.getByTestId('authentik-no-address')).toHaveCount(0)
   expect(fehler).toEqual([])
 })

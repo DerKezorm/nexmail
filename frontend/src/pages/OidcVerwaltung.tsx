@@ -200,7 +200,11 @@ export function OidcVerwaltung() {
           {fehler}
         </p>
       )}
-      <AnmeldungKarte aktiv={(eintraege ?? []).some((e) => e.enabled)} aufGeaendert={laden} />
+      <AnmeldungKarte
+        aktiv={(eintraege ?? []).some((e) => e.enabled)}
+        oeffentlich={adresse?.public_url}
+        aufGeaendert={laden}
+      />
       <AnbieterKarte eintraege={eintraege ?? []} adresse={adresse} aufGeaendert={laden} />
       <AuthentikKarte adresse={adresse} aufGeaendert={laden} />
     </div>
@@ -209,7 +213,16 @@ export function OidcVerwaltung() {
 
 // --- Karte 1: Anmeldung ----------------------------------------------------------------------------------------------
 
-function AnmeldungKarte({ aktiv, aufGeaendert }: { aktiv: boolean; aufGeaendert: () => Promise<void> }) {
+function AnmeldungKarte({
+  aktiv,
+  oeffentlich,
+  aufGeaendert,
+}: {
+  aktiv: boolean
+  /** Die öffentliche Adresse, wie der Server sie zuletzt nannte: Karte 3 kann sie gerade übernommen haben. */
+  oeffentlich: string | undefined
+  aufGeaendert: () => Promise<void>
+}) {
   const { t } = useTranslation()
   const deuten = useDeuten()
   const [passwort, setPasswort] = useState<boolean | null>(null)
@@ -234,7 +247,7 @@ function AnmeldungKarte({ aktiv, aufGeaendert }: { aktiv: boolean; aufGeaendert:
 
   useEffect(() => {
     void laden().catch((f) => setFehler(deuten(f)))
-  }, [laden, deuten, aktiv])
+  }, [laden, deuten, aktiv, oeffentlich])
 
   async function umschalten(an: boolean) {
     setFehler('')
@@ -672,7 +685,8 @@ function Formular({
           onChange={(e) => setze({ client_secret: e.target.value })}
         />
         <div className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-fg-2">{t('oidc.admin.redirect')}</span>
+          {/* Dieselbe Beschriftung wie die Felder (ds/Feld.tsx), aber nur lesbar. */}
+          <span className="text-[12px] font-semibold tracking-[0.06em] text-fg-3 uppercase">{t('oidc.admin.redirect')}</span>
           <div className="flex items-center gap-2 rounded-md border border-line bg-surface-2 px-3 py-2">
             <code className="min-w-0 flex-1 truncate font-mono text-[12px] text-fg-1 select-all" data-testid="provider-redirect">
               {rueckleit}
