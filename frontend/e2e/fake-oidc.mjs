@@ -64,8 +64,12 @@ http
       const back = new URL(url.searchParams.get('redirect_uri'))
       back.searchParams.set('code', code)
       back.searchParams.set('state', url.searchParams.get('state'))
-      response.writeHead(302, { Location: back.toString() })
-      return response.end()
+      // Like a real provider's sign-in page: the way back starts from the provider's own page (here a refresh), not
+      // as a redirect of the app's navigation. Only then is it cross-site for the browser, and a SameSite=strict
+      // session cookie stays behind, as it does with authentik or Entra.
+      const target = back.toString().replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      return response.end(`<!doctype html><meta http-equiv="refresh" content="0;url=${target}"><title>Stand-in</title>`)
     }
     if (url.pathname === '/token' && request.method === 'POST') {
       const form = new URLSearchParams(await readBody(request))
