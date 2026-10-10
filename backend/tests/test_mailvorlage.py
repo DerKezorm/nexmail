@@ -9,7 +9,9 @@ nur inkonsequent — sie waere in jedem Client mit Bildblocker ein leerer Kasten
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime, timedelta
 from email import message_from_bytes
+from email.utils import parsedate_to_datetime
 
 import pytest
 
@@ -64,6 +66,26 @@ def _mail_bauen(gefangen, html: str | None = None):
             ),
         )
     return message_from_bytes(gefangen[0])
+
+
+def test_die_mail_traegt_date_und_message_id(klient, gefangen):
+    """⚠️ Ohne Date verwerfen iCloud, Outlook und Gmail die Mail still.
+
+    smtplib ergaenzt das Feld nicht; unser eigener Server tat es, ein Relay
+    wie Bluehost nicht. Die Message-ID fehlte aus demselben Grund.
+    """
+    einrichten(klient)
+    vorher = datetime.now(UTC) - timedelta(seconds=5)
+    mail = _mail_bauen(gefangen)
+    nachher = datetime.now(UTC) + timedelta(seconds=5)
+
+    daten = mail.get_all("Date")
+    assert daten is not None and len(daten) == 1
+    assert vorher <= parsedate_to_datetime(daten[0]) <= nachher
+
+    ids = mail.get_all("Message-ID")
+    assert ids is not None and len(ids) == 1
+    assert ids[0].startswith("<") and ids[0].endswith("@example.com>")
 
 
 def test_die_mail_hat_beide_teile(klient, gefangen):

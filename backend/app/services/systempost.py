@@ -21,7 +21,7 @@ import smtplib
 import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
-from email.utils import formataddr
+from email.utils import formataddr, formatdate, make_msgid
 
 from sqlalchemy.orm import Session
 
@@ -124,6 +124,10 @@ def senden(db: Session, an: str, betreff: str, text: str, html: str = "") -> Non
     mail["From"] = formataddr((angaben.absendername, angaben.absender))
     mail["To"] = an
     mail["Subject"] = betreff
+    # Pflichtfelder nach RFC 5322. smtplib ergaenzt sie nicht, und ohne Date
+    # verwerfen iCloud, Outlook und Gmail die Mail still.
+    mail["Date"] = formatdate(localtime=True)
+    mail["Message-ID"] = make_msgid(domain=angaben.absender.split("@")[-1])
     mail.set_content(text)
     if html:
         mailvorlage.anhaengen(mail, html)
