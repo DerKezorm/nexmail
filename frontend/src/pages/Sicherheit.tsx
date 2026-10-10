@@ -10,14 +10,14 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { KeyRound, LogOut, Monitor, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { LogOut, Monitor, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { api } from '../api/client'
 import type { Ich } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Oauthzugaenge } from '../components/Oauthzugaenge'
+import { Anmeldeanbieter } from '../components/Anmeldeanbieter'
 import { Badge, Button, Dialog, IconButton, Input } from '../ds'
 import { ZweiterFaktor } from '../components/ZweiterFaktor'
-import { appPfad } from '../lib/basis'
 import { servermeldung } from '../lib/servermeldung'
 
 interface Geraet {
@@ -69,26 +69,6 @@ export function Sicherheit({
   const [einschalten, setEinschalten] = useState(false)
   const [ausschalten, setAusschalten] = useState(false)
   const [kennwort, setKennwort] = useState('')
-
-  /* Welche Anbieter es gibt und welche schon an diesem Konto hängen. */
-  const [anbieter, setAnbieter] = useState<Array<{ kuerzel: string; anzeigename: string }>>([])
-  const [verknuepfungen, setVerknuepfungen] = useState<
-    Array<{ id: number; issuer: string; anzeigename: string; kuerzel: string }>
-  >([])
-  useEffect(() => {
-    api
-      .holen<Array<{ kuerzel: string; anzeigename: string }>>('/api/oidc/knoepfe')
-      .then(setAnbieter)
-      .catch(() => undefined)
-  }, [])
-  useEffect(() => {
-    api
-      .holen<Array<{ id: number; issuer: string; anzeigename: string; kuerzel: string }>>(
-        '/api/oidc/meine',
-      )
-      .then(setVerknuepfungen)
-      .catch(() => undefined)
-  }, [geraete])
 
   const wenige = (ich?.offene_codes ?? 0) <= 3
 
@@ -260,64 +240,8 @@ export function Sicherheit({
         </Dialog>
       )}
 
-      {/* --- Anmelde-Anbieter ---------------------------------------------
-          ⚠️ **Ein Knopf, kein versteckter Aufruf.** Vorher führte der Weg zum
-          Verknüpfen nur über eine Adresse, die man kennen musste
-          (`/api/oidc/<kürzel>/start`). Der Betreiber am 01.09.2026: „Ist die Frage ob
-          man einen Verknüpfen button einfach ins profil macht" — ja, denn eine
-          Handlung, die man nicht sieht, gibt es nicht. */}
-      {anbieter.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{t('sicherheit.anbieter')}</h2>
-          <p className="mb-0 text-[12px] text-fg-3">{t('sicherheit.anbieter_hinweis')}</p>
-
-          <ul className="flex list-none flex-col gap-2 p-0">
-            {anbieter.map((a) => {
-              /* ⚠️ **Ueber das Kuerzel, nicht ueber den Anzeigenamen.** Der
-                 ist frei waehlbar; das Kuerzel steckt in der Rueckkehr-Adresse
-                 und ist eindeutig. Am 01.09.2026 stand hier der Anzeigename,
-                 und eine bestehende Verknuepfung blieb unsichtbar, sobald der
-                 Anbieter seinen Aussteller mit abschliessendem Schraegstrich
-                 nennt — bei authentik der Normalfall. */
-              const verknuepft = verknuepfungen.find((v) => v.kuerzel === a.kuerzel)
-              return (
-                <li
-                  key={a.kuerzel}
-                  className="flex items-center gap-3 rounded-lg border border-line bg-surface-1 px-4 py-2.5"
-                >
-                  <KeyRound aria-hidden className="size-4 shrink-0 text-fg-4" />
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-fg-1">
-                    {a.anzeigename}
-                  </span>
-                  {verknuepft ? (
-                    <>
-                      <Badge tone="accent">{t('sicherheit.verknuepft')}</Badge>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          void mit(() => api.loeschen(`/api/oidc/meine/${verknuepft.id}`))
-                        }
-                      >
-                        {t('sicherheit.loesen')}
-                      </Button>
-                    </>
-                  ) : (
-                    /* ⚠️ Ein Verweis, kein fetch: Der Hinweg ist eine
-                       Browser-Weiterleitung zum Anbieter. */
-                    <a
-                      href={appPfad(`/api/oidc/${a.kuerzel}/start`)}
-                      className="rounded-md border border-line px-3 py-1 text-[12px] text-fg-1 no-underline transition-colors duration-[var(--dur-fast)] hover:border-accent"
-                    >
-                      {t('sicherheit.verknuepfen')}
-                    </a>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-      )}
+      {/* --- Anmeldeanbieter: verknüpfen mit Kennwort, lösen ------------- */}
+      <Anmeldeanbieter />
 
       {/* --- Google und Microsoft ---------------------------------------- */}
       {/* ⚠️ **Hier, nicht beim Postfach.** Eine Zustimmung gilt fuer Postfach

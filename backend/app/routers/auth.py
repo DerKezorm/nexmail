@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from ..config import get_settings
 from ..deps import AktiveSitzung, AngemeldeterBenutzer, DbSession, HalbeSitzung
+from .oidc import passwort_anmeldung_an
 from ..services import anmeldebremse
 from ..services import benutzer as benutzerdienst
 from ..services import kidienst
@@ -104,6 +105,11 @@ def anmelden(
         )
 
     wache.geschafft()
+    # ⚠️ **„Anmeldung mit Passwort" aus** (Verwaltung → Anmeldung): Nur die
+    # Anbieter lassen herein. Der Betreiber kommt immer mit seinem Passwort
+    # hinein, sonst stuende er vor der Tuer, sobald der Anbieter ausfaellt.
+    if not person.ist_betreiber and not passwort_anmeldung_an(db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="passwort_anmeldung_aus")
     benutzerdienst.hash_auffrischen(db, person, eingabe.passwort)
 
     # ⚠️ Der Nothammer. Er ueberspringt den zweiten Faktor vollstaendig -

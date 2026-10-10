@@ -74,7 +74,7 @@ export function Verwaltung({ reiter, aufReiter, ich, ichNeuLaden }: Props) {
             { id: 'protokoll', label: t('verwaltung.protokoll') },
             { id: 'server', label: t('verwaltung.server') },
             { id: 'benutzer', label: t('verwaltung.benutzer') },
-            { id: 'oidc', label: t('verwaltung.oidc') },
+            { id: 'oidc', label: t('oidc.admin.signInTitle') },
             { id: 'oauth', label: t('verwaltung.oauth') },
             { id: 'sicherungen', label: t('verwaltung.sicherungen') },
           ]}

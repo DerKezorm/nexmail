@@ -1,576 +1,533 @@
-"""Anmelden über einen fremden Anbieter — und die Verwaltung dazu.
+"""Anmelden ueber OpenID Connect, das eigene Konto verknuepfen, die Anbieter verwalten, der authentik-Knopf.
 
-Zwei Wege, ein Ablauf:
+Der Ablauf selbst steht im gemeinsamen Modul ``app.vendor.nexoidc`` (Bauplan "Anmeldung mit OIDC und authentik"), hier
+nur, was nexmail dazugibt: Sitzung, zweiter Faktor, Bremse, Passwort, Betreiber und die Antworten. Pfade:
 
-* **Anmelden** (ohne Sitzung) — endet in einer gewöhnlichen nexmail-Sitzung.
-* **Verknüpfen** (mit Sitzung) — hängt die Identität an das eigene Konto.
+| Methode | Pfad | Wer |
+|---|---|---|
+| GET | ``/api/oidc/providers`` | alle: Kurzname und Name der aktiven Anbieter (Anmelde- und Einladungsseite) |
+| GET, POST | ``/api/oidc/admin/providers`` | Betreiber: die Liste, einen anlegen |
+| PUT | ``/api/oidc/admin/providers/order`` | Betreiber: Reihenfolge |
+| PUT, DELETE | ``/api/oidc/admin/providers/{id}`` | Betreiber: speichern, entfernen |
+| GET | ``/api/oidc/admin/providers/{id}/impact?issuer=`` | Betreiber: Zahlen fuer die beiden Rueckfragen |
+| GET, PUT | ``/api/oidc/admin/anmeldung`` | Betreiber: Karte 1, „Anmeldung mit Passwort" |
+| GET | ``/api/oidc/{slug}/start[?invite=]`` | alle: zum Anbieter |
+| GET | ``/api/oidc/{slug}/callback``, ``/api/oidc/callback`` | alle: zurueck vom Anbieter |
+| GET | ``/api/oidc/{slug}/zurueck`` | alle: dasselbe fuer die Anbieter aus 0.21 (``redirect_path``) |
+| GET | ``/api/oidc/me`` | angemeldet: die aktiven Anbieter mit ``linked`` |
+| POST, DELETE | ``/api/oidc/{slug}/link`` | angemeldet: verknuepfen (mit Passwort), loesen |
+| DELETE | ``/api/oidc/admin/accounts/{konto}/links/{anbieter}`` | Betreiber, mit eigenem Passwort |
+| POST | ``/api/oidc/authentik/setup`` | Betreiber: der Knopf, immer 200 |
+| GET, POST | ``/api/oidc/authentik/address`` | Betreiber: was die authentik-Karte zur Adresse zeigt; „Nur uebernehmen" |
+| GET | ``/api/oidc/authentik/blueprint`` | Betreiber: ``nexmail-authentik.yaml`` |
 
-⚠️ **Der Rückweg ist eine Browser-Weiterleitung, keine API-Antwort.** Der
-Anbieter schickt den Browser per GET zurück; was hier herauskommt, sieht ein
-Mensch. Deshalb endet **jeder** Ausgang — auch jeder Fehler — in einer
-Weiterleitung auf die eigene Oberfläche mit einer Kennung in der Adresse, nie
-in nacktem JSON.
+⚠️ **Der Rueckweg ist eine Browser-Weiterleitung, keine API-Antwort.** Jeder Ausgang, auch jeder Fehler, endet auf
+der eigenen Oberflaeche: ``/anmelden?error=<code>``, beim Verknuepfen ``/konto/sicherheit?error=<code>``.
 
-⚠️ **Deaktivierte oder unbekannte Anbieter: 404 auf beiden Adressen.**
-Abschalten blendet nicht nur den Knopf aus — der Weg selbst ist zu.
+⚠️ **Fehler der Anmeldung gehen als Kennung des Moduls hinaus** (``abgelehnt``), uebersetzt aus dessen Wortlauten
+(``oidc.error.*``, ``oidc.formError.*``), nicht aus ``serverfehler``. ``test_oidc_app`` haelt fest, dass jede dieser
+Kennungen dort steht.
 """
 
 from __future__ import annotations
 
+import html
 import logging
-from urllib.parse import urlencode
+from dataclasses import asdict
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from .. import crypto
 from ..config import get_settings
-from ..db import einstellung_lesen
+from ..db import einstellung_lesen, einstellung_schreiben
 from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
+from ..meldung import MeldungHttp
 from ..models import Benutzer, OidcAnbieter, OidcVerknuepfung
-from ..routers.einstellungen import SCHLUESSEL_OEFFENTLICHE_ADRESSE
-from ..services import anmeldebremse, authentik_einrichtung, oidc
-from ..services import einladung as einladungsdienst
-from ..services import oidc_konten as kontendienst
+from ..services import anmeldebremse
+from ..services import benutzer as benutzerdienst
 from ..services import sitzung as sitzungsdienst
+from ..services.oidc_store import SqlStore
+from ..vendor.nexoidc import OidcError, ProviderInvalid, accounts, authentik, flow, providers
+from ..vendor.nexoidc.attempt import LINK
+from ..vendor.nexoidc.attempt import read as anlauf_lesen
+from ..vendor.nexoidc.config import current
 
+router = APIRouter(tags=["oidc"])
 logger = logging.getLogger("nexmail.oidc")
 
-router = APIRouter(prefix="/api/oidc", tags=["oidc"])
+API = "/api"
+
+#: Die Einstellung hinter „Anmeldung mit Passwort" (Karte 1). ``aus``: nur die Anbieter lassen herein, der Betreiber
+#: kommt immer mit Passwort hinein. Wirkt nur, solange ein Anbieter an ist.
+SCHLUESSEL_PASSWORT = "anmeldung_passwort"
 
 
-def _kontext(anbieter_id: str) -> str:
-    return f"oidc:{anbieter_id}:geheimnis"
+def abgelehnt(status_code: int, code: str, **werte: Any) -> MeldungHttp:
+    """Eine Ablehnung mit einer Kennung des Moduls (``nexoidc.errors``) oder seiner Rueckfragen."""
+    return MeldungHttp(status_code, code, werte or None)
 
 
-def _anbieter(db, kuerzel: str) -> OidcAnbieter:
-    zeile = db.execute(
-        select(OidcAnbieter).where(OidcAnbieter.kuerzel == kuerzel)
-    ).scalar_one_or_none()
-    # ⚠️ 404 auch bei abgeschaltet: Der Weg ist zu, nicht nur der Knopf weg.
-    if zeile is None or not zeile.aktiv:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    return zeile
+def _form_error(error: ProviderInvalid) -> MeldungHttp:
+    return abgelehnt(status.HTTP_422_UNPROCESSABLE_CONTENT, error.code, field=error.field)
 
 
-def _rueckkehr(db, kuerzel: str) -> str:
-    """Die Adresse, die beim Anbieter hinterlegt sein muss.
+def basis(request: Request) -> str:
+    """Die Adresse dieser Anfrage samt Vorbau (``NEXMAIL_URL_BASE``), so wie der Browser nexmail erreicht.
 
-    ⚠️ **Ohne öffentliche Adresse geht es nicht los.** Aus ihr entsteht die
-    Rückkehr-Adresse; ohne sie schickt der Anbieter den Browser ins Leere und
-    meldet nur ein nichtssagendes ``invalid_grant``.
+    ⚠️ ``request.base_url`` kennt den Vorbau nicht: ``BasisPfadMiddleware`` streift ihn vorher ab.
     """
-    basis = einstellung_lesen(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE).rstrip("/")
-    if not basis:
-        raise oidc.OidcFehler(
-            "oidc_keine_adresse",
-            "Without a public address there is no redirect URI. It lives in the "
-            "administration under 'Server'.",
-        )
-    return f"{basis}{get_settings().url_base}/api/oidc/{kuerzel}/zurueck"
+    return str(request.base_url).rstrip("/") + get_settings().url_base
 
 
-def _oberflaeche(pfad: str = "/") -> str:
-    return f"{get_settings().url_base}{pfad}"
+# -- Karte 1: Anmeldung mit Passwort ---------------------------------------------
 
 
-# --- Der Hinweg ----------------------------------------------------------- #
+def aktiver_anbieter(db: Session) -> bool:
+    return any(entry.enabled for entry in SqlStore(db).list_providers())
 
 
-@router.get("/{kuerzel}/start")
-async def starten(kuerzel: str, request: Request, db: DbSession) -> Response:
-    """Zum Anbieter weiterleiten und den Anlauf im Cookie merken."""
-    anbieter = _anbieter(db, kuerzel)
-    # Mit Sitzung heißt: verknüpfen. Ohne: anmelden.
+def passwort_anmeldung_an(db: Session) -> bool:
+    """Ob Konten ohne Betreiber-Haken sich mit Passwort anmelden duerfen. Ohne aktiven Anbieter immer: sonst kaeme
+    niemand mehr herein (Bauplan 01 "Passwort-Anmeldung")."""
+    return einstellung_lesen(db, SCHLUESSEL_PASSWORT) != "aus" or not aktiver_anbieter(db)
+
+
+class AnmeldungIn(BaseModel):
+    passwort: bool
+
+
+@router.get(f"{API}/oidc/admin/anmeldung", summary="Card 1: whether people sign in with a password")
+def anmeldung_lesen(_: Betreiber, db: DbSession) -> dict[str, Any]:
+    return {"passwort": passwort_anmeldung_an(db), "anbieter_aktiv": aktiver_anbieter(db)}
+
+
+@router.put(f"{API}/oidc/admin/anmeldung", summary="Card 1: switch password sign-in on or off")
+def anmeldung_setzen(eingabe: AnmeldungIn, betreiber: Betreiber, db: DbSession) -> dict[str, Any]:
+    if not eingabe.passwort and not aktiver_anbieter(db):
+        raise MeldungHttp(status.HTTP_409_CONFLICT, "passwort_ohne_anbieter")
+    einstellung_schreiben(db, SCHLUESSEL_PASSWORT, "an" if eingabe.passwort else "aus")
+    logger.info("Password sign-in switched %s by=%s", "on" if eingabe.passwort else "off", betreiber.benutzername)
+    return anmeldung_lesen(betreiber, db)
+
+
+# -- Bremse, Sitzung, Antworten -----------------------------------------------------
+
+
+def _sitzungskonto(request: Request, db: Session) -> Benutzer | None:
+    """Das Konto einer bestaetigten Sitzung dieses Browsers, sonst None."""
     sitzung = sitzungsdienst.holen(db, request)
-    absicht = "verknuepfen" if sitzung else "anmelden"
+    return sitzung.benutzer if sitzung is not None and sitzung.bestaetigt else None
 
+
+def _cookie(response: Response, cookie: flow.Cookie) -> None:
+    if cookie.max_age == 0:
+        response.delete_cookie(cookie.name, path=cookie.path, secure=cookie.secure, httponly=True, samesite="lax")
+    else:
+        response.set_cookie(
+            cookie.name,
+            cookie.value,
+            max_age=cookie.max_age,
+            path=cookie.path,
+            httponly=cookie.http_only,
+            samesite="lax",
+            secure=cookie.secure,
+        )
+
+
+def _weiter(redirect: flow.Redirect) -> RedirectResponse:
+    response = RedirectResponse(redirect.location, status_code=status.HTTP_303_SEE_OTHER)
+    _cookie(response, redirect.cookie)
+    return response
+
+
+def _knoepfe(db: Session) -> list[dict[str, str]]:
+    return providers.public_list(SqlStore(db))
+
+
+# -- Oeffentlich: Anbieter, Start, Rueckkehr -------------------------------------------
+
+
+@router.get(f"{API}/oidc/providers", summary="The active sign-in providers, for the sign-in and invitation pages")
+def oeffentliche_anbieter(db: DbSession) -> list[dict[str, str]]:
+    """Kurzname und Name der aktiven Eintraege, in der Reihenfolge der Liste. Nur, was ohnehin auf einem Knopf steht."""
+    return _knoepfe(db)
+
+
+@router.get(f"{API}/oidc/anmeldeseite", summary="What the sign-in page shows: the buttons and the password form")
+def anmeldeseite(db: DbSession) -> dict[str, Any]:
+    """Die Knoepfe und ob das Passwortformular dasteht (sonst nur klein „Als Betreiber mit Passwort anmelden")."""
+    return {"providers": _knoepfe(db), "password": passwort_anmeldung_an(db)}
+
+
+@router.get(f"{API}/oidc/{{slug}}/start", summary="Start a sign-in at an identity provider")
+async def start(slug: str, request: Request, db: DbSession, invite: str | None = None) -> RedirectResponse:
+    store = SqlStore(db)
     try:
-        rueckkehr = _rueckkehr(db, kuerzel)
-        beschreibung = await oidc.beschreibung_holen(anbieter.issuer)
-        anlauf = oidc.anlauf_erzeugen(kuerzel, absicht, sitzung.benutzer_id if sitzung else "")
-        ziel = oidc.weiterleitung_bauen(
-            beschreibung,
-            client_id=anbieter.client_id,
-            scopes=anbieter.scopes,
-            rueckkehr=rueckkehr,
-            anlauf=anlauf,
-        )
-    except oidc.OidcFehler as fehler:
-        logger.warning("OIDC: start via %r failed: %s", kuerzel, fehler.text)
-        return RedirectResponse(
-            _oberflaeche(f"/?{urlencode({'oidc_fehler': fehler.code})}"),
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-
-    antwort = RedirectResponse(ziel, status_code=status.HTTP_303_SEE_OTHER)
-    _anlauf_merken(antwort, request, anlauf)
-    return antwort
+        if anmeldebremse.oidc_wartet(request):
+            raise OidcError("too_many_attempts", "sender is braked")
+        redirect = await flow.begin(store, slug, request_base=basis(request), invite=invite)
+    except OidcError as error:
+        return _weiter(flow.refused(error, None))
+    return _weiter(redirect)
 
 
-class EinladungsAnlauf(BaseModel):
+def _durchreichen(request: Request) -> HTMLResponse:
+    """Eine Seite, die dieselbe Rueckkehr noch einmal aufruft, diesmal von nexmails eigener Seite aus.
+
+    ⚠️ **Das Sitzungs-Cookie steht auf ``SameSite=strict``** und faehrt bei der Weiterleitung vom Anbieter nicht mit
+    (eine Navigation von fremder Seite). Beim Verknuepfen muss die Rueckkehr aber die Sitzung sehen (Bauplan 01). Ein
+    zweiter Aufruf, den nexmails eigene Seite ausloest, ist eine Navigation derselben Seite: Dann faehrt es mit.
+    Nichts ist bis hierher verbraucht (``state`` und Code gelten noch), und ohne Skript (``script-src 'self'``)."""
+    ziel = html.escape(str(request.url.path) + ("?" + request.url.query if request.url.query else ""), quote=True)
+    ziel = html.escape(get_settings().url_base, quote=True) + ziel
+    seite = (
+        "<!doctype html><html><head><meta charset=\"utf-8\">"
+        f"<meta http-equiv=\"refresh\" content=\"0;url={ziel}\"><title>nexmail</title></head>"
+        f"<body><a href=\"{ziel}\">nexmail</a></body></html>"
+    )
+    return HTMLResponse(seite, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+class EinladungIn(BaseModel):
     schluessel: str = Field(min_length=1, max_length=200)
 
 
-@router.post("/{kuerzel}/einladung")
-async def einladung_starten(
-    kuerzel: str, eingabe: EinladungsAnlauf, request: Request, db: DbSession
-) -> JSONResponse:
-    """Eine Einladung über den Anbieter annehmen: wohin der Browser jetzt geht.
+@router.post(f"{API}/oidc/{{slug}}/einladung", summary="Take an invitation to a provider (the key in the body)")
+async def einladung_starten(slug: str, eingabe: EinladungIn, request: Request, db: DbSession) -> JSONResponse:
+    """Derselbe Start wie ``GET …/start?invite=<schluessel>``, fuer die Einladungsseite.
 
-    ⚠️ **Der Schlüssel aus der Mail ist der Nachweis, nicht die Adresse beim
-    Anbieter.** Bis zum 09.10.2026 fand nexmail die Einladung über die
-    bestätigte Adresse. Das trug zweimal nicht: Entra schickt gar kein
-    ``email_verified``, und in authentik kann jeder seine Adresse selbst
-    ändern, also auch auf die einer fremden offenen Einladung.
-
-    ⚠️ **POST, nicht GET mit dem Schlüssel in der Adresse.** Eine Adresse
-    landet im Protokoll des Servers und jedes Proxys davor. Zurück kommt nur,
-    wohin der Browser jetzt soll; das Anlauf-Cookie trägt die Kennung der
-    Einladung, signiert, nicht den Schlüssel.
+    ⚠️ **POST, nicht GET mit dem Schluessel in der Adresse.** Eine Adresse landet im Protokoll des Servers und jedes
+    Proxys davor; der Schluessel oeffnet ein Konto. Zurueck kommt nur, wohin der Browser jetzt soll, und das
+    Anlauf-Cookie, in dem die Einladung signiert mitreist. Dieselbe Bremse wie beim Annehmen mit Kennwort.
     """
-    anbieter = _anbieter(db, kuerzel)
-    # ⚠️ Dieselbe Bremse wie beim Ansehen und Annehmen mit Kennwort. Sonst
-    # wäre das hier der Weg, Schlüssel ohne Bremse durchzuprobieren.
     wache = anmeldebremse.torwaechter(request, "einladung", eingabe.schluessel[:12])
-    einladung = einladungsdienst.finden(db, eingabe.schluessel)
-    if einladung is None:
-        wache.fehlgeschlagen()
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="einladung_abgelaufen")
-    wache.geschafft()
-
     try:
-        rueckkehr = _rueckkehr(db, kuerzel)
-        beschreibung = await oidc.beschreibung_holen(anbieter.issuer)
-        anlauf = oidc.anlauf_erzeugen(kuerzel, "einladung", einladung_id=einladung.id)
-        ziel = oidc.weiterleitung_bauen(
-            beschreibung,
-            client_id=anbieter.client_id,
-            scopes=anbieter.scopes,
-            rueckkehr=rueckkehr,
-            anlauf=anlauf,
-        )
-    except oidc.OidcFehler as fehler:
-        logger.warning("OIDC: invitation start via %r failed: %s", kuerzel, fehler.text)
-        return JSONResponse({"ziel": _oberflaeche(f"/?{urlencode({'oidc_fehler': fehler.code})}")})
-
-    antwort = JSONResponse({"ziel": ziel})
-    _anlauf_merken(antwort, request, anlauf)
+        if anmeldebremse.oidc_wartet(request):
+            raise OidcError("too_many_attempts", "sender is braked")
+        redirect = await flow.begin(SqlStore(db), slug, request_base=basis(request), invite=eingabe.schluessel)
+    except OidcError as error:
+        if error.code == "invite_invalid":
+            wache.fehlgeschlagen()
+        redirect = flow.refused(error, None)
+    else:
+        wache.geschafft()
+    antwort = JSONResponse({"ziel": redirect.location})
+    _cookie(antwort, redirect.cookie)
     return antwort
 
 
-def _anlauf_merken(antwort: Response, request: Request, anlauf: dict) -> None:
-    antwort.set_cookie(
-        oidc.COOKIE_NAME,
-        oidc.zustand_schreiben(anlauf),
-        max_age=oidc.ANLAUF_MINUTEN * 60,
-        path=oidc.cookie_pfad(),
-        httponly=True,
-        # ``lax`` lässt das Cookie bei der Rückkehr mitfahren — das ist eine
-        # Navigation von oberster Ebene. ``strict`` sähe sicherer aus und
-        # bräche genau diesen Schritt.
-        samesite="lax",
-        # ⚠️ **Dasselbe ``secure`` wie beim Sitzungs-Cookie.** In nexview fehlte
-        # es: Auf einer HTTPS-Installation durfte ein Angreifer im Netz über
-        # eine Klartext-Anfrage ein eigenes, gültig signiertes Anlauf-Cookie
-        # setzen — und wer dem Browser eines anderen seinen Lauf unterschiebt,
-        # meldet ihn in **seinem** Konto an.
-        secure=sitzungsdienst._secure(request),
-    )
-
-
-# --- Der Rückweg ---------------------------------------------------------- #
-
-
-@router.get("/{kuerzel}/zurueck")
-async def zurueck(
-    kuerzel: str,
-    request: Request,
-    db: DbSession,
-    code: str = "",
-    state: str = "",
-    error: str = "",
-    error_description: str = "",
-) -> Response:
-    """Der Anbieter schickt den Browser zurück.
-
-    ⚠️ **Jeder Ausgang ist eine Weiterleitung.** Auch jeder Fehler.
-    """
-    anbieter = _anbieter(db, kuerzel)
-    zustand = oidc.zustand_lesen(request.cookies.get(oidc.COOKIE_NAME))
-
-    def scheitern(kennung: str, grund: str) -> Response:
-        logger.warning("OIDC: callback for %r failed (%s): %s", kuerzel, kennung, grund)
-        antwort = RedirectResponse(
-            _oberflaeche(f"/?{urlencode({'oidc_fehler': kennung})}"),
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-        antwort.delete_cookie(oidc.COOKIE_NAME, path=oidc.cookie_pfad(), httponly=True)
-        return antwort
-
-    # ⚠️ **Diese Prüfung steht VOR der des ``state``.** Ein Rückweg mit
-    # ``error`` trägt keinen ``code`` und nicht zwingend einen brauchbaren
-    # ``state``. Weiter unten würde daraus „state passt nicht" — ein Nebenbefund,
-    # der den Anmeldenden zum vergeblichen Wiederholen schickt, statt ihm zu
-    # sagen, dass der Anbieter abgelehnt hat.
-    if error:
-        return scheitern("oidc_abgelehnt", f"provider returned error={error[:200]!r} {error_description[:200]!r}")
-
-    if zustand is None:
-        return scheitern(
-            "oidc_anlauf_fehlt",
-            f"callback cookie missing or expired (other browser, cookie blocked, "
-            f"or more than {oidc.ANLAUF_MINUTEN} minutes at the provider)",
-        )
-    if not code or not state:
-        return scheitern("oidc_anlauf_fehlt", "callback without code or state")
-    if zustand.get("kuerzel") != kuerzel or zustand.get("state") != state:
-        return scheitern("oidc_anlauf_fehlt", "the running attempt belongs to something else")
-
-    # ⚠️ **Die Bremse zählt erst NACH der state-Prüfung** — was daran schon
-    # scheitert, hat den Anbieter nie gesehen und ist beliebig billig zu
-    # erzeugen.
-    #
-    # ⚠️ **Und sie zählt NIE am Anbieter-Kürzel.** In nexview stand dort das
-    # Kürzel, und das machte aus der Bremse eine Waffe: Ein Fremder holte sich
-    # ein eigenes Anlauf-Cookie, kehrte zehnmal mit erfundenem Code zurück —
-    # und danach kam **niemand** mehr über diesen Anbieter herein. Dasselbe
-    # passierte ohne Angreifer nach einem falsch abgetippten Geheimnis.
-    wache = anmeldebremse.torwaechter(request, "oidc", zustand.get("state", "")[:16])
-
+async def _zurueck(slug: str, request: Request, db: Session) -> Response:
+    cookie = request.cookies.get(current().cookie_name)
+    gestartet = anlauf_lesen(cookie)
+    if (
+        gestartet is not None
+        and gestartet.purpose == LINK
+        and request.headers.get("sec-fetch-site", "").lower() == "cross-site"
+        and _sitzungskonto(request, db) is None
+    ):
+        return _durchreichen(request)
+    store = SqlStore(db)
     try:
-        beschreibung = await oidc.beschreibung_holen(anbieter.issuer)
-        geheimnis = (
-            crypto.entschluesseln(anbieter.client_secret, _kontext(anbieter.id))
-            if anbieter.client_secret
-            else ""
-        )
-        id_token, zugang = await oidc.code_tauschen(
-            beschreibung,
-            client_id=anbieter.client_id,
-            client_secret=geheimnis,
-            code=code,
-            verifier=zustand["verifier"],
-            rueckkehr=_rueckkehr(db, kuerzel),
-        )
-        ausweis = await oidc.ausweis_pruefen(
-            beschreibung, id_token, client_id=anbieter.client_id, nonce=zustand["nonce"]
-        )
-        auskunft = await oidc.nachfragen(beschreibung, zugang, str(ausweis.get("sub"))) if zugang else {}
-        # ⚠️ **Der Aussteller aus dem Ausweis**, nicht aus der Selbstauskunft.
-        # Er ist oben gegen sie geprueft; bei Entra mit ``common`` traegt nur
-        # er den echten Mandanten, die Selbstauskunft den Platzhalter.
-        ident = oidc.identitaet_bauen(ausweis, auskunft, str(ausweis.get("iss") or ""))
-    except oidc.OidcFehler as fehler:
-        wache.fehlgeschlagen()
-        return scheitern(fehler.code, fehler.text)
-
-    wache.geschafft()
-
-    if zustand.get("absicht") == "verknuepfen":
-        # ⚠️ **Aus dem signierten Anlauf, nicht aus der Sitzung.** Das
-        # Sitzungs-Cookie ist ``SameSite=strict`` und faehrt beim Rueckweg
-        # vom Anbieter nicht mit — er ist eine Navigation von fremder
-        # Seite. Wer es hier liest, bekommt **immer** ``None``.
-        #
-        # Bis zum 01.09.2026 stand genau das hier: Der Verknuepfen-Knopf im
-        # Profil sah aus, als taete er etwas, und tat nie etwas. Aufgefallen
-        # erst, als der Pruefstand ihn zum ersten Mal an einem echten
-        # Keycloak durchspielte. Siehe ``oidc.anlauf_erzeugen``.
-        person = db.get(Benutzer, zustand.get("benutzer_id") or "")
-        if person is None:
-            return scheitern("oidc_abgemeldet", "the session is gone; nothing was linked")
-        try:
-            kontendienst.verknuepfen(db, person, ident)
-        except oidc.OidcFehler as fehler:
-            return scheitern(fehler.code, fehler.text)
-        antwort = RedirectResponse(
-            _oberflaeche("/?oidc=verknuepft"), status_code=status.HTTP_303_SEE_OTHER
-        )
-        antwort.delete_cookie(oidc.COOKIE_NAME, path=oidc.cookie_pfad(), httponly=True)
+        if anmeldebremse.oidc_wartet(request):
+            raise OidcError("too_many_attempts", "sender is braked")
+        arrival = await flow.finish(store, slug, cookie=cookie, params=dict(request.query_params))
+        if arrival.started.purpose == LINK:
+            konto = _sitzungskonto(request, db)
+            accounts.link(store, arrival, store.konto_nummer(konto) if konto is not None else None)
+            return _weiter(flow.arrived(arrival, flow.linked_page(slug)))
+        angemeldet = accounts.sign_in(store, arrival)
+    except OidcError as error:
+        # ⚠️ Nur eine Rueckkehr mit gueltigem Anlauf-Cookie zaehlt fuer die Bremse. Sonst sperrte jeder mit
+        # ``?error=``, einem erfundenen Kurznamen oder Muell alle anderen hinter demselben Proxy aus.
+        if error.code not in ("oidc_state_mismatch", "too_many_attempts") and gestartet is not None:
+            anmeldebremse.oidc_fehlschlag(request)
+        return _weiter(flow.refused(error, cookie))
+    person = store.konto(angemeldet.account_id)
+    if person is None:
+        return _weiter(flow.refused(OidcError("account_blocked", "the account is gone"), cookie))
+    if angemeldet.second_factor_due:
+        # Dieselbe Codeabfrage wie nach dem Passwort: eine halbe Sitzung, die nur den zweiten Schritt darf.
+        antwort = _weiter(flow.arrived(arrival, f"{current().login_page}?schritt=code"))
+        sitzungsdienst.anlegen(db, person, request, antwort, bestaetigt=False)
         return antwort
-
-    try:
-        if zustand.get("absicht") == "einladung":
-            person = kontendienst.einladung_einloesen(db, ident, str(zustand.get("einladung_id") or ""))
-        else:
-            person = kontendienst.aufloesen(db, ident)
-    except oidc.OidcFehler as fehler:
-        return scheitern(fehler.code, fehler.text)
-
-    antwort = RedirectResponse(_oberflaeche("/"), status_code=status.HTTP_303_SEE_OTHER)
-    # ⚠️ **Ohne zweiten Faktor.** Wer sich über einen fremden Anbieter anmeldet,
-    # hat dort schon bewiesen, wer er ist — und dessen zweiter Faktor gilt.
-    # nexmail nochmals nachzufragen wäre Doppelarbeit ohne Gewinn.
+    antwort = _weiter(flow.arrived(arrival))
     sitzungsdienst.anlegen(db, person, request, antwort, bestaetigt=True)
-    antwort.delete_cookie(oidc.COOKIE_NAME, path=oidc.cookie_pfad(), httponly=True)
-    logger.info("A user signed in through an OIDC provider.")
     return antwort
 
 
-# --- Was die Anmeldeseite braucht ----------------------------------------- #
+@router.get(f"{API}/oidc/callback", summary="Return from the provider of the entry oidc")
+async def zurueck_oidc(request: Request, db: DbSession) -> Response:
+    return await _zurueck("oidc", request, db)
 
 
-class KnopfZeile(BaseModel):
-    kuerzel: str
-    anzeigename: str
+@router.get(f"{API}/oidc/{{slug}}/zurueck", summary="Return from a provider set up in nexmail 0.21")
+async def zurueck_alt(slug: str, request: Request, db: DbSession) -> Response:
+    """Die Adresse, die die Anbieter aus nexmail 0.21 kennen (``redirect_path`` ihres Eintrags)."""
+    return await _zurueck(slug, request, db)
 
 
-@router.get("/knoepfe", response_model=list[KnopfZeile])
-def knoepfe(db: DbSession) -> list[KnopfZeile]:
-    """Die Anbieter für die Anmeldeseite.
+@router.get(f"{API}/oidc/{{slug}}/callback", summary="Return from the identity provider")
+async def zurueck(slug: str, request: Request, db: DbSession) -> Response:
+    return await _zurueck(slug, request, db)
 
-    ⚠️ **Ohne Anmeldung erreichbar** — die Anmeldeseite sieht ja noch niemand.
-    Herausgegeben wird nur, was ohnehin auf einem Knopf steht.
+
+# -- Mein Konto ----------------------------------------------------------------------
+
+
+@router.get(f"{API}/oidc/me", summary="The active providers and whether this account is linked to each")
+def meine(person: AngemeldeterBenutzer, db: DbSession) -> list[dict[str, Any]]:
+    store = SqlStore(db)
+    nummer = store.konto_nummer(person)
+    verknuepft = {link.provider_id for link in store.links_of_account(nummer)}
+    nur_ueber = set(accounts.signs_in_only_through(store, nummer))
+    return [
+        {
+            "slug": entry.slug,
+            "label": entry.label,
+            "linked": entry.id in verknuepft,
+            "only": entry.id in nur_ueber and len(nur_ueber) == 1,
+        }
+        for entry in store.list_providers()
+        if entry.enabled
+    ]
+
+
+class PasswortIn(BaseModel):
+    password: str = Field(default="", max_length=200)
+
+
+def _passwort_pruefen(request: Request, person: Benutzer, passwort: str) -> None:
+    """Das eigene Passwort noch einmal, mit derselben Bremse wie an der Anmeldung."""
+    wache = anmeldebremse.torwaechter(request, "passwort-bestaetigen", person.benutzername)
+    if not person.passwort_hash or not benutzerdienst.passwort_stimmt(person, passwort):
+        wache.fehlgeschlagen()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="kennwort_falsch")
+    wache.geschafft()
+
+
+@router.post(f"{API}/oidc/{{slug}}/link", summary="Start linking this account; the password confirms it")
+async def verknuepfen(
+    slug: str, eingabe: PasswortIn, request: Request, person: AngemeldeterBenutzer, db: DbSession
+) -> JSONResponse:
+    """Antwortet mit der Adresse, zu der es geht, und setzt dabei das Anlauf-Cookie.
+
+    Ein POST mit Sitzung und Passwort, kein Link: So stoesst keine fremde Seite eine Verknuepfung an.
     """
-    zeilen = db.execute(
-        select(OidcAnbieter).where(OidcAnbieter.aktiv.is_(True)).order_by(OidcAnbieter.anzeigename)
-    ).scalars().all()
-    return [KnopfZeile(kuerzel=a.kuerzel, anzeigename=a.anzeigename) for a in zeilen]
-
-
-# --- Verwaltung ----------------------------------------------------------- #
-
-
-class AnbieterZeile(BaseModel):
-    id: str
-    kuerzel: str
-    anzeigename: str
-    issuer: str
-    client_id: str
-    scopes: str
-    aktiv: bool
-    geheimnis_liegt_vor: bool
-    #: Was beim Anbieter hinterlegt werden muss.
-    rueckkehr_adresse: str
-
-
-class AnbieterEingabe(BaseModel):
-    kuerzel: str = Field(min_length=1, max_length=40, pattern=r"^[a-z0-9][a-z0-9_-]*$")
-    anzeigename: str = Field(min_length=1, max_length=120)
-    issuer: str = Field(min_length=8, max_length=300)
-    client_id: str = Field(min_length=1, max_length=300)
-    #: ⚠️ ``None`` heißt **unverändert** — dieselbe Regel wie beim Postfach.
-    client_secret: str | None = Field(default=None, max_length=500)
-    scopes: str = Field(default="openid email profile", max_length=300)
-    aktiv: bool = True
-
-
-def _zeile(db, a: OidcAnbieter) -> AnbieterZeile:
-    basis = einstellung_lesen(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE).rstrip("/")
-    return AnbieterZeile(
-        id=a.id,
-        kuerzel=a.kuerzel,
-        anzeigename=a.anzeigename,
-        issuer=a.issuer,
-        client_id=a.client_id,
-        scopes=a.scopes,
-        aktiv=a.aktiv,
-        geheimnis_liegt_vor=bool(a.client_secret),
-        rueckkehr_adresse=(
-            f"{basis}{get_settings().url_base}/api/oidc/{a.kuerzel}/zurueck" if basis else ""
-        ),
-    )
-
-
-@router.get("/anbieter", response_model=list[AnbieterZeile])
-def anbieter_liste(_: Betreiber, db: DbSession) -> list[AnbieterZeile]:
-    zeilen = db.execute(select(OidcAnbieter).order_by(OidcAnbieter.angelegt)).scalars().all()
-    return [_zeile(db, a) for a in zeilen]
-
-
-@router.post("/anbieter", response_model=AnbieterZeile, status_code=status.HTTP_201_CREATED)
-def anbieter_anlegen(eingabe: AnbieterEingabe, betreiber: Betreiber, db: DbSession) -> AnbieterZeile:
-    if not eingabe.issuer.startswith(("http://", "https://")):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="anbieter_adresse_ohne_schema",
-        )
-    if db.execute(
-        select(OidcAnbieter).where(OidcAnbieter.kuerzel == eingabe.kuerzel)
-    ).scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="kuerzel_vergeben")
-
-    from ..models import neue_id
-
-    anbieter = OidcAnbieter(
-        id=neue_id(),
-        kuerzel=eingabe.kuerzel,
-        anzeigename=eingabe.anzeigename,
-        issuer=eingabe.issuer.rstrip("/"),
-        client_id=eingabe.client_id,
-        scopes=eingabe.scopes,
-        aktiv=eingabe.aktiv,
-    )
-    # ⚠️ Erst die Kennung, dann verschlüsseln — sie fährt als Zusatzdaten mit.
-    anbieter.client_secret = (
-        crypto.verschluesseln(eingabe.client_secret, _kontext(anbieter.id))
-        if eingabe.client_secret
-        else ""
-    )
-    db.add(anbieter)
+    if anmeldebremse.oidc_wartet(request):
+        raise abgelehnt(status.HTTP_429_TOO_MANY_REQUESTS, "too_many_attempts")
+    _passwort_pruefen(request, person, eingabe.password)
+    store = SqlStore(db)
+    nummer = store.konto_nummer(person)
     db.commit()
-    logger.info("An OIDC provider was added.")
-    return _zeile(db, anbieter)
-
-
-@router.put("/anbieter/{anbieter_id}", response_model=AnbieterZeile)
-def anbieter_aendern(
-    anbieter_id: str, eingabe: AnbieterEingabe, _: Betreiber, db: DbSession
-) -> AnbieterZeile:
-    anbieter = db.get(OidcAnbieter, anbieter_id)
-    if anbieter is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-
-    anbieter.kuerzel = eingabe.kuerzel
-    anbieter.anzeigename = eingabe.anzeigename
-    anbieter.issuer = eingabe.issuer.rstrip("/")
-    anbieter.client_id = eingabe.client_id
-    anbieter.scopes = eingabe.scopes
-    anbieter.aktiv = eingabe.aktiv
-    # ⚠️ Leer heißt „unverändert", nicht „kein Geheimnis".
-    if eingabe.client_secret:
-        anbieter.client_secret = crypto.verschluesseln(eingabe.client_secret, _kontext(anbieter.id))
-    db.commit()
-    return _zeile(db, anbieter)
-
-
-@router.delete("/anbieter/{anbieter_id}", status_code=status.HTTP_204_NO_CONTENT)
-def anbieter_entfernen(anbieter_id: str, _: Betreiber, db: DbSession) -> None:
-    anbieter = db.get(OidcAnbieter, anbieter_id)
-    if anbieter is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    db.delete(anbieter)
-    db.commit()
-    logger.warning("An OIDC provider was removed.")
-
-
-# --- authentik in einem Schritt ------------------------------------------- #
-
-
-class AuthentikEingabe(BaseModel):
-    adresse: str = Field(min_length=8, max_length=300)
-    #: ⚠️ Wird nur für diesen Lauf benutzt, nie gespeichert, nie protokolliert.
-    token: str = Field(min_length=1, max_length=500)
-
-
-def _authentik_rueckkehr(db) -> str:
     try:
-        return _rueckkehr(db, authentik_einrichtung.KUERZEL)
-    except oidc.OidcFehler as fehler:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="oidc_keine_adresse") from fehler
+        redirect = await flow.begin(store, slug, request_base=basis(request), link_account_id=nummer)
+    except OidcError as error:
+        raise abgelehnt(status.HTTP_409_CONFLICT, error.code) from error
+    antwort = JSONResponse({"url": redirect.location})
+    _cookie(antwort, redirect.cookie)
+    return antwort
 
 
-@router.post("/authentik/einrichten")
-async def authentik_einrichten(eingabe: AuthentikEingabe, betreiber: Betreiber, db: DbSession) -> dict:
-    """Provider und Anwendung in authentik anlegen und den Anbieter hier eintragen.
-
-    ⚠️ **Antwortet immer mit 200 und der Liste der Schritte**, auch wenn einer
-    scheitert: Was davor geklappt hat, ist in authentik angelegt, und der
-    Betreiber soll sehen, wo es stehen blieb.
-    """
-    adresse = eingabe.adresse.strip().rstrip("/")
-    if not adresse.startswith(("http://", "https://")):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="anbieter_adresse_ohne_schema")
-    rueckkehr = _authentik_rueckkehr(db)
-    logger.info("authentik setup started by the operator.")
-    ergebnis = await authentik_einrichtung.einrichten(db, adresse, eingabe.token.strip(), rueckkehr)
-    return ergebnis.als_dict()
+@router.delete(
+    f"{API}/oidc/{{slug}}/link", status_code=status.HTTP_204_NO_CONTENT, summary="Undo the link to a provider"
+)
+def loesen(slug: str, person: AngemeldeterBenutzer, db: DbSession) -> None:
+    store = SqlStore(db)
+    entry = store.provider_by_slug(slug)
+    if entry is None:
+        raise abgelehnt(status.HTTP_404_NOT_FOUND, "oidc_not_configured")
+    try:
+        accounts.unlink(store, store.konto_nummer(person), entry.id)
+    except OidcError as error:
+        raise abgelehnt(status.HTTP_409_CONFLICT, error.code) from error
 
 
-@router.get("/authentik/blueprint")
-def authentik_blueprint(_: Betreiber, db: DbSession) -> dict[str, str]:
-    """Ein Blueprint, der dasselbe in authentik anlegt, für alle ohne Token."""
-    return {
-        "dateiname": "nexmail-authentik.yaml",
-        "inhalt": authentik_einrichtung.blueprint(_authentik_rueckkehr(db)),
-    }
+@router.delete(
+    f"{API}/oidc/admin/accounts/{{account_id}}/links/{{provider_id}}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove an account's link, with the operator's own password",
+)
+def betreiber_loest(
+    account_id: int, provider_id: int, eingabe: PasswortIn, request: Request, betreiber: Betreiber, db: DbSession
+) -> None:
+    _passwort_pruefen(request, betreiber, eingabe.password)
+    store = SqlStore(db)
+    konto = store.konto(account_id)
+    try:
+        accounts.unlink(store, account_id, provider_id)
+    except OidcError as error:
+        raise abgelehnt(status.HTTP_409_CONFLICT, error.code) from error
+    logger.info(
+        "OIDC link to provider %s removed name=%s by=%s",
+        provider_id,
+        konto.benutzername if konto is not None else account_id,
+        betreiber.benutzername,
+    )
 
 
-# --- Die eigenen Verknüpfungen -------------------------------------------- #
+# -- Anbieterliste ---------------------------------------------------------------------
 
 
-class VerknuepfungZeile(BaseModel):
-    id: int
-    issuer: str
-    anzeigename: str
-    #: Das Kuerzel des Anbieters, zu dem die Verknuepfung gehoert — leer, wenn
-    #: es ihn nicht mehr gibt.
-    #:
-    #: ⚠️ **Die Oberflaeche ordnet danach zu, nicht ueber den Anzeigenamen.**
-    #: Der ist frei waehlbar und kann zweimal vorkommen; das Kuerzel nicht.
-    kuerzel: str = ""
+class ProviderIn(BaseModel):
+    label: str = Field(max_length=200)
+    slug: str = Field(default="", max_length=100)
+    issuer: str = Field(max_length=600)
+    client_id: str = Field(max_length=300)
+    client_secret: str = Field(default="", max_length=2000)
+    scopes: str = Field(default="openid profile email", max_length=500)
+    enabled: bool = True
+    auto_create: bool = False
+    trusts_second_factor: bool = True
 
 
-@router.get("/meine", response_model=list[VerknuepfungZeile])
-def meine(person: AngemeldeterBenutzer, db: DbSession) -> list[VerknuepfungZeile]:
-    zeilen = db.execute(
-        select(OidcVerknuepfung).where(OidcVerknuepfung.benutzer_id == person.id)
-    ).scalars().all()
-    # ⚠️ **Ohne abschliessenden Schraegstrich vergleichen.** Der Anbieter
-    # steht so in der Datenbank, wie der Betreiber ihn eingetippt hat; die
-    # Verknuepfung traegt den Aussteller so, wie der Anbieter sich selbst
-    # nennt. authentik haengt dort ein ``/`` an, der Betreiber meist nicht.
-    #
-    # Am 01.09.2026 genau daran haengengeblieben: Das Verknuepfen hatte
-    # funktioniert („An OIDC identity was linked to an account"), aber im
-    # Profil stand weiter „Verknuepfen" — die Zuordnung fand ihren Anbieter
-    # nicht und fiel auf die rohe Adresse zurueck. Der Fehler sah damit aus
-    # wie ein misslungenes Verknuepfen, obwohl nur die Anzeige irrte.
-    #
-    # ⚠️ **Und Entra mit ``common``:** Der Anbieter steht mit ``common`` da,
-    # die Verknuepfung mit dem echten Mandanten. ``gehoert_zum_anbieter``
-    # kennt beide Faelle.
-    alle = db.execute(select(OidcAnbieter)).scalars().all()
+class OrderIn(BaseModel):
+    ids: list[int] = Field(max_length=200)
 
-    def zugehoerig(v: OidcVerknuepfung) -> OidcAnbieter | None:
-        # Wer genau so eingetragen ist, geht vor; erst dann ``common``.
-        genau = [a for a in alle if a.issuer.rstrip("/") == v.issuer.rstrip("/")]
-        return next(
-            iter(genau or [a for a in alle if oidc.gehoert_zum_anbieter(a.issuer, v.issuer)]),
-            None,
+
+def _admin_view(store: SqlStore, entry: Any, request: Request) -> dict[str, Any]:
+    return providers.admin_view(entry, basis(request), len(store.links_of_provider(entry.id)))
+
+
+@router.get(f"{API}/oidc/admin/providers", summary="The sign-in providers, never a secret")
+def liste(request: Request, _: Betreiber, db: DbSession) -> list[dict[str, Any]]:
+    store = SqlStore(db)
+    return [_admin_view(store, entry, request) for entry in store.list_providers()]
+
+
+@router.post(
+    f"{API}/oidc/admin/providers", status_code=status.HTTP_201_CREATED, summary="Add a sign-in provider"
+)
+async def anlegen(eingabe: ProviderIn, request: Request, _: Betreiber, db: DbSession) -> dict[str, Any]:
+    store = SqlStore(db)
+    try:
+        neu = await providers.create(store, providers.Form(**eingabe.model_dump()))
+    except ProviderInvalid as error:
+        raise _form_error(error) from error
+    return providers.admin_view(neu, basis(request), 0)
+
+
+@router.put(f"{API}/oidc/admin/providers/order", summary="Put the sign-in buttons in order")
+def ordnen(eingabe: OrderIn, _: Betreiber, db: DbSession) -> list[dict[str, str]]:
+    store = SqlStore(db)
+    providers.reorder(store, eingabe.ids)
+    return providers.public_list(store)
+
+
+@router.put(f"{API}/oidc/admin/providers/{{provider_id}}", summary="Save a sign-in provider")
+async def speichern(
+    provider_id: int, eingabe: ProviderIn, request: Request, _: Betreiber, db: DbSession
+) -> dict[str, Any]:
+    store = SqlStore(db)
+    try:
+        gespeichert, verworfen = await providers.update(store, provider_id, providers.Form(**eingabe.model_dump()))
+    except ProviderInvalid as error:
+        raise _form_error(error) from error
+    return {**_admin_view(store, gespeichert, request), "dropped": verworfen}
+
+
+@router.get(f"{API}/oidc/admin/providers/{{provider_id}}/impact", summary="Numbers for the two confirmations")
+def folgen(provider_id: int, _: Betreiber, db: DbSession, issuer: str = "") -> dict[str, Any]:
+    store = SqlStore(db)
+    if store.get_provider(provider_id) is None:
+        raise abgelehnt(status.HTTP_404_NOT_FOUND, "provider_unknown")
+    entfernen = providers.removal_impact(store, provider_id)
+    wechsel = providers.issuer_change_impact(store, provider_id, issuer) if issuer else 0
+    return {"issuer_change": wechsel, **asdict(entfernen)}
+
+
+@router.delete(f"{API}/oidc/admin/providers/{{provider_id}}", summary="Remove a sign-in provider and its links")
+def entfernen(provider_id: int, _: Betreiber, db: DbSession) -> dict[str, Any]:
+    try:
+        return asdict(providers.remove(SqlStore(db), provider_id))
+    except ProviderInvalid as error:
+        raise _form_error(error) from error
+
+
+# -- authentik -------------------------------------------------------------------------
+
+
+class SetupIn(BaseModel):
+    url: str = Field(min_length=1, max_length=500)
+    token: str = Field(min_length=1, max_length=2000)
+    confirm_issuer_change: bool = False
+    #: Die Adresse, die der Betreiber in der Karte bestaetigt hat (die des Browsers), solange nexmail keine hat.
+    public_url: str = Field(default="", max_length=600)
+
+
+class AddressIn(BaseModel):
+    public_url: str = Field(max_length=600)
+    confirm: bool = False
+
+
+@router.post(f"{API}/oidc/authentik/setup", summary="Set up provider and application in authentik with a token")
+async def authentik_einrichten(
+    eingabe: SetupIn, request: Request, betreiber: Betreiber, db: DbSession
+) -> dict[str, Any]:
+    """⚠️ Das Token gilt nur fuer diesen Lauf: nicht gespeichert, nicht protokolliert, nicht zurueckgegeben."""
+    logger.info("authentik setup started by=%s", betreiber.benutzername)
+    ergebnis = await authentik.setup(
+        SqlStore(db),
+        eingabe.url,
+        eingabe.token,
+        basis(request),
+        confirm_issuer_change=eingabe.confirm_issuer_change,
+        public_url=eingabe.public_url,
+        headers=request.headers,
+    )
+    return ergebnis.as_dict()
+
+
+@router.get(f"{API}/oidc/authentik/address", summary="What the authentik card shows about the public address")
+def authentik_adresse(request: Request, _: Betreiber, db: DbSession) -> dict[str, Any]:
+    return authentik.address_view(SqlStore(db), basis(request), request.headers)
+
+
+@router.post(f"{API}/oidc/authentik/address", summary="Save the public address the authentik card suggests")
+def authentik_adresse_speichern(
+    eingabe: AddressIn, request: Request, _: Betreiber, db: DbSession
+) -> dict[str, Any]:
+    try:
+        return authentik.save_public_url(SqlStore(db), eingabe.public_url, basis(request), confirm=eingabe.confirm)
+    except ValueError as error:
+        raise abgelehnt(status.HTTP_422_UNPROCESSABLE_CONTENT, "public_url_invalid") from error
+    except authentik.PublicUrlChange as frage:
+        raise abgelehnt(status.HTTP_409_CONFLICT, "public_url_change", **frage.question) from frage
+    except authentik.PublicUrlNotKept as error:
+        raise abgelehnt(status.HTTP_409_CONFLICT, "public_url_needed") from error
+
+
+@router.get(f"{API}/oidc/authentik/blueprint", summary="A blueprint that creates the same objects in authentik")
+def authentik_blueprint(request: Request, _: Betreiber, db: DbSession) -> Response:
+    try:
+        ruecksprung = authentik.blueprint_redirect(SqlStore(db), basis(request))
+    except authentik.PublicUrlNeeded as error:
+        raise abgelehnt(status.HTTP_409_CONFLICT, "public_url_needed") from error
+    name = authentik.blueprint_filename()
+    return Response(
+        authentik.blueprint(ruecksprung),
+        media_type="application/yaml",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+# -- Fuer andere Router ------------------------------------------------------------------
+
+
+def verknuepfungen_je_konto(db: Session) -> dict[str, list[dict[str, Any]]]:
+    """Je Konto (Kennung) die Anbieter, mit denen es verknuepft ist: Marken in der Kontenliste."""
+    eintraege = {row.id: row for row in db.scalars(select(OidcAnbieter))}
+    ergebnis: dict[str, list[dict[str, Any]]] = {}
+    for link in db.scalars(
+        select(OidcVerknuepfung).where(OidcVerknuepfung.anbieter_id.is_not(None)).order_by(OidcVerknuepfung.id)
+    ):
+        eintrag = eintraege.get(link.anbieter_id or "")
+        if eintrag is None or eintrag.nummer is None:
+            continue
+        ergebnis.setdefault(link.benutzer_id, []).append(
+            {"id": eintrag.nummer, "slug": eintrag.kuerzel, "label": eintrag.anzeigename}
         )
-
-    zeilen_aus: list[VerknuepfungZeile] = []
-    for v in zeilen:
-        a = zugehoerig(v)
-        zeilen_aus.append(
-            VerknuepfungZeile(
-                id=v.id,
-                issuer=v.issuer,
-                anzeigename=a.anzeigename if a else v.issuer,
-                kuerzel=a.kuerzel if a else "",
-            )
-        )
-    return zeilen_aus
-
-
-@router.delete("/meine/{verknuepfung_id}", status_code=status.HTTP_204_NO_CONTENT)
-def loesen(verknuepfung_id: int, person: AngemeldeterBenutzer, db: DbSession) -> None:
-    """Eine Verknüpfung lösen.
-
-    ⚠️ **Nicht, wenn danach kein Weg mehr hineinführt.** Wer kein Kennwort hat
-    und seine letzte Verknüpfung löst, sperrt sich selbst aus — und aus der
-    Anwendung heraus führt kein Weg zurück.
-    """
-    verknuepfung = db.get(OidcVerknuepfung, verknuepfung_id)
-    if verknuepfung is None or verknuepfung.benutzer_id != person.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-
-    uebrig = db.execute(
-        select(OidcVerknuepfung).where(
-            OidcVerknuepfung.benutzer_id == person.id, OidcVerknuepfung.id != verknuepfung_id
-        )
-    ).scalars().all()
-    if not uebrig and not person.passwort_hash:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "letzter_anmeldeweg"
-            ),
-        )
-
-    db.delete(verknuepfung)
-    db.commit()
+    return ergebnis

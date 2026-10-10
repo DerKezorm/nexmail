@@ -174,3 +174,39 @@ def torwaechter(request: Request, tuer: str, kennung: str) -> Torwaechter:
 def zuruecksetzen() -> None:
     """Nur fuer Tests - der Merkposten ist prozessweit."""
     _zaehler.clear()
+
+
+# --- Anmeldung ueber einen Anbieter ------------------------------------------ #
+#
+# ⚠️ **Je Absender, wie bei der Passwort-Anmeldung** (Bauplan 02, "Ablauf" 4):
+# gezaehlt nach der Adresse aus ``adresse_von``. Ohne ``NEXMAIL_CLIENT_IP``
+# kennt nexmail keinen Absender, und dann zaehlt hier nichts: Eine Zaehlung
+# ohne Absender hielte jeden auf, und genau damit liesse sich jeder aussperren.
+# Ein Konto gibt es an dieser Tuer noch nicht.
+#
+# ⚠️ **Gefuettert wird die Bremse nur von Rueckkehrern mit gueltigem
+# Anlauf-Cookie** (``routers/oidc``). Sonst sperrte jeder mit ``?error=``,
+# einem erfundenen Kurznamen oder Muell die anderen hinter demselben Proxy aus.
+
+
+def _oidc_schluessel(request: Request) -> str:
+    adresse = adresse_von(request)
+    return f"oidc:adresse:{adresse}" if adresse else ""
+
+
+def oidc_wartet(request: Request) -> bool:
+    """Ob dieser Absender gerade an Start und Rueckkehr aufgehalten wird."""
+    schluessel = _oidc_schluessel(request)
+    if not schluessel:
+        return False
+    jetzt = _jetzt()
+    _aufraeumen(jetzt)
+    z = _zaehler.get(schluessel)
+    return z is not None and z.frei_ab > jetzt
+
+
+def oidc_fehlschlag(request: Request) -> None:
+    """Ein gescheiterter Rueckweg dieses Absenders (mit gueltigem Anlauf)."""
+    schluessel = _oidc_schluessel(request)
+    if schluessel:
+        Torwaechter(schluessel=[schluessel]).fehlgeschlagen()

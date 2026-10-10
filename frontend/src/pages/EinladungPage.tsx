@@ -21,6 +21,8 @@ import { servermeldung } from '../lib/servermeldung'
 interface Vorschau {
   benutzername: string
   anzeigename: string
+  /** Aus („Anmeldung mit Passwort“ in der Verwaltung): nur „Weiter mit …“. */
+  passwort?: boolean
 }
 
 export function EinladungPage({
@@ -47,7 +49,7 @@ export function EinladungPage({
      09.10.2026 fand nexmail die Einladung über die bestätigte Adresse beim
      Anbieter; Entra schickt keine Bestätigung, und in authentik kann jeder
      seine Adresse selbst ändern. */
-  const [anbieter, setAnbieter] = useState<Array<{ kuerzel: string; anzeigename: string }>>([])
+  const [anbieter, setAnbieter] = useState<Array<{ slug: string; label: string }>>([])
   const [unterwegs, setUnterwegs] = useState('')
   const [anbieterFehler, setAnbieterFehler] = useState('')
 
@@ -60,16 +62,16 @@ export function EinladungPage({
         { schluessel },
       )
       // Das Ziel ist der Anbieter oder, bei einem Fehler davor, die eigene
-      // Anmeldeseite mit `oidc_fehler`. Beides ist eine ganze Navigation.
+      // Anmeldeseite mit `?error=`. Beides ist eine ganze Navigation.
       window.location.assign(ziel)
     } catch (f) {
-      setAnbieterFehler(servermeldung(f, t('oidc.fehler_allgemein')))
+      setAnbieterFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
       setUnterwegs('')
     }
   }
   useEffect(() => {
     api
-      .holen<Array<{ kuerzel: string; anzeigename: string }>>('/api/oidc/knoepfe')
+      .holen<Array<{ slug: string; label: string }>>('/api/oidc/providers')
       .then(setAnbieter)
       .catch(() => undefined)
   }, [])
@@ -156,6 +158,7 @@ export function EinladungPage({
       modus={modus}
       aufModus={aufModus}
     >
+      {vorschau.passwort !== false && (
       <form onSubmit={annehmen} className="flex flex-col gap-4">
         <Input
           label={t('einrichtung.passwort')}
@@ -188,6 +191,7 @@ export function EinladungPage({
           {t('einladung.loslegen')}
         </Button>
       </form>
+      )}
 
       {/* ⚠️ **Beide Wege nebeneinander, nicht statt einander.** Der Betreiber am
           01.09.2026: „nicht jeder hat ein authentik konto" — eben. Wer keins
@@ -195,18 +199,24 @@ export function EinladungPage({
           bekommt ein Konto **ohne** Kennwort. Ein ungenutztes Kennwort ist das,
           welches schwach ist. */}
       {anbieter.length > 0 && (
-        <div className="mt-5 flex flex-col gap-2 border-t border-line-subtle pt-5">
-          <p className="mb-0 text-center text-[12px] text-fg-4">{t('einladung.oder')}</p>
+        <div className="mt-5 flex flex-col gap-2">
+          {vorschau.passwort !== false && (
+            <div className="mb-3 flex items-center gap-3 text-[12px] text-fg-4" aria-hidden>
+              <span className="h-px flex-1 bg-line-subtle" />
+              {t('oidc.login.or')}
+              <span className="h-px flex-1 bg-line-subtle" />
+            </div>
+          )}
           {anbieter.map((a) => (
             <button
-              key={a.kuerzel}
+              key={a.slug}
               type="button"
               disabled={Boolean(unterwegs)}
-              onClick={() => void mitAnbieter(a.kuerzel)}
+              onClick={() => void mitAnbieter(a.slug)}
               className="flex h-[var(--control-h-lg)] items-center justify-center gap-2 rounded-md border border-line bg-surface-2 text-sm font-medium text-fg-1 transition-colors duration-[var(--dur-fast)] hover:border-accent disabled:opacity-60"
             >
               <KeyRound aria-hidden className="size-4" />
-              {t('oidc.anmelden_mit', { name: a.anzeigename })}
+              {t('oidc.invite.button', { name: a.label })}
             </button>
           ))}
           {anbieterFehler && (

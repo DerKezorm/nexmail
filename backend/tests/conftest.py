@@ -44,6 +44,46 @@ from app.services import benutzer as benutzerdienst  # noqa: E402
 from app.services import zwei_faktor  # noqa: E402
 
 
+# --- Zwei ``conftest`` unter einem Namen ---------------------------------- #
+#
+# ⚠️ **Die Vertragstests des Anmeldemoduls (``tests/nexoidc/``) bringen ihre
+# eigene ``conftest.py`` mit**, unveraendert aus ``bauplaene/oidc`` und per
+# Pruefsumme bewacht. pytest laedt beide unter dem Namen ``conftest``; wer
+# zuletzt geladen wurde, steht in ``sys.modules``. nexmails Tests holen ihre
+# Hilfen mit ``from conftest import ...`` (beim Sammeln), die Vertragstests
+# mit ``import conftest`` (beim Laufen). Damit jeder die eigene bekommt, zeigt
+# ``sys.modules["conftest"]`` beim Sammeln und vor jedem Test auf die
+# ``conftest.py``, die dem Test am naechsten liegt.
+
+_CONFTESTS: dict[Path, object] = {}
+
+
+def pytest_plugin_registered(plugin, manager) -> None:
+    datei = getattr(plugin, "__file__", None)
+    if datei and Path(datei).name == "conftest.py":
+        _CONFTESTS[Path(datei).resolve().parent] = plugin
+
+
+def _naechste_conftest(pfad: Path) -> None:
+    import sys
+
+    pfad = Path(pfad).resolve()
+    for ordner in [pfad, *pfad.parents]:
+        modul = _CONFTESTS.get(ordner)
+        if modul is not None:
+            sys.modules["conftest"] = modul  # type: ignore[assignment]
+            return
+
+
+def pytest_collectstart(collector) -> None:
+    if isinstance(collector, pytest.Module):
+        _naechste_conftest(collector.path)
+
+
+def pytest_runtest_setup(item) -> None:
+    _naechste_conftest(item.path)
+
+
 def pytest_sessionfinish(session, exitstatus) -> None:  # noqa: ARG001
     engine.dispose()
     shutil.rmtree(_TESTORDNER, ignore_errors=True)

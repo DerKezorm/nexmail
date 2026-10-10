@@ -32,6 +32,7 @@ from ..services import anmeldebremse
 from ..services import einladung as einladungsdienst
 from ..services import sitzung as sitzungsdienst
 from ..meldung import MeldungHttp
+from .oidc import passwort_anmeldung_an
 
 logger = logging.getLogger("nexmail.einladung")
 
@@ -41,6 +42,9 @@ router = APIRouter(prefix="/api/einladung", tags=["einladung"])
 class Vorschau(BaseModel):
     benutzername: str
     anzeigename: str
+    #: Ob ein Kennwort hier hereinführt. Aus („Anmeldung mit Passwort“ in der
+    #: Verwaltung): nur „Weiter mit …“ über einen Anbieter.
+    passwort: bool = True
 
 
 class Annahme(BaseModel):
@@ -65,7 +69,11 @@ def ansehen(schluessel: str, request: Request, db: DbSession) -> Vorschau:
             detail="einladung_abgelaufen",
         )
     wache.geschafft()
-    return Vorschau(benutzername=einladung.benutzername, anzeigename=einladung.anzeigename)
+    return Vorschau(
+        benutzername=einladung.benutzername,
+        anzeigename=einladung.anzeigename,
+        passwort=passwort_anmeldung_an(db),
+    )
 
 
 @router.post("/{schluessel}", status_code=status.HTTP_201_CREATED)
@@ -84,6 +92,9 @@ def annehmen(
     Minute, die nexmail einem neuen Benutzer machen kann.
     """
     wache = anmeldebremse.torwaechter(request, "einladung", schluessel[:12])
+    if not passwort_anmeldung_an(db):
+        # Ein Kennwort, mit dem man sich danach nicht anmelden kann, waere eine Falle.
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="passwort_anmeldung_aus")
     try:
         neuer = einladungsdienst.einloesen(db, schluessel, eingabe.passwort)
     except einladungsdienst.EinladungsFehler as fehler:

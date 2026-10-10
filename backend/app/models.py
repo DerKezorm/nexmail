@@ -90,6 +90,20 @@ class Benutzer(Base):
     __tablename__ = "benutzer"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    #: Die Nummer, unter der das gemeinsame Anmeldemodul (``vendor/nexoidc``) das
+    #: Konto kennt: Es rechnet mit ganzen Zahlen, nexmails Kennung ist eine
+    #: Zeichenkette. Fest, sobald vergeben (sie reist im Anlauf-Cookie mit).
+    #:
+    #: ⚠️ **Ohne Vorgabe in der Tabelle, NULL erlaubt:** 0.21 legt nach einem
+    #: Rueckweg weiter Konten an und kennt die Spalte nicht. Der Start vergibt
+    #: die fehlenden Nummern (``services/oidc_wanderung``).
+    nummer: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        unique=True,
+        index=True,
+        default=text("(SELECT COALESCE(MAX(nummer), 0) + 1 FROM benutzer)"),
+    )
     benutzername: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     anzeigename: Mapped[str] = mapped_column(String(120), default="")
 
@@ -302,27 +316,44 @@ class Sitzung(Base):
 
 
 class OidcVerknuepfung(Base):
-    """Verbindung zwischen einem Benutzer und einer fremden Identitaet.
+    """Eine Identitaet bei einem Anbieter, verknuepft mit einem Konto.
 
-    ⚠️ **Verknuepft wird ueber ``issuer`` + ``subject``, nie ueber die
-    E-Mail-Adresse.** Adressen wechseln den Besitzer, ``subject`` nicht. Wer
-    ueber die Adresse verknuepft, baut eine Kontouebernahme ein.
+    Die Tabelle ``oidc_links`` des Bauplans (01 "Tabellen"), unter dem Namen
+    von 0.21: Die alte Fassung liest dieselbe Tabelle, und nach einem Rueckweg
+    soll sie ihre Verknuepfungen dort finden.
 
-    Steht ab Stufe 0 leer da. Gebaut wird OIDC spaeter - aber wenn die Tabelle
-    erst dann entsteht, entsteht mit ihr eine Wanderung der Bestandsdaten.
+    ⚠️ **Zugeordnet wird ueber ``(anbieter_id, subject)``, nie ueber die
+    Mailadresse.** ``email`` steht nur zur Anzeige da. ``issuer`` ist das
+    tatsaechliche ``iss`` des Tokens (bei Entra mit ``common`` der echte
+    Mandant); 0.21 sucht daran, die neue Fassung am Anbieter.
+
+    ⚠️ **``anbieter_id`` NULL heisst: von 0.21 angelegt.** Der Start ordnet
+    solche Zeilen ihrem Anbieter ueber den Aussteller zu
+    (``services/oidc_wanderung``); passt keiner, zaehlen sie nicht.
     """
 
     __tablename__ = "oidc_verknuepfung"
-    __table_args__ = (UniqueConstraint("issuer", "subject", name="uq_oidc_identitaet"),)
+    __table_args__ = (
+        UniqueConstraint("issuer", "subject", name="uq_oidc_identitaet"),
+        Index("uq_oidc_anbieter_subject", "anbieter_id", "subject", unique=True),
+        Index("uq_oidc_anbieter_konto", "anbieter_id", "benutzer_id", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     benutzer_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
     )
+    anbieter_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("oidc_anbieter.id", ondelete="CASCADE"), nullable=True, default=None
+    )
     issuer: Mapped[str] = mapped_column(String(255), index=True)
     subject: Mapped[str] = mapped_column(String(255))
-    adresse_bestaetigt: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Nur noch fuer 0.21, die sie schreibt; ausgewertet wird sie nirgends.
+    adresse_bestaetigt: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    #: Die Adresse, die der Anbieter zuletzt nannte. Nur Anzeige.
+    email: Mapped[str] = mapped_column(String(300), default="", server_default="")
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    zuletzt_benutzt: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
 
     benutzer: Mapped[Benutzer] = relationship(back_populates="oidc")
 
@@ -1231,23 +1262,68 @@ class OidcAnbieter(Base):
     ⚠️ **Ab Werk ist diese Tabelle leer, und dann aendert sich nichts.** Keine
     Knoepfe auf der Anmeldeseite, keine offenen Adressen — eine Installation,
     deren Betreiber nie einen Anbieter einrichtet, weiss von OIDC nichts.
+
+    Die Tabelle ``oidc_providers`` des Bauplans (01 "Tabellen") unter dem
+    Namen von 0.21, denn die alte Fassung liest dieselbe Tabelle. Die
+    Python-Namen der neuen Spalten folgen dem Bauplan, die alten bleiben, wie
+    sie waren (``kuerzel`` = ``slug``, ``anzeigename`` = ``label``).
+
+    ⚠️ **Jede neue Spalte hat eine Vorgabe in der Tabelle** oder darf NULL
+    sein: 0.21 legt nach einem Rueckweg weiter Eintraege an und kennt sie
+    nicht. ``redirect_path`` bleibt dabei NULL, daran erkennt der Start einen
+    Eintrag der alten Fassung.
+
+    ⚠️ **``aktiv`` ist, was 0.21 sieht**: an nur, wenn der Eintrag an ist UND
+    der Anbieter den zweiten Faktor selbst prueft (``eingeschaltet`` und
+    ``trusts_second_factor``). 0.21 fragt nach dem Anbieter nie nach dem Code;
+    ein Eintrag, dem die neue Fassung den Faktor nicht glaubt, laesst dort
+    deshalb niemanden herein (Bauplan 01 "Umstieg" 4, Regel 2).
     """
 
     __tablename__ = "oidc_anbieter"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
-    #: Kurzform fuer die Adresse: ``/api/oidc/<kuerzel>/start``.
+    #: Die Kennung im Anmeldemodul (ganze Zahl), wie ``Benutzer.nummer``.
+    nummer: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        unique=True,
+        index=True,
+        default=text("(SELECT COALESCE(MAX(nummer), 0) + 1 FROM oidc_anbieter)"),
+    )
+    #: Kurzname, Teil der Rueckleitadresse (``slug``). Fest, sobald angelegt.
     kuerzel: Mapped[str] = mapped_column(String(40), unique=True, index=True)
-    #: Was auf dem Knopf steht.
+    #: Was auf dem Knopf steht (``label``).
     anzeigename: Mapped[str] = mapped_column(String(120))
-    #: Die Adresse des Anbieters, aus der die Selbstauskunft geholt wird.
-    issuer: Mapped[str] = mapped_column(String(300))
+    #: Der Aussteller, so geschrieben, wie er gespeichert wurde.
+    issuer: Mapped[str] = mapped_column(String(500))
     client_id: Mapped[str] = mapped_column(String(300))
-    #: Verschluesselt, Kontext ``oidc:<id>:geheimnis``.
+    #: Fuer 0.21: verschluesselt mit dem Kontext ``oidc:<id>:geheimnis``.
+    #: Gelesen wird ``client_secret_enc``; der Start uebernimmt, was 0.21 hier
+    #: geaendert hat.
     client_secret: Mapped[str] = mapped_column(Text, default="")
-    #: Leerzeichengetrennt. ``openid`` haengt der Dienst selbst an.
-    scopes: Mapped[str] = mapped_column(String(300), default="openid email profile")
+    #: Das Geheimnis mit dem Kontext des Bauplans (``oidc-provider:<nummer>``).
+    client_secret_enc: Mapped[str] = mapped_column(Text, default="", server_default="")
+    #: Leerzeichengetrennt.
+    scopes: Mapped[str] = mapped_column(String(500), default="openid profile email")
+    #: Was 0.21 als „eingeschaltet" liest, siehe oben.
     aktiv: Mapped[bool] = mapped_column(Boolean, default=True)
+    #: Ob der Eintrag an ist (``enabled``). NULL: von 0.21 angelegt, dann gilt
+    #: ``aktiv``.
+    eingeschaltet: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    #: „Neue Personen bekommen ein Konto", ab Werk aus.
+    auto_create: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    #: „Der Anbieter prueft den zweiten Faktor selbst", ab Werk an.
+    trusts_second_factor: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    #: "" von Hand, "authentik" vom authentik-Knopf.
+    managed: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    #: Reihenfolge der Knoepfe.
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    #: Rueckleitpfad, den der Anbieter kennt; "" der Standard
+    #: ``/api/oidc/<kuerzel>/callback``. NULL: von 0.21 angelegt.
+    redirect_path: Mapped[str | None] = mapped_column(String(300), nullable=True, default=None)
+    #: Die Rueckleitadresse, die der authentik-Knopf zuletzt eingetragen hat.
+    registered_redirect: Mapped[str] = mapped_column(String(500), default="", server_default="")
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 

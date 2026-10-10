@@ -16,7 +16,7 @@ from __future__ import annotations
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from ..config import get_settings
@@ -25,6 +25,9 @@ from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
 from ..services import bildfreigaben, netzfreigabe, systempost
 from ..services.aufraeumen import ERLAUBTE_TAGE
 from ..meldung import MeldungHttp
+from ..services.oidc_store import SqlStore
+from ..vendor.nexoidc import authentik, flow
+from . import oidc as oidc_router
 
 router = APIRouter(prefix="/api/einstellungen", tags=["einstellungen"])
 
@@ -36,6 +39,12 @@ class Einstellungen(BaseModel):
     oeffentliche_adresse: str = Field(default="", max_length=300)
     #: IANA-Name, z. B. ``Europe/Berlin``. Leer heißt: die Zone des Browsers.
     zeitzone: str = Field(default="", max_length=80)
+
+
+class EinstellungenEingabe(Einstellungen):
+    #: Die Antwort auf die Rückfrage, wenn die neue Adresse die Rückleitadresse
+    #: eines Anmeldeanbieters ändert (409 ``public_url_change``).
+    adresse_bestaetigt: bool = False
 
 
 @router.get("", response_model=Einstellungen)
@@ -50,7 +59,9 @@ def lesen(_: AngemeldeterBenutzer, db: DbSession) -> Einstellungen:
 
 
 @router.put("", response_model=Einstellungen)
-def schreiben(eingabe: Einstellungen, _: Betreiber, db: DbSession) -> Einstellungen:
+def schreiben(
+    eingabe: EinstellungenEingabe, request: Request, _: Betreiber, db: DbSession
+) -> Einstellungen:
     # ⚠️ **Nur der Betreiber.** Bis zum 18.09.2026 genuegte hier eine
     # Anmeldung. Aus der oeffentlichen Adresse entsteht der Link in der Mail
     # „Kennwort vergessen"; wer sie umbiegen darf, schickt dem Betreiber einen
@@ -63,6 +74,15 @@ def schreiben(eingabe: Einstellungen, _: Betreiber, db: DbSession) -> Einstellun
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="adresse_ohne_schema",
             )
+        # ⚠️ **Nie lockerer als das Anmeldemodul.** Aus der Adresse entstehen
+        # Rückleitadresse, Cookie-Pfad und Links; eine, die das Modul ablehnt,
+        # gäbe es dort nicht.
+        try:
+            adresse = flow.clean_public_url(adresse)
+        except ValueError as fehler:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="oeffentliche_adresse_ungueltig"
+            ) from fehler
     zone = eingabe.zeitzone.strip()
     if zone:
         # ⚠️ **Prüfen, nicht glauben.** Eine erfundene Zone bringt die
@@ -74,6 +94,15 @@ def schreiben(eingabe: Einstellungen, _: Betreiber, db: DbSession) -> Einstellun
             raise MeldungHttp(
                 status.HTTP_400_BAD_REQUEST, "zeitzone_unbekannt", {"zone": zone}
             ) from fehler
+
+    # ⚠️ **Erst fragen, dann speichern** (auch beim Leeren): Ändert die neue
+    # Adresse die Rückleitadresse eines Anmeldeanbieters, kommt die Rückfrage
+    # des Moduls (409 ``public_url_change``), und nichts wird gespeichert.
+    frage = authentik.public_url_guard(
+        SqlStore(db), adresse, oidc_router.basis(request), confirm=eingabe.adresse_bestaetigt
+    )
+    if frage is not None:
+        raise oidc_router.abgelehnt(status.HTTP_409_CONFLICT, "public_url_change", **frage)
 
     einstellung_schreiben(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE, adresse)
     einstellung_schreiben(db, SCHLUESSEL_ZEITZONE, zone)

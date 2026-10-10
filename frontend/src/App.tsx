@@ -95,6 +95,7 @@ import type { Reiter } from './pages/EinstellungenPage'
 import type { Ich } from './api/client'
 import type { Suchbefund } from './api/laden'
 import { RUECKWEG } from './lib/oauthrueckweg'
+import { KONTO_RUECKWEG } from './lib/kontorueckweg'
 import { Erinnerungsfenster } from './components/Erinnerungsfenster'
 import { api, ApiFehler } from './api/client'
 import {
@@ -196,7 +197,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const schmal = useSchmal()
 
   const [ansicht, setAnsicht] = useState<Ansicht>(
-    RUECKWEG.weiter === 'postfach' ? 'einstellungen' : 'mail',
+    RUECKWEG.weiter === 'postfach' || KONTO_RUECKWEG.da ? 'einstellungen' : 'mail',
   )
   const [verwaltungsReiter, setVerwaltungsReiter] = useState<VerwaltungsReiter>('protokoll')
   const [ziel, setZiel] = useState<Ziel>({ typ: 'alle' })
@@ -418,7 +419,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     else setTimeout(holen, 2000)
   }, [])
 
-  const [reiter, setReiter] = useState<Reiter>('postfaecher')
+  // Zurück vom Anmeldeanbieter nach dem Verknüpfen: gleich unter Sicherheit (lib/kontorueckweg.ts).
+  const [reiter, setReiter] = useState<Reiter>(KONTO_RUECKWEG.da ? 'sicherheit' : 'postfaecher')
   const [formularOffen, setFormularOffen] = useState(false)
   /* Das Fenster hinter der (+)-Kachel — die Weiche zwischen IMAP, Google und
      Microsoft. ⚠️ **Beim Rückweg vom Anbieter steht es sofort offen:** Die

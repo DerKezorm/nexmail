@@ -10,6 +10,8 @@ from typing import Any
 
 from starlette.middleware.gzip import GZipMiddleware
 
+from .config import get_settings
+
 logger = logging.getLogger("nexmail.anfrage")
 
 
@@ -211,3 +213,46 @@ class VorgangMiddleware:
             else:
                 logger.debug("%s %s -> %s in %.0f ms.", methode, pfad, stand["code"], dauer)
             protokoll.vorgang_beenden(marke)
+
+
+class SchemaVomProxyMiddleware:
+    """Das Schema, mit dem der Browser nexmail erreicht, hinter einem Proxy, dem nexmail traut.
+
+    Ein Proxy beendet TLS und reicht die Anfrage als ``http`` weiter; ``X-Forwarded-Proto`` sagt, wie sie ankam.
+    Daran haengen die Rueckleitadresse fuer einen Anmeldeanbieter (solange keine oeffentliche Adresse gesetzt ist),
+    die Warnung der authentik-Karte und ``Secure`` am Sitzungs-Cookie (``NEXMAIL_COOKIE_SECURE=auto``).
+
+    ⚠️ **Nur, wenn ``NEXMAIL_CLIENT_IP`` einen Proxy nennt** (``proxy`` oder ``proxy:<Zahl>``): dieselbe Einstellung,
+    mit der nexmail dem Proxy schon den Absender glaubt. Ab Werk (leer oder ``direct``) zaehlt die Kopfzeile nicht,
+    wie bisher: Ohne Proxy davor kann jeder sie schicken.
+
+    ⚠️ **Der rechteste Wert**, ohne Gross und Klein, nur ``http`` oder ``https``: Den rechten haengt der naechste
+    Proxy an, alles links davon kann der Anfragende selbst geschrieben haben. Bei einem WebSocket wird daraus
+    ``ws`` oder ``wss``.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        if scope["type"] in ("http", "websocket") and get_settings().anzahl_proxys() > 0:
+            schema = _weitergereichtes_schema(scope.get("headers") or [])
+            if schema:
+                if scope["type"] == "websocket":
+                    schema = "wss" if schema == "https" else "ws"
+                scope = dict(scope)
+                scope["scheme"] = schema
+        await self.app(scope, receive, send)
+
+
+def _weitergereichtes_schema(kopfzeilen: list) -> str:
+    """Der rechteste Wert aus allen ``X-Forwarded-Proto``-Zeilen, sofern er ``http`` oder ``https`` ist."""
+    werte: list[str] = []
+    for name, wert in kopfzeilen:
+        if bytes(name).lower() == b"x-forwarded-proto":
+            werte.extend(teil.strip() for teil in bytes(wert).decode("latin-1").split(","))
+    werte = [w for w in werte if w]
+    if not werte:
+        return ""
+    letzter = werte[-1].lower()
+    return letzter if letzter in ("http", "https") else ""

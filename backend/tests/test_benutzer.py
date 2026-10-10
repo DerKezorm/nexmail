@@ -209,7 +209,7 @@ def test_annehmen_macht_ein_konto_und_meldet_an(klient, zweiter_klient, postausg
 
     vorschau = zweiter_klient.get(f"/api/einladung/{schluessel}")
     assert vorschau.status_code == 200
-    assert vorschau.json() == {"benutzername": "anna", "anzeigename": "Anna"}
+    assert vorschau.json() == {"benutzername": "anna", "anzeigename": "Anna", "passwort": True}
 
     fertig = zweiter_klient.post(
         f"/api/einladung/{schluessel}", json={"passwort": "annas-kennwort-1"}

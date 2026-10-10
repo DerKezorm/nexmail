@@ -234,7 +234,7 @@ def _adresse_aus_token(daten: dict) -> str:
     ⚠️ **Das ist hier vertretbar, bei der Anmeldung waere es ein Loch.** Das
     Token kommt gerade eben ueber TLS direkt vom Token-Endpunkt des Anbieters,
     nicht ueber den Browser; und es entscheidet nichts ueber Rechte, sondern
-    liefert nur die Beschriftung des Zugangs. In ``services/oidc.py``, wo aus
+    liefert nur die Beschriftung des Zugangs. In ``vendor/nexoidc`` (Anmeldung ueber Anbieter), wo aus
     einem Ausweis eine Anmeldung wird, wird sehr wohl geprueft.
     """
     roh = daten.get("id_token") or ""

@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Crown, Mail, ShieldCheck, Sparkles, SparklesIcon, Trash2, UserPlus } from 'lucide-react'
+import { AlertTriangle, Crown, Mail, ShieldCheck, Sparkles, SparklesIcon, Trash2, Unlink, UserPlus } from 'lucide-react'
 import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Badge, Button, Dialog, IconButton, Input } from '../ds'
@@ -25,6 +25,10 @@ interface BenutzerZeile {
   angelegt: string
   postfaecher: number
   ki_erlaubt: boolean
+  /** Die Kennung im Anmeldemodul, für „Verknüpfung lösen“. */
+  nummer: number
+  /** Die Anmeldeanbieter, mit denen das Konto verknüpft ist. */
+  anbieter: Array<{ id: number; slug: string; label: string }>
 }
 
 interface EinladungsZeile {
@@ -109,6 +113,26 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
       await laden()
     } catch (e) {
       setFehler(servermeldung(e))
+    }
+  }
+
+  /** Eine Verknüpfung eines Kontos lösen (Bauplan „Anmeldung mit OIDC und authentik“, Teil 01): mit dem eigenen
+   *  Kennwort des Betreibers, und die Rückfrage nennt Konto und Anbieter. */
+  async function verknuepfungLoesen(p: BenutzerZeile, a: { id: number; label: string }) {
+    const wer = p.anzeigename || p.benutzername
+    const kennwort = await fragen({
+      titel: t('anmeldeweg.verknuepfung_loesen'),
+      text: t('anmeldeweg.verknuepfung_loesen_text', { wer, name: a.label }),
+      eingabe: { beschriftung: t('anmeldung.passwort'), typ: 'password' },
+      knopf: t('anmeldeweg.verknuepfung_loesen'),
+      gefaehrlich: true,
+    })
+    if (typeof kennwort !== 'string' || !kennwort) return
+    try {
+      await api.loeschen(`/api/oidc/admin/accounts/${p.nummer}/links/${a.id}`, { password: kennwort })
+      await laden()
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     }
   }
 
@@ -211,6 +235,22 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
                   )}
                 </div>
                 <p className="mb-0 truncate font-mono text-[12px] text-fg-4">{p.benutzername}</p>
+                {/* Die Anbieter, mit denen das Konto verknüpft ist, als kleine Marken; das Kreuz daneben löst. */}
+                {p.anbieter.length > 0 && (
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5" data-testid="konto-anbieter">
+                    {p.anbieter.map((a) => (
+                      <span key={a.id} className="inline-flex items-center gap-0.5">
+                        <Badge tone="neutral">{a.label}</Badge>
+                        <IconButton
+                          icon={<Unlink />}
+                          size="sm"
+                          label={t('anmeldeweg.verknuepfung_loesen_mit', { wer: p.anzeigename || p.benutzername, name: a.label })}
+                          onClick={() => void verknuepfungLoesen(p, a)}
+                        />
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <p className="mb-0 truncate text-[11px] text-fg-4">
                   {t('verwaltung.postfaecher_zahl', { count: p.postfaecher })}
                 </p>

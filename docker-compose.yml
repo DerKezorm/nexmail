@@ -70,7 +70,9 @@ services:
       NEXMAIL_COOKIE_SECURE: ${NEXMAIL_COOKIE_SECURE:-auto}
 
       # Where nexmail takes the client address from. Used by the sign-in rate
-      # limiter.
+      # limiter. With proxy or proxy:2, nexmail also takes the scheme from the
+      # proxy (the rightmost X-Forwarded-Proto, http or https): the redirect
+      # address for a sign-in provider and the Secure session cookie follow it.
       #
       #   empty     count per account only (default, always safe)
       #   direct    nexmail is exposed directly

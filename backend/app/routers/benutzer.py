@@ -45,6 +45,10 @@ class BenutzerZeile(BaseModel):
     #: Ab Werk erlaubt: Die Spalte ist die Ausnahmeliste, nicht die
     #: Einladungsliste — der bewusste Akt ist der Riegel der Installation.
     ki_erlaubt: bool
+    #: Die Kennung im Anmeldemodul (ganze Zahl), fuer „Verknuepfung loesen".
+    nummer: int = 0
+    #: Die Anmeldeanbieter, mit denen das Konto verknuepft ist (Marken in der Liste).
+    anbieter: list[dict] = []
 
 
 class EinladungsZeile(BaseModel):
@@ -81,8 +85,12 @@ class Umfang(BaseModel):
     signaturen: int
 
 
-def _zeile(db, person: Benutzer) -> BenutzerZeile:
+def _zeile(db, person: Benutzer, verknuepft: dict | None = None) -> BenutzerZeile:
     from ..models import Konto
+    from ..routers.oidc import verknuepfungen_je_konto
+
+    if verknuepft is None:
+        verknuepft = verknuepfungen_je_konto(db)
 
     anzahl = len(db.execute(select(Konto.id).where(Konto.benutzer_id == person.id)).all())
     return BenutzerZeile(
@@ -94,6 +102,8 @@ def _zeile(db, person: Benutzer) -> BenutzerZeile:
         angelegt=person.angelegt,
         postfaecher=anzahl,
         ki_erlaubt=person.ki_erlaubt,
+        nummer=person.nummer or 0,
+        anbieter=verknuepft.get(person.id, []),
     )
 
 
@@ -111,9 +121,12 @@ def _einladungszeile(e: Einladung) -> EinladungsZeile:
 
 @router.get("", response_model=Bestand)
 def liste(_: Betreiber, db: DbSession) -> Bestand:
+    from ..routers.oidc import verknuepfungen_je_konto
+
     leute = db.execute(select(Benutzer).order_by(Benutzer.angelegt)).scalars().all()
+    verknuepft = verknuepfungen_je_konto(db)
     return Bestand(
-        benutzer=[_zeile(db, p) for p in leute],
+        benutzer=[_zeile(db, p, verknuepft) for p in leute],
         einladungen=[_einladungszeile(e) for e in einladungsdienst.offene(db)],
         postausgang_da=systempost.lesen(db).eingerichtet,
         adresse_da=bool(einstellung_lesen(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE)),

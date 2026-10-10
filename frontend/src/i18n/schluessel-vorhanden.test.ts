@@ -28,6 +28,9 @@ import { describe, expect, it } from 'vitest'
 
 import de from './de.json'
 import en from './en.json'
+import { oidcWording } from '../vendor/nexoidc/oidc'
+import oidcDe from '../vendor/nexoidc/oidc.de.json'
+import oidcEn from '../vendor/nexoidc/oidc.en.json'
 
 /** Alle Knoten, nicht nur die Blätter — `t(..., { returnObjects: true })`
  *  holt ganze Teilbäume. */
@@ -48,8 +51,9 @@ function kennt(menge: Set<string>, schluessel: string): boolean {
   return PLURAL.some((endung) => menge.has(schluessel + endung))
 }
 
-const deutsch = new Set(knoten(de))
-const englisch = new Set(knoten(en))
+/* Die Wortlaute der Anmeldung über Anbieter mischt `i18n/index.ts` aus dem gemeinsamen Modul ein (`oidc.*`). */
+const deutsch = new Set(knoten({ ...de, ...oidcWording(oidcDe, { singleAccount: false }) }))
+const englisch = new Set(knoten({ ...en, ...oidcWording(oidcEn, { singleAccount: false }) }))
 
 const DATEIEN = import.meta.glob('../**/*.{ts,tsx}', {
   query: '?raw',

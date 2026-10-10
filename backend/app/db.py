@@ -184,6 +184,12 @@ def _fehlende_spalten() -> list[str]:
             vorgabe = spalte.default.arg if spalte.default is not None else None
             if callable(vorgabe):
                 vorgabe = None
+            # ⚠️ **Eine Vorgabe in der Tabelle geht vor.** Sie gilt auch fuer
+            # eine aeltere Fassung, die die Spalte nicht kennt und nach einem
+            # Rueckweg Zeilen anlegt (Anmeldung mit Anbietern, 0.21).
+            tabellenvorgabe = getattr(spalte.server_default, "arg", None)
+            if isinstance(tabellenvorgabe, str):
+                vorgabe = tabellenvorgabe
             teile = [f'ALTER TABLE "{tabelle.name}" ADD COLUMN "{spalte.name}" {typ}']
             if isinstance(vorgabe, str):
                 teile.append(f"DEFAULT '{vorgabe}'")
@@ -358,6 +364,12 @@ def init_db() -> None:
 
     with SessionLocal() as db:
         _dek_laden(db)
+
+    # Die Anmeldung ueber Anbieter: Liste von 0.21 nachziehen, und was 0.21 nach
+    # einem Rueckweg geaendert hat. Braucht den Datenschluessel (Geheimnisse).
+    from .services import oidc_wanderung
+
+    oidc_wanderung.laufen(engine)
 
 
 def datenbank_ersetzen(neue_datei: Path) -> None:

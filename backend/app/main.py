@@ -28,6 +28,7 @@ from .deps import angemeldet
 from .middleware import (
     BasisPfadMiddleware,
     OberflaechePackenMiddleware,
+    SchemaVomProxyMiddleware,
     SicherheitskopfMiddleware,
     VorgangMiddleware,
 )
@@ -66,6 +67,7 @@ from .routers import (
     verfassen,
 )
 from .services import imap as imapdienst
+from .vendor import nexoidc
 from .services import sitzung as sitzungsdienst
 
 # ⚠️ **Hier stand ``logging.basicConfig``, und es war eine Undichtigkeit.**
@@ -84,6 +86,39 @@ from .services import sitzung as sitzungsdienst
 logger = logging.getLogger("nexmail")
 
 einstellungen_ = get_settings()
+
+
+def _oeffentliche_adresse() -> str:
+    """Die oeffentliche Adresse aus der Einstellung (samt Vorbau, wie man nexmail erreicht), sonst ""."""
+    from .db import einstellung_lesen
+
+    with SessionLocal() as db:
+        return einstellung_lesen(db, "oeffentliche_adresse")
+
+
+def _oeffentliche_adresse_speichern(adresse: str) -> None:
+    """Eine in der authentik-Karte bestaetigte Adresse, sofort festgeschrieben (eigene Transaktion)."""
+    from .db import einstellung_schreiben
+
+    with SessionLocal() as db:
+        einstellung_schreiben(db, "oeffentliche_adresse", adresse)
+
+
+#: Das gemeinsame Anmeldemodul, vor der ersten Anfrage (Bauplan "Anmeldung mit
+#: OIDC und authentik"). Die Seiten tragen den Vorbau: Sie sind Ziele einer
+#: Weiterleitung, die der Browser selbst aufloest.
+nexoidc.configure(
+    nexoidc.AppConfig(
+        app_name="nexmail",
+        server_secret=lambda: einstellungen_.resolved_secret_key(),
+        api_prefix="/api",
+        public_url=_oeffentliche_adresse,
+        save_public_url=_oeffentliche_adresse_speichern,
+        login_page=f"{einstellungen_.url_base}/anmelden",
+        account_page=f"{einstellungen_.url_base}/konto/sicherheit",
+        home=f"{einstellungen_.url_base}/",
+    )
+)
 
 
 #: ⚠️ **Jeder Eintrag braucht einen Grund.** Wer hier etwas hinzufügt, ohne
@@ -133,24 +168,39 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
         "Zeigt den QR-Code, solange der zweite Faktor unbestätigt ist. Hängt "
         "ebenfalls an der halben Sitzung."
     ),
-    "/api/oidc/knoepfe": (
-        "Welche Anbieter auf der Anmeldeseite stehen. Die sieht noch niemand "
-        "angemeldet — herausgegeben wird nur, was ohnehin auf einem Knopf "
-        "steht."
+    "/api/oidc/providers": (
+        "Welche Anbieter auf der Anmelde- und der Einladungsseite stehen. Die "
+        "sieht noch niemand angemeldet; herausgegeben wird nur, was ohnehin auf "
+        "einem Knopf steht (Kurzname und Name)."
     ),
-    "/api/oidc/{kuerzel}/start": (
+    "/api/oidc/anmeldeseite": (
+        "Dasselbe fuer die Anmeldeseite, dazu ob das Passwortformular dasteht. "
+        "Wer sich anmelden will, ist noch nicht angemeldet."
+    ),
+    "/api/oidc/{slug}/start": (
         "Der Hinweg zum Anbieter. Wer sich anmelden will, ist noch nicht "
-        "angemeldet. Mit Sitzung heisst derselbe Weg „verknuepfen“."
+        "angemeldet. Die Bremse steht davor; eine Einladung reist nur mit, wenn "
+        "ihr Schluessel gilt."
     ),
-    "/api/oidc/{kuerzel}/zurueck": (
-        "Der Rueckweg vom Anbieter — eine Browser-Weiterleitung per GET. "
-        "Geschuetzt ist er ueber das signierte Anlauf-Cookie (state, nonce, "
-        "PKCE), nicht ueber eine Anmeldung; die entsteht ja gerade erst."
+    "/api/oidc/{slug}/callback": (
+        "Der Rueckweg vom Anbieter, eine Browser-Weiterleitung per GET. "
+        "Geschuetzt ueber das signierte Anlauf-Cookie (state einmalig, nonce, "
+        "PKCE), nicht ueber eine Anmeldung; die entsteht ja gerade erst. Beim "
+        "Verknuepfen nimmt er das Konto aus der Sitzung."
     ),
-    "/api/oidc/{kuerzel}/einladung": (
+    "/api/oidc/callback": (
+        "Derselbe Rueckweg fuer den Eintrag oidc (Bauplan: die Adresse, die ein "
+        "Anbieter aus einer Ein-Anbieter-Fassung kennt)."
+    ),
+    "/api/oidc/{slug}/einladung": (
         "Eine Einladung ueber einen Anbieter annehmen. Wer eingeladen ist, hat "
         "noch kein Konto; der Schluessel aus der Mail ist der Nachweis, genau "
-        "wie beim Annehmen mit Kennwort, und dieselbe Bremse steht davor."
+        "wie beim Annehmen mit Kennwort, und dieselbe Bremse steht davor. POST, "
+        "damit der Schluessel in keinem Protokoll steht."
+    ),
+    "/api/oidc/{slug}/zurueck": (
+        "Derselbe Rueckweg unter der Adresse, die die Anbieter aus nexmail 0.21 "
+        "kennen; sie bleibt gueltig, solange ein Eintrag sie traegt."
     ),
     "/api/einladung/{schluessel}": (
         "Eine Einladung ansehen und annehmen. Wer sie annimmt, hat noch kein "
@@ -193,6 +243,8 @@ async def lebenslauf(_: FastAPI):
     protokolldienst.einrichten()
 
     init_db()
+    # Den TLS-Kontext des Anmeldemoduls einmal ausserhalb der Ereignisschleife lesen.
+    await nexoidc.warm()
 
     if einstellungen_.zwei_faktor_aus:
         # ⚠️ Laut, bei jedem Start. Ein Notausgang, den man vergisst
@@ -659,3 +711,7 @@ app.add_middleware(OberflaechePackenMiddleware)
 if einstellungen_.url_base:
     app.add_middleware(BasisPfadMiddleware, basis=einstellungen_.url_base)
     logger.info("Running under the sub path %s.", einstellungen_.url_base)
+
+# ⚠️ **Ganz aussen**: Wie die Anfrage beim Browser ankam (``X-Forwarded-Proto``),
+# gilt nur hinter einem Proxy, den ``NEXMAIL_CLIENT_IP`` nennt. Ab Werk nichts.
+app.add_middleware(SchemaVomProxyMiddleware)

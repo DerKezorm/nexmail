@@ -17,6 +17,7 @@ import { Meldung } from './EinrichtungPage'
 import { ApiFehler, api } from '../api/client'
 import { servermeldung } from '../lib/servermeldung'
 import type { Einrichtung, Schritt } from '../api/client'
+import { oidcErrorKey } from '../vendor/nexoidc/oidc'
 
 type Lage = 'passwort' | 'code' | 'wiederherstellung' | 'einrichten'
 
@@ -28,9 +29,14 @@ interface Props {
 }
 
 export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
 
-  const [lage, setLage] = useState<Lage>('passwort')
+  /* Nach einem Anbieter, dem der Eintrag den zweiten Faktor nicht glaubt, kommt
+     der Browser mit `?schritt=code` zurück: Die halbe Sitzung steht, jetzt der
+     Code, wie nach dem Kennwort. */
+  const [lage, setLage] = useState<Lage>(() =>
+    new URLSearchParams(window.location.search).get('schritt') === 'code' ? 'code' : 'passwort',
+  )
   const [benutzername, setBenutzername] = useState('')
   const [passwort, setPasswort] = useState('')
   const [code, setCode] = useState('')
@@ -38,35 +44,37 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
   const [laeuft, setLaeuft] = useState(false)
   const [einrichtung, setEinrichtung] = useState<Einrichtung | null>(null)
 
-  /* Anmelde-Anbieter. Leer heißt: Es gibt keine, und dann steht hier nichts.
-     ⚠️ **Ab Werk ändert sich nichts** — wer nie einen Anbieter einrichtet,
-     merkt von OIDC nichts. */
-  const [anbieter, setAnbieter] = useState<Array<{ kuerzel: string; anzeigename: string }>>([])
+  /* Anmelde-Anbieter (Bauplan „Anmeldung mit OIDC und authentik“, Teil 04).
+     Leer heißt: Es gibt keine, und dann steht hier nichts. Ist die Anmeldung
+     mit Passwort aus, stehen nur die Knöpfe da und klein der Weg für den
+     Betreiber, der sich immer mit Passwort anmelden kann. */
+  const [seite, setSeite] = useState<{ providers: Array<{ slug: string; label: string }>; password: boolean }>({
+    providers: [],
+    password: true,
+  })
+  const [betreiberWeg, setBetreiberWeg] = useState(false)
   useEffect(() => {
     api
-      .holen<Array<{ kuerzel: string; anzeigename: string }>>('/api/oidc/knoepfe')
-      .then(setAnbieter)
+      .holen<{ providers: Array<{ slug: string; label: string }>; password: boolean }>('/api/oidc/anmeldeseite')
+      .then(setSeite)
       .catch(() => undefined)
   }, [])
 
-  /* ⚠️ **Der Rückweg meldet sich über die Adresse.** Er ist eine
-     Browser-Weiterleitung, keine API-Antwort; der Grund steht als Kennung in
-     der Adresse, und die Übersetzung dazu liegt hier. Danach wird sie aus dem
-     Verlauf geräumt — sonst steht der Fehler beim nächsten Neuladen wieder da. */
+  /* ⚠️ **Der Rückweg meldet sich über die Adresse** (`/anmelden?error=<code>`).
+     Er ist eine Browser-Weiterleitung, keine API-Antwort; der Satz zur Kennung
+     kommt aus den Wortlauten des Anmeldemoduls (`oidc.error.*`), nie die rohe
+     Kennung. Danach wird die Adresse aufgeräumt — sonst steht der Fehler beim
+     nächsten Neuladen wieder da. */
   const [oidcFehler, setOidcFehler] = useState('')
   useEffect(() => {
-    const kennung = new URLSearchParams(window.location.search).get('oidc_fehler')
-    if (!kennung) return
-    /* ⚠️ **Gefragt wird der Katalog, nicht eine Liste im Code.** Bis zum
-       03.09.2026 standen hier drei Kennungen fest eingetragen; der Server
-       nennt aber zwölf. Die übrigen neun fielen alle auf „Die Anmeldung über
-       den Anbieter hat nicht geklappt" zurück — ein Satz, der den Betreiber
-       nichts wissen lässt, obwohl der Server es genau wusste. Eine Liste im
-       Code altert lautlos: Wer eine Kennung ergänzt, denkt an sie nicht. */
-    const schluessel = `oidc.fehler_${kennung}`
-    setOidcFehler(t(i18n.exists(schluessel) ? schluessel : 'oidc.fehler_allgemein'))
-    window.history.replaceState(null, '', appPfad('/'))
-  }, [t, i18n])
+    const abfrage = new URLSearchParams(window.location.search)
+    const schluessel = oidcErrorKey(abfrage.get('error'))
+    if (schluessel) setOidcFehler(t(schluessel))
+    else if (abfrage.get('error')) setOidcFehler(t('anmeldung.fehler_allgemein'))
+    if (abfrage.has('error') || abfrage.has('schritt') || window.location.pathname !== appPfad('/')) {
+      window.history.replaceState(null, '', appPfad('/'))
+    }
+  }, [t])
 
   useEffect(() => {
     if (lage !== 'einrichten') return
@@ -103,9 +111,19 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
 
   // --- Schritt 1: Kennwort --------------------------------------------- //
 
+  /* Das Formular steht da, solange die Anmeldung mit Passwort an ist, es keinen
+     Anbieter gibt oder der Betreiber seinen Weg geöffnet hat. */
+  const passwortformDa = seite.password || betreiberWeg || seite.providers.length === 0
+
   if (lage === 'passwort') {
     return (
       <Torbogen titel={t('anmeldung.titel')} modus={modus} aufModus={aufModus}>
+        {oidcFehler && (
+          <div className="mb-4">
+            <Meldung text={oidcFehler} />
+          </div>
+        )}
+        {passwortformDa && (
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -133,7 +151,6 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
             onChange={(e) => setPasswort(e.target.value)}
           />
           {fehler && <Meldung text={fehler} />}
-          {oidcFehler && <Meldung text={oidcFehler} />}
           <Button
             type="submit"
             variant="primary"
@@ -154,23 +171,39 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
             {t('kennwort.vergessen_link')}
           </button>
         </form>
-
+        )}
+        {passwortformDa && seite.providers.length > 0 && (
+          <div className="my-5 flex items-center gap-3 text-[12px] text-fg-4" aria-hidden>
+            <span className="h-px flex-1 bg-line-subtle" />
+            {t('oidc.login.or')}
+            <span className="h-px flex-1 bg-line-subtle" />
+          </div>
+        )}
         {/* ⚠️ **Ein gewöhnlicher Verweis, kein fetch.** Der Hinweg ist eine
             Browser-Weiterleitung zum Anbieter; ein Aufruf im Hintergrund
             landete an einer fremden Adresse und käme nie zurück. */}
-        {anbieter.length > 0 && (
-          <div className="mt-5 flex flex-col gap-2 border-t border-line-subtle pt-5">
-            {anbieter.map((a) => (
+        {seite.providers.length > 0 && (
+          <div className="flex flex-col gap-2" data-testid="anmelde-knoepfe">
+            {seite.providers.map((a) => (
               <a
-                key={a.kuerzel}
-                href={appPfad(`/api/oidc/${a.kuerzel}/start`)}
+                key={a.slug}
+                href={appPfad(`/api/oidc/${encodeURIComponent(a.slug)}/start`)}
                 className="flex h-[var(--control-h-lg)] items-center justify-center gap-2 rounded-md border border-line bg-surface-2 text-sm font-medium text-fg-1 no-underline transition-colors duration-[var(--dur-fast)] hover:border-accent"
               >
                 <KeyRound aria-hidden className="size-4" />
-                {t('oidc.anmelden_mit', { name: a.anzeigename })}
+                {t('oidc.login.button', { name: a.label })}
               </a>
             ))}
           </div>
+        )}
+        {!passwortformDa && (
+          <button
+            type="button"
+            onClick={() => setBetreiberWeg(true)}
+            className="mx-auto mt-5 block text-[12px] text-fg-4 underline underline-offset-2 hover:text-fg-1"
+          >
+            {t('oidc.login.operator')}
+          </button>
         )}
       </Torbogen>
     )

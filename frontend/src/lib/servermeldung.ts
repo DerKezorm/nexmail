@@ -16,6 +16,7 @@
  */
 import i18next from 'i18next'
 import { ApiFehler } from '../api/client'
+import { oidcErrorKey, oidcFormErrorKey } from '../vendor/nexoidc/oidc'
 
 /* ⚠️ **Auch ein Wert kann eine Kennung sein.** `rolle_ohne_ordner` nennt die
    Rolle, und die heißt im Server `papierkorb`. Bis 0.17.0 stand sie so im
@@ -43,6 +44,11 @@ export function servermeldung(fehler: unknown, rueckfall?: string): string {
   if (kennung && i18next.exists(schluessel)) {
     return i18next.t(schluessel, werteUebersetzt(fehler.werte ?? {}))
   }
+
+  /* Die Anmeldung über Anbieter nennt die Kennungen des gemeinsamen Moduls (`routers/oidc.abgelehnt`); ihre Sätze
+     stehen in dessen Wortlauten (`oidc.error.*`, `oidc.formError.*`), nicht unter `serverfehler`. */
+  const modul = oidcFormErrorKey(kennung) ?? oidcErrorKey(kennung)
+  if (modul) return i18next.t(modul)
 
   /* ⚠️ **Eine unbekannte Kennung ist ein Fehler bei uns, kein Betriebsfall.**
      Sie kommt nur vor, wenn der Server etwas nennt, das im Katalog fehlt —

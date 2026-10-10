@@ -177,10 +177,15 @@ def _schlank_machen(db_datei: Path) -> dict:
         adresse = verbindung.execute(
             "select wert from einstellung where schluessel = 'oeffentliche_adresse'"
         ).fetchone()
+        # ⚠️ ``redirect_path`` gibt es erst seit der Anmeldung nach Bauplan; ein
+        # Eintrag von 0.21 (Spalte fehlt oder NULL) kennt beim Anbieter
+        # ``/api/oidc/<kuerzel>/zurueck``.
+        spalten = {zeile[1] for zeile in verbindung.execute("pragma table_info(oidc_anbieter)")}
+        pfad = "redirect_path" if "redirect_path" in spalten else "null"
         anbieter = [
-            {"kuerzel": k, "anzeigename": a, "issuer": i}
-            for k, a, i in verbindung.execute(
-                "select kuerzel, anzeigename, issuer from oidc_anbieter order by kuerzel"
+            {"kuerzel": k, "anzeigename": a, "issuer": i, "redirect_path": r}
+            for k, a, i, r in verbindung.execute(
+                f"select kuerzel, anzeigename, issuer, {pfad} from oidc_anbieter order by kuerzel"
             )
         ]
     except sqlite3.DatabaseError as fehler:  # pragma: no cover - eigene Kopie

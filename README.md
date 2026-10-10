@@ -348,19 +348,50 @@ proxy terminates TLS and forwards plain HTTP internally — and never if nexmail
 should also be reachable over `http://`, because the browser discards a Secure
 cookie sent over http and then nobody gets in.
 
+**Trusted proxies.** `NEXMAIL_CLIENT_IP=proxy` (or `proxy:2` for two proxies in a
+row) tells nexmail that a reverse proxy sits in front. Only then does it believe
+the proxy's headers: the client address in `X-Forwarded-For` (for the sign-in
+brake) and the scheme in `X-Forwarded-Proto` (the rightmost value, `http` or
+`https`). That scheme decides the redirect address for a sign-in provider while
+no public address is set, and `Secure` on the session cookie with
+`NEXMAIL_COOKIE_SECURE=auto`. Left empty (the default) or `direct`, nexmail
+takes neither header from anyone. This is the setting the authentik card means
+when it warns that the server sees another scheme than your browser.
+
 ## Signing in through an external provider
 
 nexmail speaks OpenID Connect: authentik, Microsoft Entra ID, Keycloak,
-Authelia, Pocket ID and anything else that follows the spec. Add a provider
-under *Administration → OIDC*; the redirect URI to register with the provider is
-shown there with a copy button.
+Authelia, Pocket ID and anything else that follows the spec. Everything lives
+under *Administration → Sign-in*, in three cards:
 
-**authentik in one step.** On the same tab, enter the address of your authentik
-and a one-time API token that may create applications. nexmail creates the
-signing key, provider and application in authentik and adds itself as a
-provider. The token is used for these calls only and never stored. If you would
-rather not hand over a token, download the blueprint instead and import it in
-authentik.
+1. **Sign-in.** *Sign-in with a password* can be switched off once a provider is
+   active; then the sign-in page shows only the provider buttons. You as the
+   operator can always sign in with your password (a small link on the sign-in
+   page), so a provider that fails never locks you out. The **public address**
+   is the address people use to reach nexmail, base path included; invitations,
+   providers and links in mails use it.
+2. **Sign-in providers.** Add a provider by hand: name on the button, a short
+   name (part of the redirect address, fixed once saved), the issuer, client ID
+   and secret. The redirect address to register with the provider is shown with
+   a copy button: `<public address>/api/oidc/<short name>/callback`. Saving asks
+   the provider's discovery document first; an issuer that calls itself
+   something else is refused at the field. Changing the issuer of a provider
+   asks first and then drops its links, because another issuer is another
+   provider. Removing one tells you how many accounts lose their link.
+3. **authentik in one step.** Enter the address of your authentik and a
+   one-time API token that may create applications. nexmail creates the
+   signing key, provider and application in authentik and adds itself as a
+   provider; the steps are listed with a reason if one fails. The token is used
+   for these calls only and never stored. If you would rather not hand over a
+   token, download the blueprint instead and import it in authentik. Without a
+   public address the card suggests the one your browser uses and stores it
+   before anything is registered.
+
+Each provider has two more switches: **New people get an account** (off by
+default: only invited people and linked accounts come in) and **The provider
+checks the second factor itself** (on by default; switched off, an account with
+its own second factor is asked for the code after the provider, as after the
+password).
 
 **Microsoft Entra ID** works with a single tenant
 (`https://login.microsoftonline.com/<tenant ID>/v2.0`) as well as with `common`
@@ -369,19 +400,25 @@ nexmail does not need one.
 
 ![The sign-in tab with one registered provider](docs/screenshots/oidc-en.webp)
 
-**Two ways in, and no others:**
+**Who comes in:**
 
 1. **An existing link.** You create it while signed in, under *Settings →
-   Security → Link*.
-2. **An invitation.** On the invitation page, the provider button takes the
-   invitation key along. The account is created from the invitation, and the
-   invitation is spent.
+   Security → Sign-in providers*; your password confirms it. The operator sees
+   the links in the account list and can remove one, with their own password.
+2. **An invitation.** On the invitation page, *Continue with …* takes the
+   invitation key along (in the request body, never in an address). The new
+   account is named after the person at the provider, keeps the display name
+   and contact address from the invitation, and the invitation is spent.
+3. **New people**, only where a provider has *New people get an account* on.
 
 > ⚠️ **No email address opens anything, not even an invitation.** Matching
 > by address would be the place where a provider claiming an address it does
 > not own could open somebody else's account; in authentik, for instance, users
-> can change their own address. An invitation is a decision the operator made
-> on purpose, and the key from the invitation mail is the proof.
+> can change their own address. A person is known by provider and subject only.
+
+> ⚠️ **Providers set up in nexmail 0.21 keep their redirect address**
+> `/api/oidc/<short name>/zurueck`; you do not have to change anything at the
+> provider. New providers use `/api/oidc/<short name>/callback`.
 
 > ⚠️ **The issuer must be one address that both the browser and the server can
 > reach.** The browser fetches the sign-in page; the container fetches the

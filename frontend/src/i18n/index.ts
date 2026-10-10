@@ -22,6 +22,7 @@
  */
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
+import { oidcWording, type OidcWording } from '../vendor/nexoidc/oidc'
 
 export const SPRACHEN = [
   { code: 'de', name: 'Deutsch' },
@@ -37,8 +38,36 @@ const GEMERKT = 'nexmail.sprache'
    Bau kann dann nicht mehr sehen, welche es wirklich gibt, und ein Tippfehler
    fällt erst zur Laufzeit auf. */
 const LADER: Record<Sprachcode, () => Promise<{ default: object }>> = {
-  de: () => import('./de.json'),
-  en: () => import('./en.json'),
+  de: () => mitAnmeldung(import('./de.json'), import('../vendor/nexoidc/oidc.de.json')),
+  en: () => mitAnmeldung(import('./en.json'), import('../vendor/nexoidc/oidc.en.json')),
+}
+
+/* ⚠️ **Die Wortlaute der Anmeldung über Anbieter kommen aus dem gemeinsamen Modul** (`vendor/nexoidc`, Bauplan
+   „Anmeldung mit OIDC und authentik“, Teil 04): in jeder nex-App dieselben Sätze unter `oidc.*`, eingemischt über
+   `oidcWording`. nexmails eigene Dateien tragen keinen Schlüssel `oidc`; geändert wird nur im Modul. */
+async function mitAnmeldung(
+  eigen: Promise<{ default: object }>,
+  modul: Promise<{ default: OidcWording }>,
+): Promise<{ default: object }> {
+  const [app, oidc] = await Promise.all([eigen, modul])
+  return { default: { ...app.default, ...oidcWording(oidc.default, { singleAccount: false }) } }
+}
+
+/** Die Texte einer Sprache, wie sie in i18next landen (samt den Wortlauten der Anmeldung). Auch für Tests. */
+export async function ressourcen(code: Sprachcode): Promise<object> {
+  return (await LADER[code]()).default
+}
+
+/** Was jede i18next-Instanz von nexmail braucht; `spracheHochfahren` und die Tests nehmen dasselbe. */
+export const GRUNDEINSTELLUNG = {
+  /* ⚠️ **Kein `fallbackLng` auf eine Sprache, die gar nicht geladen ist.**
+     Sonst sucht i18next bei einem fehlenden Schlüssel in einem Bündel, das
+     es nicht gibt, und gibt den Schlüssel aus. Der Wächter `vollstaendig`
+     auf der schnellen Prüfebene hält ohnehin fest, dass beide Sprachen
+     dieselben Einträge kennen. */
+  fallbackLng: false as const,
+  // `{{app}}` in den Wortlauten des Anmeldemoduls.
+  interpolation: { escapeValue: false, defaultVariables: { app: 'nexmail' } },
 }
 
 function startsprache(): Sprachcode {
@@ -72,13 +101,7 @@ export async function spracheHochfahren(): Promise<void> {
   await i18n.use(initReactI18next).init({
     resources: { [code]: { translation: modul.default } },
     lng: code,
-    /* ⚠️ **Kein `fallbackLng` auf eine Sprache, die gar nicht geladen ist.**
-       Sonst sucht i18next bei einem fehlenden Schlüssel in einem Bündel, das
-       es nicht gibt, und gibt den Schlüssel aus. Der Wächter `vollstaendig`
-       auf der schnellen Prüfebene hält ohnehin fest, dass beide Sprachen
-       dieselben Einträge kennen. */
-    fallbackLng: false,
-    interpolation: { escapeValue: false },
+    ...GRUNDEINSTELLUNG,
   })
   document.documentElement.lang = code
 }
