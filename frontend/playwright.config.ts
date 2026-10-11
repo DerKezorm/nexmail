@@ -62,16 +62,19 @@ const NUR_BREIT = [
   'einstellungen.spec.ts',
   'handeln.spec.ts',
   'kalender.spec.ts',
+  'kennwort.spec.ts',
   'lesemodus.spec.ts',
   'mehrbenutzer.spec.ts',
   'oauth.spec.ts',
   'ordnerrolle.spec.ts',
+  'regeln.spec.ts',
   'sicherungen.spec.ts',
   'umzug.spec.ts',
 ]
 const NUR_SCHMAL = [
   'auswahl.spec.ts',
   'kalender_schmal.spec.ts',
+  'lesekopf.spec.ts',
   'ordner_schmal.spec.ts',
   'wischen.spec.ts',
 ]

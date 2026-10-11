@@ -26,6 +26,7 @@ import type { Ausgangseintrag, Konto, Nachricht, Ordner, Schlagwort } from '../d
 import type { VolleNachricht } from '../api/laden'
 import type { Verfassart } from '../components/VerfassenFenster'
 import type { Vorbelegung } from '../lib/leselinks'
+import { ordnerName } from '../lib/ordnername'
 
 interface Props {
   /** Steht die Anwendung dunkel? Nur durchgereicht — siehe `Lesebereich`. */
@@ -170,7 +171,10 @@ export function MailPage(p: Props) {
         ? t('ordner.markierte')
         : ziel.typ === 'ausgang'
           ? t('ordner.postausgang')
-          : (p.ordner.find((o) => o.id === ziel.id)?.name ?? '')
+          : (() => {
+              const o = p.ordner.find((x) => x.id === ziel.id)
+              return o ? ordnerName(o, t) : ''
+            })()
 
   /* ⚠️ **Der Hinweis ist Pflicht, nicht Zierde.** nexmail hält alle Kopfdaten,
      aber Texte nur von dem, was schon einmal geöffnet wurde. Eine Suche, die

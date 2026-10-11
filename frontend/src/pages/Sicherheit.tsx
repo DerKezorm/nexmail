@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { LogOut, Monitor, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { KeyRound, LogOut, Monitor, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { api } from '../api/client'
 import type { Ich } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
@@ -71,6 +71,52 @@ export function Sicherheit({
   const [kennwort, setKennwort] = useState('')
 
   const wenige = (ich?.offene_codes ?? 0) <= 3
+
+  /* Kennwort ändern. Die Schnittstelle gab es seit Stufe 0, einen Dialog
+     dafür erst seit 0.23.0. ⚠️ Das bisherige Kennwort wird verlangt, auch
+     angemeldet: Sonst genügt eine geklaute Sitzung, um den Eigentümer
+     auszusperren. Danach fliegen die anderen Geräte hinaus, das eigene
+     bleibt; die Liste darunter zeigt es sofort. */
+  const [wechsel, setWechsel] = useState(false)
+  const [altes, setAltes] = useState('')
+  const [neues, setNeues] = useState('')
+  const [neuesNochmal, setNeuesNochmal] = useState('')
+  const [wechselFehler, setWechselFehler] = useState('')
+  const [wechselLaeuft, setWechselLaeuft] = useState(false)
+  const [gewechselt, setGewechselt] = useState('')
+
+  function wechselZu() {
+    setWechsel(false)
+    setAltes('')
+    setNeues('')
+    setNeuesNochmal('')
+    setWechselFehler('')
+  }
+
+  const wechselGrund =
+    neues.length > 0 && neues.length < 10
+      ? t('einrichtung.grund_kennwort_lang', { fehlen: 10 - neues.length })
+      : neuesNochmal && neues !== neuesNochmal
+        ? t('einrichtung.passwort_ungleich')
+        : ''
+
+  async function kennwortWechseln() {
+    setWechselFehler('')
+    setWechselLaeuft(true)
+    try {
+      const ergebnis = await api.aendern<{ abgemeldet: number }>('/api/auth/passwort', {
+        altes,
+        neues,
+      })
+      wechselZu()
+      setGewechselt(t('sicherheit.kennwort_geaendert', { count: ergebnis.abgemeldet }))
+      await laden()
+    } catch (f) {
+      setWechselFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    } finally {
+      setWechselLaeuft(false)
+    }
+  }
 
   const [adresse, setAdresse] = useState(ich?.kontaktadresse ?? '')
   const [adresseLaeuft, setAdresseLaeuft] = useState(false)
@@ -140,6 +186,85 @@ export function Sicherheit({
           </p>
         )}
       </section>
+
+      {/* --- Kennwort ---------------------------------------------------- */}
+      {ich?.hat_kennwort !== false && (
+        <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-4">
+          <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{t('sicherheit.kennwort')}</h2>
+          <p className="mb-0 text-[13px] text-fg-2">{t('sicherheit.kennwort_hinweis')}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              iconLeft={<KeyRound className="size-4" />}
+              onClick={() => {
+                setGewechselt('')
+                setWechsel(true)
+              }}
+            >
+              {t('sicherheit.kennwort_aendern')}
+            </Button>
+            {gewechselt && (
+              <span role="status" className="text-[13px] text-accent-text">
+                {gewechselt}
+              </span>
+            )}
+          </div>
+        </section>
+      )}
+
+      {wechsel && (
+        <Dialog open title={t('sicherheit.kennwort_aendern')} onClose={wechselZu}>
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void kennwortWechseln()
+            }}
+          >
+            <Input
+              label={t('sicherheit.kennwort_bisher')}
+              type="password"
+              autoComplete="current-password"
+              value={altes}
+              onChange={(e) => setAltes(e.target.value)}
+            />
+            <Input
+              label={t('sicherheit.kennwort_neu')}
+              type="password"
+              autoComplete="new-password"
+              hint={t('einrichtung.passwort_hinweis')}
+              value={neues}
+              onChange={(e) => setNeues(e.target.value)}
+            />
+            <Input
+              label={t('einrichtung.passwort_wiederholen')}
+              type="password"
+              autoComplete="new-password"
+              value={neuesNochmal}
+              onChange={(e) => setNeuesNochmal(e.target.value)}
+            />
+            <p className="mb-0 text-[12px] text-fg-3">{t('sicherheit.kennwort_folge')}</p>
+            {(wechselFehler || wechselGrund) && (
+              <p role="alert" className="mb-0 text-[13px] text-danger">
+                {wechselFehler || wechselGrund}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={
+                  wechselLaeuft || !altes || neues.length < 10 || neues !== neuesNochmal
+                }
+              >
+                {t('sicherheit.kennwort_aendern')}
+              </Button>
+              <Button type="button" variant="ghost" onClick={wechselZu}>
+                {t('aktion.abbrechen')}
+              </Button>
+            </div>
+          </form>
+        </Dialog>
+      )}
 
       {/* --- Zweiter Faktor --------------------------------------------- */}
       <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-4">

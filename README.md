@@ -114,7 +114,9 @@ Google or any other CardDAV server) that are read and written back line by
 line, with a question instead of an overwrite when a card changed on both
 sides, and a vCard file can be imported straight into one of them;
 contact groups that expand into their members when picked as a recipient;
-rules that run after each sync and only on new mail; signatures per mailbox.
+rules that run after each sync and only on new mail, can be run once over a
+folder that is already full, and can be started from a message with a
+right-click (*Create rule*); signatures per mailbox.
 
 **Housekeeping.** Trash and junk can empty themselves after a number of days —
 off by default, measured by how long a message has been in the folder, and
@@ -134,9 +136,10 @@ IMAP keywords on the server, not in nexmail's database, so they outlive nexmail
 and show up in Thunderbird and on your phone. Labels another client set appear
 here too, with a name and a colour of their own.
 
-**Follow-up.** Park a message until this evening, tomorrow or next week. It
-moves into a real *Follow-up* folder on the server and comes back when it is
-due — visible from every other client, not a note that only nexmail knows.
+**Snooze.** Park a message until this evening, tomorrow or next week. It
+moves into a real folder on the server (named *Wiedervorlage* there, shown as
+*Snooze* in the English interface) and comes back when it is due — visible
+from every other client, not a note that only nexmail knows.
 
 **Text templates.** The paragraphs you write again and again, kept once and
 dropped into a message from the compose window.
@@ -211,9 +214,10 @@ your signature are never sent, and the AI page lists verbatim what went out.
 Off by default, and the operator can block it for the whole installation or
 for single accounts.
 
-**Moving between mailboxes.** Drag a message from one account to another.
-`MOVE` and `COPY` only work inside one connection, so this fetches, appends at
-the target, checks that it really arrived, and only then deletes at the source.
+**Moving between mailboxes.** Right-click a message, *Move*, and pick a folder
+of another account. Dragging works within one account only. `MOVE` and `COPY`
+only work inside one connection, so this fetches, appends at the target,
+checks that it really arrived, and only then deletes at the source.
 That order is the whole safety: the worst case is a message that exists twice,
 which you can see and clean up.
 
@@ -314,8 +318,8 @@ Under *Administration → Backup*. Two things live there, and telling them apart
 matters when it counts:
 
 **Restore points** are complete copies next to the database, made automatically
-before any schema change and by hand whenever you want, on a schedule if you
-like. They are for a failed update or a contact deleted by mistake. If the disk
+when an update adds or rebuilds a table (not for a mere new column or index),
+and by hand whenever you want, on a schedule if you like. They are for a failed update or a contact deleted by mistake. If the disk
 dies, they die with it.
 
 **A backup** is what you download: an encrypted ZIP, and deliberately **without
@@ -520,7 +524,7 @@ cd frontend && npm install && npm run dev
 ```
 
 ```bash
-cd backend && python -m pytest        # ~1,470 tests
+cd backend && python -m pytest        # server, no mailbox needed
 cd frontend && npm test               # Vitest, no browser
 cd frontend && npm run test:ui        # Playwright, two viewports
 ```

@@ -1,9 +1,10 @@
 """Der zweite Faktor: TOTP und Wiederherstellungscodes.
 
-⚠️ **Verpflichtend, nicht angeboten.** Wer in einen Mail-Client kommt, kann
-bei jedem anderen Dienst "Passwort vergessen" druecken. Deshalb entsteht der
-zweite Faktor bei der Einrichtung und nicht in einer Einstellung, die man
-spaeter vielleicht anfasst.
+⚠️ **Freiwillig, je Person, seit dem 01.09.2026.** Anfangs war er Pflicht und
+entstand bei der Einrichtung. Wer nexmail nur im eigenen Netz betreibt,
+braucht ihn nicht; eingeschaltet wird er unter Einstellungen → Sicherheit, und
+die Seite sagt dort, was es kostet, ihn auszulassen: Wer in einen Mail-Client
+kommt, kann bei jedem anderen Dienst „Passwort vergessen" druecken.
 
 ⚠️ **Der QR-Code entsteht im eigenen Server** (``segno``), nie ueber einen
 fremden QR-Dienst. Ein Geheimnis, das man zum Zeichnen an einen fremden

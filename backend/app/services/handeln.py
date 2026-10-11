@@ -11,10 +11,9 @@ manchen Postfächern und bei anderen nicht — deshalb wird die Fähigkeitenlist
 gefragt und sonst der alte Weg gegangen: kopieren, das Original als gelöscht
 markieren, aufräumen.
 
-⚠️ **Verschoben wird nur innerhalb eines Postfachs.** Eine Mail aus dem
-GMX-Konto in den iCloud-Papierkorb zu schieben, ginge auf einem echten Server
-gar nicht — und in einer Oberfläche, die es anbietet, sähe es aus, als ginge
-es.
+⚠️ **IMAP verschiebt nur innerhalb eines Postfachs.** Über die Grenze geht
+es seit dem 02.09.2026 trotzdem, aber auf einem eigenen Weg: ``ueber_konten``
+holt, hängt beim Ziel an, sieht nach und löscht erst dann bei der Quelle.
 """
 
 from __future__ import annotations

@@ -1,12 +1,9 @@
-/* Die erste Einrichtung — zwei Schritte.
+/* Die erste Einrichtung: ein Schritt, das Konto des Betreibers.
  *
- * Schritt 1: Konto. Schritt 2: zweiter Faktor und die Wiederherstellungscodes.
- *
- * ⚠️ **Die Codes gibt es genau hier und nie wieder**, und deshalb kommt man
- * an diesem Schritt nicht mit einem Klick vorbei: Der Haken „Ich habe die
- * Codes gesichert" ist Pflicht. Das ist eine der wenigen Stellen, an denen
- * Reibung richtig ist — wer hier durchklickt, merkt es erst, wenn das Telefon
- * weg ist, und dann ist es zu spät.
+ * Bis 01.09.2026 kam danach ein zweiter Schritt mit QR-Code und
+ * Wiederherstellungscodes. Der zweite Faktor ist seitdem freiwillig und wird
+ * unter Einstellungen → Sicherheit eingeschaltet; „Schritt 1 von 2" stand
+ * trotzdem noch bis 0.22.2 über dem Formular.
  */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -71,7 +68,6 @@ export function EinrichtungPage({ modus, aufModus, aufFertig }: Props) {
 
   return (
     <Torbogen
-      marke={t('einrichtung.schritt', { n: 1 })}
       titel={t('einrichtung.titel')}
       untertitel={t('einrichtung.untertitel')}
       modus={modus}

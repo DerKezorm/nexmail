@@ -75,6 +75,9 @@ class Ich(BaseModel):
     #: fuer die ganze Installation sperren, und dann darf der Knopf nicht
     #: dastehen.
     ki_aktiv: bool = False
+    #: Ob es ein Kennwort gibt. Ein Konto aus OIDC hat keins; dort steht der
+    #: Knopf „Kennwort ändern" nicht, weil er nach dem bisherigen fragt.
+    hat_kennwort: bool = True
     #: Ob die Liste Logos der Absenderdomains holt. Reist am ``ich`` mit wie
     #: ``ki_aktiv``: Die Bildadresse traegt den Stand, und wer umschaltet,
     #: sieht es ohne F5.
@@ -120,7 +123,7 @@ def anmelden(
     # gedacht fuer den Fall, dass Telefon und Wiederherstellungscodes weg sind.
     if get_settings().zwei_faktor_aus:
         sitzungsdienst.anlegen(db, person, request, response, bestaetigt=True)
-        logger.warning("Signed in with the second factor disabled (NEXMAIL_2FA_AUS).")
+        logger.warning("Signed in with the second factor disabled (NEXMAIL_ZWEI_FAKTOR_AUS).")
         return Schritt(schritt="fertig")
 
     # ⚠️ **Der zweite Faktor ist eine Wahl, keine Pflicht** — so entschieden am
@@ -430,6 +433,7 @@ def ich(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
         ki_aktiv=person.ki_aktiv and kidienst.erlaubt_fuer(db, person),
         absenderlogos=person.absenderlogos_laden,
         ki_erlaubt=kidienst.erlaubt_fuer(db, person),
+        hat_kennwort=bool(person.passwort_hash),
     )
 
 

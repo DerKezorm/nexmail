@@ -28,7 +28,7 @@ class Auskunft(BaseModel):
     repo_adresse: str
     release_adresse: str
     projektseite: str
-    lizenz: str = "AGPL-3.0-or-later"
+    lizenz: str = "AGPL-3.0"
 
     update_pruefen: bool
     geprueft: bool = False
@@ -72,7 +72,7 @@ async def ueber(_: Betreiber, db: DbSession) -> Auskunft:
 
 @router.post("/pruefen", response_model=Auskunft)
 async def jetzt_pruefen(_: Betreiber, db: DbSession) -> Auskunft:
-    """Von Hand nachsehen — auch wenn die tägliche Nachfrage aus ist.
+    """Von Hand nachsehen — auch wenn die Nachfrage beim Öffnen aus ist.
 
     ⚠️ Das ist kein Widerspruch: Ausgeschaltet heisst „nicht **von selbst**
     hinausrufen". Wer hier klickt, hat es gerade entschieden.

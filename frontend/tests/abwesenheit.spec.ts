@@ -88,7 +88,7 @@ test('Ein verdrehter Zeitraum wird abgewiesen', async ({ page }) => {
 
   await page.getByRole('switch').first().click()
   await page.getByLabel('Text').fill('Bin weg.')
-  await page.getByLabel('Von').fill('2026-09-14')
+  await page.getByLabel('Von', { exact: true }).fill('2026-09-14')
   await page.getByLabel('Bis einschließlich').fill('2026-09-05')
   await page.getByRole('button', { name: 'Speichern' }).first().click()
 

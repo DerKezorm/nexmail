@@ -254,7 +254,7 @@ async def lebenslauf(_: FastAPI):
         # ⚠️ Laut, bei jedem Start. Ein Notausgang, den man vergisst
         # zurückzustellen, ist kein Notausgang mehr.
         logger.warning(
-            "NEXMAIL_2FA_AUS is set: the second factor is DISABLED for every "
+            "NEXMAIL_ZWEI_FAKTOR_AUS is set: the second factor is DISABLED for every "
             "sign-in. Unset it as soon as the authenticator app works again."
         )
 

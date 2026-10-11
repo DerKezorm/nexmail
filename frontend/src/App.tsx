@@ -92,6 +92,7 @@ const Verwaltung = lazy(() =>
 )
 import type { VerwaltungsReiter } from './pages/Verwaltung'
 import type { Reiter } from './pages/EinstellungenPage'
+import type { RegelVorlage } from './pages/Regeln'
 import type { Ich } from './api/client'
 import type { Suchbefund } from './api/laden'
 import { RUECKWEG } from './lib/oauthrueckweg'
@@ -142,6 +143,7 @@ import { nachrichtDrucken } from './lib/drucken'
 import type { Listenfilter } from './api/laden'
 import { zeitzoneSetzen } from './lib/format'
 import { servermeldung } from './lib/servermeldung'
+import { ordnerName } from './lib/ordnername'
 
 type Modus = 'dark' | 'light'
 
@@ -427,6 +429,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
      Zustimmung kostet eine ganze Seitennavigation, und ohne diesen Anfangswert
      landete man danach in der Mail-Ansicht statt dort, wo man war. */
   const [wahlOffen, setWahlOffen] = useState(RUECKWEG.weiter === 'postfach')
+  const [regelvorlage, setRegelvorlage] = useState<RegelVorlage | null>(null)
+  const regelvorlageGenommen = useCallback(() => setRegelvorlage(null), [])
 
   /* --- Laden ----------------------------------------------------------- */
 
@@ -1417,7 +1421,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     const brauchbar = (o: Ordner) => o.id !== n.ordnerId && o.rolle !== 'entwuerfe'
     const eintrag = (o: Ordner): MenueEintrag => ({
       id: o.id,
-      text: o.name,
+      text: ordnerName(o, t),
       tun: () => void handeln(() => verschieben(ids, o.id), t('rueck.verschoben')),
     })
 
@@ -1566,11 +1570,20 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           tun: () => void handeln(() => zug('junk', ids), t('rueck.verschoben')),
         },
         {
+          /* Wie Outlook: aus der Mail eine Regel. Das Formular geht auf der
+             Regelseite auf, vorbelegt mit Absender und Postfach; gespeichert
+             wird erst dort. Bis 0.22.2 stand hier ein gesperrter Eintrag
+             \u201ekommt sp\u00e4ter". */
           id: 'regel',
           trennerDavor: true,
-          text: t('aktion.regel') + ' \u2014 ' + t('einstellungen.bald'),
+          text: t('aktion.regel'),
           symbol: <SlidersHorizontal />,
-          deaktiviert: true,
+          tun: () => {
+            setRegelvorlage({ kontoId: n.kontoId, absender: n.von.adresse })
+            setAnsicht('einstellungen')
+            setReiter('regeln')
+            setSchubladeOffen(false)
+          },
         },
         {
           id: 'loeschen',
@@ -1836,7 +1849,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
      man nicht sieht. */
   function ordnerBlatt(o: Ordner) {
     setBlatt({
-      titel: o.rolle === 'posteingang' ? t('ordner.posteingang') : o.name,
+      titel: ordnerName(o, t),
       eintraege: ordnerEintraege(o),
     })
   }
@@ -2222,6 +2235,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                  müssen in Liste und Lesebereich ankommen — dieselbe Leitung
                  wie beim Zugangsdaten-Banner. stammLaden holt auch die
                  Definitionen; listeLaden die Marken an den Zeilen. */
+              regelvorlage={regelvorlage}
+              aufRegelvorlageGenommen={regelvorlageGenommen}
               aufSchlagworteGeaendert={() => {
                 void stammLaden()
                 void listeLaden()

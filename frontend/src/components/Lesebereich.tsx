@@ -536,12 +536,23 @@ export function Lesebereich({
             <p className="mb-3 text-[12px] text-fg-4">{t('lesen.wichtig_niedrig')}</p>
           )}
 
-          <div className="flex items-start gap-3">
+          {/* ⚠️ **Am Telefon rutscht das Datum in die nächste Zeile.** Es
+              ist lang („Samstag, 10. Oktober 2026 um 14:32") und schrumpft
+              nicht; bei 390 px blieben dem Absender daneben rund 60 px, und
+              Name und Adresse liefen über das Datum. Die Spalte verlangt
+              deshalb 12rem, und reicht der Platz nicht, bricht die Zeile um. */}
+          <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
             <Absenderbild person={nachricht.von} quelle={bildQuelle?.(nachricht)} groesse="gross" />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-[12rem] flex-1">
+              {/* ⚠️ **Die Adresse darf überall umbrechen.** Sie ist ein Wort
+                  ohne Leerzeichen und sonst breiter als die Spalte. */}
               <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="text-sm font-medium text-fg-1">{anzeigename(nachricht.von)}</span>
-                <span className="font-mono text-[12px] text-fg-4">&lt;{nachricht.von.adresse}&gt;</span>
+                <span className="min-w-0 text-sm font-medium break-words text-fg-1">
+                  {anzeigename(nachricht.von)}
+                </span>
+                <span className="min-w-0 font-mono text-[12px] break-all text-fg-4">
+                  &lt;{nachricht.von.adresse}&gt;
+                </span>
               </div>
               {nachricht.an.length > 0 && (
                 <div className="mt-0.5 text-[12px] text-fg-3">
@@ -556,7 +567,7 @@ export function Lesebereich({
                 </div>
               )}
             </div>
-            <time className="shrink-0 text-[12px] text-fg-4" dateTime={nachricht.datum}>
+            <time className="ml-auto shrink-0 text-[12px] text-fg-4" dateTime={nachricht.datum}>
               {langesDatum(nachricht.datum, i18n.language)}
             </time>
           </div>

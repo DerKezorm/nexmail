@@ -26,16 +26,19 @@ Packaged via [Fontsource](https://fontsource.org/); the npm wrappers are MIT.
 
 | Package | Licence |
 |---|---|
-| FastAPI, SQLAlchemy, pydantic, pydantic-settings, argon2-cffi, pyotp, nh3, charset-normalizer, PyJWT, pyzipper | MIT |
+| FastAPI, SQLAlchemy, pydantic, pydantic-settings, argon2-cffi, pyotp, nh3, charset-normalizer, PyJWT, pyzipper, http-ece | MIT |
 | uvicorn, IMAPClient, httpx, segno | BSD-3-Clause |
 | python-multipart, tzdata | Apache-2.0 |
 | cryptography, python-dateutil | Apache-2.0 **or** BSD-3-Clause |
+| dnspython | ISC |
+| py-vapid | MPL-2.0 (used unmodified, as a separate package; its source is at [github.com/mozilla-services/vapid](https://github.com/mozilla-services/vapid)) |
 
 ## Frontend
 
 | Package | Licence |
 |---|---|
-| React, React DOM, Tiptap (open-source extensions), i18next, react-i18next, Tailwind CSS, Vite, TypeScript | MIT |
+| React, React DOM, Tiptap (open-source extensions), i18next, react-i18next, Tailwind CSS, Vite, Vitest | MIT |
+| TypeScript | Apache-2.0 |
 | lucide-react | ISC |
 | Playwright | Apache-2.0 |
 

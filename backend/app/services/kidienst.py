@@ -18,7 +18,8 @@ Entscheidung, die ein Mensch trifft.
 ⚠️ **Ein Abo ist kein API-Zugang.** Claude Pro/Max und ChatGPT Plus geben
 keinen Schlüssel her — bei Anthropic verstößt es seit April 2026 sogar gegen
 die Nutzungsbedingungen, ein Abo-OAuth-Token in einem fremden Programm zu
-verwenden. Der Satz steht in der Oberfläche, nicht in einer README.
+verwenden. ⚠️ Der Satz steht bewusst **nicht** in der Oberfläche:
+Anbieterbedingungen ändern sich, und ein Text darüber altert lautlos.
 """
 
 from __future__ import annotations

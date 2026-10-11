@@ -73,7 +73,7 @@ def starten() -> None:
 
     takt = get_settings().takt_sekunden
     if takt <= 0:
-        logger.info("Background sync is off (NEXMAIL_TAKT=0).")
+        logger.info("Background sync is off (NEXMAIL_TAKT_SEKUNDEN=0).")
         return
     if laeuft():
         return

@@ -5,9 +5,10 @@
  * wissen will, was da nach draußen geht, schaut dorthin, wo es ankommt.
  *
  * ⚠️ **Und die Seite sagt, dass etwas hinausgeht.** nexmail liefert sogar die
- * Schriften mit, damit es beim Öffnen niemanden anfunkt; eine tägliche
- * Nachfrage bei GitHub ist die einzige Ausnahme davon. Eine Ausnahme, die man
- * verschweigt, ist ein gebrochenes Versprechen.
+ * Schriften mit, damit es beim Öffnen niemanden anfunkt; die Nachfrage bei
+ * GitHub beim Öffnen dieser Seite (höchstens einmal in 24 Stunden, kein
+ * Tagesauftrag) ist die einzige Verbindung, die zu nichts Eingerichtetem
+ * gehört. Eine Ausnahme, die man verschweigt, ist ein gebrochenes Versprechen.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'

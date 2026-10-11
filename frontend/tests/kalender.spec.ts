@@ -382,9 +382,15 @@ test('Teilnehmer stehen am Termin — mit ihrem Zusagestand', async ({ page }) =
   await page.route('**/api/kalender/termine?*', async (weg) => {
     const echt = await weg.fetch()
     const daten = await echt.json()
-    if (Array.isArray(daten) && daten.length) {
-      daten[0] = {
-        ...daten[0],
+    /* ⚠️ **Der Trägertermin, nicht der erste der Antwort.** Am 11.10.2026
+       stand vorn eine Serie vom Monatsanfang, die als Reihe gezeichnet wird;
+       der umbenannte Termin tauchte nie auf, und der Test lief in die Zeit. */
+    const i = Array.isArray(daten)
+      ? daten.findIndex((x: { titel?: string }) => x.titel === `${PROBE} Traeger`)
+      : -1
+    if (i >= 0) {
+      daten[i] = {
+        ...daten[i],
         titel: `${PROBE} Runde`,
         organisator: { name: 'Vera Beispiel', adresse: 'vera@example.com', antwort: '', rolle: '' },
         teilnehmer: [

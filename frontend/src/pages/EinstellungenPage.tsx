@@ -22,7 +22,7 @@ import { Schlagworte } from './Schlagworte'
 import { KiDienst } from './KiDienst'
 import { ApiSchluessel } from './ApiSchluessel'
 import { Sicherheit } from './Sicherheit'
-import { Regeln } from './Regeln'
+import { Regeln, type RegelVorlage } from './Regeln'
 import { Abwesenheit } from './Abwesenheit'
 import { Signaturen } from './Signaturen'
 import { Textvorlagen } from './Textvorlagen'
@@ -58,6 +58,9 @@ interface Props {
   /** Nach jeder AEnderung im Reiter Schlagworte: Marken und Menues der
    *  Mail-Ansicht nachziehen — was ich aendere, muss ich auch sehen. */
   aufSchlagworteGeaendert?: () => void
+  /** „Regel erstellen …" aus dem Rechtsklick auf eine Mail. */
+  regelvorlage?: RegelVorlage | null
+  aufRegelvorlageGenommen?: () => void
 }
 
 export function EinstellungenPage({
@@ -71,6 +74,8 @@ export function EinstellungenPage({
   ichNeuLaden,
   aufKontenGeaendert,
   aufSchlagworteGeaendert,
+  regelvorlage = null,
+  aufRegelvorlageGenommen,
 }: Props) {
   // ⚠️ Bearbeiten und Anlegen benutzen dasselbe Formular. Getrennt zu
   // pflegen hieße zwei Stellen, an denen ein Feld fehlen kann.
@@ -152,7 +157,7 @@ export function EinstellungenPage({
               }}
             />
           ) : reiter === 'regeln' ? (
-            <Regeln />
+            <Regeln vorlage={regelvorlage} aufVorlageGenommen={aufRegelvorlageGenommen} />
           ) : reiter === 'abwesenheit' ? (
             <Abwesenheit />
           ) : reiter === 'signaturen' ? (

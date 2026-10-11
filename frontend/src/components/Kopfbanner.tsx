@@ -166,10 +166,13 @@ export function Kopfbanner({
               {/* Wie viele Wiederherstellungscodes noch übrig sind. Sichtbar,
                   weil man es sonst erst erfährt, wenn keiner mehr da ist. */}
               <div className="flex items-center gap-2 px-3 py-2 text-[12px] text-fg-3">
-                <ShieldCheck className="size-3.5 shrink-0 text-success" />
+                <ShieldCheck
+                  className={`size-3.5 shrink-0 ${ich.zwei_faktor_aktiv ? 'text-success' : 'text-fg-4'}`}
+                />
                 <span>
-                  {ich.zwei_faktor_aktiv ? '2FA aktiv' : '2FA fehlt'} · {ich.offene_codes}{' '}
-                  {ich.offene_codes === 1 ? 'Code' : 'Codes'}
+                  {ich.zwei_faktor_aktiv
+                    ? `${t('nav.faktor_an')} · ${t('nav.codes', { count: ich.offene_codes })}`
+                    : t('nav.faktor_aus')}
                 </span>
               </div>
 

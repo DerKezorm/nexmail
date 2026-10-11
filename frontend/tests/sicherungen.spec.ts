@@ -129,10 +129,10 @@ test('Die Über-Seite nennt Fassung, Lizenz und was hinausgeht', async ({ page }
   await expect(page.getByRole('link', { name: /github\.com\/DerKezorm\/nexmail/ })).toBeVisible()
 
   // ⚠️ **Der Satz über die Nachfrage muss dastehen.** nexmail liefert die
-  // Schriften mit, damit es beim Öffnen niemanden anfunkt — die tägliche
-  // Frage bei GitHub ist die einzige Ausnahme, und eine verschwiegene
-  // Ausnahme ist ein gebrochenes Versprechen.
-  await expect(page.getByText(/einzige Stelle|only place/)).toBeVisible()
+  // Schriften mit, damit es beim Öffnen niemanden anfunkt — die Frage bei
+  // GitHub ist die einzige Verbindung, die zu nichts Eingerichtetem gehört,
+  // und eine verschwiegene Ausnahme ist ein gebrochenes Versprechen.
+  await expect(page.getByText(/einzige Verbindung nach draußen|only connection to the outside/)).toBeVisible()
 
   await keinTextLaeuftUeber(page)
   await jederKnopfHatEinenNamen(page)

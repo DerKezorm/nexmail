@@ -283,7 +283,7 @@ test('Ein Postfach lässt sich bearbeiten, ohne das Passwort neu zu tippen', asy
   await expect(passwort, 'Das Feld sieht leer aus — als wäre nichts gespeichert.').not.toHaveValue(
     '',
   )
-  await expect(page.getByText(/nexmail kann es nicht anzeigen/)).toBeVisible()
+  await expect(page.getByText(/anzeigen kann nexmail es nicht/)).toBeVisible()
 
   await passwort.click()
   await expect(

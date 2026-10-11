@@ -153,6 +153,13 @@ def anwenden(db: Session, person: Benutzer, nachrichten: list[Nachricht]) -> dic
     # einzeln hieße: je Nachricht eine IMAP-Verbindung. Bei zwanzig neuen
     # Mails dauert der Abgleich dann Minuten.
     zu_verschieben: dict[int, list[Nachricht]] = {}
+    # ⚠️ **Gelesen und markiert gehen auf den Server, und zwar vor dem
+    # Verschieben.** Bis 0.22.2 setzte die Regel nur die Spalte hier; der
+    # nächste Abgleich las die Flags des Servers und nahm den Haken wieder
+    # weg, und auf dem Telefon stand die Mail ohnehin weiter ungelesen.
+    # MOVE und COPY nehmen die Flags mit, deshalb zuerst setzen.
+    zu_lesen: dict[int, dict[int, Nachricht]] = {}
+    zu_markieren: dict[int, dict[int, Nachricht]] = {}
 
     for nachricht in nachrichten:
         stand["geprueft"] += 1
@@ -166,12 +173,10 @@ def anwenden(db: Session, person: Benutzer, nachrichten: list[Nachricht]) -> dic
 
             for aktion in _liste(regel.aktionen_json):
                 art = aktion.get("art")
-                if art == "gelesen":
-                    nachricht.gelesen = True
-                    stand["gelesen"] += 1
-                elif art == "markieren":
-                    nachricht.markiert = True
-                    stand["markiert"] += 1
+                if art == "gelesen" and not nachricht.gelesen:
+                    zu_lesen.setdefault(nachricht.ordner_id, {})[nachricht.id] = nachricht
+                elif art == "markieren" and not nachricht.markiert:
+                    zu_markieren.setdefault(nachricht.ordner_id, {})[nachricht.id] = nachricht
                 elif art in ("verschieben", "loeschen"):
                     ziel = _ziel_bestimmen(db, nachricht, aktion, art)
                     if ziel is not None and ziel.id != nachricht.ordner_id:
@@ -183,6 +188,9 @@ def anwenden(db: Session, person: Benutzer, nachrichten: list[Nachricht]) -> dic
             stand["getroffen"] += 1
 
     db.commit()
+
+    stand["gelesen"] += _flag_setzen(db, zu_lesen, rb"\Seen", "gelesen")
+    stand["markiert"] += _flag_setzen(db, zu_markieren, rb"\Flagged", "markiert")
 
     for ordner_id, gruppe in zu_verschieben.items():
         ziel = db.get(Ordner, ordner_id)
@@ -206,6 +214,46 @@ def anwenden(db: Session, person: Benutzer, nachrichten: list[Nachricht]) -> dic
     if stand["getroffen"]:
         logger.info("Rules matched %s of %s message(s).", stand["getroffen"], stand["geprueft"])
     return stand
+
+
+def _flag_setzen(
+    db: Session, gruppen: dict[int, dict[int, Nachricht]], flag: bytes, spalte: str
+) -> int:
+    """Ein Flag je Ordner in einem Zug setzen, erst beim Server, dann hier.
+
+    Scheitert der Server, bleibt die Spalte, wie sie ist: Ein Haken, den nur
+    nexmail kennt, wäre beim nächsten Abgleich ohnehin wieder weg.
+    """
+    from . import abgleich, imap as imapdienst
+
+    gesetzt = 0
+    for ordner_id, nachrichten in gruppen.items():
+        ordner = db.get(Ordner, ordner_id)
+        if ordner is None or not nachrichten:
+            continue
+        uids = [n.uid for n in nachrichten.values()]
+        try:
+            with abgleich.HALTER.schloss(ordner.konto_id):
+                klient = imapdienst.fuer_konto(db, ordner.konto)
+                try:
+                    klient.select_folder(ordner.pfad, readonly=False)
+                    for i in range(0, len(uids), 500):
+                        klient.add_flags(uids[i : i + 500], [flag])
+                finally:
+                    try:
+                        klient.logout()
+                    except Exception:  # noqa: BLE001
+                        pass
+        except Exception as fehler:  # noqa: BLE001
+            # ⚠️ Wie beim Verschieben: Eine Regel, die nicht greift, darf den
+            # Abgleich nicht abbrechen.
+            logger.warning("A rule could not set %s: %s", spalte, fehler)
+            continue
+        for nachricht in nachrichten.values():
+            setattr(nachricht, spalte, True)
+        gesetzt += len(uids)
+    db.commit()
+    return gesetzt
 
 
 def _ziel_bestimmen(db: Session, nachricht: Nachricht, aktion: dict, art: str) -> Ordner | None:

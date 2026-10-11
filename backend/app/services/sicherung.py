@@ -77,9 +77,7 @@ NICHT_INS_ARCHIV: dict[str, str] = {
     "blobs": (
         "Die Anhänge. Am 31.08.2026 bewusst ausgenommen: Sie sind der weitaus "
         "größte Posten und liegen ohnehin noch im Postfach auf dem Server. Eine "
-        "Sicherung, die zu groß zum Herunterladen ist, lädt niemand herunter. "
-        "Für wen das nicht reicht, gibt es einen eigenen Knopf für ein "
-        "Anhang-Archiv."
+        "Sicherung, die zu groß zum Herunterladen ist, lädt niemand herunter."
     ),
     "sicherungen": (
         "Die Kopien, die vor einer Schemaänderung entstehen. Eine Sicherung in "

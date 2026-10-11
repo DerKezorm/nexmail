@@ -1,11 +1,16 @@
 """Nachsehen, ob es eine neuere Fassung von nexmail gibt.
 
-Hoechstens einmal am Tag wird die oeffentliche GitHub-Schnittstelle nach der
-neuesten Veroeffentlichung gefragt. Uebertragen wird nichts ausser der Anfrage
-selbst — keine Adressen, keine Einstellungen, keine Betreffzeilen.
+Gefragt wird die oeffentliche GitHub-Schnittstelle, wenn der Betreiber „Ueber
+nexmail" oeffnet, hoechstens einmal in 24 Stunden (Zwischenspeicher im
+Arbeitsspeicher, kein Tagesauftrag). Uebertragen wird nichts ausser der
+Anfrage selbst — keine Adressen, keine Einstellungen, keine Betreffzeilen.
 
-⚠️ **Das ist die einzige Stelle, an der nexmail von sich aus hinausruft**, und
-sie widerspricht dem eigenen Grundsatz: Die Schriften liegen im Abbild, damit
+⚠️ **Das ist die einzige Verbindung nach draussen, die nicht zu etwas gehoert,
+das ein Mensch eingerichtet hat.** Alle anderen (Postfaecher, CalDAV,
+CardDAV, Autoconfig, Bilder, BIMI, KI, Push, OIDC) bedienen etwas, das
+eingetragen oder angeklickt wurde. Bis 0.22.2 stand hier „die einzige Stelle,
+an der nexmail hinausruft", und das stimmte nie. Sie widerspricht dem eigenen
+Grundsatz: Die Schriften liegen im Abbild, damit
 die Anwendung beim Oeffnen niemanden anfunkt. Deshalb steht der Schalter auf
 der Ueber-Seite selbst — dort, wo auch das Ergebnis erscheint — und deshalb
 sagt die Seite in einem Satz, was hinausgeht. Wer ihn ausschaltet, sieht nur
@@ -37,7 +42,7 @@ RELEASES_URL = f"{REPO_URL}/releases"
 PROJEKTSEITE = "https://nexmail.nexapps.dev"
 API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 
-#: Hoechstens einmal am Tag. GitHub erlaubt ohne Anmeldung 60 Anfragen je
+#: Hoechstens einmal in 24 Stunden. GitHub erlaubt ohne Anmeldung 60 Anfragen je
 #: Stunde und Adresse — davon sind wir damit weit entfernt.
 ABSTAND = timedelta(hours=24)
 

@@ -71,7 +71,7 @@ def test_die_seite_nennt_fassung_lizenz_und_herkunft(klient, ohne_netz):
     daten = klient.get("/api/ueber").json()
 
     assert daten["version"] == __version__
-    assert daten["lizenz"] == "AGPL-3.0-or-later"
+    assert daten["lizenz"] == "AGPL-3.0"
     assert daten["repo_adresse"].endswith("/nexmail")
     assert daten["projektseite"].startswith("https://")
 

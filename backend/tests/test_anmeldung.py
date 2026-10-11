@@ -290,7 +290,7 @@ def test_zwei_benutzer_sehen_nur_ihre_sitzungen(klient, zweiter_klient, db):
 
 
 def test_notausgang_ueberspringt_den_faktor(klient, monkeypatch):
-    """``NEXMAIL_2FA_AUS`` — der Weg zurück, wenn Telefon und Codes weg sind."""
+    """``NEXMAIL_ZWEI_FAKTOR_AUS`` — der Weg zurück, wenn Telefon und Codes weg sind."""
     einrichten(klient)
     klient.cookies.clear()
 

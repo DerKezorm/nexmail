@@ -84,6 +84,36 @@ def _regel(db, person, bedingungen, aktionen, **felder) -> Regel:
     return r
 
 
+class Flaggenserver:
+    """Ein IMAP-Doppelgänger, der nur Flags kennt und mitschreibt."""
+
+    def __init__(self) -> None:
+        self.gesetzt: list[tuple[str, tuple[int, ...], bytes]] = []
+        self.ordner = ""
+        self.weist_ab = False
+
+    def select_folder(self, pfad: str, readonly: bool = False):  # noqa: ARG002
+        self.ordner = pfad
+
+    def add_flags(self, uids, flags):
+        if self.weist_ab:
+            raise OSError("STORE abgewiesen")
+        for flag in flags:
+            self.gesetzt.append((self.ordner, tuple(uids), flag))
+
+    def logout(self) -> None:
+        pass
+
+
+@pytest.fixture(autouse=True)
+def server(monkeypatch) -> Flaggenserver:
+    from app.services import imap as imapdienst
+
+    doppel = Flaggenserver()
+    monkeypatch.setattr(imapdienst, "fuer_konto", lambda *a, **k: doppel)
+    return doppel
+
+
 # --- Treffen --------------------------------------------------------------- #
 
 
@@ -163,10 +193,64 @@ def test_gelesen_und_markiert(db, postfach):
         [{"art": "gelesen"}, {"art": "markieren"}],
     )
 
-    regeln.anwenden(db, person, [n])
+    stand = regeln.anwenden(db, person, [n])
 
     assert n.gelesen is True
     assert n.markiert is True
+    assert stand["gelesen"] == 1 and stand["markiert"] == 1
+
+
+def test_gelesen_und_markiert_gehen_auf_den_server(db, postfach, server):
+    """⚠️ Bis 0.22.2 nur in der Spalte: Der nächste Abgleich nahm es zurück."""
+    person, konto, posteingang, _ = postfach
+    n = _mail(db, person, konto, posteingang, 7, betreff="Newsletter")
+    _regel(
+        db,
+        person,
+        [{"feld": "betreff", "vergleich": "enthaelt", "wert": "Newsletter"}],
+        [{"art": "gelesen"}, {"art": "markieren"}],
+    )
+
+    regeln.anwenden(db, person, [n])
+
+    assert ("INBOX", (7,), rb"\Seen") in server.gesetzt
+    assert ("INBOX", (7,), rb"\Flagged") in server.gesetzt
+
+
+def test_weist_der_server_ab_bleibt_die_mail_ungelesen(db, postfach, server):
+    """Ein Haken nur hier wäre beim nächsten Abgleich wieder weg."""
+    person, konto, posteingang, _ = postfach
+    server.weist_ab = True
+    n = _mail(db, person, konto, posteingang, 1, betreff="Newsletter")
+    _regel(
+        db,
+        person,
+        [{"feld": "betreff", "vergleich": "enthaelt", "wert": "Newsletter"}],
+        [{"art": "gelesen"}],
+    )
+
+    stand = regeln.anwenden(db, person, [n])
+
+    db.refresh(n)
+    assert n.gelesen is False
+    assert stand["gelesen"] == 0
+
+
+def test_schon_gelesenes_geht_nicht_noch_einmal_hinaus(db, postfach, server):
+    person, konto, posteingang, _ = postfach
+    n = _mail(db, person, konto, posteingang, 1, betreff="Newsletter")
+    n.gelesen = True
+    db.commit()
+    _regel(
+        db,
+        person,
+        [{"feld": "betreff", "vergleich": "enthaelt", "wert": "Newsletter"}],
+        [{"art": "gelesen"}],
+    )
+
+    regeln.anwenden(db, person, [n])
+
+    assert server.gesetzt == []
 
 
 def test_eine_abgeschaltete_regel_tut_nichts(db, postfach):

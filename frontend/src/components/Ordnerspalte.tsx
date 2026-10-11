@@ -40,6 +40,7 @@ import {
 import type { ReactNode } from 'react'
 import type { Konto, Ordner, OrdnerRolle } from '../daten/typen'
 import { PUNKT_KLASSE } from '../lib/farben'
+import { ordnerName, WIEDERVORLAGE_PFAD } from '../lib/ordnername'
 
 /* ⚠️ **„Markierte" ist ein Ziel, kein Ordner.**
  *
@@ -76,16 +77,8 @@ const RANG: Record<OrdnerRolle, number> = {
   eigen: 6,
 }
 
-/* ⚠️ **„INBOX" ist ein Protokollwort, kein Name.** Der Ordner heißt auf jedem
- * IMAP-Server so, und kein Mensch nennt ihn so. Outlook zeigt „Posteingang",
- * also zeigt nexmail das auch.
- *
- * Bewusst **nur** für den Posteingang: Die übrigen Sonderordner tragen den
- * Namen, den der Betreiber auf seinem Server sieht. Wer dort „Spam" angelegt
- * hat, soll nicht „Junk" lesen. */
-function anzeigename(o: { rolle: string; name: string }, t: (s: string) => string) {
-  return o.rolle === 'posteingang' ? t('ordner.posteingang') : o.name
-}
+/* Welche Ordner einen übersetzten Namen tragen und warum: lib/ordnername.ts. */
+const anzeigename = ordnerName
 
 
 interface Props {
@@ -126,9 +119,6 @@ interface Props {
   wiedervorlageZahlen?: Record<string, number>
 }
 
-/* Der Wiedervorlage-Ordner heisst auf jedem Server gleich — der Name ist im
- * Server festgelegt (services/wiedervorlage.ORDNER_NAME), oberste Ebene. */
-const WIEDERVORLAGE_PFAD = 'Wiedervorlage'
 
 export function Ordnerspalte({
   konten,

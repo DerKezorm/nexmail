@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowDown, ArrowUp, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Play, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Button, EmptyState, IconButton, Input, Select, Switch } from '../ds'
@@ -45,6 +45,7 @@ interface OrdnerZeile {
   id: number
   name: string
   pfad: string
+  rolle?: string
 }
 
 interface KontoZeile {
@@ -56,6 +57,24 @@ interface KontoZeile {
 const FELDER = ['von', 'an', 'betreff', 'inhalt']
 const VERGLEICHE = ['enthaelt', 'enthaelt_nicht', 'ist', 'beginnt', 'endet']
 const ARTEN = ['verschieben', 'gelesen', 'markieren', 'loeschen']
+
+/** Was der Rechtsklick „Regel erstellen …" an einer Mail mitgibt. */
+export interface RegelVorlage {
+  kontoId: string
+  absender: string
+}
+
+/* Die Regel aus einer Mail: „Von enthält <Adresse>", verschieben in einen
+   Ordner desselben Postfachs. Der Zielordner bleibt leer; den wählt der
+   Mensch, und der Server weist eine Regel ohne Ziel ab, statt zu raten. */
+function regelAus(vorlage: RegelVorlage): RegelZeile {
+  return {
+    ...leereRegel(),
+    konto_id: vorlage.kontoId,
+    bedingungen: [{ feld: 'von', vergleich: 'enthaelt', wert: vorlage.absender }],
+    aktionen: [{ art: 'verschieben', wert: '' }],
+  }
+}
 
 function leereRegel(): RegelZeile {
   return {
@@ -71,12 +90,21 @@ function leereRegel(): RegelZeile {
   }
 }
 
-export function Regeln() {
+interface Props {
+  /** Kommt vom Rechtsklick auf eine Mail; öffnet das Formular vorbelegt. */
+  vorlage?: RegelVorlage | null
+  aufVorlageGenommen?: () => void
+}
+
+export function Regeln({ vorlage = null, aufVorlageGenommen }: Props = {}) {
   const { t } = useTranslation()
   const { fragen, fenster: nachfrage } = useNachfrage()
   const [liste, setListe] = useState<RegelZeile[] | null>(null)
   const [konten, setKonten] = useState<KontoZeile[]>([])
   const [ordner, setOrdner] = useState<Record<string, OrdnerZeile[]>>({})
+  // ⚠️ Bis die Ordner da sind, ist „Jetzt anwenden" gesperrt. Ein Klick davor
+  // hätte eine leere Auswahl gehabt und stumm nichts getan.
+  const [ordnerGeladen, setOrdnerGeladen] = useState(false)
   const [offen, setOffen] = useState<RegelZeile | null>(null)
   const [fehler, setFehler] = useState('')
   const [meldung, setMeldung] = useState('')
@@ -91,14 +119,60 @@ export function Regeln() {
       .holen<KontoZeile[]>('/api/konten')
       .then(async (k) => {
         setKonten(k)
-        const karte: Record<string, OrdnerZeile[]> = {}
-        for (const konto of k) {
-          karte[konto.id] = await api.holen<OrdnerZeile[]>(`/api/konten/${konto.id}/ordner`)
-        }
-        setOrdner(karte)
+        const listen = await Promise.all(
+          k.map((konto) => api.holen<OrdnerZeile[]>(`/api/konten/${konto.id}/ordner`)),
+        )
+        setOrdner(Object.fromEntries(k.map((konto, i) => [konto.id, listen[i]])))
+        setOrdnerGeladen(true)
       })
       .catch(() => setKonten([]))
   }, [laden])
+
+  useEffect(() => {
+    if (!vorlage) return
+    setOffen(regelAus(vorlage))
+    aufVorlageGenommen?.()
+  }, [vorlage, aufVorlageGenommen])
+
+  /* „Jetzt anwenden": die Regeln über einen Ordner laufen lassen, der schon
+     voll ist. Im Abgleich laufen sie nur über Neues; wer eine Regel anlegt,
+     hat die dreitausend alten Mails aber schon liegen. ⚠️ Gefragt wird nach
+     dem Ordner, nicht nach „allen": Ein Lauf über alle Ordner schöbe Post
+     zurück, die jemand von Hand woandershin geräumt hat. */
+  async function jetztAnwenden() {
+    const werte = konten.flatMap((k) =>
+      (ordner[k.id] ?? []).map((o) => ({
+        wert: String(o.id),
+        text: konten.length > 1 ? `${k.adresse} · ${o.pfad}` : o.pfad,
+      })),
+    )
+    if (!werte.length) return
+    const posteingang = konten
+      .flatMap((k) => ordner[k.id] ?? [])
+      .find((o) => o.rolle === 'posteingang')
+    const antwort = await fragen({
+      titel: t('regeln.anwenden'),
+      text: t('regeln.anwenden_text'),
+      knopf: t('regeln.anwenden_los'),
+      auswahl: {
+        beschriftung: t('regeln.anwenden_ordner'),
+        werte,
+        vorgabe: posteingang ? String(posteingang.id) : undefined,
+      },
+    })
+    if (typeof antwort !== 'object' || !antwort?.ja) return
+    const stand = await mit(
+      () =>
+        api.senden<{ geprueft: number; getroffen: number }>('/api/regeln/anwenden', {
+          ordner_id: Number(antwort.wert),
+        }),
+    )
+    if (stand) {
+      setMeldung(
+        t('regeln.anwenden_fertig', { getroffen: stand.getroffen, geprueft: stand.geprueft }),
+      )
+    }
+  }
 
   async function mit<T>(tun: () => Promise<T>, erfolg = '') {
     setFehler('')
@@ -171,6 +245,15 @@ export function Regeln() {
         <Button variant="primary" iconLeft={<Plus className="size-4" />} onClick={() => setOffen(leereRegel())}>
           {t('regeln.neu')}
         </Button>
+        {liste.some((r) => r.aktiv) && (
+          <Button
+            iconLeft={<Play className="size-4" />}
+            disabled={!ordnerGeladen}
+            onClick={() => void jetztAnwenden()}
+          >
+            {t('regeln.anwenden')}
+          </Button>
+        )}
         <span className="flex-1" />
         {meldung && <span className="text-[13px] text-accent-text">{meldung}</span>}
         {fehler && <span className="text-[13px] text-danger">{fehler}</span>}

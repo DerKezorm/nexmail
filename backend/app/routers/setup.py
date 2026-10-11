@@ -72,7 +72,7 @@ def konto_anlegen(
     ⚠️ **Der Betreiber-Haken entsteht hier, und das ist der Regelfall.** Wer
     nexmail aufsetzt, muss dafuer nichts wissen und nichts eintragen: Das Konto
     aus dem Assistenten gehoert dem Menschen, dem der Server gehoert.
-    ``NEXMAIL_2FA_AUS`` ist nur der Nothammer fuer spaeter.
+    ``NEXMAIL_ZWEI_FAKTOR_AUS`` ist nur der Nothammer fuer spaeter.
 
     ⚠️ **Der zweite Faktor wird hier nicht mehr erzwungen** (01.09.2026). Er
     war Pflicht; jetzt ist er eine Wahl, die unter Einstellungen → Sicherheit
