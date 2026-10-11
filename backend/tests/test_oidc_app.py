@@ -411,7 +411,7 @@ def test_password_sign_in_switches_off_only_with_an_active_provider_and_the_oper
     seite = browser().get("/api/oidc/anmeldeseite").json()
     assert seite == {"providers": [{"slug": "sso", "label": "SSO"}], "password": False}
     abgewiesen = browser().post("/api/auth/anmelden", json={"benutzername": "mitglied", "passwort": "auch-sehr-geheim-1"})
-    assert abgewiesen.status_code == 403 and abgewiesen.json()["detail"] == "passwort_anmeldung_aus"
+    assert abgewiesen.status_code == 401 and abgewiesen.json()["detail"] == "anmeldung_falsch"
     selbst = browser().post("/api/auth/anmelden", json={"benutzername": BETREIBER, "passwort": PASSWORT})
     assert selbst.status_code == 200
     # Eine Einladung nimmt dann kein Kennwort an.
@@ -574,3 +574,185 @@ def test_every_code_of_the_oidc_routes_has_a_text_in_the_module_wording():
     assert genannt, "keine Stelle gefunden: der Waechter sieht nichts"
     assert genannt - bekannt - rueckfragen == set()
     assert {"too_many_attempts", "oidc_not_configured", "public_url_change"} <= genannt
+
+
+# --- Zwei Eintraege, derselbe Aussteller ---------------------------------------------------------------------------
+
+
+def test_two_entries_of_one_issuer_refuse_an_identity_the_other_holds_when_signing_in(betreiber, sso):
+    """0.21 haelt ``(issuer, subject)`` eindeutig, ueber Eintraege hinweg. Meldet jemand dieselbe Identitaet ueber den
+    zweiten Eintrag an (Entra ``common`` und ein Mandant, authentik zweimal), antwortet nexmail mit der Kennung
+    ``oidc_subject_taken``, nicht mit einem Datenbankfehler (500); es entsteht kein Konto."""
+    anbieter_anlegen(betreiber, sso, "aa")
+    anbieter_anlegen(betreiber, sso, "bb", auto_create=True)
+    verknuepfen(betreiber, sso, "aa")
+    with SessionLocal() as db:
+        konten = len(db.scalars(select(Benutzer.id)).all())
+    klient = browser()
+    antwort = hin_und_zurueck(klient, sso, "bb")
+    assert fehler_in(antwort) == "oidc_subject_taken" and wer(klient) is None
+    with SessionLocal() as db:
+        assert len(db.scalars(select(Benutzer.id)).all()) == konten, "kein Konto aus der halben Anmeldung"
+        assert [(z.anbieter_id is not None, z.subject) for z in db.scalars(select(OidcVerknuepfung))] == [
+            (True, "person-1")
+        ]
+
+
+def test_two_entries_of_one_issuer_refuse_an_identity_the_other_holds_when_linking(betreiber, sso):
+    anbieter_anlegen(betreiber, sso, "aa")
+    anbieter_anlegen(betreiber, sso, "bb")
+    verknuepfen(betreiber, sso, "aa")
+    with SessionLocal() as db:
+        from app.services import benutzer as benutzerdienst
+
+        benutzerdienst.anlegen(db, "mitglied", "auch-sehr-geheim-1")
+        vorher = [(z.anbieter_id, z.benutzer_id, z.subject) for z in db.scalars(select(OidcVerknuepfung))]
+    mitglied = browser()
+    assert mitglied.post("/api/auth/anmelden", json={"benutzername": "mitglied", "passwort": "auch-sehr-geheim-1"}).status_code == 200
+    antwort = verknuepfen(mitglied, sso, "bb", passwort="auch-sehr-geheim-1")
+    assert fehler_in(antwort) == "oidc_subject_taken"
+    with SessionLocal() as db:
+        assert [(z.anbieter_id, z.benutzer_id, z.subject) for z in db.scalars(select(OidcVerknuepfung))] == vorher
+
+
+# --- Passwort-Anmeldung aus: dieselbe Antwort wie bei einem falschen Passwort ---------------------------------------
+
+
+def test_with_password_sign_in_off_a_member_gets_the_answer_of_a_wrong_password(betreiber, sso):
+    """Die Ablehnung kommt VOR der Passwortpruefung und sieht aus wie ein falsches Passwort: Sonst bestaetigte sie
+    einem Fremden, dass ein geratenes Passwort stimmt."""
+    anbieter_anlegen(betreiber, sso)
+    assert betreiber.put("/api/oidc/admin/anmeldung", json={"passwort": False}).status_code == 200
+    with SessionLocal() as db:
+        from app.services import benutzer as benutzerdienst
+
+        benutzerdienst.anlegen(db, "mitglied", "auch-sehr-geheim-1")
+    richtig = browser().post("/api/auth/anmelden", json={"benutzername": "mitglied", "passwort": "auch-sehr-geheim-1"})
+    falsch = browser().post("/api/auth/anmelden", json={"benutzername": "mitglied", "passwort": "falsch-falsch-1"})
+    unbekannt = browser().post("/api/auth/anmelden", json={"benutzername": "niemand", "passwort": "falsch-falsch-1"})
+    for antwort in (richtig, falsch, unbekannt):
+        assert antwort.status_code == 401 and antwort.json()["detail"] == "anmeldung_falsch"
+        assert "set-cookie" not in antwort.headers
+    assert richtig.json() == falsch.json() == unbekannt.json()
+    # Der Betreiber kommt weiter mit dem Passwort herein.
+    assert browser().post("/api/auth/anmelden", json={"benutzername": BETREIBER, "passwort": PASSWORT}).status_code == 200
+
+
+# --- Was die Mutationsprobe der Pruefung nicht fing ------------------------------------------------------------------
+
+
+def test_guessing_invitation_keys_is_braked(betreiber, sso):
+    """Der Schluessel einer Einladung oeffnet ein Konto; wer ihn rät, wird nach zehn Fehlversuchen aufgehalten (dieselbe
+    Bremse wie beim Annehmen mit Kennwort)."""
+    anbieter_anlegen(betreiber, sso)
+    schluessel = "falscher-schluessel-1234"
+    for _ in range(anmeldebremse.SPERRE_AB_VERSUCH):
+        antwort = browser().post("/api/oidc/sso/einladung", json={"schluessel": schluessel})
+        assert antwort.status_code == 200, antwort.text
+        # Die kurzen Wartezeiten ab dem vierten Fehlversuch gehoeren nicht zu dieser Probe.
+        for zaehler in anmeldebremse._zaehler.values():
+            if zaehler.versuche < anmeldebremse.SPERRE_AB_VERSUCH:
+                zaehler.frei_ab = 0.0
+    gesperrt = browser().post("/api/oidc/sso/einladung", json={"schluessel": schluessel})
+    assert gesperrt.status_code == 429 and gesperrt.json()["detail"] == "zu_viele_versuche"
+
+
+def test_a_new_account_takes_no_contact_address_from_the_provider(betreiber, sso):
+    """Die Adresse vom Anbieter steht hoechstens zur Anzeige an der Verknuepfung; als Kontaktadresse (Ziel von
+    „Kennwort vergessen") gilt nur, was der Betreiber in einer Einladung eintrug."""
+    anbieter_anlegen(betreiber, sso, auto_create=True)
+    sso.person = {"sub": "p-neu", "preferred_username": "neu", "email": "fremd@example.com"}
+    klient = browser()
+    hin_und_zurueck(klient, sso)
+    assert wer(klient) == "neu"
+    with SessionLocal() as db:
+        person = db.scalar(select(Benutzer).where(Benutzer.benutzername == "neu"))
+        assert person.kontaktadresse == ""
+        assert db.scalar(select(OidcVerknuepfung.email).where(OidcVerknuepfung.subject == "p-neu")) == "fremd@example.com"
+
+
+def test_the_session_cookie_stays_strict(betreiber, sso):
+    """Der Kern der Bauart: ``SameSite=strict`` an der Sitzung, nach dem Passwort wie nach dem Anbieter. Die Rueckkehr
+    vom Anbieter kommt deshalb nur ueber das Durchreichen an die Sitzung."""
+    anbieter_anlegen(betreiber, sso)
+    verknuepfen(betreiber, sso)
+    passwort = browser().post("/api/auth/anmelden", json={"benutzername": BETREIBER, "passwort": PASSWORT})
+    anbieter = hin_und_zurueck(browser(), sso)
+    for antwort in (passwort, anbieter):
+        gesetzt = [kopf for kopf in antwort.headers.get_list("set-cookie") if kopf.startswith("nexmail_sitzung=")]
+        assert len(gesetzt) == 1 and "samesite=strict" in gesetzt[0].lower(), gesetzt
+
+
+def _link_zurueck(klient: TestClient, sso, slug: str = "sso", passwort: str = PASSWORT) -> str:
+    """Das Verknuepfen gestartet; die Adresse, auf der der Anbieter den Browser zurueckschickt."""
+    url = klient.post(f"/api/oidc/{slug}/link", json={"password": passwort}).json()["url"]
+    pfad = urlsplit(parse_qs(urlsplit(url).query)["redirect_uri"][0]).path
+    return f"{pfad}?{urlencode(sso.authorize(url))}"
+
+
+def test_the_bounce_page_masks_quotes_and_only_bounces_from_another_site(betreiber, sso):
+    anbieter_anlegen(betreiber, sso)
+    zurueck = _link_zurueck(betreiber, sso)
+    betreiber.cookies.delete("nexmail_sitzung")
+    erst = betreiber.get(zurueck + "&x=a'b", headers={"Sec-Fetch-Site": "cross-site"})
+    assert erst.status_code == 200
+    assert "a'b" not in erst.text and "a&#x27;b" in erst.text, "Anfuehrungszeichen sind maskiert"
+    # Von der eigenen Seite aus geht es nicht noch einmal im Kreis.
+    dann = betreiber.get(zurueck, headers={"Sec-Fetch-Site": "same-origin"})
+    assert dann.status_code == 303 and fehler_in(dann) == "oidc_link_mismatch"
+
+
+def test_only_a_linking_bounces_a_sign_in_never_does(betreiber, sso):
+    anbieter_anlegen(betreiber, sso)
+    verknuepfen(betreiber, sso)
+    klient = browser()
+    antwort = hin_und_zurueck(klient, sso, **{"Sec-Fetch-Site": "cross-site"})
+    assert antwort.status_code == 303 and urlsplit(ziel(antwort)).path == "/" and wer(klient) == BETREIBER
+
+
+def test_a_half_session_does_not_count_for_a_linking(betreiber, sso):
+    """Wer nur das Passwort geliefert hat (der zweite Faktor fehlt), darf nichts verknuepfen: Fuer die Rueckkehr ist
+    er nicht angemeldet."""
+    anbieter_anlegen(betreiber, sso)
+    zurueck = _link_zurueck(betreiber, sso)
+    with SessionLocal() as db:
+        db.execute(text("UPDATE sitzung SET bestaetigt = 0"))
+        db.commit()
+    erst = betreiber.get(zurueck, headers={"Sec-Fetch-Site": "cross-site"})
+    assert erst.status_code == 200 and 'http-equiv="refresh"' in erst.text
+    dann = betreiber.get(zurueck, headers={"Sec-Fetch-Site": "same-origin"})
+    assert fehler_in(dann) == "oidc_link_mismatch"
+    with SessionLocal() as db:
+        assert db.scalar(select(OidcVerknuepfung.id)) is None
+
+
+def test_a_link_only_clears_the_old_rows_of_its_own_issuer(betreiber, sso):
+    """Eine Zeile von 0.21 ohne Eintrag weicht einer neuen Verknuepfung nur, wenn Aussteller UND Kennung gleich sind.
+    Dieselbe Kennung bei einem anderen Aussteller ist eine andere Person."""
+    anbieter_anlegen(betreiber, sso)
+    verknuepfung_wie_021(benutzer_id(BETREIBER), "https://anders.example.com", "person-1")
+    verknuepfen(betreiber, sso)
+    with SessionLocal() as db:
+        zeilen = sorted((z.issuer, z.anbieter_id is None) for z in db.scalars(select(OidcVerknuepfung)))
+    assert zeilen == sorted([("https://anders.example.com", True), (sso.issuer, False)])
+    # Gleicher Aussteller, gleiche Kennung, noch ohne Eintrag: Die neue Zeile ersetzt sie.
+    with SessionLocal() as db:
+        db.execute(text("DELETE FROM oidc_verknuepfung"))
+        db.commit()
+    verknuepfung_wie_021(benutzer_id(BETREIBER), sso.issuer, "person-1")
+    verknuepfen(betreiber, sso)
+    with SessionLocal() as db:
+        zeilen = [(z.issuer, z.anbieter_id is None) for z in db.scalars(select(OidcVerknuepfung))]
+    assert zeilen == [(sso.issuer, False)]
+
+
+def test_my_providers_mark_the_one_an_account_without_password_depends_on(betreiber, sso):
+    """``only``: Die Seite „Sicherheit" sperrt „Loesen" fuer den einzigen Weg eines Kontos ohne Passwort."""
+    anbieter_anlegen(betreiber, sso, auto_create=True)
+    verknuepfen(betreiber, sso)
+    assert betreiber.get("/api/oidc/me").json() == [{"slug": "sso", "label": "SSO", "linked": True, "only": False}]
+    sso.person = {"sub": "p-ohne", "preferred_username": "ohne"}
+    klient = browser()
+    hin_und_zurueck(klient, sso)
+    assert wer(klient) == "ohne"
+    assert klient.get("/api/oidc/me").json() == [{"slug": "sso", "label": "SSO", "linked": True, "only": True}]

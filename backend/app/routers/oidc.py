@@ -51,7 +51,14 @@ from ..services import anmeldebremse
 from ..services import benutzer as benutzerdienst
 from ..services import sitzung as sitzungsdienst
 from ..services.oidc_store import SqlStore
-from ..vendor.nexoidc import OidcError, ProviderInvalid, accounts, authentik, flow, providers
+from ..vendor.nexoidc import (
+    OidcError,
+    ProviderInvalid,
+    accounts,
+    authentik,
+    flow,
+    providers,
+)
 from ..vendor.nexoidc.attempt import LINK
 from ..vendor.nexoidc.attempt import read as anlauf_lesen
 from ..vendor.nexoidc.config import current

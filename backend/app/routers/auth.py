@@ -96,7 +96,16 @@ def anmelden(
     wache = anmeldebremse.torwaechter(request, "anmelden", eingabe.benutzername)
 
     person = benutzerdienst.finden(db, eingabe.benutzername)
-    if person is None or not benutzerdienst.passwort_stimmt(person, eingabe.passwort):
+    # ⚠️ **„Anmeldung mit Passwort" aus** (Verwaltung → Anmeldung): Nur die
+    # Anbieter lassen herein. Der Betreiber kommt immer mit seinem Passwort
+    # hinein, sonst stuende er vor der Tuer, sobald der Anbieter ausfaellt.
+    # Die Antwort kommt VOR der Passwortpruefung und ist dieselbe wie bei einem
+    # falschen Passwort: Sonst bestaetigte sie einem Fremden, dass ein
+    # geratenes Passwort stimmt.
+    passwort_gesperrt = (
+        person is not None and not person.ist_betreiber and not passwort_anmeldung_an(db)
+    )
+    if person is None or passwort_gesperrt or not benutzerdienst.passwort_stimmt(person, eingabe.passwort):
         wache.fehlgeschlagen()
         # Dieselbe Antwort fuer "kein solches Konto" und "falsches Passwort".
         raise HTTPException(
@@ -105,11 +114,6 @@ def anmelden(
         )
 
     wache.geschafft()
-    # ⚠️ **„Anmeldung mit Passwort" aus** (Verwaltung → Anmeldung): Nur die
-    # Anbieter lassen herein. Der Betreiber kommt immer mit seinem Passwort
-    # hinein, sonst stuende er vor der Tuer, sobald der Anbieter ausfaellt.
-    if not person.ist_betreiber and not passwort_anmeldung_an(db):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="passwort_anmeldung_aus")
     benutzerdienst.hash_auffrischen(db, person, eingabe.passwort)
 
     # ⚠️ Der Nothammer. Er ueberspringt den zweiten Faktor vollstaendig -

@@ -80,10 +80,13 @@ def _rueckkehr(db, art: str) -> str:
     lassen.
     """
     from ..config import get_settings
+    from ..services.adresse import mit_vorbau
     from .einstellungen import SCHLUESSEL_OEFFENTLICHE_ADRESSE
 
-    basis = (einstellung_lesen(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE) or "").rstrip("/")
-    return f"{basis}{get_settings().url_base}/api/mailoauth/{art}/zurueck"
+    # ⚠️ Die Adresse gilt samt Vorbau (die Anmeldewanderung haengt ihn an, wo 0.21 ihn weggelassen hat); 0.21 hat
+    # ihn hier immer angehaengt. ``mit_vorbau`` schreibt ihn nie doppelt.
+    basis = mit_vorbau(einstellung_lesen(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE), get_settings().url_base)
+    return f"{basis}/api/mailoauth/{art}/zurueck"
 
 
 # --- Die App des Betreibers ----------------------------------------------- #

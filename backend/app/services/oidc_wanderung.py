@@ -33,8 +33,10 @@ from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
 from .. import crypto
-from ..models import Benutzer, OidcAnbieter, OidcVerknuepfung
+from ..config import get_settings
+from ..models import Benutzer, Einstellung, OidcAnbieter, OidcVerknuepfung
 from ..vendor.nexoidc import migrate, protocol, secret_context
+from .adresse import mit_vorbau
 from .oidc_store import alter_kontext, eingeschaltet, fuer_alte_fassung_aktiv
 
 logger = logging.getLogger("nexmail.oidc")
@@ -136,8 +138,32 @@ def _alte_eintraege(db: Session, meldungen: list[tuple[int, str]]) -> int:
         meldungen.append(
             (logging.INFO, f"{len(rows)} sign-in provider(s) from nexmail 0.21 keep their redirect address {ALTE_RUECKKEHR}.")
         )
+        _vorbau_anhaengen(db, meldungen)
     db.flush()
     return len(rows)
+
+
+def _vorbau_anhaengen(db: Session, meldungen: list[tuple[int, str]]) -> None:
+    """Unter einem Unterpfad: 0.21 baute die Rueckleitadresse aus der gespeicherten Adresse UND dem Vorbau
+    (``NEXMAIL_URL_BASE``); seither gilt die gespeicherte Adresse samt Vorbau. Damit die Adresse, die die Anbieter
+    kennen, gleich bleibt, bekommt die gespeicherte Adresse den Vorbau, einmal: nur dann, wenn Eintraege von 0.21
+    gerade uebernommen werden (``redirect_path`` NULL) und sie ihn noch nicht traegt."""
+    vorbau = get_settings().url_base
+    zeile = db.get(Einstellung, "oeffentliche_adresse")
+    if not vorbau or zeile is None or not (zeile.wert or "").strip():
+        return
+    alt = zeile.wert.strip().rstrip("/")
+    neu = mit_vorbau(alt, vorbau)
+    if neu == alt:
+        return
+    meldungen.append(
+        (
+            logging.INFO,
+            f"nexmail runs under the sub path {vorbau}: the public address {alt} now ends with it, so the redirect "
+            "addresses of the sign-in providers stay as nexmail 0.21 built them.",
+        )
+    )
+    zeile.wert = neu
 
 
 def _umgeschaltet(db: Session, meldungen: list[tuple[int, str]]) -> int:

@@ -418,7 +418,11 @@ nexmail does not need one.
 
 > ⚠️ **Providers set up in nexmail 0.21 keep their redirect address**
 > `/api/oidc/<short name>/zurueck`; you do not have to change anything at the
-> provider. New providers use `/api/oidc/<short name>/callback`.
+> provider. New providers use `/api/oidc/<short name>/callback`. Under a sub
+> path (`NEXMAIL_URL_BASE`), the first start after the update adds the prefix to
+> a stored public address that lacks it, after making a backup, so that the
+> redirect address stays the same; the public address now always includes the
+> prefix.
 
 > ⚠️ **The issuer must be one address that both the browser and the server can
 > reach.** The browser fetches the sign-in page; the container fetches the

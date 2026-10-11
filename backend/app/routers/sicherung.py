@@ -22,6 +22,7 @@ from ..config import get_settings
 from ..db import einstellung_lesen, einstellung_schreiben, hat_benutzer
 from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
 from ..services import sicherung, sicherungsliste
+from ..services.adresse import mit_vorbau
 from ..meldung import MeldungHttp
 
 logger = logging.getLogger("nexmail.sicherung")
@@ -115,7 +116,7 @@ def _befund_bauen(roh: dict) -> Befund:
                 # Installation umgezogen ist. nexmail kann sie dort nicht
                 # eintragen - also nennt es sie wenigstens.
                 rueckkehr_adresse=(
-                    f"{roh['adresse_jetzt']}{basis}{_rueckleitpfad(a)}"
+                    f"{mit_vorbau(roh['adresse_jetzt'], basis)}{_rueckleitpfad(a)}"
                     if roh.get("adresse_jetzt")
                     else ""
                 ),

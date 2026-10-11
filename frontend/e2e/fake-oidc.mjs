@@ -38,6 +38,11 @@ http
   .createServer(async (request, response) => {
     const url = new URL(request.url, ISSUER)
     if (url.pathname === '/health') return json(response, 200, { ok: true })
+    // A browser asks for the icon of the page it lands on; answering 404 lands in the console as an error.
+    if (url.pathname === '/favicon.ico') {
+      response.writeHead(204)
+      return response.end()
+    }
     if (url.pathname === '/.well-known/openid-configuration') {
       return json(response, 200, {
         issuer: ISSUER,

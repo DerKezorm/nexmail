@@ -24,7 +24,15 @@ from sqlalchemy.orm import Session
 from .. import crypto
 from ..models import Benutzer, Einladung, OidcAnbieter, OidcVerknuepfung, utcnow
 from ..vendor.nexoidc import protocol
-from ..vendor.nexoidc.model import AccountState, Invite, Link, Provider, ProviderValues, secret_context
+from ..vendor.nexoidc.errors import OidcError
+from ..vendor.nexoidc.model import (
+    AccountState,
+    Invite,
+    Link,
+    Provider,
+    ProviderValues,
+    secret_context,
+)
 from . import einladung as einladungsdienst
 
 #: Zeichen wie ``benutzer.BENUTZERNAME_MUSTER``. Kuerzer als drei darf ein Name vom Anbieter sein ("jo"): Die
@@ -221,8 +229,25 @@ class SqlStore:
         anbieter, person = self._anbieter(link.provider_id), self.konto(link.account_id)
         if anbieter is None or person is None:
             raise LookupError("a link needs its provider and its account")
-        # 0.21 haelt (issuer, subject) eindeutig. Steht dieselbe Identitaet noch ohne Anbieter da (von 0.21, keinem
-        # Eintrag zugeordnet), weicht diese Zeile der neuen.
+        # ⚠️ 0.21 haelt (issuer, subject) eindeutig, auch ueber Eintraege hinweg. Haengt die Identitaet schon an einem
+        # anderen Eintrag desselben Ausstellers (Entra ``common`` und ein Mandant, authentik zweimal), gehoert sie
+        # dort einem Konto: abgewiesen wie jede vergebene Identitaet, nicht als Datenbankfehler (500).
+        vergeben = self.db.scalar(
+            select(OidcVerknuepfung.id)
+            .where(
+                OidcVerknuepfung.issuer == link.issuer,
+                OidcVerknuepfung.subject == link.subject,
+                OidcVerknuepfung.anbieter_id.is_not(None),
+            )
+            .limit(1)
+        )
+        if vergeben is not None:
+            self.db.rollback()
+            raise OidcError(
+                "oidc_subject_taken", f"this identity at {anbieter.kuerzel} belongs to an account at another entry"
+            )
+        # Steht dieselbe Identitaet noch ohne Anbieter da (von 0.21, keinem Eintrag zugeordnet), weicht diese Zeile
+        # der neuen.
         self.db.execute(
             OidcVerknuepfung.__table__.delete().where(
                 OidcVerknuepfung.issuer == link.issuer,
