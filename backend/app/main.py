@@ -439,6 +439,11 @@ app = FastAPI(
     # deshalb in jeder Installation eine weiße Seite. Hier gar nicht erst an.
     docs_url=None,
     redoc_url=None,
+    # ⚠️ **Und die Beschreibung dahinter auch nicht.** Ohne diese Zeile lag
+    # /openapi.json ohne Anmeldung offen: jede Adresse samt Docstring und
+    # genauer Fassung, ein Lageplan an jeder Installation. Gelesen hat ihn
+    # nichts, auch die Oberfläche nicht. Gefunden am 11.10.2026.
+    openapi_url=None,
 )
 
 # ⚠️ **Ersetzt FastAPIs eigenen Handler fuer HTTPException.** Ohne das faellt

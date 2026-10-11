@@ -176,3 +176,17 @@ def test_keine_route_wird_mit_fehlenden_abhaengigkeiten_aufgerufen():
                 fehler.append(f"{name}.py:{n.lineno} {n.func.id}() ohne {fehlt}")
 
     assert not fehler, fehler
+
+
+@pytest.mark.parametrize("pfad", ["/openapi.json", "/api/openapi.json", "/docs", "/redoc"])
+def test_keine_schnittstellenbeschreibung_ohne_anmeldung(klient, pfad):
+    """FastAPIs eingebaute Beschreibung bleibt aus, auch ohne Anmeldung.
+
+    ⚠️ **Der Wächter oben sieht sie nicht**, er läuft nur über ``/api``. Bis
+    zum 11.10.2026 lieferte ``/openapi.json`` jedem die ganze Routentabelle samt
+    Docstrings und Fassung. Was dort jetzt antwortet, ist höchstens die
+    Oberfläche, nie die Beschreibung.
+    """
+    antwort = klient.get(pfad)
+    assert '"openapi"' not in antwort.text
+    assert '"paths"' not in antwort.text
