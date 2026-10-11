@@ -22,7 +22,7 @@
  */
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
-import { oidcWording, type OidcWording } from '../vendor/nexoidc/oidc'
+import { oidcVariables, oidcWording, type OidcWording } from '../vendor/nexoidc/oidc'
 
 export const SPRACHEN = [
   { code: 'de', name: 'Deutsch' },
@@ -50,7 +50,7 @@ async function mitAnmeldung(
   modul: Promise<{ default: OidcWording }>,
 ): Promise<{ default: object }> {
   const [app, oidc] = await Promise.all([eigen, modul])
-  return { default: { ...app.default, ...oidcWording(oidc.default, { singleAccount: false }) } }
+  return { default: { ...app.default, ...oidcWording(oidc.default, { singleAccount: false, invitations: true }) } }
 }
 
 /** Die Texte einer Sprache, wie sie in i18next landen (samt den Wortlauten der Anmeldung). Auch für Tests. */
@@ -66,8 +66,8 @@ export const GRUNDEINSTELLUNG = {
      auf der schnellen Prüfebene hält ohnehin fest, dass beide Sprachen
      dieselben Einträge kennen. */
   fallbackLng: false as const,
-  // `{{app}}` in den Wortlauten des Anmeldemoduls.
-  interpolation: { escapeValue: false, defaultVariables: { app: 'nexmail' } },
+  // `{{app}}` und `{{slug}}` in den Wortlauten des Anmeldemoduls.
+  interpolation: { escapeValue: false, defaultVariables: oidcVariables('nexmail') },
 }
 
 function startsprache(): Sprachcode {

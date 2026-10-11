@@ -52,8 +52,8 @@ function kennt(menge: Set<string>, schluessel: string): boolean {
 }
 
 /* Die Wortlaute der Anmeldung über Anbieter mischt `i18n/index.ts` aus dem gemeinsamen Modul ein (`oidc.*`). */
-const deutsch = new Set(knoten({ ...de, ...oidcWording(oidcDe, { singleAccount: false }) }))
-const englisch = new Set(knoten({ ...en, ...oidcWording(oidcEn, { singleAccount: false }) }))
+const deutsch = new Set(knoten({ ...de, ...oidcWording(oidcDe, { singleAccount: false, invitations: true }) }))
+const englisch = new Set(knoten({ ...en, ...oidcWording(oidcEn, { singleAccount: false, invitations: true }) }))
 
 const DATEIEN = import.meta.glob('../**/*.{ts,tsx}', {
   query: '?raw',
