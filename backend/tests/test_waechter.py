@@ -118,3 +118,61 @@ def test_keine_adresse_gibt_daten_des_anderen_heraus(klient, zweiter_klient, db)
     # Der erste ist Betreiber, der zweite nicht - der Haken wird nicht vererbt.
     assert ich_eins["ist_betreiber"] is True
     assert ich_zwei["ist_betreiber"] is False
+
+
+def test_keine_route_wird_mit_fehlenden_abhaengigkeiten_aufgerufen():
+    """Eine Routenfunktion, die eine andere direkt aufruft, muss alle ihre
+    Parameter selbst mitgeben: FastAPI fuellt sie nur bei einer Anfrage.
+
+    ⚠️ **Warum es den Test gibt:** ``ich`` bekam mit 0.10.0 einen zweiten
+    Parameter (``db``); ``kontaktadresse_setzen`` rief ``ich(person)`` weiter
+    auf, und jedes Speichern der Adresse endete bis 0.22.0 mit einem 500. Kein
+    Test fuehrte die Route aus. Der Wächter liest den Quelltext aller Router:
+    gleiche Datei oder ``from .x import route``.
+    """
+    import ast
+    from pathlib import Path
+
+    wurzel = Path(__file__).resolve().parent.parent / "app" / "routers"
+    methoden = {"get", "post", "put", "patch", "delete", "websocket", "api_route"}
+    baeume = {p.stem: ast.parse(p.read_text(encoding="utf-8")) for p in wurzel.glob("*.py")}
+
+    def ist_route(f) -> bool:
+        return any(
+            isinstance(d, ast.Call)
+            and isinstance(d.func, ast.Attribute)
+            and d.func.attr in methoden
+            for d in f.decorator_list
+        )
+
+    routen: dict[str, dict[str, ast.arguments]] = {}
+    for name, baum in baeume.items():
+        for f in baum.body:
+            if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)) and ist_route(f):
+                routen.setdefault(name, {})[f.name] = f.args
+
+    fehler: list[str] = []
+    for name, baum in baeume.items():
+        sichtbar = dict(routen.get(name, {}))
+        for n in ast.walk(baum):
+            if isinstance(n, ast.ImportFrom) and n.module and n.level:
+                quelle = n.module.split(".")[-1]
+                for alias in n.names:
+                    if alias.name in routen.get(quelle, {}):
+                        sichtbar[alias.asname or alias.name] = routen[quelle][alias.name]
+        for n in ast.walk(baum):
+            if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)):
+                continue
+            a = sichtbar.get(n.func.id)
+            if a is None:
+                continue
+            positional = a.posonlyargs + a.args
+            pflicht = [x.arg for x in positional[: len(positional) - len(a.defaults)]]
+            gegeben = {x.arg for x in positional[: len(n.args)]} | {
+                k.arg for k in n.keywords
+            }
+            fehlt = [p for p in pflicht if p not in gegeben]
+            if fehlt:
+                fehler.append(f"{name}.py:{n.lineno} {n.func.id}() ohne {fehlt}")
+
+    assert not fehler, fehler

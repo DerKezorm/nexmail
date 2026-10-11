@@ -274,3 +274,28 @@ def test_der_betreiber_faengt_ohne_adresse_an(klient, db):
     Adresse selbst einträgt. Deshalb sagt die Sicherheitsseite es."""
     einrichten(klient)
     assert db.query(Benutzer).one().kontaktadresse == ""
+
+
+# --- Die Adresse im Konto selbst setzen --------------------------------- #
+# Die Route rief ``ich(person)`` direkt auf, nachdem ``ich`` eine zweite
+# Abhängigkeit (``db``) bekommen hatte: jedes Speichern endete mit einem 500.
+
+
+def test_die_kontaktadresse_laesst_sich_setzen_und_leeren(klient, db):
+    einrichten(klient)
+
+    gesetzt = klient.put("/api/auth/ich/kontaktadresse", json={"adresse": " neu@example.org "})
+    assert gesetzt.status_code == 200, gesetzt.text
+    assert gesetzt.json()["kontaktadresse"] == "neu@example.org"
+    assert klient.get("/api/auth/ich").json()["kontaktadresse"] == "neu@example.org"
+
+    geleert = klient.put("/api/auth/ich/kontaktadresse", json={"adresse": ""})
+    assert geleert.status_code == 200, geleert.text
+    assert geleert.json()["kontaktadresse"] == ""
+
+
+def test_eine_kontaktadresse_ohne_at_wird_abgelehnt(klient, db):
+    einrichten(klient)
+    antwort = klient.put("/api/auth/ich/kontaktadresse", json={"adresse": "keine-adresse"})
+    assert antwort.status_code == 400
+    assert antwort.json()["detail"] == "adresse_ungueltig"

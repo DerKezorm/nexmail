@@ -464,4 +464,4 @@ def kontaktadresse_setzen(
     person.kontaktadresse = adresse
     db.commit()
     logger.info("A user set their contact address (empty=%s).", not adresse)
-    return ich(person)
+    return ich(person, db)
