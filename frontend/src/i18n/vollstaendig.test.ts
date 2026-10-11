@@ -59,4 +59,21 @@ describe('Sprachdateien', () => {
 
     expect([...leer(de, 'de'), ...leer(en, 'en')]).toEqual([])
   })
+
+  it('setzen keine Gedankenstriche', () => {
+    // Satzpausen bekommen Punkt, Komma oder Doppelpunkt, in beiden Sprachen.
+    // Am 11.10.2026 standen 203 davon in den Oberflächentexten. Auch der
+    // Halbgeviertstrich zählt: „Mo–Fr“ heißt „Mo bis Fr“.
+    const mitStrich = (daten: unknown, sprache: string) =>
+      pfade(daten)
+        .filter((pfad) => {
+          const wert = pfad
+            .split('.')
+            .reduce<unknown>((o, k) => (o as Record<string, unknown>)?.[k], daten)
+          return typeof wert === 'string' && /[–—]/.test(wert)
+        })
+        .map((pfad) => `${sprache}: ${pfad}`)
+
+    expect([...mitStrich(de, 'de'), ...mitStrich(en, 'en')]).toEqual([])
+  })
 })
