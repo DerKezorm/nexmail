@@ -40,6 +40,17 @@ def ohne_netz(monkeypatch):
 
 
 @pytest.fixture
+def hinter_proxy():
+    """Ein Proxy steht davor (``NEXMAIL_CLIENT_IP=proxy``); erst dann zaehlen ``X-Forwarded-*``."""
+    from app.config import get_settings
+
+    vorher = get_settings().client_ip
+    get_settings().client_ip = "proxy"
+    yield
+    get_settings().client_ip = vorher
+
+
+@pytest.fixture
 def welt(klient, ohne_netz, db):
     """Ein Postfach mit Nachrichten, einem UID-Stand und einer Sitzung."""
     einrichten(klient)
@@ -205,7 +216,7 @@ def test_pruefen_fasst_nichts_an(klient, welt):
     )
 
 
-def test_eine_abweichende_adresse_wird_gemeldet(klient, welt):
+def test_eine_abweichende_adresse_wird_gemeldet(klient, welt, hinter_proxy):
     """Das Archiv kommt von woanders — genau der Fall, der sonst still bleibt."""
     klient.put("/api/einstellungen", json={"oeffentliche_adresse": "https://woanders.example"})
     archiv = _archiv(klient)
@@ -222,7 +233,7 @@ def test_eine_abweichende_adresse_wird_gemeldet(klient, welt):
     assert befund["adresse_weicht_ab"] is True
 
 
-def test_dieselbe_adresse_meldet_nichts(klient, welt):
+def test_dieselbe_adresse_meldet_nichts(klient, welt, hinter_proxy):
     """⚠️ Ein Hinweis, der immer erscheint, wird nach dem zweiten Mal weggeklickt.
 
     Der haeufige Fall ist dieselbe Maschine — kaputte Platte, neuer Container.
@@ -276,7 +287,7 @@ def test_ohne_angabe_bleibt_die_adresse_aus_dem_archiv(klient, welt):
         assert einstellung_lesen(frisch, "oeffentliche_adresse") == "https://alt.example"
 
 
-def test_der_befund_nennt_die_rueckkehr_adresse(klient, welt, db):
+def test_der_befund_nennt_die_rueckkehr_adresse(klient, welt, db, hinter_proxy):
     """⚠️ Die kann nexmail beim Anbieter nicht eintragen — also nennt es sie."""
     from app.models import OidcAnbieter
 
@@ -305,3 +316,40 @@ def test_der_befund_nennt_die_rueckkehr_adresse(klient, welt, db):
     anbieter = befund["oidc_anbieter"][0]
     assert anbieter["issuer"] == "https://auth.example/realms/haus"
     assert anbieter["rueckkehr_adresse"] == "https://neu.example/api/oidc/keycloak/zurueck"
+
+
+# --- Woher der Adressvorschlag kommt (#job-224) ----------------------------------------------------------------------
+
+
+def _adresse_jetzt(klient, kopfzeilen) -> str:
+    klient.put("/api/einstellungen", json={"oeffentliche_adresse": "https://alt.example"})
+    archiv = _archiv(klient)
+    antwort = klient.post(
+        "/api/sicherung/pruefen",
+        files={"datei": ("s.zip", archiv, "application/zip")},
+        data={"passwort": ARCHIVPASSWORT},
+        headers=kopfzeilen,
+    )
+    assert antwort.status_code == 200, antwort.text
+    return antwort.json()["adresse_jetzt"]
+
+
+def test_ohne_proxy_zaehlen_die_weitergereichten_kopfzeilen_nicht(klient, welt):
+    """Ab Werk traut nexmail keinem Absender: Ohne Proxy davor kann jeder ``X-Forwarded-*`` schicken."""
+    kopf = {"x-forwarded-proto": "https", "x-forwarded-host": "boese.example"}
+    assert _adresse_jetzt(klient, kopf) == "http://testserver"
+
+
+@pytest.mark.parametrize(
+    ("kopfzeilen", "erwartet"),
+    [
+        # Links kann der Anfragende selbst geschrieben haben, den rechten haengt der Proxy an.
+        ([("x-forwarded-proto", "https"), ("x-forwarded-host", "boese.example, hier.example")], "https://hier.example"),
+        ([("x-forwarded-proto", "https"), ("x-forwarded-host", "boese.example"), ("x-forwarded-host", "hier.example")],
+         "https://hier.example"),
+        ([("x-forwarded-proto", "https, http"), ("x-forwarded-host", "hier.example")], "http://hier.example"),
+        ([("x-forwarded-proto", "https")], "https://testserver"),
+    ],
+)
+def test_hinter_dem_proxy_zaehlt_der_rechteste_wert(klient, welt, hinter_proxy, kopfzeilen, erwartet):
+    assert _adresse_jetzt(klient, kopfzeilen) == erwartet

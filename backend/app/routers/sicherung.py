@@ -76,16 +76,28 @@ def _adresse_aus_anfrage(request: Request) -> str:
     und zur Auswahl gestellt — es hängt keine Rechteentscheidung daran. Wer sie
     fälscht, schlägt dem Betreiber eine falsche Adresse vor, die dieser
     ablehnen kann; er setzt sie nicht selbst.
+
+    ⚠️ **Wie beim Schema: nur von einem Proxy, dem nexmail traut, und nur der
+    rechteste Wert** (``NEXMAIL_CLIENT_IP=proxy[:n]``, Bauplan „Hinter einem
+    Proxy“). Den rechten hängt der nächste Proxy an, alles links davon kann der
+    Anfragende selbst geschrieben haben. Das Schema selbst liest hier niemand
+    mehr aus der Kopfzeile: ``SchemaVomProxyMiddleware`` hat es nach derselben
+    Regel schon in ``request.url`` gesetzt.
     """
-    schema = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
-    wirt = request.headers.get("x-forwarded-host", "").split(",")[0].strip()
+    wirt = ""
+    if get_settings().anzahl_proxys() > 0:
+        werte = [
+            teil.strip()
+            for zeile in request.headers.getlist("x-forwarded-host")
+            for teil in zeile.split(",")
+            if teil.strip()
+        ]
+        wirt = werte[-1][:200] if werte else ""
     if not wirt:
         wirt = request.headers.get("host", "").strip()
     if not wirt:
         return ""
-    if not schema:
-        schema = request.url.scheme
-    return f"{schema}://{wirt}".rstrip("/")
+    return f"{request.url.scheme}://{wirt}".rstrip("/")
 
 
 def _rueckleitpfad(anbieter: dict) -> str:
