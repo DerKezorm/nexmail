@@ -89,19 +89,23 @@ einstellungen_ = get_settings()
 
 
 def _oeffentliche_adresse() -> str:
-    """Die oeffentliche Adresse aus der Einstellung (samt Vorbau, wie man nexmail erreicht), sonst ""."""
+    """Die oeffentliche Adresse fuer das Anmeldemodul: die gespeicherte (in der Form von 0.21, ohne Vorbau) samt
+    Vorbau, wie man nexmail erreicht; sonst ""."""
     from .db import einstellung_lesen
+    from .services.adresse import fuer_modul
 
     with SessionLocal() as db:
-        return einstellung_lesen(db, "oeffentliche_adresse")
+        return fuer_modul(einstellung_lesen(db, "oeffentliche_adresse"), get_settings().url_base)
 
 
 def _oeffentliche_adresse_speichern(adresse: str) -> None:
-    """Eine in der authentik-Karte bestaetigte Adresse, sofort festgeschrieben (eigene Transaktion)."""
+    """Eine in der authentik-Karte bestaetigte Adresse (samt Vorbau, wie der Browser sie nennt), sofort
+    festgeschrieben (eigene Transaktion), in der gespeicherten Form von 0.21: ohne Vorbau."""
     from .db import einstellung_schreiben
+    from .services.adresse import ohne_vorbau
 
     with SessionLocal() as db:
-        einstellung_schreiben(db, "oeffentliche_adresse", adresse)
+        einstellung_schreiben(db, "oeffentliche_adresse", ohne_vorbau(adresse, get_settings().url_base))
 
 
 #: Das gemeinsame Anmeldemodul, vor der ersten Anfrage (Bauplan "Anmeldung mit

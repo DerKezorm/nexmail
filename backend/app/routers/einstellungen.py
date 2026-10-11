@@ -25,6 +25,7 @@ from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
 from ..services import bildfreigaben, netzfreigabe, systempost
 from ..services.aufraeumen import ERLAUBTE_TAGE
 from ..meldung import MeldungHttp
+from ..services.adresse import fuer_modul, ohne_vorbau
 from ..services.oidc_store import SqlStore
 from ..vendor.nexoidc import authentik, flow
 from . import oidc as oidc_router
@@ -98,12 +99,15 @@ def schreiben(
     # ⚠️ **Erst fragen, dann speichern** (auch beim Leeren): Ändert die neue
     # Adresse die Rückleitadresse eines Anmeldeanbieters, kommt die Rückfrage
     # des Moduls (409 ``public_url_change``), und nichts wird gespeichert.
+    # Das Modul kennt die Adresse samt Vorbau (``fuer_modul``); gespeichert wird sie wie in 0.21 ohne ihn.
+    vorbau = get_settings().url_base
     frage = authentik.public_url_guard(
-        SqlStore(db), adresse, oidc_router.basis(request), confirm=eingabe.adresse_bestaetigt
+        SqlStore(db), fuer_modul(adresse, vorbau), oidc_router.basis(request), confirm=eingabe.adresse_bestaetigt
     )
     if frage is not None:
         raise oidc_router.abgelehnt(status.HTTP_409_CONFLICT, "public_url_change", **frage)
 
+    adresse = ohne_vorbau(adresse, vorbau)
     einstellung_schreiben(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE, adresse)
     einstellung_schreiben(db, SCHLUESSEL_ZEITZONE, zone)
     return Einstellungen(oeffentliche_adresse=adresse, zeitzone=zone)

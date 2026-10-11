@@ -1,8 +1,8 @@
 """Die Anmeldung ueber Anbieter unter einem Unterpfad (``NEXMAIL_URL_BASE=/nexmail``).
 
-0.21 baute jede Rueckleitadresse aus der gespeicherten Adresse UND dem Vorbau; die Adresse stand ohne ihn da. Seit dem
-Anmeldemodul gilt die gespeicherte Adresse samt Vorbau. Die Wanderung haengt ihn deshalb einmal an, damit die Adresse,
-die die Anbieter kennen, gleich bleibt, und jede andere Stelle, die den Vorbau anhaengt, schreibt ihn nie doppelt.
+0.21 baute jede Rueckleitadresse aus der gespeicherten Adresse UND dem Vorbau; die Adresse stand ohne ihn da. Das bleibt
+die gespeicherte Form (ein Rueckweg auf 0.21 liest sie weiter): Das Anmeldemodul bekommt die Adresse zur Laufzeit samt
+Vorbau, gespeichert wird sie ohne, und jede andere Stelle, die den Vorbau anhaengt, schreibt ihn nie doppelt.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "nexoidc"))
 from test_oidc_app import (  # noqa: F401  (Fixtures)
     BETREIBER,
     PASSWORT,
+    anbieter_anlegen,
     betreiber,
     eintrag_wie_021,
     einstellung_holen,
@@ -34,7 +35,7 @@ from app.main import app
 from app.middleware import BasisPfadMiddleware
 from app.models import OidcVerknuepfung
 from app.services import oidc_wanderung
-from app.services.adresse import mit_vorbau
+from app.services.adresse import fuer_modul, mit_vorbau, ohne_vorbau
 
 VORBAU = "/nexmail"
 ADRESSE_021 = "https://mail.example.org"
@@ -62,68 +63,125 @@ def test_the_prefix_is_never_written_twice():
     assert mit_vorbau("", "/nexmail") == "/nexmail", "ohne Adresse bleibt der Vorbau, wie 0.21 ihn baute"
 
 
-def test_the_migration_gives_the_stored_address_its_prefix_once_and_the_redirect_address_stays(
+def test_the_prefix_is_cut_only_where_the_address_ends_on_it():
+    assert ohne_vorbau("https://mail.example.org/nexmail", "/nexmail") == "https://mail.example.org"
+    assert ohne_vorbau("https://mail.example.org/nexmail/", "/nexmail") == "https://mail.example.org"
+    assert ohne_vorbau("https://mail.example.org", "/nexmail") == "https://mail.example.org"
+    assert ohne_vorbau("https://mail.example.org/", "/nexmail") == "https://mail.example.org"
+    # Ein anderer Pfad bleibt, wie er eingegeben wurde, auch einer, der nur so aehnlich endet.
+    assert ohne_vorbau("https://mail.example.org/post", "/nexmail") == "https://mail.example.org/post"
+    assert ohne_vorbau("https://mail.example.org/xnexmail", "/nexmail") == "https://mail.example.org/xnexmail"
+    assert ohne_vorbau("https://mail.example.org/nexmail", "") == "https://mail.example.org/nexmail"
+    assert ohne_vorbau("", "/nexmail") == ""
+    assert fuer_modul("", "/nexmail") == "" and fuer_modul("  ", "/nexmail") == ""
+    assert fuer_modul(ADRESSE_021, "/nexmail") == ADRESSE_021 + VORBAU
+    assert fuer_modul(ADRESSE_021 + VORBAU, "/nexmail") == ADRESSE_021 + VORBAU
+    assert fuer_modul(ADRESSE_021, "") == ADRESSE_021
+
+
+def test_the_module_sees_the_stored_address_of_0_21_with_the_prefix_and_the_redirect_address_stays(
     betreiber, sso, unterpfad, caplog
 ):
-    """Eine Adresse ohne Vorbau aus 0.21 plus ``NEXMAIL_URL_BASE``: Die Rueckleitadresse bleibt, wie 0.21 sie baute
-    (``<Adresse><Vorbau>/api/oidc/<kuerzel>/zurueck``). Gesichert wird vorher, im Protokoll steht eine Zeile, der
-    zweite Start tut nichts."""
+    """Eine Adresse ohne Vorbau aus 0.21 plus ``NEXMAIL_URL_BASE``: Die gespeicherte Adresse bleibt, wie sie ist (ein
+    Rueckweg auf 0.21 liest sie), und die Rueckleitadresse bleibt, wie 0.21 sie baute
+    (``<Adresse><Vorbau>/api/oidc/<kuerzel>/zurueck``). Auch der zweite Start fasst die Adresse nicht an."""
     einstellung_setzen("oeffentliche_adresse", ADRESSE_021)
     eintrag_wie_021("keycloak", sso.issuer, sso.client_id, sso.client_secret)
-    ordner = get_settings().data_dir / "sicherungen"
-    vorher = set(ordner.glob("*.db")) if ordner.is_dir() else set()
     wie_021 = f"{ADRESSE_021}{VORBAU}/api/oidc/keycloak/zurueck"
 
-    with caplog.at_level("INFO", logger="nexmail.oidc"):
-        oidc_wanderung.laufen(engine)
+    oidc_wanderung.laufen(engine)
 
-    assert einstellung_holen("oeffentliche_adresse") == ADRESSE_021 + VORBAU
-    assert len(set(ordner.glob("*.db")) - vorher) == 1, "vor der Aenderung wird gesichert"
-    assert sum("sub path" in zeile for zeile in caplog.messages) == 1
+    assert einstellung_holen("oeffentliche_adresse") == ADRESSE_021
     assert betreiber.get("/api/oidc/admin/providers").json()[0]["redirect_uri"] == wie_021
-    # Zweiter Start: nichts mehr, der Vorbau steht nicht doppelt.
-    gesichert = set(ordner.glob("*.db"))
     caplog.clear()
     oidc_wanderung.laufen(engine)
-    assert einstellung_holen("oeffentliche_adresse") == ADRESSE_021 + VORBAU
-    assert set(ordner.glob("*.db")) == gesichert and "sub path" not in caplog.text
+    assert einstellung_holen("oeffentliche_adresse") == ADRESSE_021 and "sub path" not in caplog.text
+    assert betreiber.get("/api/oidc/admin/providers").json()[0]["redirect_uri"] == wie_021
 
 
 @pytest.mark.parametrize(
-    ("gespeichert", "danach"),
+    ("gespeichert", "fuer_das_modul"),
     [
         ("", ""),
-        (ADRESSE_021 + VORBAU, ADRESSE_021 + VORBAU),
-        (ADRESSE_021 + VORBAU + "/", ADRESSE_021 + VORBAU + "/"),
+        (ADRESSE_021, ADRESSE_021 + VORBAU),
         (ADRESSE_021 + "/", ADRESSE_021 + VORBAU),
+        (ADRESSE_021 + VORBAU, ADRESSE_021 + VORBAU),
     ],
 )
-def test_the_migration_adds_the_prefix_only_where_it_is_missing(betreiber, sso, unterpfad, gespeichert, danach):
+def test_the_stored_address_is_never_changed_by_the_migration_and_the_module_gets_the_prefix_once(
+    betreiber, sso, unterpfad, gespeichert, fuer_das_modul
+):
+    from app.main import _oeffentliche_adresse
+
     einstellung_setzen("oeffentliche_adresse", gespeichert)
     eintrag_wie_021("keycloak", sso.issuer, sso.client_id, sso.client_secret)
     oidc_wanderung.laufen(engine)
-    assert einstellung_holen("oeffentliche_adresse") == danach
+    assert einstellung_holen("oeffentliche_adresse") == gespeichert
+    assert _oeffentliche_adresse() == fuer_das_modul
 
 
-def test_without_a_sub_path_or_without_entries_from_0_21_the_address_is_left_alone(betreiber, sso, monkeypatch):
+def test_without_a_sub_path_the_module_gets_the_stored_address_as_it_is(betreiber, sso):
+    from app.main import _oeffentliche_adresse
+
     einstellung_setzen("oeffentliche_adresse", ADRESSE_021)
     eintrag_wie_021("keycloak", sso.issuer, sso.client_id, sso.client_secret)
     oidc_wanderung.laufen(engine)
-    assert einstellung_holen("oeffentliche_adresse") == ADRESSE_021, "ohne Unterpfad bleibt sie"
-    monkeypatch.setenv("NEXMAIL_URL_BASE", VORBAU)
-    get_settings.cache_clear()
-    try:
-        # Die Eintraege sind uebernommen; ein spaeterer Start (auch mit anderer Einstellung) fasst sie nicht an.
-        oidc_wanderung.laufen(engine)
+    assert einstellung_holen("oeffentliche_adresse") == ADRESSE_021
+    assert _oeffentliche_adresse() == ADRESSE_021
+
+
+@pytest.mark.parametrize(
+    ("eingabe", "gespeichert"),
+    [
+        (ADRESSE_021 + VORBAU, ADRESSE_021),
+        (ADRESSE_021 + VORBAU + "/", ADRESSE_021),
+        (ADRESSE_021, ADRESSE_021),
+        (ADRESSE_021 + "/", ADRESSE_021),
+        # Ein anderer Pfad (ein Proxy, der nexmail woanders einhaengt) bleibt, wie er eingegeben wurde.
+        (ADRESSE_021 + "/post", ADRESSE_021 + "/post"),
+        ("", ""),
+    ],
+)
+def test_saving_the_public_address_stores_it_without_the_prefix(betreiber, unterpfad, eingabe, gespeichert):
+    """Wie 0.21 sie speicherte: Ein Rueckweg auf 0.21 haengt den Vorbau selbst an, und er stuende sonst doppelt."""
+    antwort = betreiber.put("/api/einstellungen", json={"oeffentliche_adresse": eingabe, "zeitzone": ""})
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json()["oeffentliche_adresse"] == gespeichert
+    assert einstellung_holen("oeffentliche_adresse") == gespeichert
+    assert betreiber.get("/api/einstellungen").json()["oeffentliche_adresse"] == gespeichert
+
+
+def test_saving_the_same_address_with_the_prefix_asks_nothing_and_a_new_provider_gets_the_prefix_once(
+    betreiber, sso, unterpfad
+):
+    """Die Rueckfrage vergleicht, was das Modul kennt (samt Vorbau): Dieselbe Adresse, einmal mit und einmal ohne
+    Vorbau getippt, aendert keine Rueckleitadresse."""
+    einstellung_setzen("oeffentliche_adresse", ADRESSE_021)
+    angelegt = anbieter_anlegen(betreiber, sso)
+    assert angelegt["redirect_uri"] == f"{ADRESSE_021}{VORBAU}/api/oidc/sso/callback"
+    for getippt in (ADRESSE_021 + VORBAU, ADRESSE_021):
+        antwort = betreiber.put("/api/einstellungen", json={"oeffentliche_adresse": getippt, "zeitzone": ""})
+        assert antwort.status_code == 200, antwort.text
         assert einstellung_holen("oeffentliche_adresse") == ADRESSE_021
-    finally:
-        monkeypatch.undo()
-        get_settings.cache_clear()
+    anders = betreiber.put(
+        "/api/einstellungen", json={"oeffentliche_adresse": "https://other.example.org" + VORBAU, "zeitzone": ""}
+    )
+    assert anders.status_code == 409 and anders.json()["detail"] == "public_url_change"
+    assert einstellung_holen("oeffentliche_adresse") == ADRESSE_021
+
+
+def test_the_address_the_authentik_card_confirms_is_stored_without_the_prefix(betreiber, unterpfad):
+    """Die Karte nennt die Adresse, wie der Browser sie nennt (mit Vorbau); gespeichert wird sie ohne."""
+    antwort = betreiber.post("/api/oidc/authentik/address", json={"public_url": ADRESSE_021 + VORBAU})
+    assert antwort.status_code == 200, antwort.text
+    assert einstellung_holen("oeffentliche_adresse") == ADRESSE_021
+    assert antwort.json()["public_url"] == ADRESSE_021 + VORBAU, "die Karte zeigt, was das Modul benutzt"
+    assert betreiber.get("/api/einstellungen").json()["oeffentliche_adresse"] == ADRESSE_021
 
 
 def test_the_mail_account_return_address_does_not_double_the_prefix(unterpfad):
-    """``mailoauth`` haengte den Vorbau schon in 0.21 an die gespeicherte Adresse; die Wanderung hat ihn nun dort
-    hineingeschrieben. Die Rueckkehr-Adresse beim Postfach-Anbieter bleibt dieselbe."""
+    """``mailoauth`` haengte den Vorbau schon in 0.21 an die gespeicherte Adresse und tut es weiter; ein Vorbau, der
+    schon dasteht, wird nicht noch einmal angehaengt. Die Rueckkehr-Adresse beim Postfach-Anbieter bleibt dieselbe."""
     from app.routers.mailoauth import _rueckkehr
 
     erwartet = f"{ADRESSE_021}{VORBAU}/api/mailoauth/google/zurueck"
