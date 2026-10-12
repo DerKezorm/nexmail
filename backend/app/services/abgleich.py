@@ -83,6 +83,9 @@ class Runde:
     entfernt: int = 0
     geaendert: int = 0
     neu_aufgebaut: bool = False
+    #: Ältere Post unter ``hoechste_uid``, die bisher fehlte (Issue #9). Sie
+    #: zählt nicht zu ``neu``: Für Regeln und Meldungen ist sie nicht neu.
+    nachgeholt: int = 0
     #: Die Kennungen der neu hinzugekommenen Nachrichten. ⚠️ Die Regeln
     #: brauchen sie: Sie sollen auf **Neues** laufen, nicht bei jedem Abgleich
     #: über den ganzen Ordner - sonst schiebt eine Regel Post zurück, die
@@ -207,6 +210,68 @@ def _wichtigkeit_deuten(roh: bytes | None) -> str:
     return "normal"
 
 
+def _alle_uids(klient, vorhanden: int, pfad: str) -> tuple[set[int], bool]:
+    """Alle UIDs des gewählten Ordners, und ob die Liste vollständig ist.
+
+    ⚠️ **Ein ``SEARCH ALL`` kann gekappt ankommen, ohne Fehler** (Issue #9).
+    Ein Server mit Mengengrenze (RFC 9738, ``MESSAGELIMIT``) durchsucht nur
+    die neuesten N Nachrichten, von der höchsten UID abwärts, und meldet das
+    nur als Antwortcode am ``OK``, den ``imaplib`` nicht weiterreicht. Bei
+    Gmail standen große Ordner danach auf genau 1000. Der Maßstab ist deshalb
+    ``EXISTS`` aus dem ``SELECT``: So viele Nachrichten liegen im Ordner.
+
+    Fehlen welche, wird abwärts weitergefragt (``UID SEARCH UID 1:<kleinste-1>``),
+    wie es RFC 9738 vorsieht, bis die Zahl stimmt oder nichts mehr kommt.
+    Im gewöhnlichen Fall kostet das nichts: Eine vollständige Antwort braucht
+    keine zweite Frage.
+
+    ⚠️ **Eine Liste, die auch danach nicht stimmt, gilt als unvollständig**,
+    und der Abgleich entfernt dann nichts. Mehr als ``EXISTS`` ist dagegen
+    harmlos (Post kam zwischen ``SELECT`` und ``SEARCH``).
+    """
+    alle = set(klient.search(["ALL"]))
+    if len(alle) >= vorhanden:
+        return alle, True
+
+    logger.info(
+        "SEARCH ALL in %s returned %d of %d messages; asking for the rest in slices.",
+        pfad,
+        len(alle),
+        vorhanden,
+    )
+    runden = 0
+    try:
+        while alle and len(alle) < vorhanden and min(alle) > 1:
+            runden += 1
+            weitere = set(klient.search(["UID", f"1:{min(alle) - 1}"])) - alle
+            if not weitere:
+                break
+            alle |= weitere
+        # Ein Server, der von unten zählt statt von oben, bekommt dieselbe
+        # Frage in die andere Richtung. ``n:*`` trifft immer die höchste UID,
+        # auch wenn n darüber liegt; die schon bekannte fällt heraus.
+        while alle and len(alle) < vorhanden:
+            runden += 1
+            weitere = set(klient.search(["UID", f"{max(alle) + 1}:*"])) - alle
+            if not weitere:
+                break
+            alle |= weitere
+    except Exception as fehler:  # noqa: BLE001 - dann eben unvollständig, nicht kaputt
+        logger.warning("Listing the rest of %s failed: %s", pfad, fehler)
+
+    vollstaendig = len(alle) >= vorhanden
+    if vollstaendig:
+        logger.info("Collected all %d UIDs of %s in %d more searches.", len(alle), pfad, runden)
+    else:
+        logger.warning(
+            "Only %d of %d UIDs of %s could be listed; nothing is removed this round.",
+            len(alle),
+            vorhanden,
+            pfad,
+        )
+    return alle, vollstaendig
+
+
 def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Runde:
     """Einen Ordner auf Stand bringen."""
     runde = Runde()
@@ -227,13 +292,17 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
         runde.neu_aufgebaut = True
     ordner.uidvalidity = gueltigkeit
 
-    alle_uids = set(klient.search(["ALL"]))
+    alle_uids, vollstaendig = _alle_uids(klient, int(zustand.get(b"EXISTS", 0) or 0), ordner.pfad)
 
     # --- Verschwundene entfernen ---------------------------------------- #
     bekannt = set(
         db.execute(select(Nachricht.uid).where(Nachricht.ordner_id == ordner.id)).scalars().all()
     )
-    verschwunden = bekannt - alle_uids
+    # ⚠️ **Nur aus einer vollständigen Liste.** Was in einer gekappten Liste
+    # fehlt, ist nicht verschwunden. Issue #9: Gmail lieferte die neuesten
+    # 1000, und jede neue Mail drückte eine alte aus der Datenbank, während
+    # der Ordner auf genau 1000 stehen blieb.
+    verschwunden = bekannt - alle_uids if vollstaendig else set()
     if verschwunden:
         db.execute(
             delete(Nachricht).where(
@@ -248,7 +317,14 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
     # liegen die fertigen Blöcke schon in der Datenbank. Ohne diesen Filter
     # wollte der nächste Lauf sie noch einmal anlegen, scheiterte an
     # ``uq_nachricht_uid`` und kam nie mehr voran (Issue #7).
-    neue = sorted(u for u in alle_uids if u > ordner.hoechste_uid and u not in bekannt)
+    #
+    # ⚠️ **Und neu ist auch, was UNTER ``hoechste_uid`` fehlt** (Issue #9).
+    # Lieferte der Server einmal nur die neuesten UIDs, stand die Marke ganz
+    # oben, und die ältere Post kam nie. Nachgeholtes ist aber keine neue
+    # Post: Regeln, Abwesenheitsnotiz und Web Push sehen nur, was über der
+    # Marke ankam.
+    grenze = ordner.hoechste_uid
+    neue = sorted(u for u in alle_uids if u not in bekannt)
     for start in range(0, len(neue), BLOCK):
         haufen = neue[start : start + BLOCK]
         antwort = klient.fetch(
@@ -278,9 +354,12 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
         for uid, felder in antwort.items():
             zeile = _aus_fetch(db, konto, ordner, uid, felder)
             db.add(zeile)
-            frische.append(zeile)
+            if uid > grenze:
+                frische.append(zeile)
+                runde.neu += 1
+            else:
+                runde.nachgeholt += 1
             atome.update(schlagwortdienst.atome_lesen(zeile))
-            runde.neu += 1
         # ⚠️ **Fremde Atome legen ihre Definition selbst an.** Was Thunderbird
         # oder das Telefon als Keyword vergeben hat, soll hier als Schlagwort
         # erscheinen — nicht unsichtbar an der Mail kleben.

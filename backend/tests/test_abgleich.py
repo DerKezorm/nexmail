@@ -131,6 +131,9 @@ class FalscherServer:
         return {
             b"UIDVALIDITY": self.ordner[pfad]["uidvalidity"],
             b"PERMANENTFLAGS": dauerhaft,
+            # Seit Issue #9 der Maßstab, an dem der Abgleich eine gekappte
+            # Suche erkennt.
+            b"EXISTS": len(self.ordner[pfad]["nachrichten"]),
         }
 
     def search(self, _kriterien):
@@ -1216,3 +1219,136 @@ def test_eine_abgewiesene_anmeldung_bleibt_eine_gewoehnliche_absage(db, konto, m
     assert not [e for e in caplog.records if e.levelno >= logging.ERROR], (
         "Ein falsches Passwort ist kein Programmfehler."
     )
+
+
+# --- Gekappte Suche (Issue #9) -------------------------------------------- #
+
+
+class GekappterServer(FalscherServer):
+    """Ein Server mit Mengengrenze wie in RFC 9738: Jede Suche durchsucht nur
+    die ``grenze`` höchsten UIDs ihres Bereichs und sagt nichts davon.
+
+    ``von_unten`` zählt andersherum, für Server, die es so halten.
+    ``nachfragen_klemmt`` lässt jede Suche nach einem UID-Bereich scheitern.
+    """
+
+    def __init__(self, grenze: int, von_unten: bool = False):
+        super().__init__()
+        self.grenze = grenze
+        self.von_unten = von_unten
+        self.nachfragen_klemmt = False
+        self.suchen: list[list[str]] = []
+
+    def search(self, kriterien):
+        self.suchen.append(list(kriterien))
+        alle = sorted(self.ordner[self._aktuell]["nachrichten"])
+        if kriterien != ["ALL"]:
+            assert kriterien[0] == "UID", kriterien
+            if self.nachfragen_klemmt:
+                from imapclient.exceptions import IMAPClientError
+
+                raise IMAPClientError("SEARCH failed")
+            unten, _, oben = kriterien[1].partition(":")
+            hoechste = alle[-1] if alle else 0
+            bis = hoechste if oben == "*" else int(oben)
+            # ``n:*`` meint auch dann die höchste UID, wenn n darüber liegt.
+            von = min(int(unten), hoechste) if oben == "*" else int(unten)
+            alle = [u for u in alle if von <= u <= bis]
+        return alle[: self.grenze] if self.von_unten else alle[-self.grenze :]
+
+
+def _gekappt(anzahl: int, grenze: int, **art) -> GekappterServer:
+    server = GekappterServer(grenze, **art)
+    server.anlegen("INBOX")
+    for uid in range(1, anzahl + 1):
+        # Lücken wie bei einem echten Ordner, aus dem schon gelöscht wurde.
+        server.einwerfen("INBOX", uid * 3, f"Mail {uid}")
+    return server
+
+
+def test_eine_gekappte_suche_holt_trotzdem_den_ganzen_ordner(db, konto):
+    """Issue #9: Gmail lieferte von großen Ordnern nur die neuesten 1000 UIDs,
+    ohne Fehler. Der Ordner blieb auf genau 1000 stehen."""
+    server = _gekappt(25, grenze=10)
+    ordner = _posteingang(db, konto)
+
+    runde = abgleich.ordner_abgleichen(server, db, konto, ordner)
+
+    assert server.suchen[0] == ["ALL"]
+    assert len(server.suchen) > 1  # Bodenschwelle: die Kappung griff wirklich
+    assert db.query(Nachricht).count() == 25
+    assert ordner.anzahl == 25
+    assert runde.neu == 25
+
+
+def test_ein_server_der_von_unten_kappt_wird_aufwaerts_gefragt(db, konto):
+    server = _gekappt(25, grenze=10, von_unten=True)
+
+    abgleich.ordner_abgleichen(server, db, konto, _posteingang(db, konto))
+
+    assert db.query(Nachricht).count() == 25
+
+
+def test_eine_vollstaendige_suche_kostet_keine_zweite_frage(db, konto):
+    server = _gekappt(25, grenze=1000)
+
+    abgleich.ordner_abgleichen(server, db, konto, _posteingang(db, konto))
+
+    assert server.suchen == [["ALL"]]
+    assert db.query(Nachricht).count() == 25
+
+
+def test_was_in_einer_gekappten_liste_fehlt_wird_nicht_entfernt(db, konto):
+    """⚠️ Der eigentliche Schaden aus Issue #9: Jede neue Mail drückte eine alte
+    aus der Datenbank, weil sie aus dem Fenster der neuesten 1000 fiel. Lässt
+    sich der Rest nicht nachfragen, darf nichts verschwinden."""
+    server = _gekappt(25, grenze=1000)
+    ordner = _posteingang(db, konto)
+    abgleich.ordner_abgleichen(server, db, konto, ordner)
+    assert db.query(Nachricht).count() == 25
+
+    server.grenze = 10
+    server.nachfragen_klemmt = True
+    server.einwerfen("INBOX", 1000, "Ganz neu")
+    runde = abgleich.ordner_abgleichen(server, db, konto, ordner)
+
+    assert runde.entfernt == 0
+    assert runde.neu == 1
+    assert db.query(Nachricht).count() == 26
+
+
+def test_was_wirklich_fehlt_wird_aus_der_vollstaendigen_liste_entfernt(db, konto):
+    """Die Gegenprobe: Ist die Liste nach dem Nachfragen vollständig, wird
+    Verschwundenes weiterhin entfernt."""
+    server = _gekappt(25, grenze=1000)
+    ordner = _posteingang(db, konto)
+    abgleich.ordner_abgleichen(server, db, konto, ordner)
+
+    server.grenze = 10
+    del server.ordner["INBOX"]["nachrichten"][3]
+    runde = abgleich.ordner_abgleichen(server, db, konto, ordner)
+
+    assert runde.entfernt == 1
+    assert db.query(Nachricht).count() == 24
+
+
+def test_ein_haengengebliebener_ordner_holt_die_aeltere_post_nach(db, konto):
+    """Wer schon mit gekappter Liste abgeglichen hat, steht mit ``hoechste_uid``
+    ganz oben. Die ältere Post muss trotzdem kommen, aber als Nachgeholtes:
+    Regeln, Abwesenheitsnotiz und Web Push sehen nur echte Neuankömmlinge."""
+    server = _gekappt(25, grenze=10)
+    server.nachfragen_klemmt = True
+    ordner = _posteingang(db, konto)
+    abgleich.ordner_abgleichen(server, db, konto, ordner)
+    assert db.query(Nachricht).count() == 10  # der Zustand aus dem Issue
+    marke = ordner.hoechste_uid
+
+    server.nachfragen_klemmt = False
+    server.einwerfen("INBOX", 1000, "Ganz neu")
+    runde = abgleich.ordner_abgleichen(server, db, konto, ordner)
+
+    assert db.query(Nachricht).count() == 26
+    assert runde.nachgeholt == 15
+    assert runde.neu == 1
+    neu = db.get(Nachricht, runde.neue_ids[0])
+    assert len(runde.neue_ids) == 1 and neu.uid > marke
