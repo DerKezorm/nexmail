@@ -262,7 +262,7 @@ class FalscherSmtp:
         self.gesendet: list[tuple[str, list[str], bytes]] = []
         self.scheitert = False
 
-    def __call__(self, konto, passwort, empfaenger, roh):  # noqa: ARG002
+    def __call__(self, konto, passwort, empfaenger, roh, token=""):  # noqa: ARG002
         if self.scheitert:
             raise RuntimeError("Der Server nimmt gerade nichts an.")
         self.gesendet.append((konto.adresse, empfaenger, roh))

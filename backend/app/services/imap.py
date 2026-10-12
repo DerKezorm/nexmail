@@ -404,6 +404,30 @@ def fuer_konto(db, konto, app_passwort_wo: str = "") -> IMAPClient:
     (Import, Export) irgendwann mit einem abgelaufenen.
     """
     from . import konten as kontendienst
+
+    token = zugriffstoken_fuer_konto(db, konto)
+    if token:
+        return verbinden(
+            konto.imap_server, konto.imap_port, konto.imap_sicherheit,
+            konto.imap_benutzer, "", app_passwort_wo, token=token,
+        )
+
+    imap_pw, _ = kontendienst.passwoerter_lesen(konto)
+    return verbinden(
+        konto.imap_server, konto.imap_port, konto.imap_sicherheit,
+        konto.imap_benutzer, imap_pw, app_passwort_wo,
+    )
+
+
+def zugriffstoken_fuer_konto(db, konto) -> str:
+    """Das Zugriffstoken eines Postfachs mit Zustimmung, sonst leer.
+
+    ⚠️ **Empfangen und Senden holen es hier, an EINER Stelle.** Bis 0.23.2
+    holte es nur der Weg zum IMAP-Server; der Versand meldete sich mit dem
+    gespeicherten Passwort an, und das gibt es bei einem Google- oder
+    Microsoft-Postfach gar nicht. Kein solches Postfach hat je eine Mail
+    verschickt (Issue #8).
+    """
     from . import mailoauth
 
     if konto.oauth_zugang_id:
@@ -423,7 +447,7 @@ def fuer_konto(db, konto, app_passwort_wo: str = "") -> IMAPClient:
         # unerreichbarer Anbieter ist vorübergehend; alles andere braucht
         # jemanden, der neu zustimmt, und gehört damit an den roten Banner.
         try:
-            token = mailoauth.zugriffstoken(db, zugang)
+            return mailoauth.zugriffstoken(db, zugang)
         except mailoauth.OauthFehler as f:
             if str(f) == "oauth_nicht_erreichbar":
                 raise Verbindungsfehler(
@@ -437,13 +461,4 @@ def fuer_konto(db, konto, app_passwort_wo: str = "") -> IMAPClient:
                 "Einstellungen → Sicherheit neu verbinden.",
                 str(f),
             ) from f
-        return verbinden(
-            konto.imap_server, konto.imap_port, konto.imap_sicherheit,
-            konto.imap_benutzer, "", app_passwort_wo, token=token,
-        )
-
-    imap_pw, _ = kontendienst.passwoerter_lesen(konto)
-    return verbinden(
-        konto.imap_server, konto.imap_port, konto.imap_sicherheit,
-        konto.imap_benutzer, imap_pw, app_passwort_wo,
-    )
+    return ""

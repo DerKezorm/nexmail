@@ -775,6 +775,7 @@
     "nie_geprueft": "Not checked yet",
     "ordner_gefunden": "{{count}} folders found",
     "passwort": "Password",
+    "passwort_statt_zustimmung": "Enter the password for this mailbox. The consent will no longer be used after that.",
     "passwort_liegt_vor": "Stored. Click to change it. nexmail cannot display it.",
     "port": "Port",
     "server": "Server",

@@ -775,6 +775,7 @@
     "nie_geprueft": "Noch nicht geprüft",
     "ordner_gefunden": "{{count}} Ordner gefunden",
     "passwort": "Passwort",
+    "passwort_statt_zustimmung": "Trag das Passwort für dieses Postfach ein. Die Zustimmung wird danach nicht mehr benutzt.",
     "passwort_liegt_vor": "Gespeichert. Zum Ändern hineinklicken, anzeigen kann nexmail es nicht.",
     "port": "Port",
     "server": "Server",

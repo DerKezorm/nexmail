@@ -190,8 +190,21 @@ def versenden(db: Session, zeile: Ausgang) -> None:
     db.refresh(zeile)
 
     try:
-        _smtp_senden(konto, smtp_pw, empfaenger, roh)
+        # ⚠️ **Mit Zustimmung das Token, wie beim Empfangen.** Bis 0.23.2 ging
+        # hier immer das Passwort hinaus (Issue #8); Google und Microsoft
+        # nehmen beim Senden keines an, und ein verbundenes Postfach hat
+        # meist gar keines. Frisch geholt je Versand: Es lebt eine Stunde.
+        token = imapdienst.zugriffstoken_fuer_konto(db, konto)
+        _smtp_senden(konto, smtp_pw, empfaenger, roh, token=token)
     except Exception as fehler:  # noqa: BLE001
+        # ⚠️ **Eine abgelaufene Zustimmung gehört an den roten Banner**, wie
+        # beim Abgleich. Sonst stünde nur im Postausgang „gescheitert", und
+        # niemand käme darauf, dass neu verbunden werden muss.
+        if (
+            isinstance(fehler, imapdienst.Verbindungsfehler)
+            and fehler.art == imapdienst.Fehlerart.ANMELDUNG
+        ):
+            konto.stoerung = "anmeldung"
         zeile.stand = "gescheitert" if zeile.versuche >= MAX_VERSUCHE else "wartet"
         zeile.letzter_fehler = str(fehler)[:500]
         # ⚠️ **Geplantes rueckt nach hinten statt sofort wieder dran zu sein.**

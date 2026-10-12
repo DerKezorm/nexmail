@@ -120,6 +120,10 @@ class Aenderung(Eingabe):
 
     imap_passwort: str = Field(default="", max_length=500)
     smtp_passwort: str = Field(default="", max_length=500)
+    #: ⚠️ **Nicht mitgeschickt heißt unverändert**, wie beim Passwort. Leer
+    #: heißt ausdrücklich „zurück aufs Passwort", eine Kennung „über diese
+    #: Zustimmung anmelden".
+    oauth_zugang_id: str | None = Field(default=None, max_length=32)
 
 
 class TeilAntwort(BaseModel):
@@ -198,6 +202,10 @@ class KontoAntwort(BaseModel):
     #: das saehe ein Google-Postfach aus wie jedes andere und niemand wuesste,
     #: warum dort keine Passwortfelder stehen.
     oauth_art: str = ""
+    #: Welche Zustimmung das Postfach trägt. ⚠️ **Das Formular braucht sie**,
+    #: sonst stand beim Bearbeiten immer „Mit Passwort" da, auch bei einem
+    #: Google-Postfach (Issue #8).
+    oauth_zugang_id: str = ""
     #: Wie viele Kalender an derselben Zustimmung haengen. ⚠️ **Die Zahl
     #: gehoert in die Rueckfrage**, sonst hakt man „Kalender mit entfernen" an,
     #: ohne zu wissen, wie viele das sind.
@@ -228,6 +236,7 @@ def _antwort(konto) -> KontoAntwort:
         tags=kontendienst.tags_lesen(konto),
         aliase=[AliasAntwort(adresse=a.adresse, name=a.name) for a in aliasdienst.lesen(konto)],
         oauth_art=konto.oauth_zugang.art if konto.oauth_zugang else "",
+        oauth_zugang_id=konto.oauth_zugang_id or "",
         oauth_kalender=len(konto.oauth_zugang.kalender) if konto.oauth_zugang else 0,
     )
 

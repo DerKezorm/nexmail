@@ -101,7 +101,8 @@ class Zugangsdaten:
     #: Statt der beiden Passwoerter: eine erteilte Zustimmung.
     #: ⚠️ **Google und Microsoft lassen nichts anderes mehr zu** — Basic Auth
     #: ueber IMAP und SMTP wird dort abgewiesen.
-    oauth_zugang_id: str = ""
+    #: ⚠️ Beim Ändern heißt ``None`` „unverändert", leer „zurück aufs Passwort".
+    oauth_zugang_id: str | None = ""
     #: Zusätzliche Absenderadressen. ⚠️ ``None`` heißt „nicht mitgeschickt",
     #: also unverändert — dieselbe Regel wie beim Passwort und bei ``tags``.
     #: Eine leere Liste heißt dagegen ausdrücklich „alle weg".
@@ -263,6 +264,8 @@ def aendern(db: Session, benutzer: Benutzer, konto_id: str, daten: Zugangsdaten)
     if daten.aliase is not None:
         aliasdienst.schreiben(konto, daten.aliase)
 
+    _anmeldeweg_wechseln(db, benutzer, konto, daten)
+
     if daten.imap_passwort:
         konto.imap_passwort = crypto.verschluesseln(
             daten.imap_passwort, _kontext(konto.id, "imap_passwort")
@@ -275,6 +278,40 @@ def aendern(db: Session, benutzer: Benutzer, konto_id: str, daten: Zugangsdaten)
     db.commit()
     logger.info("A mailbox was changed.")
     return konto
+
+
+def _anmeldeweg_wechseln(db: Session, benutzer: Benutzer, konto: Konto, daten: Zugangsdaten) -> None:
+    """Zwischen Passwort und Zustimmung umstellen, wie in Outlook oder Thunderbird.
+
+    ⚠️ **Bis 0.23.2 übernahm das Ändern die Auswahl gar nicht** (Issue #8):
+    Das Formular bot die Umstellung an, der Server ließ ``oauth_zugang_id``
+    liegen, und nach dem Neuladen stand wieder „Mit Passwort" da.
+
+    ``None`` heißt nicht mitgeschickt, also unverändert.
+    """
+    gewuenscht = daten.oauth_zugang_id
+    if gewuenscht is None or gewuenscht == (konto.oauth_zugang_id or ""):
+        return
+    if gewuenscht:
+        from ..models import OauthZugang
+
+        # ⚠️ Die Kennung kommt aus dem Browser: nur eine eigene Zustimmung.
+        zugang = db.get(OauthZugang, gewuenscht)
+        if zugang is None or zugang.benutzer_id != benutzer.id:
+            raise KontoFehler("oauth_zugang_unbekannt")
+        konto.oauth_zugang_id = zugang.id
+        # ⚠️ **Die alten Passwörter gehen weg.** Mit Zustimmung braucht sie
+        # niemand mehr, und ein Geheimnis, das keiner benutzt, liegt nur noch
+        # in jeder Sicherung herum.
+        konto.imap_passwort = crypto.verschluesseln("", _kontext(konto.id, "imap_passwort"))
+        konto.smtp_passwort = crypto.verschluesseln("", _kontext(konto.id, "smtp_passwort"))
+        return
+    # ⚠️ **Zurück aufs Passwort nur mit einem neuen.** Die alten sind beim
+    # Wechsel zur Zustimmung gelöscht worden; ohne neues hätte das Postfach
+    # gar keinen Zugang mehr.
+    if not (daten.imap_passwort and daten.smtp_passwort):
+        raise KontoFehler("passwort_fehlt")
+    konto.oauth_zugang_id = None
 
 
 def absendername(konto: Konto) -> str:

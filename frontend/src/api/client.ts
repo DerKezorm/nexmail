@@ -267,6 +267,8 @@ export interface KontoZeile {
   aliase?: { adresse: string; name: string }[]
   /** 'google', 'microsoft' — oder leer bei einem gewöhnlichen IMAP-Postfach. */
   oauth_art?: string
+  /** Die Zustimmung, über die sich das Postfach anmeldet; leer heißt Passwort. */
+  oauth_zugang_id?: string
   /** Wie viele Kalender an derselben Zustimmung hängen. */
   oauth_kalender?: number
 }

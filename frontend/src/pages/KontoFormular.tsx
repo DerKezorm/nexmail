@@ -140,7 +140,14 @@ export function KontoFormular({
   const [zugaenge, setZugaenge] = useState<
     Array<{ id: string; art: string; adresse: string }>
   >([])
-  const [zugangId, setZugangId] = useState('')
+  /* ⚠️ **Vorbelegt mit der Anmeldeart, die das Postfach wirklich hat.** Bis
+     0.23.2 begann das Feld immer bei „Mit Passwort", auch bei einem
+     Google-Postfach (Issue #8). */
+  const [zugangId, setZugangId] = useState(bestehend?.oauth_zugang_id ?? '')
+  /* Ein gespeichertes Passwort gibt es nur bei einem Postfach, das schon mit
+     Passwort lief. Wer von einer Zustimmung zurück aufs Passwort wechselt,
+     muss eines eintragen: Die alten hat der Wechsel zur Zustimmung gelöscht. */
+  const passwortGespeichert = Boolean(bestehend) && !bestehend?.oauth_zugang_id
   useEffect(() => {
     void api
       .holen<Array<{ id: string; art: string; adresse: string }>>('/api/mailoauth/zugaenge')
@@ -278,7 +285,7 @@ export function KontoFormular({
     felder.adresse.includes('@') &&
     // Beim Bearbeiten ist ein leeres Passwortfeld erlaubt: Es heißt
     // „unverändert", nicht „leer". Mit einer Zustimmung gibt es gar keines.
-    (Boolean(bestehend) || Boolean(zugangId) || felder.passwort.length > 0) &&
+    (passwortGespeichert || Boolean(zugangId) || felder.passwort.length > 0) &&
     felder.imap_server &&
     felder.smtp_server &&
     felder.imap_benutzer &&
@@ -380,10 +387,16 @@ export function KontoFormular({
         label={t('konto.passwort')}
         type="password"
         autoComplete="new-password"
-        hint={bestehend && !passwortBeruehrt ? t('konto.passwort_liegt_vor') : undefined}
-        value={bestehend && !passwortBeruehrt ? '••••••••••' : felder.passwort}
+        hint={
+          passwortGespeichert && !passwortBeruehrt
+            ? t('konto.passwort_liegt_vor')
+            : bestehend && !passwortGespeichert
+              ? t('konto.passwort_statt_zustimmung')
+              : undefined
+        }
+        value={passwortGespeichert && !passwortBeruehrt ? '••••••••••' : felder.passwort}
         onFocus={() => {
-          if (bestehend && !passwortBeruehrt) {
+          if (passwortGespeichert && !passwortBeruehrt) {
             setPasswortBeruehrt(true)
             setzen({ passwort: '' })
           }
