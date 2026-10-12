@@ -1036,7 +1036,7 @@
     "buendeln_hinweis": "If a round fetches several messages, you get one notification with the count instead of five separate ones.",
     "dieses": "(this one)",
     "erlauben": "Allow notifications",
-    "fehler_abo": "The browser's push service did not accept this device ({{grund}}). In Brave, turn on “Use Google services for push messaging” under privacy settings. Some networks also block the push service.",
+    "fehler_abo": "The browser's push service did not accept this device ({{grund}}). Some privacy-focused browsers block Google's push service or leave it out: in Brave, turn on “Use Google services for push messaging” under privacy settings; builds without Google services, such as ungoogled-chromium or Helium, may not support web push at all. Some networks also block the push service.",
     "fehler_arbeiter": "The browser could not start nexmail's service worker ({{grund}}). This needs HTTPS, and a reverse proxy has to deliver sw.js from the same address as JavaScript.",
     "geraet_entfernen": "Remove device",
     "geraet_hinweis": "Permission belongs to the browser, not to your account. Grant it once on every device where you want notifications.",

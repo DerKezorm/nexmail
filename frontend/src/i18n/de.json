@@ -1036,7 +1036,7 @@
     "buendeln_hinweis": "Holt eine Runde mehrere Mails, kommt eine Meldung mit der Zahl statt fünf einzelner.",
     "dieses": "(dieses)",
     "erlauben": "Benachrichtigungen erlauben",
-    "fehler_abo": "Der Push-Dienst des Browsers hat dieses Gerät nicht angenommen ({{grund}}). In Brave muss dafür in den Datenschutz-Einstellungen der Schalter für Googles Push-Dienst an sein (englisch „Use Google services for push messaging“). Manche Netze sperren den Push-Dienst auch.",
+    "fehler_abo": "Der Push-Dienst des Browsers hat dieses Gerät nicht angenommen ({{grund}}). Manche datenschutzfreundlichen Browser sperren Googles Push-Dienst oder lassen ihn ganz weg: In Brave muss in den Datenschutz-Einstellungen der Schalter für Googles Push-Dienst an sein (englisch „Use Google services for push messaging“); Browser ohne Google-Dienste wie ungoogled-chromium oder Helium können Web Push womöglich gar nicht. Manche Netze sperren den Push-Dienst auch.",
     "fehler_arbeiter": "Der Browser konnte den Service Worker von nexmail nicht starten ({{grund}}). Dafür braucht es HTTPS, und ein Reverse Proxy muss sw.js unter derselben Adresse als JavaScript ausliefern.",
     "geraet_entfernen": "Gerät entfernen",
     "geraet_hinweis": "Die Erlaubnis gehört zum Browser, nicht zum Konto. An jedem Gerät, an dem du Meldungen willst, erteilst du sie einmal.",
