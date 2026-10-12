@@ -616,6 +616,18 @@ class Nachricht(Base):
         # verwaiste Aufgabe, weil dann alles abgesucht wird, ohne etwas zu
         # finden.
         Index("ix_nachricht_message_id", "benutzer_id", "message_id"),
+        # ⚠️ **Die Strangzuordnung beim Abgleich, je geholter Mail eine Frage**
+        # (``services/straenge.py``, Issue #9). Seit es ``ix_nachricht_zeitachse``
+        # gibt, nahm SQLite ihn auch für den Rückfall über den Betreff, weil er
+        # ``ORDER BY datum`` trägt: ``datum >= Mail - 30 Tage`` hat kein oberes
+        # Ende, also las es beim Nachholen alter Post fast den ganzen Bestand
+        # des Benutzers, je Mail. Gemessen bei 20.000 Nachrichten: 14,7 ms statt
+        # 0,4 ms, linear mit dem Bestand. Die Antwortkette suchte über
+        # ``thread_key`` ohne passenden Index und kostete 16,8 ms. nexmail ruft
+        # nie ``ANALYZE`` auf; ohne Statistik nimmt SQLite den Index mit den
+        # meisten Gleichheiten, und das sind diese beiden.
+        Index("ix_nachricht_betreff", "konto_id", "betreff_kern", "datum"),
+        Index("ix_nachricht_strang", "benutzer_id", "thread_key"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

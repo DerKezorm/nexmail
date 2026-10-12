@@ -1352,3 +1352,99 @@ def test_ein_haengengebliebener_ordner_holt_die_aeltere_post_nach(db, konto):
     assert runde.neu == 1
     neu = db.get(Nachricht, runde.neue_ids[0])
     assert len(runde.neue_ids) == 1 and neu.uid > marke
+
+
+# --- Keine Schreibsperre, während der Server antwortet (Issue #9) -------- #
+#
+# ⚠️ **SQLite hat EINEN Schreiber.** Wer löscht und danach auf den IMAP-Server
+# wartet, hält die Sperre so lange, wie der Server braucht. Jeder andere
+# Schreiber wartet ``busy_timeout`` (10 s) und scheitert dann mit „database is
+# locked": bei einem Melder ein Dashboard über ``/api/v1``, während Gmail einen
+# großen Ordner lieferte. Geprüft wird mit einer zweiten, rohen Verbindung,
+# die gar nicht wartet: ``BEGIN IMMEDIATE`` will die Schreibsperre sofort.
+
+
+def _schreibsperre_frei() -> bool:
+    import sqlite3
+
+    from app.db import engine
+
+    verbindung = sqlite3.connect(engine.url.database, timeout=0)
+    try:
+        verbindung.execute("BEGIN IMMEDIATE")
+        verbindung.rollback()
+        return True
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        verbindung.close()
+
+
+class Sperrfuehler(FalscherServer):
+    """Merkt sich bei jeder Frage an den Server, ob die Datenbank frei war."""
+
+    def __init__(self):
+        super().__init__()
+        self.gesperrt: list[str] = []
+
+    def _fuehlen(self, befehl: str) -> None:
+        if not _schreibsperre_frei():
+            self.gesperrt.append(befehl)
+
+    def search(self, kriterien):
+        self._fuehlen("SEARCH")
+        return super().search(kriterien)
+
+    def fetch(self, uids, felder):
+        self._fuehlen("FETCH")
+        return super().fetch(uids, felder)
+
+
+def test_der_fuehler_spuert_eine_gehaltene_sperre(db, konto):
+    """Bodenschwelle: Sonst wären die beiden Tests darunter grün, egal was
+    der Abgleich tut."""
+    from sqlalchemy import update
+
+    from app.models import Ordner
+
+    assert _schreibsperre_frei()
+    db.execute(update(Ordner).where(Ordner.id == _posteingang(db, konto).id).values(name="x"))
+    try:
+        assert not _schreibsperre_frei()
+    finally:
+        db.rollback()
+    assert _schreibsperre_frei()
+
+
+def test_nach_dem_neuaufbau_wartet_keine_sperre_auf_den_server(db, konto):
+    server = Sperrfuehler()
+    server.anlegen("INBOX", uidvalidity=100)
+    server.einwerfen("INBOX", 1, "Alt")
+    ordner = _posteingang(db, konto)
+    abgleich.ordner_abgleichen(server, db, konto, ordner)
+
+    server.ordner["INBOX"]["uidvalidity"] = 777
+    server.ordner["INBOX"]["nachrichten"] = {}
+    server.einwerfen("INBOX", 1, "Neu")
+    server.gesperrt.clear()
+
+    runde = abgleich.ordner_abgleichen(server, db, konto, ordner)
+    assert runde.neu_aufgebaut is True
+    assert server.gesperrt == []
+
+
+def test_nach_dem_entfernen_wartet_keine_sperre_auf_den_server(db, konto):
+    server = Sperrfuehler()
+    server.anlegen("INBOX")
+    server.einwerfen("INBOX", 1, "Bleibt")
+    server.einwerfen("INBOX", 2, "Verschwindet")
+    ordner = _posteingang(db, konto)
+    abgleich.ordner_abgleichen(server, db, konto, ordner)
+
+    del server.ordner["INBOX"]["nachrichten"][2]
+    server.einwerfen("INBOX", 3, "Neu")
+    server.gesperrt.clear()
+
+    runde = abgleich.ordner_abgleichen(server, db, konto, ordner)
+    assert runde.entfernt == 1 and runde.neu == 1
+    assert server.gesperrt == []

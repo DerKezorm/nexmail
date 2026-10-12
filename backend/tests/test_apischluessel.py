@@ -312,6 +312,47 @@ def test_zuletzt_benutzt_schreibt_nicht_bei_jeder_abfrage(klient, ohne_netz, db)
     assert db.query(ApiSchluessel).one().zuletzt_benutzt == erster
 
 
+def test_eine_besetzte_datenbank_kostet_nicht_die_abfrage(klient, ohne_netz, db, monkeypatch):
+    """Issue #9: Ein Abgleich hielt die Datenbank länger als ``busy_timeout``,
+    und ``/api/v1`` scheiterte mit 500, nur weil sich ``zuletzt_benutzt`` nicht
+    schreiben ließ.
+
+    ⚠️ **Es scheitert SQLites eigenes COMMIT, nicht ``Session.commit``.** So
+    bleibt die Sitzung zurück wie nach einer echten Sperre: mit offenem
+    Schreibvorgang, der ohne ``rollback`` jede weitere Abfrage derselben
+    Anfrage umwirft. Eine echte Sperre kostete den Test zehn Sekunden Warten."""
+    import sqlite3
+
+    from app.db import engine
+
+    einrichten(klient)
+    konto = _postfach(klient, "privat@example.com")
+    _aufmachen(klient)
+    klartext = _schluessel(klient, [konto])["schluessel"]
+
+    echt = engine.dialect.do_commit
+    besetzt = {"noch": 1}
+
+    def do_commit(dbapi_verbindung):
+        if besetzt["noch"]:
+            besetzt["noch"] -= 1
+            raise sqlite3.OperationalError("database is locked")
+        return echt(dbapi_verbindung)
+
+    monkeypatch.setattr(engine.dialect, "do_commit", do_commit)
+    antwort = klient.get("/api/v1/me", headers=_mit(klartext))
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json()["mailboxes"]
+    assert besetzt["noch"] == 0, "Der Vermerk wurde gar nicht versucht."
+    db.expire_all()
+    assert db.query(ApiSchluessel).one().zuletzt_benutzt is None
+
+    # Beim nächsten Mal klappt der Vermerk.
+    klient.get("/api/v1/me", headers=_mit(klartext))
+    db.expire_all()
+    assert db.query(ApiSchluessel).one().zuletzt_benutzt is not None
+
+
 # --- Was herauskommt ----------------------------------------------------- #
 
 

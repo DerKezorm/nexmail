@@ -329,3 +329,61 @@ def test_die_kette_traegt_auch_bei_neuen_beteiligten(welt, db):
         tage=2,
     )
     assert dritter.thread_key == erste.thread_key
+
+
+# --- Die Pläne beim Abgleich (Issue #9) ----------------------------------- #
+#
+# ⚠️ **Gezählt werden Pläne, nicht Millisekunden.** Gemessen am 12.10.2026 bei
+# 20.000 Nachrichten: Betreff-Rückfall 24,6 ms je Mail über
+# ``ix_nachricht_zeitachse``, 0,7 ms über ``ix_nachricht_betreff``; Kette
+# 23,4 ms über ``ix_nachricht_benutzer_id``, 1,2 ms getrennt. Eine Zeit ist auf
+# einem geteilten Rechner keine Zusicherung, der Plan schon: Ohne Statistik
+# (nexmail ruft nie ``ANALYZE``) wählt SQLite ihn allein aus Abfrage und Indizes.
+
+
+def _plaene(db, aufruf) -> list[str]:
+    """Die Pläne aller Abfragen auf ``nachricht``, die ``aufruf`` stellt."""
+    from sqlalchemy import event
+
+    from app.db import engine
+
+    gestellt: list[tuple[str, tuple]] = []
+
+    def mitschreiben(_conn, _cursor, statement, parameters, _context, _executemany):
+        if statement.lstrip().upper().startswith("SELECT") and "FROM nachricht" in statement:
+            gestellt.append((statement, tuple(parameters)))
+
+    event.listen(engine, "before_cursor_execute", mitschreiben)
+    try:
+        aufruf()
+    finally:
+        event.remove(engine, "before_cursor_execute", mitschreiben)
+    assert gestellt, "Die Messung hat keine Abfrage gesehen."
+    verbindung = db.connection()
+    return [
+        " | ".join(z[3] for z in verbindung.exec_driver_sql("EXPLAIN QUERY PLAN " + sql, p))
+        for sql, p in gestellt
+    ]
+
+
+def test_der_betreff_rueckfall_liest_nicht_den_ganzen_bestand(welt, db):
+    konto, _ordner = welt
+    plaene = _plaene(db, lambda: straenge.schluessel(
+        db, konto, message_id="<neu@x>", references=[], in_reply_to="",
+        betreff_kern="rechnung", beteiligte={"anna@example.com"},
+        datum=datetime(2020, 1, 1, tzinfo=timezone.utc),
+    ))
+    assert len(plaene) == 1, plaene
+    assert "USING INDEX ix_nachricht_betreff (" in plaene[0], plaene
+
+
+def test_die_kette_liest_nicht_den_ganzen_bestand(welt, db):
+    konto, _ordner = welt
+    plaene = _plaene(db, lambda: straenge.schluessel(
+        db, konto, message_id="<neu@x>", references=["<fehlt@x>"], in_reply_to="<auch@x>",
+        betreff_kern="", beteiligte=set(), datum=None,
+    ))
+    # Keine Mail der Kette liegt da, also laufen beide Fragen.
+    assert len(plaene) == 2, plaene
+    assert "ix_nachricht_message_id" in plaene[0], plaene
+    assert "ix_nachricht_strang" in plaene[1], plaene

@@ -291,6 +291,14 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
         ordner.hoechste_uid = 0
         runde.neu_aufgebaut = True
     ordner.uidvalidity = gueltigkeit
+    # ⚠️ **Festschreiben, bevor der Server wieder gefragt wird** (Issue #9).
+    # Ein ``DELETE`` nimmt SQLites einzige Schreibsperre, und die bliebe bis
+    # zum ersten fertigen Block stehen, also über alle Suchen und den ersten
+    # Abruf hinweg. Jeder andere Schreiber scheitert nach ``busy_timeout``
+    # mit „database is locked". Abreißen kann danach nichts: Ein geleerter
+    # Ordner mit neuer UIDVALIDITY und Marke 0 ist ein gültiger Stand.
+    if runde.neu_aufgebaut:
+        db.commit()
 
     alle_uids, vollstaendig = _alle_uids(klient, int(zustand.get(b"EXISTS", 0) or 0), ordner.pfad)
 
@@ -310,6 +318,9 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
             )
         )
         runde.entfernt = len(verschwunden)
+        # Aus demselben Grund wie oben: Der erste Abruf darf nicht unter der
+        # Sperre auf den Server warten.
+        db.commit()
 
     # --- Neue holen ------------------------------------------------------ #
     # ⚠️ **Was schon da ist, ist nicht neu, auch über ``hoechste_uid``.** Ein

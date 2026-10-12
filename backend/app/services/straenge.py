@@ -82,16 +82,20 @@ def schluessel(
         # Antwort kann auf eine Nachricht zeigen, die selbst schon einem Strang
         # zugeordnet wurde. Nur ueber die Kennung zu suchen risse den Strang
         # bei jeder zweiten Antwort auseinander.
-        treffer = db.execute(
-            select(Nachricht.thread_key)
-            .where(
-                Nachricht.benutzer_id == konto.benutzer_id,
-                Nachricht.message_id.in_(kette) | Nachricht.thread_key.in_(kette),
-            )
-            .limit(1)
-        ).scalar()
-        if treffer:
-            return treffer
+        #
+        # ⚠️ **Zwei Fragen, nicht eine mit ``OR``** (Issue #9). Mit ``OR``
+        # nahm SQLite ``ix_nachricht_benutzer_id`` und las je geholter Mail den
+        # ganzen Bestand des Benutzers. Getrennt hat jede ihren Index
+        # (``ix_nachricht_message_id``, ``ix_nachricht_strang``);
+        # ``test_straenge_plan.py`` hält die Pläne fest.
+        for spalte in (Nachricht.message_id, Nachricht.thread_key):
+            treffer = db.execute(
+                select(Nachricht.thread_key)
+                .where(Nachricht.benutzer_id == konto.benutzer_id, spalte.in_(kette))
+                .limit(1)
+            ).scalar()
+            if treffer:
+                return treffer
         return kette[0]
 
     if betreff_kern and beteiligte and datum is not None:
@@ -100,10 +104,15 @@ def schluessel(
             grenze = grenze.replace(tzinfo=timezone.utc)
         # ⚠️ **Nur im selben Postfach.** Zwei Konten koennen dieselbe
         # „Rechnung" bekommen, und die haben nichts miteinander zu tun.
+        #
+        # ⚠️ **Ohne ``benutzer_id``, mit Absicht** (Issue #9). Das Postfach
+        # gehört genau einem Benutzer, die Bedingung sagt also nichts Neues.
+        # Mit ihr nahm SQLite ``ix_nachricht_zeitachse`` (wegen ``ORDER BY
+        # datum``) und las beim Nachholen alter Post je Mail fast den ganzen
+        # Bestand. Ohne sie bleibt nur ``ix_nachricht_betreff``.
         kandidaten = db.execute(
             select(Nachricht)
             .where(
-                Nachricht.benutzer_id == konto.benutzer_id,
                 Nachricht.konto_id == konto.id,
                 Nachricht.betreff_kern == betreff_kern,
                 Nachricht.datum >= grenze,

@@ -19,6 +19,7 @@ import secrets
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from ..db import einstellung_lesen, einstellung_schreiben
@@ -198,5 +199,16 @@ def finden(db: Session, klartext: str) -> ApiSchluessel | None:
     zuletzt: datetime | None = zeile.zuletzt_benutzt
     if zuletzt is None or jetzt - zuletzt >= MERKEN_ALLE:
         zeile.zuletzt_benutzt = jetzt
-        db.commit()
+        # ⚠️ **Der Vermerk darf die Abfrage nicht kosten** (Issue #9). Hält
+        # ein Abgleich die Datenbank länger als ``busy_timeout``, scheiterte
+        # hier ein Dashboard mit 500, nur weil sich nicht notieren ließ, wann
+        # es zuletzt gefragt hat. Dann eben beim nächsten Mal.
+        try:
+            db.commit()
+        except OperationalError as fehler:
+            db.rollback()
+            logger.info(
+                "The last use of an API key could not be recorded (%s); the request goes on.",
+                fehler.orig,
+            )
     return zeile
