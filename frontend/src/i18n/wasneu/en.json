@@ -13,7 +13,7 @@
       "Large Gmail folders sync completely. Before, they stopped at 1000 messages.",
       "Mailboxes connected through Google or Microsoft can send again.",
       "A mailbox can be switched between a password and a consent.",
-      "If the browser refuses to register for notifications, the page now says why.",
+      "If the browser refuses to register for notifications, the page now says why, and names browsers without Google's push service, such as Helium.",
       "Very large mailboxes no longer break off the sync."
     ]
   }

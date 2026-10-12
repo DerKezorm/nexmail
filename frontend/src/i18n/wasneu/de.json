@@ -13,7 +13,7 @@
       "Große Gmail-Ordner werden vollständig abgeglichen. Vorher blieben sie bei 1000 Nachrichten stehen.",
       "Postfächer, die über Google oder Microsoft verbunden sind, können wieder senden.",
       "Ein Postfach lässt sich zwischen Passwort und Zustimmung umstellen.",
-      "Lehnt der Browser die Anmeldung für Benachrichtigungen ab, steht jetzt da, warum.",
+      "Lehnt der Browser die Anmeldung für Benachrichtigungen ab, steht jetzt da, warum. Browser ohne Googles Push-Dienst, etwa Helium, werden dabei eigens genannt.",
       "Sehr große Postfächer brechen den Abgleich nicht mehr ab."
     ]
   }
