@@ -202,6 +202,12 @@ class Benutzer(Base):
     #: Was eine Regel ins Archiv geraeumt hat, hat der Benutzer weggeordnet;
     #: eine Meldung darueber macht die Regel wertlos.
     push_mail_alle_ordner: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Bis zu welcher Version dieses Konto das Fenster „Was ist neu“ gesehen
+    #: hat. ⚠️ **Neue Konten starten auf der laufenden Version**
+    #: (``benutzer.anlegen``, ``oidc_store.create_account``), sonst begrüßte
+    #: eine frische Installation mit Neuigkeiten. Die Vorgabe leer gilt nur für
+    #: Konten von vor dieser Spalte: Sie sehen den Banner nach dem Update.
+    wasneu_gesehen: Mapped[str] = mapped_column(String(32), default="")
     #: Eine Mail, die auf einem anderen Geraet schon gelesen wurde, kommt beim
     #: Abgleich trotzdem als „neu" herein.
     push_mail_nur_ungelesen: Mapped[bool] = mapped_column(Boolean, default=True)

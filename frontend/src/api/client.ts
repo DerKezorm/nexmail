@@ -171,6 +171,10 @@ export interface Ich {
   absenderlogos: boolean
   /** Ob es ein Kennwort gibt. Ein Konto aus OIDC hat keins. */
   hat_kennwort?: boolean
+  /** Die laufende Version. Die `package.json` kennt sie nicht, nur der Server. */
+  version: string
+  /** Bis zu welcher Version dieses Konto „Was ist neu“ gesehen hat. */
+  wasneu_gesehen: string
 }
 
 export interface Schritt {

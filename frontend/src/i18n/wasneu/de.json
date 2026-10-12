@@ -1,0 +1,20 @@
+{
+  "0.24.0": {
+    "lead": "Ab dieser Version sagt nexmail nach einem Update selbst, was sich geändert hat. Dieser Text ist der erste davon.",
+    "sections": [
+      {
+        "title": "Was ist neu, gleich nach dem Update",
+        "where": "Banner unter der Kopfleiste, später im Benutzermenü oben rechts unter „Was ist neu“",
+        "body": "Bringt ein Update etwas Neues mit, steht oben ein Banner. Ein Klick zeigt diesen Text, das Kreuz räumt den Banner weg. Gemerkt wird das je Konto auf dem Server, also auf allen Geräten zugleich."
+      }
+    ],
+    "smallTitle": "Außerdem seit 0.23.0",
+    "small": [
+      "Große Gmail-Ordner werden vollständig abgeglichen. Vorher blieben sie bei 1000 Nachrichten stehen.",
+      "Postfächer, die über Google oder Microsoft verbunden sind, können wieder senden.",
+      "Ein Postfach lässt sich zwischen Passwort und Zustimmung umstellen.",
+      "Lehnt der Browser die Anmeldung für Benachrichtigungen ab, steht jetzt da, warum.",
+      "Sehr große Postfächer brechen den Abgleich nicht mehr ab."
+    ]
+  }
+}

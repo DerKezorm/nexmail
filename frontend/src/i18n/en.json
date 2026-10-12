@@ -859,7 +859,8 @@
     "faktor_an": "Second factor on",
     "faktor_aus": "Second factor off",
     "codes_one": "{{count}} code left",
-    "codes_other": "{{count}} codes left"
+    "codes_other": "{{count}} codes left",
+    "wasneu": "What's new"
   },
   "oauth": {
     "titel": "Google and Microsoft",
@@ -1801,5 +1802,13 @@
     "fehler_kennung_unbrauchbar": "This message's Message-ID contains characters that cannot be searched reliably, so it cannot be snoozed.",
     "fehler_ordner": "The snooze folder could not be created on the server.",
     "aufheben": "Cancel snooze"
+  },
+  "wasneu": {
+    "titel": "New in nexmail {{version}}",
+    "banner": "nexmail {{version}} is here.",
+    "zeigen": "What's new?",
+    "wegklicken": "Dismiss",
+    "wo": "Where:",
+    "verstanden": "Got it"
   }
 }

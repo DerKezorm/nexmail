@@ -9,7 +9,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, LogOut, Moon, Settings, ShieldCheck, Sun } from 'lucide-react'
+import { ChevronDown, LogOut, Moon, Settings, ShieldCheck, Sparkles, Sun } from 'lucide-react'
 import { Logo } from './Logo'
 import type { Ich } from '../api/client'
 import { SPRACHEN, spracheSetzen } from '../i18n'
@@ -24,6 +24,10 @@ interface Props {
   ohnePostfach: boolean
   /** Zu den eigenen Einstellungen — sie gehören zum Profil, nicht zur App. */
   aufEinstellungen: () => void
+  /** „Was ist neu“ zur laufenden Version noch einmal öffnen. Fehlt, wenn es
+   *  dazu keinen Text gibt: Ein Menüpunkt, der ins Leere führt, ist schlimmer
+   *  als keiner. */
+  aufWasNeu?: () => void
   modus: 'dark' | 'light'
   aufModus: (m: 'dark' | 'light') => void
 }
@@ -33,6 +37,7 @@ export function Kopfbanner({
   aufAbmelden,
   ohnePostfach,
   aufEinstellungen,
+  aufWasNeu,
   modus,
   aufModus,
 }: Props) {
@@ -191,6 +196,22 @@ export function Kopfbanner({
                 <Settings className="size-4 shrink-0" />
                 {t('nav.einstellungen')}
               </button>
+
+              {/* ⚠️ **Hier, nicht nur auf der Über-Seite.** Die sieht nur
+                  der Betreiber; den Banner nach dem Update sehen alle. */}
+              {aufWasNeu && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOffen(false)
+                    aufWasNeu()
+                  }}
+                  className="flex w-full items-center gap-2.5 border-t border-line-subtle px-3 py-2 text-left text-[13px] text-fg-2 transition-colors duration-[var(--dur-fast)] hover:bg-surface-3 hover:text-fg-1"
+                >
+                  <Sparkles className="size-4 shrink-0" />
+                  {t('nav.wasneu')}
+                </button>
+              )}
 
               <button
                 type="button"

@@ -17,6 +17,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
+from .. import __version__
 from ..config import get_settings
 from ..deps import AktiveSitzung, AngemeldeterBenutzer, DbSession, HalbeSitzung
 from .oidc import passwort_anmeldung_an
@@ -85,6 +86,13 @@ class Ich(BaseModel):
     #: Ob dieses Konto KI-Dienste ueberhaupt benutzen darf (Installation
     #: UND Konto). Daran haengt der Punkt in der Leiste.
     ki_erlaubt: bool = False
+    #: Die laufende Version und bis wohin dieses Konto „Was ist neu“ gesehen
+    #: hat. Weichen sie ab und gibt es zur laufenden einen Eintrag, steht der
+    #: Banner da. ⚠️ **Verglichen wird auf Gleichheit, nicht auf „neuer“**:
+    #: Nach einem Rückweg auf eine ältere Version erscheint deren Text, falls
+    #: es einen gibt, und das ist richtig, denn genau die läuft dann.
+    version: str = ""
+    wasneu_gesehen: str = ""
 
 
 @router.post("/anmelden", response_model=Schritt)
@@ -434,7 +442,22 @@ def ich(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
         absenderlogos=person.absenderlogos_laden,
         ki_erlaubt=kidienst.erlaubt_fuer(db, person),
         hat_kennwort=bool(person.passwort_hash),
+        version=__version__,
+        wasneu_gesehen=person.wasneu_gesehen,
     )
+
+
+@router.post("/ich/wasneu-gesehen", response_model=Ich)
+def wasneu_gesehen(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
+    """„Was ist neu“ zur laufenden Version ist gesehen oder weggeklickt.
+
+    ⚠️ **Die laufende Version kommt aus dem Server, nicht aus der Anfrage.**
+    Ein Browser mit einer alten Oberfläche im Speicher könnte sonst eine
+    Version melden, die gar nicht läuft, und der Banner käme nie.
+    """
+    person.wasneu_gesehen = __version__
+    db.commit()
+    return ich(person, db)
 
 
 class Kontaktadresse(BaseModel):

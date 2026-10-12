@@ -44,6 +44,8 @@ import {
   Upload,
 } from 'lucide-react'
 import { Kopfbanner } from './components/Kopfbanner'
+import { WasNeuBanner, WasNeuFenster, gesehenMelden } from './components/WasNeu'
+import { useWasNeu } from './lib/wasneu'
 import { NavRail } from './components/NavRail'
 import type { Ansicht } from './components/NavRail'
 import { UeberPage } from './pages/UeberPage'
@@ -196,6 +198,15 @@ interface Menuelage {
 
 export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: AppProps) {
   const { t, i18n } = useTranslation()
+  /* „Was ist neu“ zur laufenden Version: der Text, ob das Fenster offen ist,
+     und ob der Banner in dieser Sitzung schon weg ist. */
+  const wasNeu = useWasNeu(ich?.version, i18n.language)
+  const [wasNeuOffen, setWasNeuOffen] = useState(false)
+  const [wasNeuWeg, setWasNeuWeg] = useState(false)
+  function wasNeuGelesen() {
+    setWasNeuWeg(true)
+    if (ich && ich.wasneu_gesehen !== ich.version) gesehenMelden(ichNeuLaden)
+  }
   const schmal = useSchmal()
 
   const [ansicht, setAnsicht] = useState<Ansicht>(
@@ -1969,9 +1980,28 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
             Postfächer" nur „noch nichts gehört". */
         ohnePostfach={stammGeladen && konten.length === 0}
         aufEinstellungen={() => setAnsicht('einstellungen')}
+        aufWasNeu={wasNeu ? () => setWasNeuOffen(true) : undefined}
         modus={modus}
         aufModus={aufModus}
       />
+
+      <WasNeuBanner
+        ich={ich}
+        eintrag={wasNeu}
+        weg={wasNeuWeg}
+        aufZeigen={() => setWasNeuOffen(true)}
+        aufWeg={wasNeuGelesen}
+      />
+      {wasNeuOffen && wasNeu && ich && (
+        <WasNeuFenster
+          version={ich.version}
+          eintrag={wasNeu}
+          onClose={() => {
+            setWasNeuOffen(false)
+            wasNeuGelesen()
+          }}
+        />
+      )}
 
       {/* ⚠️ **Abgewiesene Zugangsdaten muessen ins Gesicht.** Der Takt
           versuchte es bis zum 02.09.2026 alle zwei Minuten stumm neu; wer das

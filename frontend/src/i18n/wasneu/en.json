@@ -1,0 +1,20 @@
+{
+  "0.24.0": {
+    "lead": "From this version on, nexmail tells you after an update what has changed. This text is the first one.",
+    "sections": [
+      {
+        "title": "What's new, right after the update",
+        "where": "Banner below the top bar, later in the user menu at the top right under “What's new”",
+        "body": "When an update brings something new, a banner shows at the top. One click opens this text, the cross puts the banner away. It is remembered per account on the server, so on all your devices at once."
+      }
+    ],
+    "smallTitle": "Also since 0.23.0",
+    "small": [
+      "Large Gmail folders sync completely. Before, they stopped at 1000 messages.",
+      "Mailboxes connected through Google or Microsoft can send again.",
+      "A mailbox can be switched between a password and a consent.",
+      "If the browser refuses to register for notifications, the page now says why.",
+      "Very large mailboxes no longer break off the sync."
+    ]
+  }
+}

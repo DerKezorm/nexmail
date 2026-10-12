@@ -859,7 +859,8 @@
     "faktor_an": "Zweiter Faktor an",
     "faktor_aus": "Zweiter Faktor aus",
     "codes_one": "{{count}} Code übrig",
-    "codes_other": "{{count}} Codes übrig"
+    "codes_other": "{{count}} Codes übrig",
+    "wasneu": "Was ist neu"
   },
   "oauth": {
     "titel": "Google und Microsoft",
@@ -1801,5 +1802,13 @@
     "fehler_kennung_unbrauchbar": "Die Message-ID dieser Nachricht enthält Zeichen, die sich nicht zuverlässig wiederfinden lassen. Wiedervorlage ist für sie nicht möglich.",
     "fehler_ordner": "Der Wiedervorlage-Ordner ließ sich beim Anbieter nicht anlegen.",
     "aufheben": "Wiedervorlage aufheben"
+  },
+  "wasneu": {
+    "titel": "Neu in nexmail {{version}}",
+    "banner": "nexmail {{version}} ist da.",
+    "zeigen": "Was ist neu?",
+    "wegklicken": "Wegklicken",
+    "wo": "Wo:",
+    "verstanden": "Verstanden"
   }
 }

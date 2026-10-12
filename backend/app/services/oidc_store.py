@@ -21,7 +21,7 @@ import re
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from .. import crypto
+from .. import __version__, crypto
 from ..models import Benutzer, Einladung, OidcAnbieter, OidcVerknuepfung, utcnow
 from ..vendor.nexoidc import protocol
 from ..vendor.nexoidc.errors import OidcError
@@ -335,6 +335,7 @@ class SqlStore:
             anzeigename=(einladung.anzeigename if einladung is not None else "") or name,
             passwort_hash="",
             kontaktadresse=einladung.adresse if einladung is not None else "",
+            wasneu_gesehen=__version__,
         )
         self.db.add(person)
         self.db.flush()

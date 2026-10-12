@@ -22,6 +22,7 @@ from argon2.low_level import Type
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .. import __version__
 from ..models import Benutzer
 from ..meldung import Meldung
 
@@ -151,6 +152,7 @@ def anlegen(
         anzeigename=anzeigename.strip() or benutzername,
         passwort_hash="" if ohne_passwort else hashen(passwort),
         ist_betreiber=ist_betreiber,
+        wasneu_gesehen=__version__,
     )
     db.add(benutzer)
     db.commit()
