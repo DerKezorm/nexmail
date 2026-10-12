@@ -14,7 +14,7 @@
  * (`navigator`, `PushManager`) prüft weiterhin nur der echte Browser.
  */
 import { describe, expect, it } from 'vitest'
-import { lageAus } from './pushlage'
+import { browsergrund, gleicherSchluessel, lageAus, PushSchrittFehler } from './pushlage'
 import type { Umstaende } from './pushlage'
 
 /** Ein Rechner, auf dem alles stimmt. Jeder Test dreht genau eine Sache um. */
@@ -110,5 +110,50 @@ describe('bewusst abgemeldet', () => {
     expect(
       lageAus(mit({ angemeldet: false, abgemeldet: true, istApple: true, alsApp: false })),
     ).toBe('kein_home')
+  })
+})
+
+/* --- Wenn der Browser selbst scheitert (Issue #10) ----------------------- */
+
+describe('was der Browser beim Scheitern sagt', () => {
+  it('nennt Name und Satz eines DOMException-artigen Fehlers', () => {
+    const fehler = { name: 'AbortError', message: 'Registration failed - push service error' }
+    expect(browsergrund(fehler)).toBe('AbortError: Registration failed - push service error')
+  })
+
+  it('lässt den nichtssagenden Namen „Error“ weg', () => {
+    expect(browsergrund(new Error('Failed to register a ServiceWorker'))).toBe(
+      'Failed to register a ServiceWorker',
+    )
+  })
+
+  it('kommt auch mit einem Namen ohne Satz und mit Nichts zurecht', () => {
+    expect(browsergrund({ name: 'NotAllowedError', message: '' })).toBe('NotAllowedError')
+    expect(browsergrund(undefined)).toBe('unknown')
+  })
+
+  it('merkt sich Schritt und Grund und trägt keine rohe Meldung als Text', () => {
+    const fehler = new PushSchrittFehler('abo', { name: 'AbortError', message: 'x' })
+    expect(fehler.schritt).toBe('abo')
+    expect(fehler.grund).toBe('AbortError: x')
+    expect(fehler).toBeInstanceOf(Error)
+  })
+})
+
+describe('ob ein vorhandenes Abonnement zum Server passt', () => {
+  const schluessel = Uint8Array.from([4, 1, 2, 3])
+
+  it('gleich heißt wiederverwenden', () => {
+    expect(gleicherSchluessel(Uint8Array.from([4, 1, 2, 3]).buffer, schluessel)).toBe(true)
+  })
+
+  it('ein anderer Schlüssel heißt ersetzen, auch bei gleicher Länge', () => {
+    expect(gleicherSchluessel(Uint8Array.from([4, 1, 2, 9]).buffer, schluessel)).toBe(false)
+    expect(gleicherSchluessel(Uint8Array.from([4, 1]).buffer, schluessel)).toBe(false)
+  })
+
+  it('verrät der Browser den Schlüssel nicht, bleibt alles, wie es ist', () => {
+    expect(gleicherSchluessel(null, schluessel)).toBeNull()
+    expect(gleicherSchluessel(undefined, schluessel)).toBeNull()
   })
 })

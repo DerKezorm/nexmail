@@ -87,3 +87,65 @@ export function lageAus(u: Umstaende): PushLage {
  * richtige Reichweite — dieselbe wie die der Erlaubnis, um die es geht.
  */
 export const ABGEMELDET_SCHLUESSEL = 'nexmail.push.abgemeldet'
+
+/* --- Wenn der Browser selbst scheitert (Issue #10) ----------------------- */
+
+/** In welchem Schritt der Browser abgelehnt hat.
+ *
+ * ⚠️ **Ein Fehler des Browsers ist kein Fehler des Servers.** Bis 0.23.3 ging
+ * er durch `servermeldung`, und die kennt nur Kennungen vom Server: Aus „der
+ * Service Worker ließ sich nicht laden" und „der Push-Dienst des Browsers hat
+ * abgelehnt" wurde dasselbe „That did not work.", ohne jede Anfrage an den
+ * Server dahinter. Gemeldet am 12.10.2026 von einem Mac, Erlaubnis erteilt.
+ */
+export type PushSchritt = 'arbeiter' | 'abo'
+
+export class PushSchrittFehler extends Error {
+  readonly schritt: PushSchritt
+  /** Was der Browser gesagt hat, wörtlich: Name und Satz. */
+  readonly grund: string
+
+  constructor(schritt: PushSchritt, ursache: unknown) {
+    super(`push_${schritt}_gescheitert`)
+    this.schritt = schritt
+    this.grund = browsergrund(ursache)
+  }
+}
+
+/** Name und Satz eines Browserfehlers, so knapp wie möglich.
+ *
+ * Der Name (`AbortError`, `NotAllowedError`, `SecurityError`) ist das, wonach
+ * man sucht; der Satz sagt bei Chrome oft schon die Ursache
+ * („Registration failed - push service error"). Beides bleibt englisch, wie
+ * der Browser es liefert: übersetzen könnte es nur, wer jeden Satz kennt.
+ */
+export function browsergrund(fehler: unknown): string {
+  if (fehler && typeof fehler === 'object') {
+    const { name, message } = fehler as { name?: unknown; message?: unknown }
+    const n = typeof name === 'string' && name !== 'Error' ? name : ''
+    const m = typeof message === 'string' ? message.trim() : ''
+    if (n && m) return `${n}: ${m}`
+    if (n || m) return n || m
+  }
+  const text = String(fehler ?? '').trim()
+  return text || 'unknown'
+}
+
+/** Ob ein vorhandenes Abonnement zum Schlüssel dieses Servers gehört.
+ *
+ * ⚠️ **Ein Abonnement mit fremdem Schlüssel ist kein Abonnement.** Der
+ * Push-Dienst nimmt nur Meldungen an, die mit dem Schlüssel unterschrieben
+ * sind, mit dem abonniert wurde. Wurde der Server neu aufgesetzt und hat
+ * einen neuen Schlüssel, meldete nexmail das alte Abonnement brav an, und
+ * keine Meldung kam je an. `null` heißt: Der Browser verrät den Schlüssel
+ * nicht, dann bleibt das Abonnement, wie es ist.
+ */
+export function gleicherSchluessel(
+  vorhanden: ArrayBuffer | null | undefined,
+  erwartet: Uint8Array,
+): boolean | null {
+  if (!vorhanden) return null
+  const a = new Uint8Array(vorhanden)
+  if (a.length !== erwartet.length) return false
+  return a.every((wert, i) => wert === erwartet[i])
+}

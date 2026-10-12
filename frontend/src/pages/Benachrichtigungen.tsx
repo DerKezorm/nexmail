@@ -14,6 +14,7 @@ import { Trash2 } from 'lucide-react'
 import { Button, IconButton, Select, Switch } from '../ds'
 import { api } from '../api/client'
 import * as push from '../lib/push'
+import { PushSchrittFehler } from '../lib/pushlage'
 import { servermeldung } from '../lib/servermeldung'
 
 interface Einstellungen {
@@ -57,6 +58,19 @@ export function Benachrichtigungen() {
   const [fehler, setFehler] = useState<string | null>(null)
   const [laeuft, setLaeuft] = useState(false)
   const [probeGesagt, setProbeGesagt] = useState(false)
+
+  /* ⚠️ **Scheitert der Browser, sagt der Satz, woran** (Issue #10). Der Grund
+     steht wörtlich dabei, so wie der Browser ihn nennt; nur damit lässt sich
+     ein Proxy, der `sw.js` verbiegt, von einem abgeschalteten Push-Dienst
+     unterscheiden. */
+  function meldung(e: unknown): string {
+    if (e instanceof PushSchrittFehler) {
+      return e.schritt === 'arbeiter'
+        ? t('push.fehler_arbeiter', { grund: e.grund })
+        : t('push.fehler_abo', { grund: e.grund })
+    }
+    return servermeldung(e)
+  }
 
   const laden = useCallback(async () => {
     try {
@@ -116,7 +130,7 @@ export function Benachrichtigungen() {
          Klick, der nichts tut und nichts sagt, ist derselbe Fehler wie ein
          gesperrter Knopf. */
       if (kennung === 'push_keine_antwort') setFehler(t('push.keine_antwort'))
-      else if (kennung !== 'push_abgelehnt') setFehler(kennung)
+      else if (kennung !== 'push_abgelehnt') setFehler(meldung(e))
     } finally {
       setLaeuft(false)
     }
@@ -131,7 +145,7 @@ export function Benachrichtigungen() {
       await push.sicherstellen()
       await laden()
     } catch (e) {
-      setFehler(servermeldung(e))
+      setFehler(meldung(e))
     } finally {
       setLaeuft(false)
     }

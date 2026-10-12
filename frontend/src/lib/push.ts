@@ -6,7 +6,7 @@
  * passiert nichts — deshalb gibt jede Funktion hier einen benannten Grund
  * zurück und nicht `false`.
  */
-import { ABGEMELDET_SCHLUESSEL } from './pushlage'
+import { ABGEMELDET_SCHLUESSEL, gleicherSchluessel, PushSchrittFehler } from './pushlage'
 import { api } from '../api/client'
 import { appPfad } from './basis'
 
@@ -84,6 +84,22 @@ function alsBytes(base64url: string): Uint8Array {
   return Uint8Array.from(roh, (z) => z.charCodeAt(0))
 }
 
+/* ⚠️ **Der Schlüssel wird einmal geholt und gemerkt.** Das Laden der Seite
+   holt ihn ohnehin; der Klick danach spart sich so den Umweg über das Netz
+   zwischen Klick und `subscribe`. Safari verlangt für manche Schritte, dass
+   sie noch zum Klick gehören, und jede Wartezeit davor zehrt daran. */
+let gemerkterSchluessel: string | null = null
+
+async function serverschluessel(): Promise<string> {
+  if (gemerkterSchluessel === null) {
+    const { oeffentlicher_schluessel } = await api.holen<{ oeffentlicher_schluessel: string }>(
+      '/api/push/schluessel',
+    )
+    gemerkterSchluessel = oeffentlicher_schluessel
+  }
+  return gemerkterSchluessel
+}
+
 /** Die Anmeldung dieses Browsers, falls es eine gibt. */
 export async function vorhandene(): Promise<Anmeldung | null> {
   if (!moeglich() || Notification.permission !== 'granted') return null
@@ -141,22 +157,41 @@ export async function sicherstellen(): Promise<Anmeldung | null> {
      die Seite lädt danach neu, und dies ist der erste Schritt beim Laden. */
   if (abgemeldet()) return null
 
-  const reg = await arbeiter()
-  await navigator.serviceWorker.ready
+  /* ⚠️ **Jeder Schritt im Browser sagt, dass ER es war** (Issue #10). Ohne das
+     endete ein abgelehnter Service Worker und ein abgelehnter Push-Dienst in
+     demselben „That did not work.", und kein Protokoll im Server half, weil
+     keine Anfrage ihn je erreichte. */
+  let reg: ServiceWorkerRegistration
+  try {
+    reg = await arbeiter()
+    await navigator.serviceWorker.ready
+  } catch (e) {
+    throw new PushSchrittFehler('arbeiter', e)
+  }
 
-  const { oeffentlicher_schluessel } = await api.holen<{ oeffentlicher_schluessel: string }>(
-    '/api/push/schluessel',
-  )
+  const schluessel = alsBytes(await serverschluessel())
 
-  /* ⚠️ **Ein vorhandenes Abonnement wird wiederverwendet, nicht ersetzt.**
-     `subscribe` wirft, wenn schon eines mit einem anderen Schlüssel besteht —
-     und das passiert wirklich, nämlich nach einem Serverumzug. */
-  const abo =
-    (await reg.pushManager.getSubscription()) ??
-    (await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: alsBytes(oeffentlicher_schluessel) as BufferSource,
-    }))
+  let abo: PushSubscription
+  try {
+    /* ⚠️ **Ein vorhandenes Abonnement wird wiederverwendet, solange sein
+       Schlüssel stimmt.** `subscribe` wirft, wenn schon eines mit einem
+       anderen besteht. Eines mit fremdem Schlüssel taugt aber auch nicht zum
+       Wiederverwenden: Der Push-Dienst nimmt dafür keine Meldung von uns an.
+       Dann wird es abbestellt und neu abonniert. */
+    let vorhanden = await reg.pushManager.getSubscription()
+    if (vorhanden && gleicherSchluessel(vorhanden.options.applicationServerKey, schluessel) === false) {
+      await vorhanden.unsubscribe()
+      vorhanden = null
+    }
+    abo =
+      vorhanden ??
+      (await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: schluessel as BufferSource,
+      }))
+  } catch (e) {
+    throw new PushSchrittFehler('abo', e)
+  }
 
   const daten = alsAnmeldung(abo)
   /* ⚠️ **Immer melden, auch bei einem vorhandenen Abonnement.** Der Server
