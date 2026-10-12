@@ -35,6 +35,17 @@ logger = logging.getLogger("nexmail.imap")
 #: Kurz genug, dass niemand vor einem hängenden Formular sitzt.
 ZEITGRENZE = 15
 
+#: ⚠️ **Eine IMAP-Zeile darf viel länger sein als 1 MB.** ``imaplib`` bricht ab
+#: Werk bei 1.000.000 Byte ab, und ``SEARCH ALL`` kommt als EINE Zeile: Bei
+#: siebenstelligen UIDs ist das bei rund 125.000 Mails erreicht. Ein Gmail-
+#: Postfach mit einigen Jahren Post scheiterte so an INBOX, Papierkorb und
+#: All Mail (Issue #7, 12.10.2026). Die Grenze gilt für jede Verbindung, auch
+#: Export und Ordner leeren; hier gesetzt, weil jede Verbindung hier durchgeht.
+#: 100 MB reichen für über zehn Millionen UIDs und halten trotzdem einen
+#: Server auf, der endlos ohne Zeilenende sendet.
+ZEILE_HOECHSTENS = 100_000_000
+imaplib._MAXLINE = max(imaplib._MAXLINE, ZEILE_HOECHSTENS)
+
 #: ⚠️ **Eine Verbindung je Postfach.** Apple begrenzt die Zahl gleichzeitiger
 #: IMAP-Verbindungen und wirft darüber hinaus einfach heraus. Der Wert steht
 #: hier, damit später niemand „nur mal kurz" eine zweite aufmacht.

@@ -243,7 +243,12 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
         runde.entfernt = len(verschwunden)
 
     # --- Neue holen ------------------------------------------------------ #
-    neue = sorted(u for u in alle_uids if u > ordner.hoechste_uid)
+    # ⚠️ **Was schon da ist, ist nicht neu, auch über ``hoechste_uid``.** Ein
+    # Erstabgleich mit 100.000 Mails läuft Stunden; reißt er mittendrin ab,
+    # liegen die fertigen Blöcke schon in der Datenbank. Ohne diesen Filter
+    # wollte der nächste Lauf sie noch einmal anlegen, scheiterte an
+    # ``uq_nachricht_uid`` und kam nie mehr voran (Issue #7).
+    neue = sorted(u for u in alle_uids if u > ordner.hoechste_uid and u not in bekannt)
     for start in range(0, len(neue), BLOCK):
         haufen = neue[start : start + BLOCK]
         antwort = klient.fetch(
@@ -280,6 +285,10 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
         # oder das Telefon als Keyword vergeben hat, soll hier als Schlagwort
         # erscheinen — nicht unsichtbar an der Mail kleben.
         schlagwortdienst.definitionen_sicherstellen(db, konto.benutzer_id, atome)
+        # ⚠️ **Der Fortschritt geht mit jedem Block fest, nicht erst am Ende.**
+        # Dieselbe Lehre wie oben: Reißt der Lauf ab, setzt der nächste hier
+        # an, statt den Ordner von vorn zu holen.
+        ordner.hoechste_uid = max(ordner.hoechste_uid, haufen[-1])
         db.commit()
         runde.neue_ids.extend(z.id for z in frische)
 
@@ -295,9 +304,6 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
                 abwesenheitsdienst.erledigen(klient, db, konto, ordner, frische)
             except Exception:  # noqa: BLE001
                 logger.exception("The out-of-office check failed for one batch.")
-
-    if neue:
-        ordner.hoechste_uid = max(neue)
 
     # --- Flags der jüngsten Nachrichten nachziehen ----------------------- #
     juengste = sorted(alle_uids)[-FLAGS_FENSTER:]
@@ -799,6 +805,29 @@ def _ordnerliste_nachziehen(klient, db: Session, konto: Konto) -> None:
         )
 
 
+def _verbindung_heilen(db: Session, konto: Konto, klient):
+    """Nach einem gescheiterten Ordner: die Verbindung prüfen, sonst neu aufbauen.
+
+    ⚠️ **``NOOP`` ist die Probe, nicht der Fehlertext.** Eine abgerissene
+    Antwort meldet ``imaplib`` als gewöhnlichen ``IMAP4.error``, genau wie
+    ein ``NO`` des Servers für einen Ordner, den es nicht gibt. Am Text lässt
+    sich das nicht trennen; daran, ob die Leitung danach noch sauber
+    antwortet, schon. Ein ``NOOP`` kostet eine Runde, eine neue Anmeldung nur
+    dann, wenn sie wirklich nötig ist.
+    """
+    try:
+        klient.noop()
+        return klient
+    except Exception:  # noqa: BLE001 - jede Absage heißt: diese Leitung ist hin
+        pass
+    logger.info("The IMAP connection was left unusable; reconnecting.")
+    try:
+        klient.shutdown()
+    except Exception:  # noqa: BLE001
+        pass
+    return imapdienst.fuer_konto(db, konto)
+
+
 def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -> dict[str, Runde]:
     """Alle (oder nur den wichtigsten) Ordner eines Kontos abgleichen."""
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
@@ -817,13 +846,26 @@ def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -
             if nur_posteingang:
                 ordner = [o for o in ordner if o.rolle == "posteingang"]
             for eintrag in ordner:
+                # Vorher gemerkt: Nach dem Zurückrollen ist die Zeile abgelaufen.
+                pfad = eintrag.pfad
                 try:
-                    ergebnis[eintrag.pfad] = ordner_abgleichen(klient, db, konto, eintrag)
+                    ergebnis[pfad] = ordner_abgleichen(klient, db, konto, eintrag)
                 except Exception as fehler:  # noqa: BLE001
                     # ⚠️ Ein Ordner, der klemmt, darf nicht den ganzen Abgleich
                     # abbrechen. Sonst hält ein einziger kaputter Ordner das
                     # Postfach dauerhaft leer.
-                    logger.warning("Folder %s could not be synced: %s", eintrag.pfad, fehler)
+                    #
+                    # ⚠️ **Und er darf die folgenden nicht mitreißen.** Zwei
+                    # Dinge können nach dem Fehler kaputt sein: die Sitzung
+                    # (ein gescheitertes Festschreiben sperrt sie, bis jemand
+                    # zurückrollt) und die Verbindung (bricht eine Antwort
+                    # mittendrin ab, liegt ihr Rest noch in der Leitung, und
+                    # der nächste Befehl liest ihn als Antwort). Issue #7:
+                    # Nach INBOX scheiterten Trash, All Mail und Sent an den
+                    # Resten der INBOX-Antwort, nicht an sich selbst.
+                    db.rollback()
+                    logger.warning("Folder %s could not be synced: %s", pfad, fehler)
+                    klient = _verbindung_heilen(db, konto, klient)
             konto.zuletzt_geprueft = utcnow()
             konto.letzter_fehler = ""
             konto.letzter_fehler_art = ""

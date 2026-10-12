@@ -210,6 +210,14 @@ class FalscherServer:
     def logout(self):
         pass
 
+    # Nach einem gescheiterten Ordner fragt der Abgleich, ob die Leitung noch
+    # antwortet (``_verbindung_heilen``).
+    def noop(self):
+        return (b"NOOP completed", [])
+
+    def shutdown(self):
+        pass
+
 
 @pytest.fixture
 def konto(klient, db):
@@ -534,6 +542,232 @@ def test_ein_kaputter_ordner_stoppt_nicht_alles(db, konto, monkeypatch):
     abgleich.konto_abgleichen(db, konto)
 
     assert db.query(Nachricht).count() == 1
+
+
+# --- Große Postfächer (Issue #7) ------------------------------------------ #
+
+
+def _drei_ordner(db, konto, server: FalscherServer) -> None:
+    """INBOX plus zwei weitere, jeder mit einer Mail, auf Server und hier."""
+    for pfad in ("INBOX", "Archiv", "Gesendet"):
+        server.anlegen(pfad)
+        server.einwerfen(pfad, 1, f"Mail in {pfad}")
+        if pfad != "INBOX":
+            db.add(Ordner(konto_id=konto.id, pfad=pfad, name=pfad, rolle="eigen"))
+    db.commit()
+    db.refresh(konto)
+
+
+def test_eine_search_zeile_ueber_ein_megabyte_wird_gelesen(monkeypatch):
+    """⚠️ ``SEARCH ALL`` kommt als EINE Zeile, und ``imaplib`` brach ab Werk bei
+    1.000.000 Byte ab: rund 125.000 Mails mit siebenstelligen UIDs. Geprüft
+    über einen echten Socket und den echten Leser, nicht über den Doppelgänger,
+    denn die Grenze sitzt genau dort."""
+    import imaplib
+    import socket
+    import threading
+
+    from imapclient import IMAPClient
+
+    from app.services import imap  # noqa: F401 - setzt die Grenze
+
+    anzahl = 140_000
+    uids = b" ".join(str(i).encode() for i in range(1_000_000, 1_000_000 + anzahl))
+    assert len(uids) > 1_000_000  # Bodenschwelle: sonst prüft der Test nichts
+
+    lauscher = socket.create_server(("127.0.0.1", 0))
+
+    def server():
+        verbindung, _ = lauscher.accept()
+        with verbindung, verbindung.makefile("rwb") as leitung:
+            def sag(zeile: bytes) -> None:
+                leitung.write(zeile)
+                leitung.flush()
+
+            sag(b"* OK bereit\r\n")
+            while zeile := leitung.readline():
+                kennung, befehl = zeile.split()[:2]
+                fertig = kennung + b" OK erledigt\r\n"
+                if befehl.upper() == b"CAPABILITY":
+                    sag(b"* CAPABILITY IMAP4rev1\r\n" + fertig)
+                elif befehl.upper() in (b"SELECT", b"EXAMINE"):
+                    sag(b"* 1 EXISTS\r\n* OK [UIDVALIDITY 7] x\r\n" + fertig)
+                elif befehl.upper() == b"UID":
+                    sag(b"* SEARCH " + uids + b"\r\n" + fertig)
+                elif befehl.upper() == b"LOGOUT":
+                    sag(b"* BYE\r\n" + fertig)
+                    return
+                else:
+                    sag(fertig)
+
+    threading.Thread(target=server, daemon=True).start()
+    # Ohne TLS: IMAPClients eigener Transport für ``ssl=False`` scheitert unter
+    # Python 3.14 an ``self.file``. Die Zeile liest in beiden Fällen dasselbe
+    # ``imaplib.IMAP4.readline``.
+    monkeypatch.setattr(IMAPClient, "_create_IMAP4", lambda self: imaplib.IMAP4(self.host, self.port))
+    klient = IMAPClient("127.0.0.1", port=lauscher.getsockname()[1], ssl=False)
+    try:
+        klient.login("jemand", "egal")
+        klient.select_folder("INBOX", readonly=True)
+        assert len(klient.search(["ALL"])) == anzahl
+    finally:
+        klient.logout()
+        lauscher.close()
+
+
+def test_eine_verdorbene_leitung_reisst_die_folgenden_ordner_nicht_mit(db, konto, monkeypatch):
+    """⚠️ Bricht eine Antwort mittendrin ab, liegt ihr Rest noch in der Leitung,
+    und jeder weitere Befehl darauf scheitert. Issue #7: Trash, All Mail und
+    Sent scheiterten an den Resten der INBOX-Antwort. Danach muss neu
+    verbunden werden."""
+    import imaplib
+
+    verbindungen: list[FalscherServer] = []
+    gesehen: list[str] = []
+
+    class Verdorben(FalscherServer):
+        hin = False
+
+        def _pruefen(self):
+            if self.hin:
+                raise imaplib.IMAP4.abort("unexpected response: b'1000123 1000124'")
+
+        def select_folder(self, pfad, readonly=False):
+            self._pruefen()
+            gesehen.append(pfad)
+            # Der erste Ordner überhaupt verdirbt die Leitung, egal welcher:
+            # So hängt der Test nicht an der Reihenfolge der Ordner.
+            if len(gesehen) == 1:
+                self.hin = True
+                raise imaplib.IMAP4.error("command: SEARCH => got more than 1000000 bytes")
+            return super().select_folder(pfad, readonly)
+
+        def search(self, kriterien):
+            self._pruefen()
+            return super().search(kriterien)
+
+        def fetch(self, uids, felder):
+            self._pruefen()
+            return super().fetch(uids, felder)
+
+        def noop(self):
+            self._pruefen()
+            return super().noop()
+
+    def verbinden(*_a, **_k):
+        neu = Verdorben()
+        _drei_ordner_auf(neu)
+        verbindungen.append(neu)
+        return neu
+
+    def _drei_ordner_auf(server):
+        for pfad in ("INBOX", "Archiv", "Gesendet"):
+            server.anlegen(pfad)
+            server.einwerfen(pfad, 1, f"Mail in {pfad}")
+
+    for pfad in ("Archiv", "Gesendet"):
+        db.add(Ordner(konto_id=konto.id, pfad=pfad, name=pfad, rolle="eigen"))
+    db.commit()
+    db.refresh(konto)
+    monkeypatch.setattr(abgleich.imapdienst, "verbinden", verbinden)
+
+    ergebnis = abgleich.konto_abgleichen(db, konto)
+
+    assert len(gesehen) == 3  # Bodenschwelle: alle drei Ordner kamen dran
+    assert len(verbindungen) == 2  # genau eine neue Verbindung, nicht je Ordner eine
+    assert sorted(ergebnis) == sorted(gesehen[1:])
+    assert db.query(Nachricht).count() == 2
+
+
+def test_eine_gesperrte_sitzung_reisst_die_folgenden_ordner_nicht_mit(db, konto, monkeypatch):
+    """Scheitert ein Ordner beim Festschreiben, ist die Sitzung gesperrt, bis
+    jemand zurückrollt. Ohne das scheiterten alle folgenden Ordner und am Ende
+    das Konto selbst."""
+    server = FalscherServer()
+    _drei_ordner(db, konto, server)
+    monkeypatch.setattr(abgleich.imapdienst, "verbinden", lambda *a, **k: server)
+
+    echt = abgleich.ordner_abgleichen
+    aufrufe: list[str] = []
+
+    def erster_platzt(klient, db_, konto_, ordner):
+        aufrufe.append(ordner.pfad)
+        if len(aufrufe) == 1:
+            # Ein Doppel auf ``uq_ordner_pfad``: scheitert beim Festschreiben.
+            db_.add(Ordner(konto_id=konto_.id, pfad=ordner.pfad, name="x", rolle="eigen"))
+            db_.commit()
+        return echt(klient, db_, konto_, ordner)
+
+    monkeypatch.setattr(abgleich, "ordner_abgleichen", erster_platzt)
+
+    abgleich.konto_abgleichen(db, konto)
+
+    assert len(aufrufe) == 3
+    assert db.query(Nachricht).count() == 2
+    db.refresh(konto)
+    assert konto.zuletzt_geprueft is not None
+
+
+def test_ein_abgerissener_erstabgleich_macht_dort_weiter(db, konto, monkeypatch):
+    """⚠️ Ein Erstabgleich mit 100.000 Mails läuft Stunden. Reißt er mittendrin
+    ab, gilt der Fortschritt der fertigen Blöcke, und der nächste Lauf holt
+    nur den Rest. Vorher stand ``hoechste_uid`` erst am Ende fest: Der nächste
+    Lauf wollte alles noch einmal anlegen und scheiterte für immer an
+    ``uq_nachricht_uid``."""
+    monkeypatch.setattr(abgleich, "BLOCK", 2)
+    server = FalscherServer()
+    server.anlegen("INBOX")
+    for uid in range(1, 6):
+        server.einwerfen("INBOX", uid, f"Mail {uid}")
+    ordner = _posteingang(db, konto)
+
+    echt = server.fetch
+    bloecke: list[list[int]] = []
+    abriss = {"bei": 2}
+
+    def mit_abriss(uids, felder):
+        # Nur der Abruf neuer Mails zählt; der Flags-Nachzug fragt ohne ENVELOPE.
+        if any("ENVELOPE" in str(f) for f in felder):
+            bloecke.append(sorted(uids))
+            if len(bloecke) == abriss["bei"]:
+                raise OSError("Verbindung abgerissen")
+        return echt(uids, felder)
+
+    server.fetch = mit_abriss
+    with pytest.raises(OSError):
+        abgleich.ordner_abgleichen(server, db, konto, ordner)
+    db.rollback()
+
+    assert db.query(Nachricht).count() == 2
+    assert ordner.hoechste_uid == 2
+
+    abriss["bei"] = 0
+    bloecke.clear()
+    abgleich.ordner_abgleichen(server, db, konto, ordner)
+
+    assert sorted(n.uid for n in db.query(Nachricht).all()) == [1, 2, 3, 4, 5]
+    assert sorted(u for b in bloecke for u in b) == [3, 4, 5]
+    assert ordner.hoechste_uid == 5
+
+
+def test_was_schon_da_ist_wird_nicht_noch_einmal_angelegt(db, konto):
+    """Der Zustand, den ältere Fassungen nach einem Abriss hinterließen: Zeilen
+    da, ``hoechste_uid`` noch auf 0. Er muss von selbst heilen, sonst hängt
+    jedes betroffene Postfach weiter fest."""
+    server = FalscherServer()
+    server.anlegen("INBOX")
+    for uid in range(1, 4):
+        server.einwerfen("INBOX", uid, f"Mail {uid}")
+    ordner = _posteingang(db, konto)
+    abgleich.ordner_abgleichen(server, db, konto, ordner)
+    ordner.hoechste_uid = 0
+    db.commit()
+    server.einwerfen("INBOX", 4, "Mail 4")
+
+    abgleich.ordner_abgleichen(server, db, konto, ordner)
+
+    assert sorted(n.uid for n in db.query(Nachricht).all()) == [1, 2, 3, 4]
+    assert ordner.hoechste_uid == 4
 
 
 # --- Wichtigkeit ----------------------------------------------------------- #
