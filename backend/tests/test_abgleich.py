@@ -10,6 +10,7 @@ der Abgleich benutzt — und er kann die beiden Dinge, die im Betrieb wehtun:
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timezone
 
@@ -1448,3 +1449,147 @@ def test_nach_dem_entfernen_wartet_keine_sperre_auf_den_server(db, konto):
     runde = abgleich.ordner_abgleichen(server, db, konto, ordner)
     assert runde.entfernt == 1 and runde.neu == 1
     assert server.gesperrt == []
+
+
+# --- Wer auf das Schloss eines Postfachs wartet (Issue #9) --------------- #
+
+
+def test_langes_warten_auf_das_postfach_nennt_den_halter(monkeypatch, caplog):
+    import threading
+    import time
+
+    monkeypatch.setattr(abgleich, "WARTEN_MELDEN", 0.1)
+    halter = abgleich.Verbindungshalter()
+    gefasst = threading.Event()
+
+    def halten_wie_ein_langer_abgleich():
+        with halter.schloss("k1"):
+            gefasst.set()
+            time.sleep(0.4)
+
+    def anfassen_wie_die_oberflaeche():
+        with halter.schloss("k1"):
+            pass
+
+    faden = threading.Thread(target=halten_wie_ein_langer_abgleich, name="nexmail-takt")
+    faden.start()
+    assert gefasst.wait(5)
+    with caplog.at_level(logging.INFO, logger="nexmail.abgleich"):
+        anfassen_wie_die_oberflaeche()
+    faden.join()
+
+    meldungen = [r.getMessage() for r in caplog.records if "mailbox lock" in r.getMessage()]
+    assert len(meldungen) == 1, meldungen
+    assert meldungen[0].startswith("test_abgleich.py:")
+    assert "anfassen_wie_die_oberflaeche" in meldungen[0]
+    assert "halten_wie_ein_langer_abgleich (thread nexmail-takt)" in meldungen[0]
+
+
+def test_kurzes_warten_auf_das_postfach_bleibt_still(monkeypatch, caplog):
+    halter = abgleich.Verbindungshalter()
+    with caplog.at_level(logging.INFO, logger="nexmail.abgleich"):
+        with halter.schloss("k1"):
+            pass
+        with halter.schloss("k1"):
+            pass
+    assert not [r for r in caplog.records if "mailbox lock" in r.getMessage()]
+
+
+# --- Was der Abgleich beim Nachholen meldet (Issue #9) -------------------- #
+
+
+def test_grosses_nachholen_meldet_beginn_und_zwischenstaende(db, konto, monkeypatch, caplog):
+    monkeypatch.setattr(abgleich, "BLOCK", 2)
+    monkeypatch.setattr(abgleich, "FORTSCHRITT_AB", 3)
+    monkeypatch.setattr(abgleich, "FORTSCHRITT_JE", 4)
+    server = FalscherServer()
+    server.anlegen("INBOX")
+    for uid in range(1, 11):
+        server.einwerfen("INBOX", uid, f"Mail {uid}")
+
+    with caplog.at_level(logging.INFO, logger="nexmail.abgleich"):
+        abgleich.ordner_abgleichen(server, db, konto, _posteingang(db, konto))
+
+    zeilen = [r.getMessage() for r in caplog.records if r.getMessage().startswith("INBOX:")]
+    assert zeilen[0] == "INBOX: fetching 10 messages."
+    assert [z.split(" (")[0] for z in zeilen[1:]] == [
+        "INBOX: 4 of 10 messages fetched",
+        "INBOX: 8 of 10 messages fetched",
+    ]
+
+
+def test_kleines_nachholen_bleibt_still(db, konto, caplog):
+    server = FalscherServer()
+    server.anlegen("INBOX")
+    server.einwerfen("INBOX", 1, "Eine")
+    with caplog.at_level(logging.INFO, logger="nexmail.abgleich"):
+        abgleich.ordner_abgleichen(server, db, konto, _posteingang(db, konto))
+    assert not [r for r in caplog.records if "fetching" in r.getMessage() or "synced in" in r.getMessage()]
+
+
+def test_ein_langsamer_ordner_meldet_seine_dauer(db, konto, monkeypatch, caplog):
+    monkeypatch.setattr(abgleich, "LANGSAM_SEKUNDEN", 0.0)
+    server = FalscherServer()
+    server.anlegen("INBOX")
+    server.einwerfen("INBOX", 1, "Eine")
+    server.einwerfen("INBOX", 2, "Zwei")
+    with caplog.at_level(logging.INFO, logger="nexmail.abgleich"):
+        abgleich.ordner_abgleichen(server, db, konto, _posteingang(db, konto))
+    zeilen = [r.getMessage() for r in caplog.records if "synced in" in r.getMessage()]
+    assert len(zeilen) == 1 and zeilen[0].endswith(": 2 new, 0 caught up, 0 removed."), zeilen
+
+
+def test_ein_gescheiterter_ordner_nennt_ordner_und_verbindungsdauer(db, konto, monkeypatch, caplog):
+    """Die Verbindungsdauer zählt nach einem Neuaufbau von vorn; sonst sähe
+    jeder spätere Abbruch aus, als hinge er an einer alten Verbindung."""
+
+    class Uhr:
+        jetzt = 1000.0
+
+        @classmethod
+        def monotonic(cls):
+            return cls.jetzt
+
+    class Brechender(FalscherServer):
+        kaputt = False
+
+        def select_folder(self, pfad, readonly=False):
+            if pfad.startswith("Kaputt"):
+                Uhr.jetzt += 100 if pfad == "Kaputt1" else 7
+                Brechender.kaputt = True
+                raise RuntimeError("socket error: EOF")
+            return super().select_folder(pfad, readonly)
+
+        def noop(self):
+            if Brechender.kaputt:
+                Brechender.kaputt = False
+                raise RuntimeError("die Leitung ist hin")
+            return super().noop()
+
+    gemeinsam = Brechender()
+    gemeinsam.anlegen("INBOX")
+    gemeinsam.anlegen("Kaputt1")
+    gemeinsam.anlegen("Kaputt2")
+
+    def verbinden(*_a, **_k):
+        neu = Brechender()
+        neu.ordner = gemeinsam.ordner
+        return neu
+
+    for pfad in ("Kaputt1", "Kaputt2"):
+        db.add(Ordner(konto_id=konto.id, pfad=pfad, name=pfad, rolle="eigen"))
+    db.commit()
+    db.refresh(konto)
+    monkeypatch.setattr(abgleich.imapdienst, "verbinden", verbinden)
+    monkeypatch.setattr(abgleich, "time", Uhr)
+
+    with caplog.at_level(logging.WARNING, logger="nexmail.abgleich"):
+        abgleich.konto_abgleichen(db, konto)
+
+    zeilen = [r.getMessage() for r in caplog.records if "could not be synced" in r.getMessage()]
+    assert len(zeilen) == 2, zeilen
+    for zeile in zeilen:
+        ordner_s = re.search(r"after (\d+) s", zeile).group(1)
+        verbindung_s = re.search(r"open for (\d+) s", zeile).group(1)
+        assert ordner_s == verbindung_s, zeile
+        assert zeile.endswith("socket error: EOF")

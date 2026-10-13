@@ -23,7 +23,9 @@ import base64
 import json
 import logging
 import quopri
+import sys
 import threading
+import time
 from dataclasses import dataclass, field
 
 from sqlalchemy import delete, select, update
@@ -54,6 +56,17 @@ BLOCK = 200
 #: Abgleich nicht bei jeder Runde das ganze Postfach.
 FLAGS_FENSTER = 2000
 
+#: ⚠️ **Fortschritt beim Nachholen, damit ein Stillstand von einem langsamen
+#: Ordner zu unterscheiden ist** (Issue #9). Beim Melder stand über eine Stunde
+#: nichts im Protokoll, und niemand konnte sagen, ob der Abgleich noch holte.
+#: Ab so vielen fehlenden Mails meldet ein Ordner Beginn und Zwischenstände,
+#: alle ``FORTSCHRITT_JE`` Mails einen.
+FORTSCHRITT_AB = 2000
+FORTSCHRITT_JE = 2000
+
+#: Ein Ordner, der länger braucht, meldet am Ende seine Dauer.
+LANGSAM_SEKUNDEN = 60.0
+
 
 class Verbindungshalter:
     """Die eine Verbindung je Konto, mit Schloss.
@@ -64,12 +77,63 @@ class Verbindungshalter:
     """
 
     def __init__(self) -> None:
-        self._schloesser: dict[str, threading.Lock] = {}
+        self._schloesser: dict[str, Kontoschloss] = {}
         self._verwaltung = threading.Lock()
 
-    def schloss(self, konto_id: str) -> threading.Lock:
+    def schloss(self, konto_id: str) -> Kontoschloss:
         with self._verwaltung:
-            return self._schloesser.setdefault(konto_id, threading.Lock())
+            return self._schloesser.setdefault(konto_id, Kontoschloss())
+
+
+#: Ab wie vielen Sekunden Warten auf das Schloss eines Postfachs ins Protokoll
+#: kommt, wer es hielt.
+WARTEN_MELDEN = 5.0
+
+
+class Kontoschloss:
+    """Das Schloss eines Postfachs, das weiß, wer es hält.
+
+    ⚠️ **Der Anlass ist Issue #9.** Beim Nachholen von 144.000 Mails hielt der
+    Abgleich das Schloss stundenlang, über alle Ordner. Alles, was dasselbe
+    Postfach anfasst (gelesen setzen, verschieben, eine Mail öffnen), wartete
+    so lange, und im Protokoll stand davon nichts. Jetzt sagt eine Zeile, wer
+    wie lange gewartet hat und wer das Schloss hielt.
+    """
+
+    def __init__(self) -> None:
+        self._schloss = threading.Lock()
+        self._halter = ""
+        self._seit = 0.0
+
+    def __enter__(self) -> Kontoschloss:
+        beginn = time.monotonic()
+        if not self._schloss.acquire(blocking=False):
+            # Vor dem Warten gemerkt: Danach hält es schon der Wartende selbst.
+            halter, seit = self._halter, self._seit
+            self._schloss.acquire()
+            gewartet = time.monotonic() - beginn
+            if gewartet >= WARTEN_MELDEN:
+                logger.info(
+                    "%s waited %.0f s for the mailbox lock, held by %s for %.0f s before.",
+                    _wer(sys._getframe(1)),
+                    gewartet,
+                    halter or "?",
+                    beginn - seit if seit else 0.0,
+                )
+        self._halter = _wer(sys._getframe(1))
+        self._seit = time.monotonic()
+        return self
+
+    def __exit__(self, *_fehler) -> None:
+        self._halter = ""
+        self._seit = 0.0
+        self._schloss.release()
+
+
+def _wer(rahmen) -> str:
+    """Die Stelle samt Faden, an der ein Schloss genommen wird."""
+    datei = rahmen.f_code.co_filename.replace("\\", "/").rsplit("/", 1)[-1]
+    return f"{datei}:{rahmen.f_lineno} {rahmen.f_code.co_name} (thread {threading.current_thread().name})"
 
 
 HALTER = Verbindungshalter()
@@ -275,6 +339,7 @@ def _alle_uids(klient, vorhanden: int, pfad: str) -> tuple[set[int], bool]:
 def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Runde:
     """Einen Ordner auf Stand bringen."""
     runde = Runde()
+    beginn = time.monotonic()
 
     zustand = klient.select_folder(ordner.pfad, readonly=True)
     gueltigkeit = int(zustand.get(b"UIDVALIDITY", 0))
@@ -336,7 +401,20 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
     # Marke ankam.
     grenze = ordner.hoechste_uid
     neue = sorted(u for u in alle_uids if u not in bekannt)
+    melden = len(neue) >= FORTSCHRITT_AB
+    naechste_meldung = FORTSCHRITT_JE
+    if melden:
+        logger.info("%s: fetching %d messages.", ordner.pfad, len(neue))
     for start in range(0, len(neue), BLOCK):
+        if melden and start >= naechste_meldung:
+            naechste_meldung += FORTSCHRITT_JE
+            logger.info(
+                "%s: %d of %d messages fetched (%.0f s so far).",
+                ordner.pfad,
+                start,
+                len(neue),
+                time.monotonic() - beginn,
+            )
         haufen = neue[start : start + BLOCK]
         antwort = klient.fetch(
             haufen,
@@ -424,6 +502,16 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
         .count()
     )
     db.commit()
+    dauer = time.monotonic() - beginn
+    if dauer >= LANGSAM_SEKUNDEN:
+        logger.info(
+            "%s synced in %.0f s: %d new, %d caught up, %d removed.",
+            ordner.pfad,
+            dauer,
+            runde.neu,
+            runde.nachgeholt,
+            runde.entfernt,
+        )
     return runde
 
 
@@ -929,6 +1017,7 @@ def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -
         except imapdienst.Verbindungsfehler as fehler:
             _stoerung_merken(db, konto, fehler.art)
             raise
+        verbunden_seit = time.monotonic()
         _stoerung_merken(db, konto, "")
         try:
             _ordnerliste_nachziehen(klient, db, konto)
@@ -938,6 +1027,7 @@ def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -
             for eintrag in ordner:
                 # Vorher gemerkt: Nach dem Zurückrollen ist die Zeile abgelaufen.
                 pfad = eintrag.pfad
+                ordner_seit = time.monotonic()
                 try:
                     ergebnis[pfad] = ordner_abgleichen(klient, db, konto, eintrag)
                 except Exception as fehler:  # noqa: BLE001
@@ -954,8 +1044,23 @@ def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -
                     # Nach INBOX scheiterten Trash, All Mail und Sent an den
                     # Resten der INBOX-Antwort, nicht an sich selbst.
                     db.rollback()
-                    logger.warning("Folder %s could not be synced: %s", pfad, fehler)
-                    klient = _verbindung_heilen(db, konto, klient)
+                    # ⚠️ **Mit beiden Dauern** (Issue #9). Gmail brach dort
+                    # alle 15 bis 30 Minuten mit EOF ab, und ob das an der
+                    # Länge der Verbindung hängt oder am Ordner, sagte das
+                    # Protokoll nicht.
+                    jetzt = time.monotonic()
+                    logger.warning(
+                        "Folder %s could not be synced after %.0f s, on a connection open "
+                        "for %.0f s: %s",
+                        pfad,
+                        jetzt - ordner_seit,
+                        jetzt - verbunden_seit,
+                        fehler,
+                    )
+                    geheilt = _verbindung_heilen(db, konto, klient)
+                    if geheilt is not klient:
+                        verbunden_seit = time.monotonic()
+                    klient = geheilt
             konto.zuletzt_geprueft = utcnow()
             konto.letzter_fehler = ""
             konto.letzter_fehler_art = ""

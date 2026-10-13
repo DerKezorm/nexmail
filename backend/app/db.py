@@ -17,7 +17,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, event, inspect, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from . import crypto
+from . import crypto, sperrwache
 from .config import get_settings
 from .models import Base, Geheimnis, Kontakt
 
@@ -49,7 +49,11 @@ def _sqlite_einstellen(dbapi_connection, _record) -> None:
     zeiger.close()
 
 
-SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
+# Wer die Schreibsperre lange hält, und wer an ihr scheitert (Issue #9).
+sperrwache.einrichten(engine)
+
+
+SessionLocal =sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
 
 
 def get_db() -> Iterator[Session]:
