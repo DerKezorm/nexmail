@@ -768,7 +768,11 @@ _DRUCK_STIL = """
   table.kopf th { padding: 2px 16px 2px 0; text-align: left; vertical-align: top;
                   font-weight: 600; white-space: nowrap; }
   table.kopf td { padding: 2px 0; }
-  .inhalt { border-top: 1px solid #000; padding-top: 16px; }
+  .inhalt { border-top: 1px solid #000; padding-top: 16px; line-height: normal; }
+  /* Outlooks Absätze, wie im Leserahmen (lib/leserahmen.ts, Issue #11). */
+  .MsoNormal, .MsoPlainText, .MsoNoSpacing { margin: 0; }
+  .MsoListParagraph, .MsoListParagraphCxSpFirst,
+  .MsoListParagraphCxSpMiddle, .MsoListParagraphCxSpLast { margin: 0 0 0 36pt; }
   pre { white-space: pre-wrap; font: inherit; margin: 0; }
   img { max-width: 100%; height: auto; }
   /* Ausgeklinkte Bilder haben kein src mehr — ein leerer Bildrahmen im

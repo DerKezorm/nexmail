@@ -75,6 +75,21 @@ ERLAUBTE_ATTRIBUTE: dict[str, set[str]] = {
     "ol": {"start", "type"},
 }
 
+#: Die Absatzklassen, mit denen Outlook seine Mails baut.
+#:
+#: ⚠️ **Ohne sie steht nach jeder Zeile eine Lücke.** Outlook macht aus jedem
+#: Enter ein ``<p class=MsoNormal>`` und setzt dessen Abstand in einem
+#: ``<style>``-Block auf null. Den Block lassen wir weg (siehe oben), also galt
+#: für jede Zeile der Absatzabstand des Leserahmens. Gemeldet in Issue #11.
+#: Durch kommen nur diese Namen, kein ``class`` sonst: Der Leserahmen
+#: (``leserahmen.ts``) setzt für sie die Abstände, die im Block standen, und
+#: eine fremde Klasse träfe dort nichts.
+OUTLOOK_KLASSEN = {
+    "MsoNormal", "MsoPlainText", "MsoNoSpacing", "MsoListParagraph",
+    "MsoListParagraphCxSpFirst", "MsoListParagraphCxSpMiddle",
+    "MsoListParagraphCxSpLast",
+}
+
 #: Nur diese Schemata. ``javascript:`` und ``data:`` fehlen mit Absicht -
 #: ``data:`` waere ein Weg, ein ganzes Dokument in einen Verweis zu packen.
 ERLAUBTE_SCHEMATA = {"http", "https", "mailto", "tel", "cid"}
@@ -109,6 +124,7 @@ def saeubern(roh: str) -> str:
         roh,
         tags=ERLAUBTE_ELEMENTE,
         attributes={schluessel: set(werte) for schluessel, werte in ERLAUBTE_ATTRIBUTE.items()},
+        allowed_classes={tag: OUTLOOK_KLASSEN for tag in ("p", "div", "li")},
         url_schemes=ERLAUBTE_SCHEMATA,
         link_rel="noopener noreferrer nofollow",
         strip_comments=True,

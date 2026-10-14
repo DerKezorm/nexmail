@@ -58,6 +58,15 @@ const UMKEHR = `
     }
   `
 
+/* Was Outlook für seine Absätze festlegt, Wert für Wert aus seinem
+ * `<style>`-Block. Eine Klasse schlägt `p`, ein `style` an der Zeile schlägt
+ * beide; die Einrückung einer Aufzählung steht oft dort. */
+const OUTLOOK = `
+    .MsoNormal, .MsoPlainText, .MsoNoSpacing { margin: 0; }
+    .MsoListParagraph, .MsoListParagraphCxSpFirst,
+    .MsoListParagraphCxSpMiddle, .MsoListParagraphCxSpLast { margin: 0 0 0 36pt; }
+  `
+
 /** Das vollständige Dokument für den Rahmen. */
 export function leseseite(koerper: string, grund: Lesegrund, farben: Rahmenfarben): string {
   /* ⚠️ **`umgekehrt` wird ZUERST hell gebaut und dann gedreht.** Die Umkehr
@@ -89,16 +98,23 @@ export function leseseite(koerper: string, grund: Lesegrund, farben: Rahmenfarbe
      `color-scheme: light` fragt das die Systemfarben ab — genau den hellen
      Grund, mit dem die Mail rechnet. Ein hier eingetipptes `#ffffff` wäre eine
      Farbe, die in keinem Token steht. */
+  /* ⚠️ **Abstände wie in Outlook** (Issue #11). Zeilenabstand `normal`, wie
+     Outlook und die Browser selbst; 1,6 stand bei jeder Mail ohne eigenen
+     Zeilenabstand weiter auseinander als beim Absender. Die `Mso…`-Regeln
+     sind die, die Outlook in seinen `<style>`-Block schreibt. Den Block lässt
+     der Server weg, die Klassen lässt er stehen (`OUTLOOK_KLASSEN` in
+     `bereinigen.py`); ohne diese Regeln stand nach jeder Zeile eine Lücke. */
   const stil = `
     :root { color-scheme: ${aufHell ? 'light' : 'light dark'}; }
     body {
       margin: 0; padding: 16px 24px;
-      font: 400 14px/1.6 var(--nm-sans);
+      font: 400 14px/normal var(--nm-sans);
       color: ${aufHell ? 'CanvasText' : 'var(--nm-text)'};
       background: ${aufHell ? 'Canvas' : 'transparent'};
       overflow-wrap: break-word;
     }
     p { margin: 0 0 12px; }
+    ${OUTLOOK}
     ${aufHell ? '' : 'a { color: var(--nm-accent); }'}
     ${aufHell ? '' : 'b, strong { color: var(--nm-strong); }'}
     code, pre { font-family: var(--nm-mono); font-size: .92em; }

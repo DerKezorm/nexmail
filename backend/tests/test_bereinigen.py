@@ -320,6 +320,36 @@ def test_style_bloecke_bleiben_draussen():
     assert "<p>Text</p>" in sauber
 
 
+def test_outlooks_absatzklassen_kommen_durch():
+    """⚠️ Issue #11: Ohne die Klasse stand nach jeder Outlook-Zeile eine Luecke.
+
+    Den Abstand null setzt Outlook im ``<style>``-Block, und der bleibt
+    draussen. Der Leserahmen setzt ihn an der Klasse wieder; dafuer muss sie
+    ankommen, an ``p``, ``div`` und ``li``.
+    """
+    sauber = bereinigen.saeubern(
+        '<p class="MsoNormal">Hallo,</p><div class="MsoNormal">zweite Zeile</div>'
+        '<ul><li class="MsoListParagraphCxSpFirst">Punkt</li></ul>'
+    )
+    assert '<p class="MsoNormal">' in sauber
+    assert '<div class="MsoNormal">' in sauber
+    assert '<li class="MsoListParagraphCxSpFirst">' in sauber
+
+
+def test_andere_klassen_bleiben_draussen():
+    """Nur Outlooks Namen. Eine fremde Klasse traefe im Rahmen nichts, und
+    ``class`` an anderen Elementen braucht niemand."""
+    sauber = bereinigen.saeubern(
+        '<p class="MsoNormal fremd">a</p><p class="hero">b</p>'
+        '<span class="MsoNormal">c</span><table class="MsoNormal"><tr><td>d</td></tr></table>'
+    )
+    assert '<p class="MsoNormal">a</p>' in sauber
+    assert "fremd" not in sauber
+    assert "hero" not in sauber
+    assert "<span>c</span>" in sauber
+    assert "<table>" in sauber
+
+
 # --- Faerbt die Mail sich selbst? ---------------------------------------- #
 
 

@@ -72,6 +72,19 @@ describe('leseseite', () => {
     for (const wert of Object.values(FARBEN)) expect(s).toContain(wert)
   })
 
+  it('setzt Abstaende wie Outlook', () => {
+    /* ⚠️ Issue #11. Outlook legt jede Zeile in ein `<p class=MsoNormal>` und
+       setzt dessen Abstand im `<style>`-Block auf null; den Block laesst der
+       Server weg. Fehlt die Regel hier, steht nach jeder Zeile eine Luecke. */
+    for (const grund of ['hell', 'anwendung', 'umgekehrt'] as const) {
+      const s = seite(grund)
+      expect(s).toMatch(/\.MsoNormal[^{]*\{ margin: 0; \}/)
+      expect(s).toContain('.MsoListParagraphCxSpLast { margin: 0 0 0 36pt; }')
+      expect(s).toContain('14px/normal')
+      expect(s).not.toContain('14px/1.6')
+    }
+  })
+
   it('laesst den Koerper unangetastet', () => {
     expect(seite('hell')).toContain('<p>Text ohne eigene Farbe</p>')
   })
