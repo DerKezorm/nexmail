@@ -225,6 +225,10 @@ export interface OrdnerZeile {
   rolle_von_hand?: string
   waehlbar: boolean
   abonniert: boolean
+  /** Präfix des persönlichen Namensraums, etwa `INBOX.` bei Dovecot. */
+  namensraum?: string
+  /** Ob das der Wiedervorlage-Ordner ist; sein Pfad hängt am Namensraum. */
+  wiedervorlage?: boolean
 }
 
 export interface Teilbefund {

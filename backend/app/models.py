@@ -490,6 +490,13 @@ class Konto(Base):
     #: Update eine Meldung ueber seinen halben Posteingang.
     erstabgleich_durch: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    #: Der Präfix des persönlichen Namensraums (RFC 2342), wie der Server ihn
+    #: nennt: meist leer, bei Dovecot mit ``INBOX.`` (Hetzner Webhosting) genau
+    #: das. ⚠️ **Ein Ordner auf oberster Ebene heißt dort ``INBOX.Name``**;
+    #: ein blosses ``Name`` weist der Server ab (Issue #12). Gesetzt bei jedem
+    #: Lesen der Ordnerliste, leer heißt: keiner oder noch nicht gefragt.
+    namensraum: Mapped[str] = mapped_column(String(100), default="", server_default="")
+
     benutzer: Mapped[Benutzer] = relationship()
     ordner: Mapped[list["Ordner"]] = relationship(
         back_populates="konto", cascade="all, delete-orphan"

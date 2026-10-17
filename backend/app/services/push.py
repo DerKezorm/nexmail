@@ -506,9 +506,9 @@ def _meldenswert(
     # Mensch bewusst weggelegt — auch von einem anderen Geraet aus. Fuer den
     # Abgleich ist es dann „neu". Dieselbe Ausnahme wie bei den Regeln, und
     # dort steht die lange Begruendung.
-    from .wiedervorlage import ORDNER_NAME as wiedervorlage_ordner
+    from .wiedervorlage import ist_ordner as ist_wiedervorlage
 
-    if ordner.pfad == wiedervorlage_ordner:
+    if ist_wiedervorlage(ordner.pfad, ordner.konto):
         return False
 
     if person.push_mail_alle_ordner:

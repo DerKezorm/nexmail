@@ -40,7 +40,7 @@ import {
 import type { ReactNode } from 'react'
 import type { Konto, Ordner, OrdnerRolle } from '../daten/typen'
 import { PUNKT_KLASSE } from '../lib/farben'
-import { ordnerName, WIEDERVORLAGE_PFAD } from '../lib/ordnername'
+import { elternVon, istWiedervorlage, ordnerName } from '../lib/ordnername'
 
 /* ⚠️ **„Markierte" ist ein Ziel, kein Ordner.**
  *
@@ -289,7 +289,7 @@ export function Ordnerspalte({
                 })`}
                 punkt={farbeVon(o.kontoId)}
                 ungelesen={o.ungelesen}
-                wartend={o.pfad === WIEDERVORLAGE_PFAD ? (wiedervorlageZahlen[o.kontoId] ?? 0) : 0}
+                wartend={istWiedervorlage(o) ? (wiedervorlageZahlen[o.kontoId] ?? 0) : 0}
                 aktiv={ziel.typ === 'ordner' && ziel.id === o.id}
                 onClick={() => aufZiel({ typ: 'ordner', id: o.id })}
                 onContextMenu={(e) => aufKontext(e, o)}
@@ -347,7 +347,7 @@ export function Ordnerspalte({
                     symbol={SYMBOL[o.rolle]}
                     name={anzeigename(o, t)}
                     ungelesen={o.ungelesen}
-                    wartend={o.pfad === WIEDERVORLAGE_PFAD ? (wiedervorlageZahlen[o.kontoId] ?? 0) : 0}
+                    wartend={istWiedervorlage(o) ? (wiedervorlageZahlen[o.kontoId] ?? 0) : 0}
                     stern={favoriten.includes(o.id)}
                     aktiv={ziel.typ === 'ordner' && ziel.id === o.id}
                     onContextMenu={(e) => aufKontext(e, o)}
@@ -428,27 +428,10 @@ interface Knoten {
 function baumBilden(liste: Ordner[]): Knoten[] {
   const nachPfad = new Map(liste.map((o) => [o.pfad, o]))
 
-  /** Der nächstliegende Vorfahre, der wirklich existiert. */
-  function elternVon(o: Ordner): Ordner | undefined {
-    let laengster: Ordner | undefined
-    for (const anderer of liste) {
-      if (anderer.pfad === o.pfad) continue
-      if (!o.pfad.startsWith(anderer.pfad)) continue
-      const rest = o.pfad.slice(anderer.pfad.length)
-      // Genau ein Trennzeichen, dann der eigene Name - sonst ist es nur ein
-      // zufällig gleicher Wortanfang („Archiv" und „Archivalien").
-      if (rest.length < 2) continue
-      const trenner = rest[0]
-      if (/[a-z0-9äöüß]/i.test(trenner)) continue
-      if (!laengster || anderer.pfad.length > laengster.pfad.length) laengster = anderer
-    }
-    return laengster
-  }
-
   const kinder = new Map<string, Ordner[]>()
   const wurzeln: Ordner[] = []
   for (const o of liste) {
-    const eltern = elternVon(o)
+    const eltern = elternVon(o, liste)
     if (eltern) {
       const bisher = kinder.get(eltern.pfad) ?? []
       bisher.push(o)

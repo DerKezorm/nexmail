@@ -971,6 +971,9 @@ def _ordnerliste_nachziehen(klient, db: Session, konto: Konto) -> None:
 
     bekannt = {o.pfad for o in konto.ordner}
     gelesen = {a.pfad for a in angaben}
+    # Auf derselben Verbindung, eine Frage mehr: Die Oberfläche braucht den
+    # Präfix, um ``INBOX.Name`` oben zu zeigen statt unter dem Posteingang.
+    kontendienst.namensraum_merken(konto, klient)
     kontendienst.ordner_uebernehmen(db, konto, angaben)
     # ⚠️ Ohne das sieht ``konto.ordner`` weder den neuen Ordner noch das
     # Fehlen des alten: Die Sitzung laeuft mit ``expire_on_commit=False``.
@@ -1082,12 +1085,12 @@ def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -
     # die Mail dort hinein, ohne dass nexmail sie vorher kannte. Für den
     # Abgleich ist sie dann „neu", und eine Regel schöbe die bewusste Ablage
     # beim nächsten Takt wieder heraus.
-    from .wiedervorlage import ORDNER_NAME as wiedervorlage_ordner  # kreisfrei erst hier
+    from .wiedervorlage import ist_ordner as ist_wiedervorlage  # kreisfrei erst hier
 
     neue = [
         kennung
         for pfad, runde in ergebnis.items()
-        if pfad != wiedervorlage_ordner
+        if not ist_wiedervorlage(pfad, konto)
         for kennung in runde.neue_ids
     ]
     if neue:

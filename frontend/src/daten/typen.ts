@@ -56,6 +56,11 @@ export interface Ordner {
   rolleVonHand?: string
   ungelesen: number
   anzahl: number
+  /** Präfix des persönlichen Namensraums des Postfachs (`INBOX.` oder leer).
+   *  Siehe `lib/ordnername.ts`, `namensraumWurzel`. */
+  namensraum?: string
+  /** Vom Server gesagt; ohne die Angabe gilt der Pfad `Wiedervorlage`. */
+  wiedervorlage?: boolean
 }
 
 export interface Person {

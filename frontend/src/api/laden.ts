@@ -7,6 +7,7 @@
  * wird hier übersetzt: eine Datei, eine Aufgabe.
  */
 import { api } from './client'
+import { WIEDERVORLAGE_PFAD } from '../lib/ordnername'
 import type { Wiederholung } from '../components/Wiederholungsfeld'
 import type { KontoZeile, OrdnerZeile } from './client'
 import type {
@@ -146,6 +147,8 @@ export async function ordnerLaden(konten: Konto[]): Promise<Ordner[]> {
         // zeigt bei allen anderen null.
         ungelesen: o.ungelesen ?? 0,
         anzahl: o.anzahl ?? 0,
+        namensraum: o.namensraum ?? '',
+        wiedervorlage: o.wiedervorlage ?? o.pfad === WIEDERVORLAGE_PFAD,
       })
     }
   }

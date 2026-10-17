@@ -38,6 +38,25 @@ logger = logging.getLogger("nexmail.wiedervorlage")
 #: Trenner — die Pruefung dafuer sitzt beim freien Anlegen (services/ordner).
 ORDNER_NAME = "Wiedervorlage"
 
+
+def ordner_pfad(konto: Konto) -> str:
+    """Wo der Ordner bei diesem Postfach liegt: oben, samt Namensraum.
+
+    ⚠️ **Oben heißt bei Dovecot mit ``INBOX.``-Präfix ``INBOX.Wiedervorlage``.**
+    Ein blosses ``Wiedervorlage`` weist so ein Server ab, und Zurücklegen
+    scheiterte dort jedes Mal (gefunden bei Issue #12).
+    """
+    return f"{konto.namensraum or ''}{ORDNER_NAME}"
+
+
+def ist_ordner(pfad: str, konto: Konto) -> bool:
+    """Ist das der Wiedervorlage-Ordner dieses Postfachs?
+
+    Der Name ohne Präfix zählt mit: So bleibt ein Ordner erkannt, den es gab,
+    bevor nexmail den Namensraum kannte.
+    """
+    return pfad in (ORDNER_NAME, ordner_pfad(konto))
+
 #: Wie oft der Aufwach-Faden nachsieht. Eine Minute, wie beim Versandplan:
 #: Der Zeitpunkt wird auf die Minute gewaehlt — viel spaeter darf „18:00"
 #: nicht hinausgehen.
@@ -117,7 +136,7 @@ def alle(db: Session, benutzer: Benutzer) -> list[Sicht]:
                 # etwa die an sich selbst gesendete Mail samt Kopie in
                 # „Gesendet") soll die Aufwach-Marke an der Kopie im
                 # Wiedervorlage-Ordner haengen, nicht an einer beliebigen.
-                .order_by((Ordner.pfad == ORDNER_NAME).desc(), Nachricht.id.desc())
+                .order_by(Ordner.pfad.in_(_pfade(db, eintrag.konto_id)).desc(), Nachricht.id.desc())
             )
             .scalars()
             .first()
@@ -165,7 +184,7 @@ def weglegen(
         .first()
     )
 
-    if quelle.pfad == ORDNER_NAME:
+    if ist_ordner(quelle.pfad, konto):
         # Die Mail liegt schon im Wiedervorlage-Ordner — zweimal weggelegt
         # heisst: neues Aufwachen, kein zweiter Zug auf dem Server. Der
         # Rueckweg bleibt der gemerkte; fehlt der Merker (von einem anderen
@@ -192,6 +211,11 @@ def weglegen(
     return bestehend
 
 
+def _pfade(db: Session, konto_id: str) -> tuple[str, ...]:
+    konto = db.get(Konto, konto_id)
+    return (ORDNER_NAME, ordner_pfad(konto)) if konto is not None else (ORDNER_NAME,)
+
+
 def _posteingang_pfad(konto: Konto) -> str:
     posteingang = next((o for o in konto.ordner if o.rolle == "posteingang"), None)
     return posteingang.pfad if posteingang is not None else "INBOX"
@@ -207,7 +231,7 @@ def _ordner_sicherstellen(db: Session, konto: Konto) -> Ordner:
     kennt. Deshalb wird das ``CREATE`` toleriert und die Wahrheit aus der
     frisch gelesenen Liste genommen.
     """
-    vorhanden = next((o for o in konto.ordner if o.pfad == ORDNER_NAME), None)
+    vorhanden = next((o for o in konto.ordner if ist_ordner(o.pfad, konto)), None)
     if vorhanden is not None:
         return vorhanden
 
@@ -215,12 +239,14 @@ def _ordner_sicherstellen(db: Session, konto: Konto) -> Ordner:
     with abgleich.HALTER.schloss(konto.id):
         klient = imapdienst.fuer_konto(db, konto)
         try:
+            kontendienst.namensraum_merken(konto, klient)
+            pfad = ordner_pfad(konto)
             try:
-                klient.create_folder(ORDNER_NAME)
+                klient.create_folder(pfad)
             except Exception as fehler:  # noqa: BLE001
                 logger.info("The snooze folder may already exist on the server: %s", fehler)
             try:
-                klient.subscribe_folder(ORDNER_NAME)
+                klient.subscribe_folder(pfad)
             except Exception as fehler:  # noqa: BLE001
                 # Kein Abbruch: Manche Server kennen Abonnements gar nicht.
                 logger.info("The snooze folder could not be subscribed: %s", fehler)
@@ -236,7 +262,7 @@ def _ordner_sicherstellen(db: Session, konto: Konto) -> Ordner:
             except Exception:  # noqa: BLE001
                 pass
 
-    neuer = next((o for o in konto.ordner if o.pfad == ORDNER_NAME), None)
+    neuer = next((o for o in konto.ordner if ist_ordner(o.pfad, konto)), None)
     if neuer is None:
         raise WiedervorlageFehler("wiedervorlage_ordner_fehlt")
     return neuer
@@ -339,7 +365,8 @@ def _aufwecken(db: Session, eintrag: Wiedervorlage) -> bool:
         return False
 
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
-    wv_ordner = next((o for o in konto.ordner if o.pfad == ORDNER_NAME), None)
+    wv_ordner = next((o for o in konto.ordner if ist_ordner(o.pfad, konto)), None)
+    wv_pfad = wv_ordner.pfad if wv_ordner is not None else ordner_pfad(konto)
 
     gefunden: list[int] = []
     with abgleich.HALTER.schloss(konto.id):
@@ -351,8 +378,8 @@ def _aufwecken(db: Session, eintrag: Wiedervorlage) -> bool:
             # wird die eine Frage, um die es geht, ausdruecklich gestellt;
             # jeder echte Fehler laeuft zu ``runde()`` hinauf, wo der
             # Eintrag liegen bleibt und spaeter erneut drankommt.
-            if klient.folder_exists(ORDNER_NAME):
-                klient.select_folder(ORDNER_NAME, readonly=False)
+            if klient.folder_exists(wv_pfad):
+                klient.select_folder(wv_pfad, readonly=False)
                 gefunden = _mail_suchen(klient, eintrag.message_id)
 
             if gefunden:
@@ -419,6 +446,8 @@ def _mail_suchen(klient, message_id: str) -> list[int]:
 __all__ = [
     "NACHSEHEN_SEKUNDEN",
     "ORDNER_NAME",
+    "ist_ordner",
+    "ordner_pfad",
     "RUECKSTAU_DECKEL_MINUTEN",
     "Sicht",
     "WiedervorlageFehler",

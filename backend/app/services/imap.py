@@ -374,6 +374,26 @@ def ordner_lesen(klient: IMAPClient) -> list[Ordnerangabe]:
     return ergebnis
 
 
+def namensraum_lesen(klient: IMAPClient) -> str | None:
+    """Der Präfix des persönlichen Namensraums (RFC 2342), etwa ``INBOX.``.
+
+    ``None`` heißt: nicht zu erfahren (kein ``NAMESPACE``, Fehler). Dann
+    bleibt, was gemerkt ist; ein Aussetzer soll keinen bekannten Präfix
+    löschen. Leer heißt: Der Server hat keinen.
+    """
+    try:
+        antwort = klient.namespace()
+    except Exception as fehler:  # noqa: BLE001 - ohne Antwort gilt der alte Stand
+        logger.info("The server did not name its namespace: %s", fehler)
+        return None
+    for eintrag in getattr(antwort, "personal", None) or ():
+        praefix = eintrag[0] if eintrag else ""
+        if isinstance(praefix, bytes):
+            praefix = praefix.decode(errors="replace")
+        return str(praefix or "")[:100]
+    return ""
+
+
 def faehigkeiten(klient: IMAPClient) -> list[str]:
     """Was der Server kann. Gebraucht wird davon spaeter vor allem ``MOVE``."""
     return [k.decode(errors="replace") for k in klient.capabilities()]
@@ -384,6 +404,7 @@ __all__ = [
     "Ordnerangabe",
     "Verbindungsfehler",
     "faehigkeiten",
+    "namensraum_lesen",
     "ordner_lesen",
     "smtp_pruefen",
     "verbinden",

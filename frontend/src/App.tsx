@@ -145,7 +145,7 @@ import { nachrichtDrucken } from './lib/drucken'
 import type { Listenfilter } from './api/laden'
 import { zeitzoneSetzen } from './lib/format'
 import { servermeldung } from './lib/servermeldung'
-import { ordnerName } from './lib/ordnername'
+import { namensraumWurzel, ordnerName } from './lib/ordnername'
 
 type Modus = 'dark' | 'light'
 
@@ -1682,12 +1682,19 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       symbol: <FolderPlus />,
       tun: () => void neuerOrdner(o.kontoId, null),
     },
-    {
-      id: 'neu_unter',
-      text: t('ordner.neu_unter'),
-      symbol: <FolderPlus />,
-      tun: () => void neuerOrdner(o.kontoId, o),
-    },
+    /* ⚠️ **Nicht unter der Wurzel des Namensraums** (`INBOX` bei Dovecot mit
+       `INBOX.`, Issue #12). Dort ist ein Unterordner ein Ordner der obersten
+       Ebene und stünde danach gar nicht unter dem Posteingang. */
+    ...(o.pfad === namensraumWurzel(o.namensraum)
+      ? []
+      : [
+          {
+            id: 'neu_unter',
+            text: t('ordner.neu_unter'),
+            symbol: <FolderPlus />,
+            tun: () => void neuerOrdner(o.kontoId, o),
+          },
+        ]),
     {
       id: 'einklappen',
       trennerDavor: true,

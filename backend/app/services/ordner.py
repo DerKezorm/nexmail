@@ -61,7 +61,13 @@ def anlegen(db: Session, konto: Konto, name: str, eltern: Ordner | None = None) 
         try:
             trenner = _trenner(klient)
             sauber = name_pruefen(name, trenner)
-            pfad = f"{eltern.pfad}{trenner}{sauber}" if eltern is not None else sauber
+            # ⚠️ **Oben heißt bei manchen Servern ``INBOX.``** (Dovecot bei
+            # Hetzner Webhosting; All-Inkl hat keinen). Ohne den Präfix weist der Server das
+            # Anlegen ab: „Client tried to access nonexistent namespace“
+            # (Issue #12). Gefragt wird hier und nicht aus dem Gemerkten
+            # gelesen: Ein frisch angelegtes Postfach kennt ihn noch nicht.
+            praefix = kontendienst.namensraum_merken(konto, klient)
+            pfad = f"{eltern.pfad}{trenner}{sauber}" if eltern is not None else f"{praefix}{sauber}"
 
             if any(o.pfad == pfad for o in konto.ordner):
                 raise OrdnerFehler("ordner_gibt_es_schon", name=sauber)
@@ -261,9 +267,9 @@ def rolle_zuweisen(db: Session, konto: Konto, ordner: Ordner, rolle: str) -> Ord
         # Papierkorb waere er ein Ziel, an dem jedes Loeschen scheitert.
         raise OrdnerFehler("ordner_rolle_nicht_waehlbar", name=ordner.name)
 
-    from .wiedervorlage import ORDNER_NAME as wiedervorlage_ordner  # kreisfrei erst hier
+    from .wiedervorlage import ist_ordner as ist_wiedervorlage  # kreisfrei erst hier
 
-    if besonders and ordner.pfad == wiedervorlage_ordner:
+    if besonders and ist_wiedervorlage(ordner.pfad, konto):
         # ⚠️ Was dort liegt, hat ein Mensch bewusst weggelegt. Als Papierkorb
         # oder Junk leerte das Aufraeumen es endgueltig.
         raise OrdnerFehler("ordner_rolle_wiedervorlage")

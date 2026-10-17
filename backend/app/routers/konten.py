@@ -25,6 +25,7 @@ from ..services import (
     imap as imapdienst,
     konten as kontendienst,
     ordner as ordnerdienst,
+    wiedervorlage as wiedervorlagedienst,
 )
 from ..services import aliase as aliasdienst
 from ..services.aliase import Alias
@@ -153,6 +154,13 @@ class OrdnerAntwort(BaseModel):
     #: Wie viele davon ungelesen sind.
     ungelesen: int = 0
     abonniert: bool
+    #: Der Präfix des persönlichen Namensraums dieses Postfachs (``INBOX.``
+    #: oder leer). ⚠️ Damit zeigt die Oberfläche ``INBOX.Rechnungen`` oben,
+    #: wie Thunderbird, statt als Unterordner des Posteingangs (Issue #12).
+    namensraum: str = ""
+    #: Ob das der Wiedervorlage-Ordner ist. Sein Pfad hängt am Namensraum;
+    #: die Oberfläche soll das nicht nachrechnen.
+    wiedervorlage: bool = False
 
 
 class BefundAntwort(BaseModel):
@@ -465,6 +473,8 @@ def ordner(konto_id: str, person: AngemeldeterBenutzer, db: DbSession) -> list[O
             abonniert=o.abonniert,
             anzahl=stand.get(o.id, (0, 0))[0],
             ungelesen=stand.get(o.id, (0, 0))[1],
+            namensraum=konto.namensraum or "",
+            wiedervorlage=wiedervorlagedienst.ist_ordner(o.pfad, konto),
         )
         for o in sorted(konto.ordner, key=lambda o: (rang.get(o.rolle, 9), o.name.lower()))
     ]
@@ -517,6 +527,7 @@ def ordner_anlegen(
         rolle=neu.rolle,
         waehlbar=neu.waehlbar,
         abonniert=neu.abonniert,
+        namensraum=konto.namensraum or "",
     )
 
 

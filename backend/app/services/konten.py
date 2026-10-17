@@ -466,6 +466,18 @@ def rollen_setzen(ordner: list[Ordner]) -> None:
             o.rolle = o.rolle_erkannt
 
 
+def namensraum_merken(konto: Konto, klient) -> str:
+    """Den Präfix des persönlichen Namensraums nachfragen und am Postfach merken.
+
+    Gibt den geltenden Präfix zurück. Festgeschrieben wird mit dem nächsten
+    ``commit`` des Aufrufers.
+    """
+    wert = imapdienst.namensraum_lesen(klient)
+    if wert is not None and wert != (konto.namensraum or ""):
+        konto.namensraum = wert
+    return konto.namensraum or ""
+
+
 def ordner_uebernehmen(db: Session, konto: Konto, angaben: list[imapdienst.Ordnerangabe]) -> None:
     """Die gelesene Ordnerliste in die Datenbank spiegeln.
 
