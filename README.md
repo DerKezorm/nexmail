@@ -6,7 +6,7 @@
 
 **A self-hosted email client. One container, one file, your mailboxes stay with you.**
 
-[Project site](https://nexmail.nexapps.dev) · [Report an issue](https://github.com/DerKezorm/nexmail/issues/new)
+[Report an issue](https://github.com/DerKezorm/nexmail/issues/new)
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/mail-hell-en.webp">
