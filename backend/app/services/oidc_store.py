@@ -9,7 +9,7 @@ und ``einladung``. Eine Instanz gilt fuer eine Datenbanksitzung, also eine Anfra
 ⚠️ **Zugeordnet wird nur ueber ``(anbieter_id, subject)``.** Die Adresse vom Anbieter steht hoechstens zur Anzeige an
 der Verknuepfung; sie findet nie ein Konto.
 
-⚠️ **0.21 liest dieselben Tabellen.** Deshalb steht das Geheimnis zweimal da (mit dem Kontext des Bauplans und so,
+⚠️ **0.21 liest dieselben Tabellen.** Deshalb steht das Geheimnis zweimal da (mit dem Kontext des Moduls und so,
 wie 0.21 es liest), ``aktiv`` ist, was 0.21 als eingeschaltet sieht, und der Aussteller eines Eintrags behaelt seine
 Schreibweise, solange er derselbe bleibt. Einzelheiten in ``models.OidcAnbieter``.
 """
@@ -53,7 +53,7 @@ def eingeschaltet(row: OidcAnbieter) -> bool:
 
 def fuer_alte_fassung_aktiv(enabled: bool, trusts_second_factor: bool) -> bool:
     """Was in ``aktiv`` steht: 0.21 fragt nach dem Anbieter keinen Code, also laesst sie nur herein, wo der Eintrag
-    an ist UND der Anbieter den zweiten Faktor selbst prueft (Bauplan 01 "Umstieg" 4, Regel 2)."""
+    an ist UND der Anbieter den zweiten Faktor selbst prueft."""
     return bool(enabled and trusts_second_factor)
 
 

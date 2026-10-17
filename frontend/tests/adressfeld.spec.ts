@@ -1,7 +1,7 @@
 /* Adress-Blasen im Verfassen-Fenster.
  *
- * ⚠️ **Entstanden aus einer Erwartung, nicht aus einem Absturz** (02.09.2026):
- * „wenn ich hier jetzt enter drücke müsste daraus eine bubble werden". Vorher
+ * ⚠️ **Entstanden aus einer Erwartung, nicht aus einem Absturz:** Enter
+ * sollte aus dem Text eine Adress-Blase machen. Vorher
  * war das Feld eine Komma-Textzeile; Enter tat nichts, und
  * „test@web.de blablabla" ging als EINE kaputte Adresse durch, sichtbar erst
  * beim Senden.

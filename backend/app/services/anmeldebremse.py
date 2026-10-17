@@ -178,7 +178,7 @@ def zuruecksetzen() -> None:
 
 # --- Anmeldung ueber einen Anbieter ------------------------------------------ #
 #
-# ⚠️ **Je Absender, wie bei der Passwort-Anmeldung** (Bauplan 02, "Ablauf" 4):
+# ⚠️ **Je Absender, wie bei der Passwort-Anmeldung**:
 # gezaehlt nach der Adresse aus ``adresse_von``. Ohne ``NEXMAIL_CLIENT_IP``
 # kennt nexmail keinen Absender, und dann zaehlt hier nichts: Eine Zaehlung
 # ohne Absender hielte jeden auf, und genau damit liesse sich jeder aussperren.

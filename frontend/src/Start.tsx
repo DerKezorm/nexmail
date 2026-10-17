@@ -80,9 +80,8 @@ export default function Start() {
    *
    * ``ich`` wurde bis zum 01.09.2026 **einmal** beim Start geholt und nach
    * unten durchgereicht — keine Handlung frischte es auf. Wer den zweiten
-   * Faktor ausschaltete, sah es erst nach F5. Der Betreiber: „das zeigt er mir aber
-   * erst an, wenn ich mit F5 die seite neu lade … das ist an mehreren stellen
-   * aufgefallen."
+   * Faktor ausschaltete, sah es erst nach F5. Aufgefallen
+   * ist das an mehreren Stellen.
    *
    * Und bewusst **nicht** ``pruefen()``: Das wechselt bei einem Fehlschlag auf
    * die Anmeldemaske. Eine misslungene Auffrischung darf niemanden hinauswerfen

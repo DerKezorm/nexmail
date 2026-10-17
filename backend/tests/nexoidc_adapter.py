@@ -1,4 +1,4 @@
-"""nexoidc contract tests: nexmail's adapter (from ``bauplaene/oidc/tests-fuer-apps/adapter_template.py``).
+"""nexoidc contract tests: nexmail's adapter (from the module's adapter template).
 
 The contract tests in ``tests/nexoidc/`` are the same in every app and never edited here. Everything nexmail does its
 own way is answered below: accounts in ``benutzer`` (the module knows them by ``nummer``), invitations in
@@ -6,8 +6,8 @@ own way is answered below: accounts in ``benutzer`` (the module knows them by ``
 refusals as ``{"detail": <code>, "werte": {...}}``.
 
 nexmail had a provider list before the module (0.21, ``legacy_model = "list"``); its providers know the redirect
-address ``/api/oidc/<slug>/zurueck``. nexmail is never coupled to nexsuite. Its invitations carry no rights (every
-account is a member), so the parts of Pflichttest 16 that grant "editor" rights do not apply; ``make_invite("editor")``
+address ``/api/oidc/<slug>/zurueck``. nexmail's provider list is never coupled to a central directory. Its invitations carry no rights (every
+account is a member), so the parts of contract test 16 that grant "editor" rights do not apply; ``make_invite("editor")``
 skips them, and ``tests/test_oidc_app.py`` checks the invitation through a provider in nexmail's own terms.
 """
 
@@ -41,7 +41,7 @@ class Adapter(StandardAdapter):
     api = "/api"
     single_account = False
     only_authentik = False
-    # Bauplan 06 names nexcanvas, nextasks, nexbrand and nexlore for the Verbund; nexmail is never coupled.
+    # nexmail's provider list is never coupled to a central directory.
     supports_coupling = False
     has_second_factor = True
     legacy_model = "list"

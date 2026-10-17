@@ -34,7 +34,7 @@ type Anbieter = 'google' | 'microsoft'
 
 /* ⚠️ **Nur Google spricht CalDAV.** Microsoft hat seinen Kalender hinter der
    Graph-API; ein Kalenderschritt, der dort ins Leere führt, wäre eine
-   Sackgasse mit Beschriftung. Steht als offener Punkt in SPAETER.md. */
+   Sackgasse mit Beschriftung. */
 const MIT_KALENDER: Record<string, boolean> = { google: true, microsoft: false }
 
 interface Zugang {

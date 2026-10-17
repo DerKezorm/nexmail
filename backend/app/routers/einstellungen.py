@@ -8,7 +8,6 @@ mit OIDC zur Voraussetzung wird:
 Aus ihr entsteht die Rückkehr-Adresse, die beim Anbieter hinterlegt werden
 muss. Die Prüfung sitzt dann beim Anlegen des Anbieters und nicht beim ersten
 Anmeldeversuch — dort träfe sie den falschen Menschen.
-Siehe FALLSTRICKE.md §4.
 """
 
 from __future__ import annotations

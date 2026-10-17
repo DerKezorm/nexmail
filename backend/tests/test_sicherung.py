@@ -239,7 +239,7 @@ def test_jede_ausnahme_hat_einen_grund():
 
 
 def test_anhaenge_sind_nicht_im_archiv(klient):
-    """Bewusst so entschieden — die Sicherung soll klein genug bleiben."""
+    """Bewusst nicht im Archiv — die Sicherung soll klein genug bleiben."""
     einrichten(klient)
     einstellungen = get_settings()
     (einstellungen.data_dir / "blobs").mkdir(exist_ok=True)

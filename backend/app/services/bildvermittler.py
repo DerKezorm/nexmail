@@ -234,9 +234,8 @@ def adresse_pruefen(url: str, eigenes_netz: bool = False) -> None:
     Absender nicht. Die Antwort sieht er nie, aber der Abruf passiert, und das
     genuegt bei einem Geraet, das auf ein blosses GET reagiert.
 
-    Am 02.09.2026 entschieden: blocken. Der Preis ist bekannt und steht in
-    SPAETER.md — Mails aus dem eigenen Netz (Radarr, Home Assistant) zeigen
-    ihre Bilder nicht.
+    Deshalb wird geblockt. Der Preis ist bekannt: Mails aus dem eigenen Netz
+    (Radarr, Home Assistant) zeigen ihre Bilder nicht.
 
     ⚠️ **Ein Restrisiko bleibt und soll hier stehen, statt verschwiegen zu
     werden:** Zwischen dieser Pruefung und dem Abruf loest httpx den Namen ein

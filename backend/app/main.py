@@ -5,7 +5,6 @@ andere hängt an ``Depends(angemeldet)``. Ein Test läuft über die ganze
 Routentabelle und schlägt fehl, sobald ein Pfad weder geschützt ist noch dort
 steht — mit Begründung. Umgekehrt gedacht („ich sperre, was schaden kann")
 wäre die erste vergessene Zeile ein Datenleck.
-Siehe FALLSTRICKE.md §5.
 """
 
 from __future__ import annotations
@@ -108,8 +107,7 @@ def _oeffentliche_adresse_speichern(adresse: str) -> None:
         einstellung_schreiben(db, "oeffentliche_adresse", ohne_vorbau(adresse, get_settings().url_base))
 
 
-#: Das gemeinsame Anmeldemodul, vor der ersten Anfrage (Bauplan "Anmeldung mit
-#: OIDC und authentik"). Die Seiten tragen den Vorbau: Sie sind Ziele einer
+#: Das gemeinsame Anmeldemodul, vor der ersten Anfrage. Die Seiten tragen den Vorbau: Sie sind Ziele einer
 #: Weiterleitung, die der Browser selbst aufloest.
 nexoidc.configure(
     nexoidc.AppConfig(
@@ -193,7 +191,7 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
         "Verknuepfen nimmt er das Konto aus der Sitzung."
     ),
     "/api/oidc/callback": (
-        "Derselbe Rueckweg fuer den Eintrag oidc (Bauplan: die Adresse, die ein "
+        "Derselbe Rueckweg fuer den Eintrag oidc (die Adresse, die ein "
         "Anbieter aus einer Ein-Anbieter-Fassung kennt)."
     ),
     "/api/oidc/{slug}/einladung": (

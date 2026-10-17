@@ -147,8 +147,7 @@ def uebernehmen(
 ) -> Einladung:
     """Den Termin aus der Einladung in einen Kalender übernehmen.
 
-    ⚠️ **Auf Klick, nicht automatisch beim Zusagen.** So entschieden am
-    02.09.2026: Wer zusagt, ohne den Termin wirklich zu wollen, soll ihn nicht
+    ⚠️ **Auf Klick, nicht automatisch beim Zusagen.** Wer zusagt, ohne den Termin wirklich zu wollen, soll ihn nicht
     im Kalender wiederfinden.
 
     ⚠️ **Der Termin behält die ``UID`` der Einladung.** Daran erkennt jeder

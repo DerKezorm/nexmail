@@ -685,7 +685,6 @@ def _schicken(
 #: Kopie von Mailtext, und sie ueberlebt die Mail: Wer eine Nachricht loescht,
 #: haette sie hier weiter stehen. Kurz genug, dass nichts Altes liegen bleibt,
 #: lang genug, um „was habe ich letzte Woche hinausgeschickt" zu beantworten.
-#: Entschieden mit dem Betreiber am 04.09.2026.
 VORGANG_TAGE = 14
 
 #: Wie viele Zeilen die Oberflaeche auf einmal bekommt. Ein Deckel, damit eine

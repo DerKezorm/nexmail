@@ -175,7 +175,7 @@ def _schlank_machen(db_datei: Path) -> dict:
         adresse = verbindung.execute(
             "select wert from einstellung where schluessel = 'oeffentliche_adresse'"
         ).fetchone()
-        # ⚠️ ``redirect_path`` gibt es erst seit der Anmeldung nach Bauplan; ein
+        # ⚠️ ``redirect_path`` gibt es erst seit dem gemeinsamen Anmeldemodul; ein
         # Eintrag von 0.21 (Spalte fehlt oder NULL) kennt beim Anbieter
         # ``/api/oidc/<kuerzel>/zurueck``.
         spalten = {zeile[1] for zeile in verbindung.execute("pragma table_info(oidc_anbieter)")}

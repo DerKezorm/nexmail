@@ -1,6 +1,6 @@
 """Anmelden ueber OpenID Connect, das eigene Konto verknuepfen, die Anbieter verwalten, der authentik-Knopf.
 
-Der Ablauf selbst steht im gemeinsamen Modul ``app.vendor.nexoidc`` (Bauplan "Anmeldung mit OIDC und authentik"), hier
+Der Ablauf selbst steht im gemeinsamen Modul ``app.vendor.nexoidc``, hier
 nur, was nexmail dazugibt: Sitzung, zweiter Faktor, Bremse, Passwort, Betreiber und die Antworten. Pfade:
 
 | Methode | Pfad | Wer |
@@ -99,7 +99,7 @@ def aktiver_anbieter(db: Session) -> bool:
 
 def passwort_anmeldung_an(db: Session) -> bool:
     """Ob Konten ohne Betreiber-Haken sich mit Passwort anmelden duerfen. Ohne aktiven Anbieter immer: sonst kaeme
-    niemand mehr herein (Bauplan 01 "Passwort-Anmeldung")."""
+    niemand mehr herein."""
     return einstellung_lesen(db, SCHLUESSEL_PASSWORT) != "aus" or not aktiver_anbieter(db)
 
 
@@ -186,7 +186,7 @@ def _durchreichen(request: Request) -> HTMLResponse:
     """Eine Seite, die dieselbe Rueckkehr noch einmal aufruft, diesmal von nexmails eigener Seite aus.
 
     ⚠️ **Das Sitzungs-Cookie steht auf ``SameSite=strict``** und faehrt bei der Weiterleitung vom Anbieter nicht mit
-    (eine Navigation von fremder Seite). Beim Verknuepfen muss die Rueckkehr aber die Sitzung sehen (Bauplan 01). Ein
+    (eine Navigation von fremder Seite). Beim Verknuepfen muss die Rueckkehr aber die Sitzung sehen. Ein
     zweiter Aufruf, den nexmails eigene Seite ausloest, ist eine Navigation derselben Seite: Dann faehrt es mit.
     Nichts ist bis hierher verbraucht (``state`` und Code gelten noch), und ohne Skript (``script-src 'self'``)."""
     ziel = html.escape(str(request.url.path) + ("?" + request.url.query if request.url.query else ""), quote=True)

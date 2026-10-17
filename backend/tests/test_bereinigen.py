@@ -314,7 +314,7 @@ def test_background_kommt_nicht_durch():
 
 
 def test_style_bloecke_bleiben_draussen():
-    """Am 02.09.2026 so entschieden: Attribute ja, Bloecke nein."""
+    """Attribute ja, Bloecke nein."""
     sauber = bereinigen.saeubern("<style>body{color:red}</style><p>Text</p>")
     assert "<style" not in sauber.lower()
     assert "<p>Text</p>" in sauber

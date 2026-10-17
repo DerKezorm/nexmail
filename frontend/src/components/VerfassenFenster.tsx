@@ -1,6 +1,6 @@
 /* Das Verfassen-Fenster.
  *
- * Eigenes Fenster über der App, Rest abgedunkelt — so entschieden, weil ein
+ * Eigenes Fenster über der App, Rest abgedunkelt, weil ein
  * eingebettetes Schreibfeld in der rechten Spalte mit dieser Formatierleiste
  * zu schmal würde.
  *
@@ -628,8 +628,8 @@ export function VerfassenFenster({
         await api.loeschen(`/api/verfassen/entwurf/${entwurfUid}?konto_id=${kontoId}`)
         aufGesendet?.()
       } catch {
-        // Weggeworfen ist weggeworfen: Der Betreiber wollte den Text nicht
-        // mehr. Eine liegengebliebene Fassung ist kein Grund, ihn im Fenster
+        // Weggeworfen ist weggeworfen: Der Text wird nicht
+        // mehr gebraucht. Eine liegengebliebene Fassung ist kein Grund, ihn im Fenster
         // festzuhalten.
       }
     }

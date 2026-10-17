@@ -136,9 +136,8 @@ class TeilAntwort(BaseModel):
 class OrdnerAntwort(BaseModel):
     # ⚠️ **Die Zähler kommen vom Server, nicht aus der geladenen Liste.**
     # Die Oberfläche hält nur die Nachrichten des offenen Ordners; wer daraus
-    # zählt, zeigt bei allen anderen Ordnern null. Genau so gemeldet am
-    # 01.09.2026: „ich sehe die ungelesenen Einträge nur, wenn ich das
-    # entsprechende Postfach ausgewählt habe."
+    # zählt, zeigt bei allen anderen Ordnern null. Gemeldet wurde:
+    # Ungelesene Einträge waren nur beim ausgewählten Postfach zu sehen.
     #: 0 beim Verbindungstest - da existiert der Ordner noch nicht in der
     #: Datenbank. Nach dem Anlegen traegt er seine echte Kennung.
     id: int = 0
@@ -447,8 +446,7 @@ def ordner(konto_id: str, person: AngemeldeterBenutzer, db: DbSession) -> list[O
     # daraus, ein Klick daneben wieder 16. Am 02.09.2026 gemeldet.
     #
     # ⚠️ **Der Preis ist gemessen und klein.** Eine Gruppenabfrage ueber alle
-    # Ordner eines Postfachs kostet 5,6 ms (CLAUDE.md, „Gemessen, nicht
-    # geschaetzt") — der Teilindex ``… where gelesen = 0`` traegt das.
+    # Ordner eines Postfachs kostet 5,6 ms — der Teilindex ``… where gelesen = 0`` traegt das.
     stand = {
         o_id: (gesamt, ungelesen)
         for o_id, gesamt, ungelesen in db.execute(

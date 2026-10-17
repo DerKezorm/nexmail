@@ -1,9 +1,9 @@
-/* Mein Konto → Sicherheit → Anmeldeanbieter (Bauplan „Anmeldung mit OIDC und authentik“, Teil 04).
+/* Mein Konto → Sicherheit → Anmeldeanbieter.
  *
  * Je aktivem Anbieter eine Zeile mit Zustand und „Verknüpfen“ oder „Lösen“. Wortlaute nur aus dem Anmeldemodul
  * (`oidc.account.*`), Fehler über `oidcErrorKey`, nie die rohe Kennung.
  *
- * ⚠️ **Verknüpfen fragt das Kennwort noch einmal** (Bauplan 01): ein POST mit Sitzung und Kennwort, kein Link. Die
+ * ⚠️ **Verknüpfen fragt das Kennwort noch einmal**: ein POST mit Sitzung und Kennwort, kein Link. Die
  * Antwort nennt die Adresse beim Anbieter; der Browser geht dorthin, und die Rückkehr landet wieder hier
  * (`lib/kontorueckweg.ts`).
  *

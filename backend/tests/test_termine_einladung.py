@@ -1,6 +1,6 @@
 """Eine Einladung in den Kalender übernehmen.
 
-⚠️ **Auf Klick, nicht als Folge des Zusagens.** So entschieden am 02.09.2026:
+⚠️ **Auf Klick, nicht als Folge des Zusagens.**
 Wer zusagt, ohne den Termin wirklich zu wollen, soll ihn nicht im Kalender
 wiederfinden.
 """

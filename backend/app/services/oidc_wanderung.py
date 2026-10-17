@@ -1,4 +1,4 @@
-"""Beim Start: die Anbieterliste von 0.21 auf den Bauplan nachziehen, und was 0.21 nach einem Rueckweg geaendert hat.
+"""Beim Start: die Anbieterliste von 0.21 auf das Anmeldemodul nachziehen, und was 0.21 nach einem Rueckweg geaendert hat.
 
 nexmail hatte schon eine Liste (``oidc_anbieter``, ``oidc_verknuepfung``). Die neuen Spalten legt die Schemapflege an
 (``db._fehlende_spalten``), alle mit Vorgabe oder NULL; die Namen der alten bleiben, denn 0.21 liest dieselben
@@ -6,14 +6,13 @@ Tabellen. Hier passiert der Rest, bei jedem Start, in einer Transaktion:
 
 1. **Nummern** fuer Konten und Eintraege ohne (das Modul rechnet mit ganzen Zahlen).
 2. **Eintraege, die 0.21 angelegt hat** (``redirect_path`` NULL, beim ersten Start also alle): Ihr Anbieter kennt die
-   Rueckleitadresse ``/api/oidc/<kuerzel>/zurueck``; sie wird ihr ``redirect_path`` und bleibt gueltig (Bauplan 01,
-   letzter Absatz; 06 "Pfad der Schnittstelle"). Der Eintrag mit dem Kurznamen ``authentik``, dessen Aussteller auf
+   Rueckleitadresse ``/api/oidc/<kuerzel>/zurueck``; sie wird ihr ``redirect_path`` und bleibt gueltig. Der Eintrag mit dem Kurznamen ``authentik``, dessen Aussteller auf
    ``/application/o/<slug>/`` endet, kam vom authentik-Knopf von 0.21: ``managed = "authentik"``. Eingeschaltet ist,
    was 0.21 eingeschaltet hatte; den zweiten Faktor fragte 0.21 nach dem Anbieter nie (``trusts_second_factor`` an).
 3. **Was 0.21 an einem Eintrag geaendert hat:** ``aktiv`` ist der Spiegel fuer 0.21 (an nur, wenn der Eintrag an ist
    und dem Anbieter den zweiten Faktor glaubt). Weicht er ab, hat 0.21 umgeschaltet: an heisst Eintrag an und
    „Anbieter prueft den zweiten Faktor selbst" an (so verhielt sich 0.21), aus heisst Eintrag aus.
-4. **Geheimnis:** Was in der Spalte von 0.21 steht, gilt; weicht die Spalte mit dem Kontext des Bauplans davon ab
+4. **Geheimnis:** Was in der Spalte von 0.21 steht, gilt; weicht die Spalte mit dem Kontext des Moduls davon ab
    (0.21 hat es geaendert), wird sie neu geschrieben.
 5. **Verknuepfungen:** Jede gehoert dem Eintrag, zu dessen Aussteller ihr ``issuer`` passt (bei Entra mit ``common``
    der echte Mandant an der Stelle des Platzhalters). Eine Zeile von 0.21 (ohne Eintrag) wird zugeordnet; eine Zeile,

@@ -42,8 +42,7 @@ const LADER: Record<Sprachcode, () => Promise<{ default: object }>> = {
   en: () => mitAnmeldung(import('./en.json'), import('../vendor/nexoidc/oidc.en.json')),
 }
 
-/* ⚠️ **Die Wortlaute der Anmeldung über Anbieter kommen aus dem gemeinsamen Modul** (`vendor/nexoidc`, Bauplan
-   „Anmeldung mit OIDC und authentik“, Teil 04): in jeder nex-App dieselben Sätze unter `oidc.*`, eingemischt über
+/* ⚠️ **Die Wortlaute der Anmeldung über Anbieter kommen aus dem gemeinsamen Modul** (`vendor/nexoidc`): in jeder nex-App dieselben Sätze unter `oidc.*`, eingemischt über
    `oidcWording`. nexmails eigene Dateien tragen keinen Schlüssel `oidc`; geändert wird nur im Modul. */
 async function mitAnmeldung(
   eigen: Promise<{ default: object }>,

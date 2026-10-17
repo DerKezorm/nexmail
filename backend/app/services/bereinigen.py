@@ -36,8 +36,7 @@ logger = logging.getLogger("nexmail.bereinigen")
 #: Gestaltung steht deshalb bis heute an den Elementen statt im CSS. Wer die
 #: beiden weglaesst, laesst genau die Mails zerfallen, um die es geht.
 #:
-#: ⚠️ **``style`` als ELEMENT fehlt weiterhin.** Am 02.09.2026 so entschieden:
-#: Attribute ja, Bloecke nein. Ein ``<style>``-Block braucht einen eigenen
+#: ⚠️ **``style`` als ELEMENT fehlt weiterhin.** Attribute ja, Bloecke nein. Ein ``<style>``-Block braucht einen eigenen
 #: CSS-Filter (``url()``, ``@import``, ``expression``, ``behavior``) und eine
 #: Begrenzung auf den Rahmen. Fremdes CSS ist die Flaeche, auf der bisher
 #: nichts durchkam, und sie wird nicht nebenbei geoeffnet.

@@ -182,7 +182,7 @@ def _person_lesen(wert: str, parameter: dict[str, str]) -> dict:
     ⚠️ **Gelesen, aber nicht geschrieben.** Teilnehmer stehen NICHT in
     ``EIGENE``: Sie bleiben in ``roh`` und gehen unangetastet zurueck. nexmail
     zeigt sie nur — wer sie aendern koennte, muesste auch einladen koennen,
-    und dazu gehoert der ganze Rueckkanal (siehe SPAETER.md).
+    und dazu gehoert der ganze Rueckkanal.
     """
     adresse = wert.strip()
     if adresse.lower().startswith("mailto:"):

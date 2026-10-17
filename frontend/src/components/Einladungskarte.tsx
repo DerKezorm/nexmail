@@ -1,8 +1,7 @@
 /* Die Termin-Einladung im Lesebereich.
  *
  * ⚠️ **Zusagen und Übernehmen sind zwei Dinge.** Eine Zusage benachrichtigt
- * den Einladenden; in den Kalender kommt der Termin erst auf Klick. So
- * entschieden am 02.09.2026: Wer zusagt, ohne den Termin wirklich zu wollen,
+ * den Einladenden; in den Kalender kommt der Termin erst auf Klick. Wer zusagt, ohne den Termin wirklich zu wollen,
  * soll ihn nicht im Kalender wiederfinden. Die Karte sagt beides.
  *
  * ⚠️ **Was nicht sicher ist, wird benannt statt geraten.** Eine Wiederholung

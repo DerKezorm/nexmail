@@ -328,7 +328,7 @@ def suchen(
     # ``lower('Übung') LIKE '%übung%'`` ergibt 0 — wer „Übung" richtig tippte,
     # fand seinen Termin nicht. Ohne beides trifft es.
     #
-    # ⚠️ **Der Preis steht in SPAETER.md:** Umlaute bleiben gross/klein-genau.
+    # ⚠️ **Der Preis:** Umlaute bleiben gross/klein-genau.
     # „übung" findet „Übung" nicht. Fuer die Post loest das der FTS5-Zerleger;
     # hier gibt es keinen, und ein eigener waere ein Projekt fuer sich.
     #

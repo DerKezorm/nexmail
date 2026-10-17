@@ -134,9 +134,8 @@ def anmelden(
         logger.warning("Signed in with the second factor disabled (NEXMAIL_ZWEI_FAKTOR_AUS).")
         return Schritt(schritt="fertig")
 
-    # ⚠️ **Der zweite Faktor ist eine Wahl, keine Pflicht** — so entschieden am
-    # 01.09.2026: „das sollten die User selber entscheiden duerfen … wenn
-    # jemand das rein lokal im netz betreibt waere das ja unoetig."
+    # ⚠️ **Der zweite Faktor ist eine Wahl, keine Pflicht:** Wer nexmail rein
+    # lokal betreibt, braucht ihn nicht.
     #
     # Wer ihn nicht eingeschaltet hat, kommt hier durch. Eingeschaltet wird er
     # unter Einstellungen → Sicherheit, nicht mitten in der Anmeldung: Ein
@@ -473,7 +472,7 @@ def kontaktadresse_setzen(
     """Die Adresse fuer Kontosachen setzen oder entfernen.
 
     ⚠️ **Ohne sie gibt es keinen Weg zurueck.** Sie ist ausdruecklich **nicht**
-    eines der eingerichteten Postfaecher; so entschieden am 04.09.2026. Wer sie
+    eines der eingerichteten Postfaecher. Wer sie
     leer laesst, kommt nach einem vergessenen Kennwort nicht mehr hinein.
 
     ⚠️ **Kein Kennwort davor, und das ist eine Abwaegung.** Wer eine fremde

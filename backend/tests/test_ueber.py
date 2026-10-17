@@ -87,7 +87,7 @@ def test_nur_der_betreiber_sieht_sie(klient, db, ohne_netz):
 
 
 def test_die_nachfrage_ist_ab_werk_an(klient, ohne_netz):
-    """So entschieden am 01.09.2026, „wie bei nexview"."""
+    """Ohne Eintrag ist die Nachfrage an."""
     einrichten(klient)
     assert klient.get("/api/ueber").json()["update_pruefen"] is True
 

@@ -1,5 +1,5 @@
-/* Verwaltung → Anmeldung: drei Karten untereinander, wie der Bauplan „Anmeldung mit OIDC und authentik“ (Teil 04)
- * sie für jede nex-App vorgibt. Reihenfolge, Wortlaut und Verhalten kommen von dort (Wortlaute nur aus dem
+/* Verwaltung → Anmeldung: drei Karten untereinander, wie in jeder nex-App.
+ * Reihenfolge, Wortlaut und Verhalten sind überall gleich (Wortlaute nur aus dem
  * Anmeldemodul, `oidc.*`), die Bauteile (Karte, Schalter, Feld, Knopf, Rückfrage) sind die von nexmail.
  *
  * 1. Anmeldung: „Anmeldung mit Passwort“ (gesperrt, solange kein Anbieter aktiv ist) und die öffentliche Adresse.
@@ -540,7 +540,7 @@ const LEER: Formwerte = {
 
 type Feldname = 'label' | 'slug' | 'issuer' | 'client_id' | 'client_secret' | 'scopes' | 'id'
 
-/** Das Formular eines Anbieters als Dialog, Felder in der Reihenfolge des Bauplans (Teil 04). */
+/** Das Formular eines Anbieters als Dialog, Felder in der gemeinsamen Reihenfolge. */
 function Formular({
   bestehend,
   adresse,

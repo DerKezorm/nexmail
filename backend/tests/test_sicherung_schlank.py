@@ -318,7 +318,7 @@ def test_der_befund_nennt_die_rueckkehr_adresse(klient, welt, db, hinter_proxy):
     assert anbieter["rueckkehr_adresse"] == "https://neu.example/api/oidc/keycloak/zurueck"
 
 
-# --- Woher der Adressvorschlag kommt (#job-224) ----------------------------------------------------------------------
+# --- Woher der Adressvorschlag kommt ---------------------------------------------------------------------------------
 
 
 def _adresse_jetzt(klient, kopfzeilen) -> str:

@@ -84,7 +84,7 @@ def _etwas_muss_da_sein(adresse: str, name: str, telefon: str, firma: str) -> No
 # (Nummern, Adressen, Anschriften), jeder Eintrag mit Art, eigener
 # Beschriftung und Stern. ``name``, ``adresse`` und ``telefon`` bleiben als
 # abgeleitete Spalten: der Anzeigename und je der Eintrag mit Stern. Die Regel
-# aus CLAUDE.md gilt: nur Felder, die iCloud und Google beide kennen.
+# gilt: nur Felder, die iCloud und Google beide kennen.
 
 LISTEN = vcard.LISTEN
 #: Mehr Nummern hat kein Mensch; wer mehr braucht, hat einen Verteiler.

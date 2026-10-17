@@ -1,7 +1,6 @@
 """Die Ueber-Seite: Fassung, Herkunft, Lizenz, Update-Stand.
 
-⚠️ **Nur der Betreiber.** So entschieden am 01.09.2026: „Ein Fragezeichen-Button
-ueber dem Einstellungsbutton links unten. Nur fuer Admins." Die Seite traegt den
+⚠️ **Nur der Betreiber.** Die Seite traegt den
 Update-Schalter, und der ruft nach draussen — das ist eine Entscheidung ueber
 die ganze Installation, keine ueber ein Konto.
 """
@@ -42,7 +41,7 @@ class Schalter(BaseModel):
 
 
 def _an(db) -> bool:
-    """⚠️ Ab Werk **an** — so entschieden am 01.09.2026, „wie bei nexview".
+    """⚠️ Ab Werk **an**.
 
     Ein leerer Wert heisst also nicht „aus", sondern „noch nie angefasst".
     """

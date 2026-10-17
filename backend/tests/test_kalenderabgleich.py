@@ -525,8 +525,8 @@ def test_ein_zweiter_lauf_meldet_keine_aenderung(db, klient, monkeypatch):
 
     Ein ICS-Abo wird als Ganzes ersetzt; vorher zählte deshalb jede bekannte
     Zeile als geändert — bei jedem Klick auf Aktualisieren aufs Neue. Am
-    03.09.2026 aus dem Betrieb gemeldet: „Ich habe nichts geändert und das
-    kommt jedes Mal wieder."
+    03.09.2026 aus dem Betrieb gemeldet: Jede Aktualisierung meldete
+    Änderungen, die niemand gemacht hatte.
     """
     einrichten(klient)
     person = db.query(Benutzer).one()

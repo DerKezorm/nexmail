@@ -8,8 +8,7 @@ kommt; deshalb sagt es auch die Oberfläche.
 ⚠️ **Von Hand gelesen, ohne Bibliothek.** Gebraucht wird ein kleiner
 Ausschnitt: ein ``VEVENT`` mit Titel, Zeit, Ort, Einladendem und Teilnehmern.
 Eine Bibliothek dafür brächte zwei weitere Abhängigkeiten mit, und jede
-gepinnte Fassung will fortan gegen OSV geprüft werden (siehe CLAUDE.md,
-„Abhaengigkeiten: gepinnt heisst nicht geprueft"). Der Preis dafür steht unten
+gepinnte Fassung will fortan gegen OSV geprüft werden. Der Preis dafür steht unten
 unter „Was hier NICHT geht" — ehrlich aufgezählt statt stillschweigend falsch
 angezeigt.
 
@@ -219,8 +218,8 @@ def lesen(roh: bytes | str, zeitzone: str = "UTC") -> Termin | None:
     #: ein eigenes ``DESCRIPTION`` („Erinnerung"), oft auch ein ``SUMMARY`` und
     #: eine ``DURATION``. Wer die Verschachtelung nicht verfolgt, schreibt die
     #: Erinnerung als Beschreibung des Termins in die Karte — am 03.09.2026 an
-    #: einer echten Einladung gesehen. Dieselbe Falle steht fuer ``vevent.py``
-    #: schon in CLAUDE.md; hier ist der zweite Leser.
+    #: einer echten Einladung gesehen. Dieselbe Falle gibt es in
+    #: ``vevent.py``; hier ist der zweite Leser.
     tiefer = 0
     dauer = ""
     for zeile in _entfalten(text):

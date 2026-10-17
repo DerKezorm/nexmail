@@ -6,7 +6,7 @@ pflegt - oeffentliche Adresse, Postfaecher, Regeln -, liegt in der Datenbank.
 
 ⚠️ **Nichts wird geraten.** Jede Einstellung, die von der Umgebung abhaengt
 (Proxy davor? HTTPS?), hat eine Vorgabe, die im Zweifel *nicht* schaerfer ist
-als noetig. Der Grund steht jeweils daneben; siehe FALLSTRICKE.md §3.
+als noetig. Der Grund steht jeweils daneben.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     #
     # ⚠️ Wer ihn hier setzt, zieht ihn aus dem Datenverzeichnis heraus - dann
     # ist eine gestohlene Sicherung allein wertlos. Das ist der einzige
-    # wirksame Hebel; siehe FALLSTRICKE.md §6.
+    # wirksame Hebel.
     secret_key: str = ""
 
     # --- Sitzungen ----------------------------------------------------------

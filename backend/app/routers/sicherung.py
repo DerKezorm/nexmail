@@ -78,8 +78,7 @@ def _adresse_aus_anfrage(request: Request) -> str:
     ablehnen kann; er setzt sie nicht selbst.
 
     ⚠️ **Wie beim Schema: nur von einem Proxy, dem nexmail traut, und nur der
-    rechteste Wert** (``NEXMAIL_CLIENT_IP=proxy[:n]``, Bauplan „Hinter einem
-    Proxy“). Den rechten hängt der nächste Proxy an, alles links davon kann der
+    rechteste Wert** (``NEXMAIL_CLIENT_IP=proxy[:n]``). Den rechten hängt der nächste Proxy an, alles links davon kann der
     Anfragende selbst geschrieben haben. Das Schema selbst liest hier niemand
     mehr aus der Kopfzeile: ``SchemaVomProxyMiddleware`` hat es nach derselben
     Regel schon in ``request.url`` gesetzt.
@@ -104,7 +103,7 @@ def _rueckleitpfad(anbieter: dict) -> str:
     """Der Rueckleitpfad, den der Anbieter eines Eintrags kennt.
 
     ``redirect_path`` fehlt (Archiv von 0.21) oder ist NULL: ein Eintrag von 0.21, sein Anbieter kennt
-    ``/api/oidc/<kuerzel>/zurueck``. Leer: der Standard des Bauplans. Sonst der eigene Pfad des Eintrags.
+    ``/api/oidc/<kuerzel>/zurueck``. Leer: der Standard des Moduls. Sonst der eigene Pfad des Eintrags.
     """
     kuerzel = anbieter.get("kuerzel", "")
     pfad = anbieter.get("redirect_path")

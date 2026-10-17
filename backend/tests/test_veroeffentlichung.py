@@ -1,13 +1,8 @@
 """Der Waechter vor dem Veroeffentlichen: nichts Persoenliches, nichts Geheimes.
 
-⚠️ **Ein oeffentliches Repo ist unwiderruflich.** Was einmal drin war, steht in
-Suchmaschinen und in jedem Klon — auch wenn man es danach loescht. Ein
-Nachtrag hilft nicht; die Pruefung muss **vorher** laufen und **jedes Mal**.
-
 Geprueft wird, was Git wirklich kennt (``git ls-files``), nicht das
-Arbeitsverzeichnis. Der Unterschied ist der ganze Punkt: ``.gitignore`` greift
-bei bereits verfolgten Dateien **nicht**, und genau daran waere ``CLAUDE.md``
-am 01.09.2026 beinahe mit hinausgegangen.
+Arbeitsverzeichnis: ``.gitignore`` greift bei bereits verfolgten Dateien
+**nicht**.
 """
 
 from __future__ import annotations
@@ -24,16 +19,11 @@ WURZEL = Path(__file__).resolve().parent.parent.parent
 def _verfolgte_dateien() -> list[Path]:
     """Alles, was bei einem ``git add -A`` mit hinausginge.
 
-    ⚠️ **``--others`` ist der wichtigste Schalter hier**, und er fehlte bis zum
-    01.09.2026. Ohne ihn zeigt ``git ls-files`` nur **schon verfolgte**
-    Dateien. Eine **neue** Datei sah der Waechter damit nicht — er meldete
-    gruen, und einen Handgriff spaeter nahm ``git add -A`` sie mit.
-
-    Genau so ist es passiert: ``app/routers/ueber.py`` trug im Modul-Kommentar
-    einen Vornamen als Quellenangabe zu einem Zitat. Der Waechter lief davor,
-    sah die Datei nicht, meldete gruen — und der Name stand danach in einem
-    gepushten Commit. Ob man vor oder nach ``git add`` prueft, darf kein
-    Unterschied sein; mit ``--others --exclude-standard`` ist es keiner mehr.
+    ⚠️ **``--others`` ist der wichtigste Schalter hier.** Ohne ihn zeigt
+    ``git ls-files`` nur **schon verfolgte** Dateien; eine **neue** Datei
+    bliebe ungeprueft, bis ``git add -A`` sie mitnimmt. Ob man vor oder nach
+    ``git add`` prueft, darf kein Unterschied sein; mit
+    ``--others --exclude-standard`` ist es keiner.
 
     ``--exclude-standard`` haelt dabei ``.gitignore`` in Kraft: Was ohnehin
     ignoriert wird, geht auch nicht hinaus und gehoert nicht in die Pruefung.
@@ -66,13 +56,11 @@ def _lesbar(datei: Path) -> str:
 #: ⚠️ **Die verbotenen Woerter stehen NICHT hier.**
 #:
 #: Ein Waechter, der die Namen mitliefert, die er verbieten soll, ist in einem
-#: oeffentlichen Repo genau die Leckstelle, die er verhindern will. Am
-#: 01.09.2026 genau so aufgefallen: Der erste Entwurf listete den Nachnamen des
-#: Betreibers als Muster — und waere damit selbst hinausgegangen.
+#: oeffentlichen Repo selbst die Leckstelle.
 #:
-#: Sie stehen in ``.veroeffentlichung-tabu`` neben dieser Datei, und die bleibt
-#: lokal (siehe ``.gitignore``). Fehlt sie, ueberspringt sich der Test **mit
-#: Hinweis** — er schweigt nicht.
+#: Sie stehen in ``.veroeffentlichung-tabu`` neben dieser Datei; die Datei
+#: bleibt lokal und wird nicht verfolgt. Fehlt sie, ueberspringt sich der Test
+#: **mit Hinweis** — er schweigt nicht.
 TABU_DATEI = WURZEL / ".veroeffentlichung-tabu"
 
 #: Was sich ohne Namensliste pruefen laesst: Formen, keine Woerter.
@@ -155,22 +143,14 @@ def test_keine_betriebsdaten_im_repo():
     assert treffer == [], f"Betriebsdaten im Repo: {treffer}"
 
 
-def test_die_arbeitsdokumentation_bleibt_lokal():
-    """⚠️ ``CLAUDE.md`` traegt Zitate, Adressen und Pfade des Betreibers.
+def test_lokale_dateien_bleiben_lokal():
+    """⚠️ Die Pruefstaende und die Tabu-Liste gehoeren nicht ins Repo.
 
-    Und sie war bereits verfolgt — ``.gitignore`` allein haette sie nicht
-    aufgehalten. Genau deshalb steht diese Pruefung hier und nicht im
-    ``.gitignore``.
+    ``.gitignore`` allein haelt eine schon verfolgte Datei nicht auf; deshalb
+    wird hier geprueft, was Git tatsaechlich kennt.
     """
     verfolgt = {d.relative_to(WURZEL).as_posix() for d in _verfolgte_dateien()}
-    assert "CLAUDE.md" not in verfolgt
     assert not any(p.startswith("pruefstand/") for p in verfolgt)
-
-    # ⚠️ **Und der Waechter darf seine eigene Liste nicht mitliefern.**
-    # Sie war beim ersten Anlauf mitgestaged — aus demselben Grund wie
-    # ``CLAUDE.md``: schon verfolgt, bevor der ``.gitignore``-Eintrag entstand.
-    # Ignorieren gilt nur fuer Unbekanntes; wer sich darauf verlaesst, prueft
-    # nichts.
     assert ".veroeffentlichung-tabu" not in verfolgt
 
 

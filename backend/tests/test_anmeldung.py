@@ -1,6 +1,6 @@
 """Die Anmeldung — der Block, der nicht optional ist.
 
-Jeder Test hier steht für eine Zusage aus FALLSTRICKE.md. Wenn einer rot wird,
+Jeder Test hier steht für eine Zusage der Anmeldung. Wenn einer rot wird,
 ist eine davon gebrochen — und keine davon ist eine Kleinigkeit.
 """
 

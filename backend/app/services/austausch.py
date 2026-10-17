@@ -625,7 +625,7 @@ def einfuhr_aufraeumen() -> int:
 
     ⚠️ **Beim Start ist jede Datei dort verwaist.** Die laufenden Vorgaenge
     leben nur im Arbeitsspeicher (``_VORGAENGE``), ueberstehen also keinen
-    Neustart; das steht so auch in SPAETER.md. Es gibt darum nichts zu
+    Neustart. Es gibt darum nichts zu
     unterscheiden, und das ist der Grund, warum hier nichts nachgesehen wird.
 
     Dasselbe Muster wie ``senden.aufraeumen`` fuer den Ausgang — dort liegen

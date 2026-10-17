@@ -6,7 +6,7 @@ ist ein anderes Ziel: Argon2id ist speicherhart, also auch mit Grafikkarten
 teuer zu durchsuchen. Der Unterschied kostet hier nichts - es wird einmal je
 Anmeldung gerechnet.
 
-⚠️ **Ein Benutzer darf kein Passwort haben.** Siehe FALLSTRICKE.md §4:
+⚠️ **Ein Benutzer darf kein Passwort haben:**
 Passwort ist *ein* Anmeldeweg, nicht *der*. Waere es Pflicht, waere reines
 OIDC spaeter ein Umbau am Kern.
 """

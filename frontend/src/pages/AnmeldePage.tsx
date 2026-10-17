@@ -44,7 +44,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
   const [laeuft, setLaeuft] = useState(false)
   const [einrichtung, setEinrichtung] = useState<Einrichtung | null>(null)
 
-  /* Anmelde-Anbieter (Bauplan „Anmeldung mit OIDC und authentik“, Teil 04).
+  /* Anmelde-Anbieter.
      Leer heißt: Es gibt keine, und dann steht hier nichts. Ist die Anmeldung
      mit Passwort aus, stehen nur die Knöpfe da und klein der Weg für den
      Betreiber, der sich immer mit Passwort anmelden kann. */

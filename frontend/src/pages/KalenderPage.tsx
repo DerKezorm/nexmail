@@ -1820,8 +1820,8 @@ function Raster({
 
                         ⚠️ **Er muss sichtbar sein, sonst gibt es ihn nicht.**
                         Der erste Bau war 6 px hoch und ohne jeden Hinweis —
-                        am 04.09.2026 aus dem Betrieb gemeldet: „ich kann da
-                        nix ziehen". Er funktionierte, man fand ihn nur nicht.
+                        am 04.09.2026 aus dem Betrieb gemeldet: Der Griff zum Ziehen
+                        wurde nicht gefunden. Er funktionierte, man fand ihn nur nicht.
                         Jetzt 8 px, und beim Überfahren erscheint der Balken,
                         den jeder Kalender an dieser Stelle zeigt. */}
                     {!fest && (

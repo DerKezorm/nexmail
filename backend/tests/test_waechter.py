@@ -6,7 +6,7 @@ Abhängigkeit vergisst, bekommt hier einen roten Lauf — nicht irgendwann ein
 Datenleck.
 
 In Nexview hat genau so ein Test Seitentüren gefunden, an die niemand gedacht
-hatte. Siehe FALLSTRICKE.md §5.
+hatte.
 """
 
 from __future__ import annotations

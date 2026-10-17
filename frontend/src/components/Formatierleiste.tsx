@@ -5,7 +5,7 @@
  * Textfarbe, Hervorheben, Aufzaehlung, Nummerierung, Einzug, Ausrichtung,
  * Link, Zitat, Bild, Formatierung entfernen.
  *
- * **Tabellen fehlen mit Absicht** - sie stehen in SPAETER.md. In Mail-HTML
+ * **Tabellen fehlen mit Absicht**. In Mail-HTML
  * gehen sie nur mit veralteten Attributen zuverlaessig durch alle Clients,
  * und privat braucht sie kaum jemand.
  *

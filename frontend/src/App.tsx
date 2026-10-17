@@ -64,7 +64,7 @@ import { alleUmschalten, fuersMehrBlatt, gelesenZiel, sindAlleGewaehlt } from '.
 
    ⚠️ **Das Verfassen-Fenster hing IMMER im Baum** und schaltete über `offen`.
    Bedingt zu zeichnen ändert, **wann** es seinen Zustand aufbaut — genau davor
-   warnt SPAETER.md. Der Ausweg ist ein Riegel statt einer Bedingung: Einmal
+   warnt die Erfahrung. Der Ausweg ist ein Riegel statt einer Bedingung: Einmal
    geöffnet, bleibt es hängen. Vorher tut es ohnehin nichts; alle vier seiner
    Effekte beginnen mit `if (!offen) return`. */
 const VerfassenFenster = lazy(() =>
@@ -307,7 +307,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const [schlagworte, setSchlagworte] = useState<Schlagwort[]>([])
   /* Das gewählte Schlagwort der Filterzeile (Atom). Leer heißt: alle.
      ⚠️ Gefiltert wird im **Server** — derselbe Grund wie beim
-     ungelesen-Filter, siehe CLAUDE.md. */
+     ungelesen-Filter. */
   const [schlagwortFilter, setSchlagwortFilter] = useGemerkt('nexmail.schlagwort', '')
   const [nachrichten, setNachrichten] = useState<Nachricht[]>([])
   /* Spiegel des Bestands für Rückrufe, die den Zustand nur LESEN wollen.
@@ -452,8 +452,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
    * den Fehler, `konten` blieb auf seinem Anfangswert `[]` — und die
    * Oberfläche zeigte „Noch kein Postfach" und einen leeren Ordnerbaum.
    *
-   * Der Betreiber: „meine eingestelten mails sind jetzt alle weg. also die
-   * postfächer…" Es war nichts weg. Aber genau so sieht ein Datenverlust aus,
+   * Gemeldet wurde ein Datenverlust. Es war nichts weg. Aber genau so sieht ein Datenverlust aus,
    * und das ist der Schrecken, den eine Anwendung niemandem machen darf.
    *
    * Deshalb drei Zustände statt zwei: **noch nicht geladen**, **geladen** und
@@ -773,8 +772,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
        Oberfläche für den GEÖFFNETEN Ordner selbst nach — über `nachrichten`,
        also über die Liste, wie sie gerade gefiltert und auf eine Seite
        begrenzt ist. Der Baum zeigte 16, ein Klick in den Ordner machte 11
-       daraus, ein Klick daneben wieder 16. Der Betreiber: „Tatsächlich sind
-       es 11." Bei einem Ordner mit mehr als einer Seite hätte dort obendrein
+       daraus, ein Klick daneben wieder 16. Richtig waren 11.
+       Bei einem Ordner mit mehr als einer Seite hätte dort obendrein
        die Seitengröße gestanden.
 
        Die Zahl kommt jetzt ausschließlich vom Server, der sie beim Abrufen
@@ -1311,8 +1310,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
 
   /* ⚠️ **Der erste Abgleich eines echten Postfachs dauert Minuten.**
    *
-   * Der Betreiber am 01.09.2026: „das hat ewig gedauert bis er was angezeigt hat.
-   * (keine rückmeldung der gui, das er noch was macht)". Ein sich drehendes
+   * Gemeldet am 01.09.2026: Es dauerte ewig, bis etwas angezeigt wurde, und die
+   * Oberfläche gab keine Rückmeldung, dass noch etwas läuft. Ein sich drehendes
    * Symbol am Rand genügt dafür nicht — man sitzt vor einer leeren Liste und
    * weiß nicht, ob überhaupt etwas passiert.
    *

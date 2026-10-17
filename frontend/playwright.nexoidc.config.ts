@@ -1,5 +1,5 @@
-/* Ende-zu-Ende für die Anmeldung über Anbieter (Pflichttests 33 und 34 des Bauplans „Anmeldung mit OIDC und
- * authentik“), kopflos.
+/* Ende-zu-Ende für die Anmeldung über Anbieter (Vertragstests 33 und 34 der gemeinsamen
+ * Anmeldung), kopflos.
  *
  * ⚠️ **Nicht die Reihe aus `tests/`.** Die braucht `data-dev` und ein echtes Postfach; diese hier nicht. Die gebaute
  * Oberfläche kommt vom echten Server wie im Container (`NEXMAIL_STATIC_DIR` auf `dist`), mit eigenem Datenordner und

@@ -1,7 +1,7 @@
 """Nachrichten lesen.
 
 ⚠️ **Jede Abfrage geht durch ``benutzer_id``.** Nicht durch verstreute
-``where``-Bedingungen — siehe FALLSTRICKE.md §5. Ein vergessenes Filter wäre
+``where``-Bedingungen. Ein vergessenes Filter wäre
 hier kein Anzeigefehler, sondern fremde Post.
 """
 

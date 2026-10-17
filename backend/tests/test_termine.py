@@ -450,7 +450,7 @@ def test_ganztaegig_liegt_auf_utc_mitternacht(db, welt):
     Die Oberfläche schickte den 14. als Ortszeit; in Berlin wurde daraus
     ``2026-09-13T22:00:00Z``, und der Termin stand danach über zwei Tage.
     Westlich von Greenwich wäre er einen Tag zu früh gewesen. Am 03.09.2026 aus
-    dem Betrieb gemeldet: „in nexmail steht er von 14–15".
+    dem Betrieb gemeldet: Der Termin stand in nexmail von 14 bis 15 Uhr.
     """
     person, kalender = welt
 

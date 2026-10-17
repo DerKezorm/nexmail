@@ -1,6 +1,6 @@
 """Das Bild vor einer Zeile: Kontaktfoto, sonst das gepruefte Markenlogo (BIMI).
 
-Gewuenscht in der Diskussion #4, entschieden am 27.09.2026: **so streng wie
+Angefragt in der Diskussion #4: **so streng wie
 Apple Mail.** Ein Logo gibt es nur, wenn alles davon stimmt:
 
 1. Die Mail hat die Absenderpruefung bestanden (DMARC, gelesen aus

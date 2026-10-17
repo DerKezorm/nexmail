@@ -8,7 +8,6 @@ sich, warum die Tests auf die echte Datenbank gehen.
 ⚠️ **Es gibt immer zwei Benutzer.** Auch wenn die Oberfläche in v1 nur einen
 zeigt. Eine Trennung, die nie gegen einen zweiten geprüft wurde, ist nur
 behauptet — und das merkt man erst beim Öffnen, wenn es teuer ist.
-Siehe FALLSTRICKE.md §5.
 """
 
 from __future__ import annotations
@@ -47,7 +46,7 @@ from app.services import zwei_faktor  # noqa: E402
 # --- Zwei ``conftest`` unter einem Namen ---------------------------------- #
 #
 # ⚠️ **Die Vertragstests des Anmeldemoduls (``tests/nexoidc/``) bringen ihre
-# eigene ``conftest.py`` mit**, unveraendert aus ``bauplaene/oidc`` und per
+# eigene ``conftest.py`` mit**, unveraendert vom Anmeldemodul uebernommen und per
 # Pruefsumme bewacht. pytest laedt beide unter dem Namen ``conftest``; wer
 # zuletzt geladen wurde, steht in ``sys.modules``. nexmails Tests holen ihre
 # Hilfen mit ``from conftest import ...`` (beim Sammeln), die Vertragstests

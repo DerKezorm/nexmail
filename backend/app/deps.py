@@ -5,7 +5,7 @@ sagen, wer sie benutzen darf. Umgekehrt gedacht - "ich sperre, was schaden
 kann" - waere die erste vergessene Zeile ein Datenleck. Ein Test laeuft ueber
 die ganze Routentabelle und schlaegt fehl, sobald ein Pfad weder geschuetzt
 ist noch auf der begruendeten Liste der oeffentlichen steht.
-Siehe FALLSTRICKE.md §5 und ``tests/test_waechter.py``.
+Siehe ``tests/test_waechter.py``.
 """
 
 from __future__ import annotations

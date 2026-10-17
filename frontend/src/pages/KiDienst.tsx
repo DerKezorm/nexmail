@@ -10,7 +10,7 @@
  * ⚠️ **Hier steht KEIN Anbietertext.** Preise, Kontingente und Bedingungen
  * ändern sich, und eine Oberfläche, die sie zusammenfasst, altert lautlos —
  * dieselbe Falle wie bei `lib/anbieter.ts`, bei der Fassungsnummer auf der
- * Projektseite und in SPAETER.md. Die Kachel füllt die **Adresse** vor (stimmt
+ * Projektseite. Die Kachel füllt die **Adresse** vor (stimmt
  * sie nicht mehr, scheitert der Modellabruf laut) und verweist auf die Seite
  * des Anbieters. Was dort mit dem Text geschieht, steht in dessen Bedingungen,
  * nicht bei uns.

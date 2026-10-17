@@ -264,7 +264,7 @@ def test_ein_umlaut_wird_gefunden(klient, welt):
     SQLites ``lower`` laesst es stehen — wer „Übung" richtig tippte, bekam
     nichts. Gemessen am 04.09.2026.
 
-    ⚠️ **Was NICHT geht, steht in SPAETER.md:** „übung" findet „Übung" nicht.
+    ⚠️ **Was NICHT geht:** „übung" findet „Übung" nicht.
     SQLite faltet nur ASCII, und einen eigenen Zerleger gibt es hier nicht."""
     _anlegen(klient, welt, "Übung Ernstfall")
     assert [t["titel"] for t in _suchen(klient, "Übung")["treffer"]] == ["Übung Ernstfall"]

@@ -2,7 +2,7 @@
 
 ⚠️ **Jede Tabelle mit persoenlichen Daten traegt ``benutzer_id``** - auch
 solange es nur einen Benutzer gibt. Mehrbenutzer ist zugesagt, und
-nachtraeglich waere es ein Umbau durch jede Abfrage. Siehe FALLSTRICKE.md §5.
+nachtraeglich waere es ein Umbau durch jede Abfrage.
 
 ⚠️ **Zwei Sorten Primaerschluessel, mit Grund.** Was ein Geheimnis traegt
 (``benutzer``, spaeter ``konto``), bekommt eine Zeichenkette aus ``uuid4`` -
@@ -84,7 +84,7 @@ class Benutzer(Base):
     ⚠️ **``passwort_hash`` darf leer sein.** Das ist keine Nachlaessigkeit,
     sondern die Vorbereitung auf OIDC: Passwort ist *ein* Anmeldeweg, nicht
     *der*. Waere das Feld verpflichtend, waere reines OIDC spaeter ein Umbau
-    am Kern statt einer Ergaenzung. Siehe FALLSTRICKE.md §4.
+    am Kern statt einer Ergaenzung.
     """
 
     __tablename__ = "benutzer"
@@ -116,9 +116,8 @@ class Benutzer(Base):
     ist_betreiber: Mapped[bool] = mapped_column(Boolean, default=False)
 
     #: Wohin ein Ruecksetz-Link geht, wenn dieser Mensch sein Kennwort
-    #: vergessen hat. **Nicht** eines seiner Postfaecher: Am 04.09.2026 so
-    #: entschieden — die Adresse fuer Kontosachen bleibt getrennt und wird
-    #: ausdruecklich gesetzt.
+    #: vergessen hat. **Nicht** eines seiner Postfaecher: Die Adresse fuer
+    #: Kontosachen bleibt getrennt und wird ausdruecklich gesetzt.
     #:
     #: ⚠️ **Leer heisst: kein Weg zurueck.** Wer sie nie eintraegt, kommt nach
     #: einem vergessenen Kennwort nicht mehr hinein — und merkt das erst im
@@ -324,7 +323,7 @@ class Sitzung(Base):
 class OidcVerknuepfung(Base):
     """Eine Identitaet bei einem Anbieter, verknuepft mit einem Konto.
 
-    Die Tabelle ``oidc_links`` des Bauplans (01 "Tabellen"), unter dem Namen
+    Die Tabelle ``oidc_links`` des Anmeldemoduls, unter dem Namen
     von 0.21: Die alte Fassung liest dieselbe Tabelle, und nach einem Rueckweg
     soll sie ihre Verknuepfungen dort finden.
 
@@ -410,7 +409,7 @@ class Konto(Base):
     #
     # ⚠️ **Je Postfach, nicht je Benutzer.** Die Antwort geht ueber dessen
     # Postausgang und mit dessen Adresse hinaus, und dienstlich schreibt man
-    # kaum dasselbe wie privat. Am 02.09.2026 so entschieden.
+    # kaum dasselbe wie privat.
     abwesenheit_aktiv: Mapped[bool] = mapped_column(Boolean, default=False)
     #: ⚠️ **Datum als Zeichenkette (``JJJJ-MM-TT``), nicht als Zeitstempel.**
     #: „Bis einschliesslich den 14." ist eine Aussage ueber einen KALENDERTAG
@@ -600,9 +599,9 @@ class Nachricht(Base):
         # Deckindex 36,1 ms, Plan ``SEARCH ... USING COVERING INDEX``, und die
         # Datenbank waechst um 6,1 Prozent.
         #
-        # ⚠️ **Die 5,6 ms in CLAUDE.md galten einer anderen Abfrage.**
-        # Sie stammen von der reinen Ungelesen-Zaehlung ueber ``ordner_id``; die
-        # Gesamtzahl kam am 02.09.2026 dazu und hat den Teilindex ausgeschlossen.
+        # ⚠️ **Die reine Ungelesen-Zaehlung ueber ``ordner_id`` (5,6 ms) war eine
+        # andere Abfrage.** Die Gesamtzahl kam spaeter dazu und hat den Teilindex
+        # ausgeschlossen.
         # Der Baum wird nach jedem Handgriff geholt, nicht nur beim Start.
         Index("ix_nachricht_zaehlen", "konto_id", "ordner_id", "gelesen"),
         # ⚠️ **Die Ansicht, die jeder nach der Anmeldung zuerst sieht.**
@@ -1148,8 +1147,8 @@ class Einladung(Base):
 class Aufgabe(Base):
     """Eine Mail, die noch etwas von einem will.
 
-    ⚠️ **Die Aufgabe zeigt auf die Mail, sie kopiert sie nicht** — so am
-    01.09.2026 entschieden. Trotzdem stehen hier Betreff und Absender: als
+    ⚠️ **Die Aufgabe zeigt auf die Mail, sie kopiert sie nicht.** Trotzdem
+    stehen hier Betreff und Absender: als
     **Abzug** fuer den Fall, dass die Mail verschwindet. Eine Aufgabe, die dann
     nur noch „(nicht mehr da)" heisst, ist wertlos; man weiss nicht einmal
     mehr, worum es ging.
@@ -1288,9 +1287,9 @@ class OidcAnbieter(Base):
     Knoepfe auf der Anmeldeseite, keine offenen Adressen — eine Installation,
     deren Betreiber nie einen Anbieter einrichtet, weiss von OIDC nichts.
 
-    Die Tabelle ``oidc_providers`` des Bauplans (01 "Tabellen") unter dem
+    Die Tabelle ``oidc_providers`` des Anmeldemoduls unter dem
     Namen von 0.21, denn die alte Fassung liest dieselbe Tabelle. Die
-    Python-Namen der neuen Spalten folgen dem Bauplan, die alten bleiben, wie
+    Python-Namen der neuen Spalten folgen dem Modul, die alten bleiben, wie
     sie waren (``kuerzel`` = ``slug``, ``anzeigename`` = ``label``).
 
     ⚠️ **Jede neue Spalte hat eine Vorgabe in der Tabelle** oder darf NULL
@@ -1302,7 +1301,7 @@ class OidcAnbieter(Base):
     der Anbieter den zweiten Faktor selbst prueft (``eingeschaltet`` und
     ``trusts_second_factor``). 0.21 fragt nach dem Anbieter nie nach dem Code;
     ein Eintrag, dem die neue Fassung den Faktor nicht glaubt, laesst dort
-    deshalb niemanden herein (Bauplan 01 "Umstieg" 4, Regel 2).
+    deshalb niemanden herein.
     """
 
     __tablename__ = "oidc_anbieter"
@@ -1327,7 +1326,7 @@ class OidcAnbieter(Base):
     #: Gelesen wird ``client_secret_enc``; der Start uebernimmt, was 0.21 hier
     #: geaendert hat.
     client_secret: Mapped[str] = mapped_column(Text, default="")
-    #: Das Geheimnis mit dem Kontext des Bauplans (``oidc-provider:<nummer>``).
+    #: Das Geheimnis mit dem Kontext des Moduls (``oidc-provider:<nummer>``).
     client_secret_enc: Mapped[str] = mapped_column(Text, default="", server_default="")
     #: Leerzeichengetrennt.
     scopes: Mapped[str] = mapped_column(String(500), default="openid profile email")
@@ -1377,8 +1376,7 @@ class Absenderlogo(Base):
 class Bildfreigabe(Base):
     """„Von diesem Absender immer laden" — wie in Thunderbird.
 
-    ⚠️ **Die volle Adresse, nicht die Domain.** Am 02.09.2026 so entschieden:
-    Eine Domain-Freigabe waere bequemer (Newsletter wechseln oft zwischen
+    ⚠️ **Die volle Adresse, nicht die Domain.** Eine Domain-Freigabe waere bequemer (Newsletter wechseln oft zwischen
     ``news@``, ``info@`` und ``no-reply@``), aber ein Klick gaebe dann auch
     jeder kuenftigen Werbemail derselben Firma frei — und der Klick faellt in
     dem Moment, in dem man eine bestimmte Mail sehen will, nicht in dem, in
@@ -1413,7 +1411,7 @@ class Abwesenheitsantwort(Base):
     ⚠️ **Diese Tabelle IST der Schleifenschutz**, nicht sein Beiwerk. „Je
     Absender einmal" muss irgendwo stehen, und wenn es ohnehin dasteht, soll
     der Betreiber es auch sehen duerfen: Eine Schleife erkennt man an dieser
-    Liste, bevor sie peinlich wird. Am 02.09.2026 so entschieden.
+    Liste, bevor sie peinlich wird.
 
     ⚠️ **Beim Einschalten wird geleert.** „Einmal" gilt je Abwesenheit, nicht
     je Lebenszeit des Postfachs — sonst bekaeme beim naechsten Urlaub niemand
@@ -1654,8 +1652,7 @@ class OauthAnbieter(Base):
     ⚠️ **nexmail kann kein Geheimnis mitliefern.** Das Repo ist oeffentlich;
     ein eingebauter Client-Schluessel stuende darin, und Google wie Microsoft
     ziehen ihn zurueck, sobald sie ihn finden. Jeder Betreiber legt deshalb
-    seine eigene App an — dieselbe Wand wie bei „OAuth fuer Postfaecher" in
-    SPAETER.md, nur ist sie jetzt durchschritten statt umgangen.
+    seine eigene App an.
 
     ⚠️ **Ab Werk ist diese Tabelle leer, und dann aendert sich nichts.** Wer nie
     einen Anbieter eintraegt, sieht in der Postfach-Einrichtung keinen Knopf
@@ -1733,8 +1730,7 @@ class KiVorgang(Base):
     Postfach-Kennwort. Er enthält den Text einer Mail, und eine zweite,
     dauerhafte Kopie davon im Klartext wäre schlechter als gar keine Liste.
     Der Preis steht dabei: **durchsuchen lässt sich das nicht.** AES-GCM salzt
-    jeden Vorgang, ein ``LIKE`` findet nichts. Entschieden am 04.09.2026;
-    gelesen wird die Liste ohnehin am Stück und in der Reihenfolge der Zeit.
+    jeden Vorgang, ein ``LIKE`` findet nichts. Gelesen wird die Liste ohnehin am Stück und in der Reihenfolge der Zeit.
 
     ⚠️ **Der Schlüssel des Dienstes steht NIE darin.** Er ist eine Kopfzeile,
     kein Teil des Rumpfes — und was hier gespeichert wird, ist genau der Rumpf.

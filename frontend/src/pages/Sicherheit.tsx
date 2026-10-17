@@ -146,7 +146,7 @@ export function Sicherheit({
       {/* --- Adresse für Kontosachen ------------------------------------ */}
       {/* ⚠️ **Ohne sie gibt es keinen Weg zurück.** Sie ist ausdrücklich
           nicht eines der eingerichteten Postfächer, sondern eine eigene
-          Angabe; so entschieden am 04.09.2026. Wer sie leer lässt, kommt nach
+          Angabe. Wer sie leer lässt, kommt nach
           einem vergessenen Kennwort nicht mehr hinein — und merkt das erst im
           Ernstfall. Deshalb steht der Abschnitt ganz oben und sagt es. */}
       <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-4">

@@ -116,7 +116,7 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
     }
   }
 
-  /** Eine Verknüpfung eines Kontos lösen (Bauplan „Anmeldung mit OIDC und authentik“, Teil 01): mit dem eigenen
+  /** Eine Verknüpfung eines Kontos lösen: mit dem eigenen
    *  Kennwort des Betreibers, und die Rückfrage nennt Konto und Anbieter. */
   async function verknuepfungLoesen(p: BenutzerZeile, a: { id: number; label: string }) {
     const wer = p.anzeigename || p.benutzername

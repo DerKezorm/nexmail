@@ -236,10 +236,8 @@ export function Ordnerspalte({
 
         <Zeile
           symbol={<Inbox />}
-          /* ⚠️ **„Alle Posteingänge" folgt dem Schlagwort** — am 01.09.2026
-              zuerst andersherum entschieden und noch am selben Tag gedreht:
-              „alle postfächer und markiert soll sich nur auf die ausgewählte
-              tag gruppe beziehen". Eine Sammelansicht, die den Filter
+          /* ⚠️ **„Alle Posteingänge" folgt dem Schlagwort.**
+              Eine Sammelansicht, die den Filter
               ignoriert, macht das Umschalten wertlos. */
           name={t('ordner.alle_posteingaenge')}
           ungelesen={ungelesenGesamt}

@@ -1,7 +1,6 @@
 /* Der Rückweg vom Anmeldeanbieter nach dem Verknüpfen: `/konto/sicherheit?linked=<kurzname>` oder `?error=<code>`.
  *
- * Das Anmeldemodul schickt den Browser nach dem Verknüpfen auf die Kontoseite (Bauplan „Anmeldung mit OIDC und
- * authentik“, Teil 02); in nexmail ist das Einstellungen → Sicherheit. Die Anwendung öffnet dort, und der Reiter
+ * Das Anmeldemodul schickt den Browser nach dem Verknüpfen auf die Kontoseite; in nexmail ist das Einstellungen → Sicherheit. Die Anwendung öffnet dort, und der Reiter
  * zeigt, wie es ausging.
  *
  * ⚠️ **Einmal beim Laden gelesen** (wie `oauthrueckweg.ts`): Die Ansicht der App und der Reiter fragen beide, und die

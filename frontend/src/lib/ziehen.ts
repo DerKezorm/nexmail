@@ -38,7 +38,7 @@ export function minutenAusPixeln(dy: number, stundeHoehe: number): number {
  *
  * ⚠️ **Beide Enden mitschicken.** Der Server lässt ein nicht mitgeschicktes
  * Feld unverändert; wer nur den Beginn setzt, lässt das Ende stehen und macht
- * aus einer Stunde eine halbe. Steht so auch in CLAUDE.md.
+ * aus einer Stunde eine halbe.
  *
  * ⚠️ **Hier ist Millisekunden-Arithmetik richtig**, anders als beim
  * Tagessprung: „eine halbe Stunde später" ist eine Dauer, keine Uhrzeit.

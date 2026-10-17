@@ -238,8 +238,7 @@ test('Schlagwort vergeben, umschalten, wieder wegnehmen', async ({ page }, info)
 
   /* ⚠️ **Auch in der Liste sichtbar.** Ein Schlagwort, das man nur im
      Formular sieht, zwingt zum Aufklappen jedes Postfachs, um die Zuordnung
-     zu prüfen. Der Betreiber am 01.09.2026: „an dieser Stelle für die
-     Übersichtlichkeit aber noch die Tag-Badges einblenden." */
+     zu prüfen. */
   await expect(
     page.getByText(wort, { exact: true }).first(),
     'Das Schlagwort taucht in der Postfachliste nicht auf.',
@@ -277,8 +276,7 @@ test('Schlagwort vergeben, umschalten, wieder wegnehmen', async ({ page }, info)
     .toBeLessThan(vorher)
   expect(await postfaecher.count(), 'Alle Postfächer sind verschwunden.').toBeGreaterThan(0)
 
-  /* ⚠️ **„Alle Posteingänge" folgt dem Schlagwort.** Am 01.09.2026 zuerst
-     andersherum entschieden und am selben Tag gedreht. Geprüft wird die
+  /* ⚠️ **„Alle Posteingänge" folgt dem Schlagwort.** Geprüft wird die
      Wirkung, nicht die Beschriftung: Die Zahl der ungelesenen Mails dort darf
      nicht größer sein als vor dem Umschalten. */
   const sammel = page.getByRole('button', { name: /Alle Posteingänge|All inboxes/ })
@@ -375,8 +373,7 @@ test('Ein Serverfehler sieht nicht aus wie „alles weg"', async ({ page }, info
      geschluckt, `konten` blieb leer — und die Oberfläche zeigte „Noch kein
      Postfach" und einen leeren Ordnerbaum.
 
-     Der Betreiber: „meine eingestelten mails sind jetzt alle weg. also die
-     postfächer…" Es war nichts weg. Aber genau so sieht ein Datenverlust
+     Gemeldet wurde ein Datenverlust. Es war nichts weg. Aber genau so sieht ein Datenverlust
      aus, und diesen Schrecken darf eine Anwendung niemandem machen. */
   await page.route('**/api/konten', (r) =>
     r.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":""}' }),
@@ -599,8 +596,7 @@ test('Eine Änderung an mir selbst steht sofort da, nicht erst nach F5', async (
      geholt und nach unten durchgereicht — keine Handlung frischte es auf. Wer
      den zweiten Faktor ausschaltete, sah es erst nach F5.
 
-     Der Betreiber: „das zeigt er mir aber erst an, wenn ich mit F5 die seite neu lade
-     … das ist an mehreren stellen aufgefallen."
+     Aufgefallen ist das an mehreren Stellen.
 
      ⚠️ **Geprüft wird die Mechanik, nicht ein einzelner Schalter.** Der erste
      Anlauf hing am zweiten Faktor — der ist in `data-dev` aus, also übersprang

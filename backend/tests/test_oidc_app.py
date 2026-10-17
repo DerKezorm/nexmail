@@ -1,13 +1,13 @@
-"""Die Anmeldung ueber Anbieter, soweit nexmail sie selbst leistet (Bauplan "Anmeldung mit OIDC und authentik").
+"""Die Anmeldung ueber Anbieter, soweit nexmail sie selbst leistet.
 
-Was in jeder App gleich ist, pruefen die Vertragstests in ``tests/nexoidc`` (Pflichttests 1 bis 39). Hier steht, was
+Was in jeder App gleich ist, pruefen die Vertragstests in ``tests/nexoidc`` (Vertragstests 1 bis 39). Hier steht, was
 nur nexmail hat:
 
 - die Liste von 0.21 (Wanderung beim Start, Rueckleitadresse ``…/zurueck``, Rueckweg auf derselben Tabelle);
 - ``aktiv`` als Spiegel fuer 0.21, das Geheimnis zweimal, die Nummern fuer das Modul;
 - Sitzung mit ``SameSite=strict`` (Durchreichen beim Verknuepfen), Bremse je Absender, Passwort-Anmeldung abschaltbar,
   die Kontenliste mit Marken, die Rueckfrage beim Speichern der oeffentlichen Adresse, das Schema hinter dem Proxy;
-- Einladungen ohne Rechte (die Teile von Pflichttest 16, die "editor" verlangen, in nexmails Begriffen).
+- Einladungen ohne Rechte (die Teile von Vertragstest 16, die "editor" verlangen, in nexmails Begriffen).
 """
 
 from __future__ import annotations
@@ -163,7 +163,7 @@ def benutzer_id(name: str) -> str:
 
 
 def test_the_list_of_0_21_keeps_its_redirect_address_and_signs_in_there(betreiber, sso, caplog):
-    """Bauplan 01, letzter Absatz: Eintraege von 0.21 behalten ``/api/oidc/<kuerzel>/zurueck``; die Wanderung
+    """Eintraege von 0.21 behalten ``/api/oidc/<kuerzel>/zurueck``; die Wanderung
     sichert vorher, ordnet die Verknuepfungen zu und laesst beim zweiten Start alles in Ruhe."""
     einstellung_setzen("oeffentliche_adresse", "http://testserver")
     eintrag_wie_021("keycloak", sso.issuer + "/", sso.client_id, sso.client_secret)
@@ -465,7 +465,7 @@ def test_the_public_address_is_checked_as_strictly_as_the_module_does(betreiber,
     assert einstellung_holen("oeffentliche_adresse") == ""
 
 
-# --- Einladungen (Pflichttest 16 ohne Rechte) ------------------------------------------------------------------------
+# --- Einladungen (Vertragstest 16 ohne Rechte) -----------------------------------------------------------------------
 
 
 def test_an_invitation_through_a_provider_makes_one_account_named_by_the_provider(betreiber, sso):

@@ -218,8 +218,8 @@ def _klient(zugang: Zugang) -> httpx.Client:
 def sitzung(zugang: Zugang) -> Iterator[httpx.Client]:
     """Eine Verbindung fuer einen ganzen Abgleich statt einer je Aufruf.
 
-    ⚠️ **iCloud laesst je Konto nur eine Verbindung zu.** Fuer IMAP steht
-    das seit jeher in CLAUDE.md; bei CalDAV verhaelt es sich genauso. Bis zum
+    ⚠️ **iCloud laesst je Konto nur eine Verbindung zu.** Fuer IMAP gilt
+    dasselbe; bei CalDAV verhaelt es sich genauso. Bis zum
     03.09.2026 baute jede einzelne Funktion hier ihren eigenen Klienten auf:
     Der Erstabgleich von sechs iCloud-Kalendern mit zusammen 429 Terminen kam
     so auf **25 TLS-Handschlaege in einem Schwung**. Apple beantwortet die
