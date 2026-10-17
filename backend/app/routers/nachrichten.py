@@ -555,6 +555,18 @@ def eine(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Voll
     _koerper_sicherstellen(db, nachricht)
 
     freigegeben = bildfreigaben.darf_laden(db, person, nachricht.von_adresse)
+    html_roh = nachricht.koerper_html or ""
+    eingebettet = {
+        a.id: mime.ist_eingebettet(a.cid, a.mime, html_roh) for a in nachricht.anhaenge
+    }
+    # ⚠️ **Die Büroklammer heilt beim Öffnen.** Bis 0.24.3 zählte ein PDF mit
+    # Content-ID nicht als Anhang (Issue #14); bei solchen Mails steht
+    # ``hat_anhang`` noch falsch in der Zeile. Ein Abruf beim Server ist dafür
+    # nicht nötig, die Anhänge liegen schon da.
+    echte = any(not drin for drin in eingebettet.values())
+    if nachricht.koerper_geholt is not None and nachricht.hat_anhang != echte:
+        nachricht.hat_anhang = echte
+        db.commit()
     grund = _zeile(nachricht, _vertraut(db, [nachricht])).model_dump()
     return Voll(
         **grund,
@@ -571,7 +583,7 @@ def eine(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Voll
                 dateiname=a.dateiname,
                 mime=a.mime,
                 groesse=a.groesse,
-                inline=bool(a.cid),
+                inline=eingebettet[a.id],
             )
             for a in nachricht.anhaenge
         ],
@@ -849,7 +861,12 @@ def druck(
         zeilen.append((texte["kopie"], ", ".join(kopie)))
     zeilen.append((texte["datum"], datum_text))
     # Nur echte Anhänge — die Inline-Bilder stehen ohnehin im Text.
-    namen = [a.dateiname for a in nachricht.anhaenge if not a.cid and a.dateiname]
+    html_roh = nachricht.koerper_html or ""
+    namen = [
+        a.dateiname
+        for a in nachricht.anhaenge
+        if a.dateiname and not mime.ist_eingebettet(a.cid, a.mime, html_roh)
+    ]
     if namen:
         zeilen.append((texte["anhaenge"], ", ".join(namen)))
 

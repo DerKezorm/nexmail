@@ -598,8 +598,13 @@ def _entwurfs_mail() -> bytes:
     m.add_attachment(
         b"\x89PNG", maintype="image", subtype="png", filename="bild.png", cid="<bild1>"
     )
+    # Outlook gibt auch gewöhnlichen Anhängen eine Content-ID (Issue #14).
     m.add_attachment(
-        b"%PDF-1.4 test", maintype="application", subtype="pdf", filename="Rechnung.pdf"
+        b"%PDF-1.4 test",
+        maintype="application",
+        subtype="pdf",
+        filename="Rechnung.pdf",
+        cid="<pdf1@example.com>",
     )
     return m.as_bytes()
 
@@ -644,6 +649,11 @@ def test_entwurfs_vorlage_behaelt_blindkopie_und_anhaenge(klient, db, postausgan
     # Das Bild im Text trägt seine cid — daraus baut die Oberfläche wieder
     # eine anzeigbare Adresse.
     assert namen["bild.png"]["cid"] == "bild1"
+    # ⚠️ Das PDF verliert seine: Mit cid ginge es beim Senden als Teil des
+    # Textes hinaus und beim Empfänger nicht mehr als Anhang.
+    assert namen["Rechnung.pdf"]["cid"] == "", (
+        "Ein PDF mit Content-ID kam als Bild im Text in die Vorlage."
+    )
 
 
 def test_eml_dateiname_ist_dateinamensicher():

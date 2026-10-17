@@ -49,16 +49,34 @@ class Anhangteil:
     dateiname: str
     mime: str
     groesse: int
-    #: Bei Inline-Bildern der Wert aus ``Content-ID``, ohne spitze Klammern.
+    #: Der Wert aus ``Content-ID``, ohne spitze Klammern. ⚠️ Er heißt nicht,
+    #: dass der Teil im Text steht: siehe ``ist_eingebettet``.
     cid: str = ""
     inhalt: bytes = b""
 
-    @property
-    def inline(self) -> bool:
-        return bool(self.cid)
+    def eingebettet(self, html: str) -> bool:
+        return ist_eingebettet(self.cid, self.mime, html)
 
     def hash(self) -> str:
         return hashlib.sha256(self.inhalt).hexdigest()
+
+
+def ist_eingebettet(cid: str, mime: str, html: str) -> bool:
+    """Steht dieser Teil im Text, statt in der Anhangsleiste?
+
+    ⚠️ **Eine ``Content-ID`` allein heißt gar nichts.** Bis 0.24.3 galt jeder
+    Teil mit Content-ID als eingebettet und verschwand aus der Leiste. Outlook
+    und Exchange geben aber auch gewöhnlichen Anhängen eine; ein PDF mit
+    ``Content-Disposition: attachment`` war dann nirgends zu sehen (Issue #14).
+    Eingebettet ist deshalb nur ein **Bild**, auf das der Text per ``cid:``
+    auch wirklich zeigt; denn nur das zeigt der Lesebereich an seiner Stelle.
+
+    Rechnet nur mit dem, was gespeichert ist (Content-ID, Typ, HTML), damit
+    es auch für Mails gilt, die vor dieser Regel geholt wurden.
+    """
+    if not cid or not (mime or "").lower().startswith("image/"):
+        return False
+    return f"cid:{cid}".lower() in (html or "").lower()
 
 
 @dataclass

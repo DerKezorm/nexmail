@@ -130,7 +130,7 @@ aVZCT1J3MEtHZ289
     assert "<p>Bunt" in z.html
     assert len(z.anhaenge) == 1
     assert z.anhaenge[0].cid == "bild1"
-    assert z.anhaenge[0].inline is True
+    assert z.anhaenge[0].eingebettet(z.html) is True
 
 
 def test_mail_ganz_ohne_textteil():

@@ -842,7 +842,7 @@ def koerper_holen(klient, db: Session, nachricht: Nachricht) -> None:
                 blob_hash=pruefsumme,
             )
         )
-    nachricht.hat_anhang = any(not a.inline for a in zerlegt.anhaenge)
+    nachricht.hat_anhang = any(not a.eingebettet(zerlegt.html) for a in zerlegt.anhaenge)
     db.commit()
 
 

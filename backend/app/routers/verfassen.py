@@ -156,7 +156,10 @@ def vorlage(
                     dateiname=a.dateiname,
                     mime_typ=a.mime or "application/octet-stream",
                     inhalt_b64=base64.b64encode(a.inhalt).decode("ascii"),
-                    cid=a.cid,
+                    # Nur ein Bild im Text behält seine cid; ein PDF mit
+                    # Content-ID ginge sonst beim Senden als Teil des
+                    # Textes hinaus statt als Anhang (Issue #14).
+                    cid=a.cid if a.eingebettet(zerlegt.html) else "",
                 )
                 for a in zerlegt.anhaenge
             ],
