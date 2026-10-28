@@ -1,5 +1,5 @@
 /**
- * Vertragstests 33 und 34 der gemeinsamen Anmeldung (einmal vom Modul kopiert, dann nexmails Datei).
+ * Ende-zu-Ende-Tests der gemeinsamen Anmeldung (einmal vom Modul kopiert, dann nexmails Datei).
  *
  * Der Anbieter ist der nachgebaute aus `e2e/fake-oidc.mjs` (http://localhost:8497, eine andere Site als nexmail auf
  * 127.0.0.1). Nie ein echter Anbieter, nie das Netz. Die Seite ist der Betreiber `betreiber` aus `global-setup.ts`.

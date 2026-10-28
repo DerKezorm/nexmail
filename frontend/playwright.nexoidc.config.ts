@@ -1,5 +1,4 @@
-/* Ende-zu-Ende für die Anmeldung über Anbieter (Vertragstests 33 und 34 der gemeinsamen
- * Anmeldung), kopflos.
+/* Ende-zu-Ende für die Anmeldung über Anbieter, kopflos.
  *
  * ⚠️ **Nicht die Reihe aus `tests/`.** Die braucht `data-dev` und ein echtes Postfach; diese hier nicht. Die gebaute
  * Oberfläche kommt vom echten Server wie im Container (`NEXMAIL_STATIC_DIR` auf `dist`), mit eigenem Datenordner und

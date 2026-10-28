@@ -1,5 +1,5 @@
 /**
- * Vertragstest 31: jeder Schritt des authentik-Knopfs (`STEP_KEYS` im Server, `AUTHENTIK_STEPS` hier)
+ * Jeder Schritt des authentik-Knopfs (`STEP_KEYS` im Server, `AUTHENTIK_STEPS` hier)
  * und jeder Grund (`REASONS`, `AUTHENTIK_REASONS`) hat einen Namen in beiden Sprachen, und keiner zu viel. Die Karte
  * fragt sie über `authentikStepKey` und `authentikReasonKey`; eine Kennung ohne Text stünde roh da.
  */

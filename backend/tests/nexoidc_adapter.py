@@ -7,7 +7,7 @@ refusals as ``{"detail": <code>, "werte": {...}}``.
 
 nexmail had a provider list before the module (0.21, ``legacy_model = "list"``); its providers know the redirect
 address ``/api/oidc/<slug>/zurueck``. nexmail's provider list is never coupled to a central directory. Its invitations carry no rights (every
-account is a member), so the parts of contract test 16 that grant "editor" rights do not apply; ``make_invite("editor")``
+account is a member), so the parts of the invitation tests that grant "editor" rights do not apply; ``make_invite("editor")``
 skips them, and ``tests/test_oidc_app.py`` checks the invitation through a provider in nexmail's own terms.
 """
 

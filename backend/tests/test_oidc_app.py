@@ -1,13 +1,12 @@
 """Die Anmeldung ueber Anbieter, soweit nexmail sie selbst leistet.
 
-Was in jeder App gleich ist, pruefen die Vertragstests in ``tests/nexoidc`` (Vertragstests 1 bis 39). Hier steht, was
-nur nexmail hat:
+Was in jeder App gleich ist, pruefen die Vertragstests in ``tests/nexoidc``. Hier steht, was nur nexmail hat:
 
 - die Liste von 0.21 (Wanderung beim Start, Rueckleitadresse ``…/zurueck``, Rueckweg auf derselben Tabelle);
 - ``aktiv`` als Spiegel fuer 0.21, das Geheimnis zweimal, die Nummern fuer das Modul;
 - Sitzung mit ``SameSite=strict`` (Durchreichen beim Verknuepfen), Bremse je Absender, Passwort-Anmeldung abschaltbar,
   die Kontenliste mit Marken, die Rueckfrage beim Speichern der oeffentlichen Adresse, das Schema hinter dem Proxy;
-- Einladungen ohne Rechte (die Teile von Vertragstest 16, die "editor" verlangen, in nexmails Begriffen).
+- Einladungen ohne Rechte (die Teile der Vertragstests zu Einladungen, die "editor" verlangen, in nexmails Begriffen).
 """
 
 from __future__ import annotations
@@ -465,7 +464,7 @@ def test_the_public_address_is_checked_as_strictly_as_the_module_does(betreiber,
     assert einstellung_holen("oeffentliche_adresse") == ""
 
 
-# --- Einladungen (Vertragstest 16 ohne Rechte) -----------------------------------------------------------------------
+# --- Einladungen ohne Rechte ----------------------------------------------------------------------------------------
 
 
 def test_an_invitation_through_a_provider_makes_one_account_named_by_the_provider(betreiber, sso):
