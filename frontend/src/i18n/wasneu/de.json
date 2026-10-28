@@ -16,5 +16,17 @@
       "Lehnt der Browser die Anmeldung für Benachrichtigungen ab, steht jetzt da, warum. Browser ohne Googles Push-Dienst, etwa Helium, werden dabei eigens genannt.",
       "Sehr große Postfächer brechen den Abgleich nicht mehr ab."
     ]
+  },
+  "0.24.5": {
+    "lead": "Eine vom Browser übersetzte Seite bringt nexmail nicht mehr zum Absturz.",
+    "sections": [
+      {
+        "title": "Vom Browser übersetzte Seiten",
+        "where": "Jede Seite, wenn Chrome, Edge oder eine Erweiterung sie übersetzt",
+        "body": "Eine übersetzte Seite konnte leer werden, sobald sich etwas auf ihr änderte, weil der Browser die Texte gegen eigene getauscht hatte. nexmail arbeitet auf so einer Seite jetzt weiter."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": []
   }
 }

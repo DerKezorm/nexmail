@@ -5,12 +5,15 @@ import './styles/index.css'
 import { spracheHochfahren } from './i18n'
 import Start from './Start'
 import { arbeiter, moeglich } from './lib/push'
+import { bearTranslatedPages } from './lib/translatedPage'
 
 /* ⚠️ **Erst die Sprache, dann zeichnen.** Geladen wird nur die eine, die
    gilt — beide zusammen wären die Hälfte umsonst. Wer trotzdem sofort
    zeichnete, zeigte für einen Moment die rohen Schlüssel, und das sieht aus
    wie eine kaputte Übersetzung statt wie eine langsame. */
 void spracheHochfahren().then(() => {
+  // Vor dem ersten Zeichnen: Übersetzt der Browser die Seite, stürzt React sonst ab.
+  bearTranslatedPages()
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <Start />

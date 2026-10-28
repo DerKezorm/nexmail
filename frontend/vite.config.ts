@@ -54,10 +54,14 @@ export default defineConfig({
    * Uebereinstimmung zweier Listen. Ein jsdom waere ein weiteres Paket in der
    * Lieferkette, das nichts traegt. Wer spaeter ein Bauteil zeichnen will,
    * holt es dann - und begruendet es dann.
+   *
+   * Die eine Ausnahme: ``lib/translatedPage.test.tsx`` (jsdom per Kopfzeile in
+   * der Datei, nur dort). Sie muss React gegen ein Dokument zeichnen lassen,
+   * das ein Uebersetzer umgebaut hat; ohne DOM gibt es nichts zu pruefen.
    */
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     /* ⚠️ **Feste Zeitzone, sonst misst `ziehen.test.ts` nichts.** Der teuerste
      * Fall beim Ziehen eines Termins ist die Zeitumstellung — und in UTC, wie
      * das Fliessband laeuft, gibt es sie nicht. Die Probe liefe durch, ohne
