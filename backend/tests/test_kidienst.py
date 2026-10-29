@@ -12,6 +12,7 @@ httpx-Transport; ein Test, der eine echte Adresse anruft, misst die Leitung.
 from __future__ import annotations
 
 import json
+import re
 
 import httpx
 import pytest
@@ -433,6 +434,39 @@ def test_der_ton_landet_in_der_anweisung(bereit):
     )
     _, _, rumpf = server.anfragen[0]
     assert dienst.TOENE["kuerzer"] in rumpf["messages"][0]["content"]
+
+
+#: Sprachnamen, die in einer Anweisung nichts zu suchen haben. Groß/klein egal.
+_SPRACHNAMEN = ("german", "deutsch", "english", "englisch", "french", "spanish", "italian")
+
+
+def test_umformulieren_nennt_keine_sprache(bereit):
+    """⚠️ **Issue #15.** „a German text stays German" machte aus englischen
+    Entwürfen deutsche, bei jedem Ton. Gilt für jeden Ton außer
+    ``behoerdlich``, der ausdrücklich deutsch ist. Geprüft über den echten
+    Weg, nicht an ``AUFTRAEGE`` allein."""
+    for ton in dienst.TOENE:
+        if ton == "behoerdlich":
+            continue
+        server = TextDoppelgaenger()
+        dienst.text_bearbeiten(
+            bereit, "<p>x y z</p>", auftrag="umformulieren", ziel=ton, transport=server.transport()
+        )
+        _, _, rumpf = server.anfragen[0]
+        system = rumpf["messages"][0]["content"].lower()
+        assert "same language as the input" in system, ton
+        gefunden = [s for s in _SPRACHNAMEN if re.search(rf"\b{s}\b", system)]
+        assert gefunden == [], (ton, gefunden)
+
+
+def test_rechtschreibung_nennt_keine_sprache(bereit):
+    server = TextDoppelgaenger()
+    dienst.text_bearbeiten(
+        bereit, "<p>x y z</p>", auftrag="rechtschreibung", transport=server.transport()
+    )
+    _, _, rumpf = server.anfragen[0]
+    system = rumpf["messages"][0]["content"].lower()
+    assert [s for s in _SPRACHNAMEN if re.search(rf"\b{s}\b", system)] == []
 
 
 def test_ein_unbekannter_ton_geht_nicht_hinaus(bereit):

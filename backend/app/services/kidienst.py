@@ -421,9 +421,14 @@ AUFTRAEGE = {
         "stays formal, an informal one stays informal. Translate only — do not "
         "improve, shorten or explain."
     ),
+    # ⚠️ **Hier steht kein Sprachname, auch nicht als Beispiel.** Bis 0.24.5
+    # hieß es „a German text stays German", und kleinere Modelle (Ollama mit
+    # mistral-nemo, qwen2.5) machten daraus Deutsch für jeden Entwurf
+    # (Issue #15). Ein englisches Beispiel zöge genauso, nur in die andere
+    # Richtung. Ausnahme ist der Ton `behoerdlich`, der deutsch sein soll.
     "umformulieren": (
         "Rewrite the text so that it reads {ziel}. "
-        "Keep the language of the input — a German text stays German. "
+        "Write the result in the same language as the input; do not translate it. "
         "Keep the meaning and every fact; change only how it is said."
     ),
 }
