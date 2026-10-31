@@ -176,6 +176,152 @@ def test_technische_keywords_bleiben_draussen(db, konto):  # noqa: F811
     assert json.loads(db.query(Nachricht).one().schlagworte) == []
 
 
+@pytest.mark.parametrize(
+    "atom",
+    [
+        "$autosent",
+        "$canunsubscribe",
+        "$followed",
+        "$hasattachment",
+        "$hasmemo",
+        "$hasnoattachment",
+        "$imported",
+        "$istrusted",
+        "$MailFlagBit0",
+        "$MailFlagBit1",
+        "$MailFlagBit2",
+        "$maskedemail",
+        "$memo",
+        "$muted",
+        "$new",
+        "$notify",
+        "$unsubscribed",
+    ],
+)
+def test_rfc_9979_ist_kein_schlagwort(atom):
+    """Issue #16: Die 17 Keywords aus RFC 9979, in der Schreibweise des
+    Registers und so, wie der Melder sie im Vorschlag schrieb."""
+    assert not dienst.ist_schlagwort_flag(atom)
+    assert not dienst.ist_schlagwort_flag(atom.upper().encode())
+
+
+def test_anhang_keywords_kommen_nicht_herein(db, konto):  # noqa: F811
+    """Issue #16, der ganze Weg: Der Abgleich legt nichts an, die Mail bleibt
+    leer, und ein echtes Schlagwort daneben kommt trotzdem durch."""
+    server = Server()
+    server.anlegen("INBOX")
+    server.einwerfen("INBOX", 1, "Mit", schlagworte=["$HasAttachment", "Reise"])
+    server.einwerfen("INBOX", 2, "Ohne", schlagworte=["$hasnoattachment"])
+
+    posteingang = next(o for o in konto.ordner if o.rolle == "posteingang")
+    abgleich.ordner_abgleichen(server, db, konto, posteingang)
+
+    assert [z.atom for z in db.query(Schlagwort).all()] == ["Reise"]
+    assert json.loads(_mail(db, "Mit").schlagworte) == ["Reise"]
+    assert json.loads(_mail(db, "Ohne").schlagworte) == []
+
+
+# --- Aufräumen beim Start ------------------------------------------------- #
+
+
+def _altbestand(db, konto, atome_je_mail: dict[str, list[str]]) -> None:  # noqa: F811
+    """Der Stand vor Issue #16: Definitionen und Atome an den Mails."""
+    for atom in {a for atome in atome_je_mail.values() for a in atome}:
+        db.add(Schlagwort(benutzer_id=konto.benutzer_id, name=atom, atom=atom, farbe=1))
+    for betreff, atome in atome_je_mail.items():
+        _mail(db, betreff).schlagworte = json.dumps(atome)
+    db.commit()
+
+
+def test_aufraeumen_nimmt_definition_und_atome_an_den_mails(db, welt):
+    """⚠️ Auch die Mails: Die Oberfläche zeigt ein Atom ohne Definition an,
+    und das Flags-Fenster kommt an älteren Mails nie vorbei."""
+    _, konto, _ = welt
+    _altbestand(
+        db,
+        konto,
+        {"Erste": ["$hasattachment", "Reise"], "Zweite": ["$HasNoAttachment"]},
+    )
+
+    assert dienst.technische_aufraeumen(db) == 2
+
+    db.expire_all()
+    assert [z.atom for z in db.query(Schlagwort).all()] == ["Reise"]
+    assert json.loads(_mail(db, "Erste").schlagworte) == ["Reise"]
+    assert json.loads(_mail(db, "Zweite").schlagworte) == []
+    # Der zweite Lauf findet nichts mehr: Das ist die ganze Marke.
+    assert dienst.technische_aufraeumen(db) == 0
+
+
+def test_aufraeumen_fasst_den_server_nicht_an(db, welt):
+    """Das Keyword gehört auch anderen Clients. ⚠️ Der Doppelgänger steht
+    bereit: Ein STORE würde hier angenommen und im Protokoll stehen."""
+    server, konto, _ = welt
+    server.ordner["INBOX"]["nachrichten"][1]["schlagworte"] = ["$hasattachment"]
+    _altbestand(db, konto, {"Erste": ["$hasattachment"]})
+
+    dienst.technische_aufraeumen(db)
+
+    assert server.protokoll == []
+    assert server.ordner["INBOX"]["nachrichten"][1]["schlagworte"] == ["$hasattachment"]
+
+
+def test_aufraeumen_laesst_selbst_angelegte_schlagworte_stehen(db, welt):
+    """„Forwarded" steht in der Liste, kann aber ein eigenes Schlagwort sein —
+    ohne ``$`` lässt sich das nicht unterscheiden, also bleibt es."""
+    _, konto, _ = welt
+    eigenes = dienst.anlegen(db, konto.benutzer_id, "Forwarded")
+    _altbestand(db, konto, {"Erste": ["$label1"]})
+    _mail(db, "Zweite").schlagworte = json.dumps([eigenes.atom])
+    db.commit()
+
+    assert dienst.technische_aufraeumen(db) == 0
+
+    db.expire_all()
+    assert sorted(z.atom for z in db.query(Schlagwort).all()) == ["$label1", "Forwarded"]
+    assert json.loads(_mail(db, "Zweite").schlagworte) == ["Forwarded"]
+
+
+def test_aufraeumen_haelt_die_benutzer_auseinander(db, welt):
+    """Geräumt wird nur bei dem, der die Definition hat. Die zweite Mail trägt
+    dasselbe Atom und gehört jemand anderem, sonst sähe der Test nichts."""
+    from app.models import Benutzer
+
+    _, konto, _ = welt
+    _altbestand(db, konto, {"Erste": ["$hasattachment"]})
+    fremd = Benutzer(benutzername="zweiter", passwort_hash="x")
+    db.add(fremd)
+    db.flush()
+    mail = _mail(db, "Zweite")
+    mail.benutzer_id = fremd.id
+    mail.schlagworte = '["$hasattachment"]'
+    db.commit()
+
+    dienst.technische_aufraeumen(db)
+
+    db.expire_all()
+    assert json.loads(_mail(db, "Erste").schlagworte) == []
+    assert json.loads(_mail(db, "Zweite").schlagworte) == ["$hasattachment"]
+
+
+def test_der_start_raeumt_auf(db, welt):
+    """Ohne diesen Test hinge die Funktion an nichts: Beim Hochfahren muss
+    der Altbestand verschwinden."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    _, konto, _ = welt
+    _altbestand(db, konto, {"Erste": ["$hasattachment"]})
+
+    with TestClient(app):
+        pass
+
+    db.expire_all()
+    assert db.query(Schlagwort).count() == 0
+    assert json.loads(_mail(db, "Erste").schlagworte) == []
+
+
 def test_das_flags_fenster_zieht_schlagworte_nach(db, welt):
     """Wer am Telefon eine Marke setzt, sieht sie hier nach dem nächsten
     Abgleich — ohne dass die Mail neu geholt wird."""

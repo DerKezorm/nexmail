@@ -23,7 +23,7 @@ import logging
 import re
 from collections import Counter, defaultdict
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from ..models import Benutzer, Konto, Nachricht, Schlagwort
@@ -58,6 +58,12 @@ THUNDERBIRD_NAMEN = {
 #: Software, nicht ein Mensch — kein Client zeigt sie als Marke. Wer sie
 #: uebernimmt, hat nach dem ersten Abgleich eines Bestandspostfachs eine
 #: Schlagwortliste voller Maschinenkram, und die echten gehen darin unter.
+#:
+#: ⚠️ **RFC 9979 steht vollständig drin**, nicht nur ``$hasattachment``: Keines
+#: der 17 Keywords ist eine Marke eines Menschen. Sie sagen, was der Server
+#: geprüft hat oder wie ein anderer Client einen Strang behandelt
+#: (``$followed``, ``$muted``, Apples Flaggenfarben ``$MailFlagBit0``..``2``).
+#: ``$Important`` (RFC 8457) gehört nicht dazu: Das setzt ein Mensch.
 TECHNISCHE_KEYWORDS = frozenset(
     k.lower()
     for k in (
@@ -74,6 +80,23 @@ TECHNISCHE_KEYWORDS = frozenset(
         "$autojunk",
         "$has_cal",
         "$has_attachment",
+        "$autosent",
+        "$canunsubscribe",
+        "$followed",
+        "$hasattachment",
+        "$hasmemo",
+        "$hasnoattachment",
+        "$imported",
+        "$istrusted",
+        "$mailflagbit0",
+        "$mailflagbit1",
+        "$mailflagbit2",
+        "$maskedemail",
+        "$memo",
+        "$muted",
+        "$new",
+        "$notify",
+        "$unsubscribed",
         "redirected",
         "forwarded",
     )
@@ -228,6 +251,71 @@ def definitionen_sicherstellen(db: Session, benutzer_id: str, atome) -> int:
         neu += 1
         logger.info("Created a tag definition for the foreign keyword '%s'.", atom)
     return neu
+
+
+def technische_aufraeumen(db: Session) -> int:
+    """Technische Keywords wegraeumen, die frueher als Schlagwort hereinkamen.
+
+    ⚠️ **Nur hier, nie auf dem Server.** ``loeschen`` nimmt das Keyword von
+    allen Mails; bei ``$hasattachment`` hiesse das, anderen Clients ihre
+    Merkung wegzunehmen. Hier faellt nur nexmails eigene Sicht.
+
+    ⚠️ **Auch aus den Mails, nicht nur die Definition.** Die Oberflaeche zeigt
+    ein Atom ohne Definition trotzdem an (``markenVon``), und das Flags-Fenster
+    reicht nur ueber die neuesten Mails. Aeltere trugen die Marke sonst weiter.
+
+    ⚠️ **Nur Atome mit ``$``.** Die kann ``atom_aus_name`` nicht erzeugen, sie
+    kamen also sicher vom Abgleich. „Junk" und „Forwarded" stehen zwar auch in
+    der Liste, koennen aber ein selbst angelegtes Schlagwort sein.
+
+    Keine Marke in den Einstellungen: Die Tabelle ist klein, und ist nichts zu
+    tun, faellt der Blick in die Nachrichten weg. So greift das auch nach einer
+    eingespielten Sicherung und wenn die Liste waechst.
+
+    Gibt zurueck, wie viele Definitionen weggefallen sind.
+    """
+    treffer = [
+        zeile
+        for zeile in db.execute(select(Schlagwort)).scalars()
+        if zeile.atom.startswith("$") and zeile.atom.lower() in TECHNISCHE_KEYWORDS
+    ]
+    if not treffer:
+        return 0
+    logger.info("Removing %s technical keyword(s) from the tag list.", len(treffer))
+
+    je_benutzer: dict[str, set[str]] = defaultdict(set)
+    for zeile in treffer:
+        je_benutzer[zeile.benutzer_id].add(zeile.atom.lower())
+
+    aenderungen: list[dict] = []
+    for benutzer_id, weg in je_benutzer.items():
+        zeilen = db.execute(
+            select(Nachricht.id, Nachricht.schlagworte).where(
+                Nachricht.benutzer_id == benutzer_id,
+                or_(*(traegt_atom(atom) for atom in weg)),
+            )
+        )
+        for nachricht_id, roh in zeilen:
+            try:
+                werte = json.loads(roh or "[]")
+            except ValueError:
+                continue
+            bleibt = [w for w in werte if not isinstance(w, str) or w.lower() not in weg]
+            aenderungen.append(
+                {"id": nachricht_id, "schlagworte": json.dumps(bleibt, ensure_ascii=False)}
+            )
+    if aenderungen:
+        db.execute(update(Nachricht), aenderungen)
+    for zeile in treffer:
+        db.delete(zeile)
+    db.commit()
+    logger.info(
+        "Removed %s technical keyword(s) from the tag list and from %s message(s); "
+        "the mail server was not touched.",
+        len(treffer),
+        len(aenderungen),
+    )
+    return len(treffer)
 
 
 def anlegen(db: Session, benutzer_id: str, name: str) -> Schlagwort:

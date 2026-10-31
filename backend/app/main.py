@@ -346,6 +346,13 @@ async def lebenslauf(_: FastAPI):
             if nachgetragen:
                 logger.info("Filled in the arrival date for %s message(s).", nachgetragen)
 
+        # Technische Keywords, die vor der Erweiterung der Liste als Schlagwort
+        # hereinkamen (Issue #16). Vor dem Takt: Danach schriebe der Abgleich
+        # in dieselben Zeilen.
+        from .services import schlagworte as schlagwortdienst
+
+        schlagwortdienst.technische_aufraeumen(db)
+
         weg = sitzungsdienst.aufraeumen(db)
         if weg:
             logger.info("Removed %s expired session(s).", weg)
