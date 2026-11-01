@@ -37,7 +37,11 @@ FELDER = ("von", "an", "betreff", "inhalt")
 #: eine Regel, die an einem großen A scheitert, ist eine Falle.
 VERGLEICHE = ("enthaelt", "enthaelt_nicht", "ist", "beginnt", "endet")
 #: Was geschehen kann.
-AKTIONEN = ("verschieben", "gelesen", "markieren", "loeschen")
+AKTIONEN = ("verschieben", "gelesen", "markieren", "schlagwort", "loeschen")
+
+#: So viele Mails bekommen ein Schlagwort in einem Zug. „Jetzt anwenden" läuft
+#: über ganze Ordner, und ein STORE mit dreitausend UIDs passt in keine Zeile.
+SCHLAGWORT_BLOCK = 500
 
 
 class RegelFehler(Meldung, RuntimeError):
@@ -72,6 +76,8 @@ def pruefen(bedingungen: list[dict], aktionen: list[dict]) -> None:
             raise RegelFehler("aktion_unbekannt", aktion=a.get("art"))
         if a.get("art") == "verschieben" and not str(a.get("wert", "")).strip():
             raise RegelFehler("verschieben_ohne_ziel")
+        if a.get("art") == "schlagwort" and not str(a.get("wert", "")).strip():
+            raise RegelFehler("regel_ohne_schlagwort")
 
 
 # --- Prüfen ---------------------------------------------------------------- #
@@ -140,8 +146,16 @@ def anwenden(db: Session, person: Benutzer, nachrichten: list[Nachricht]) -> dic
     über ``handeln`` — also mit IMAP-Befehl und Abgleich, nicht nur lokal.
     """
     from . import handeln as handelndienst
+    from . import schlagworte as schlagwortdienst
 
-    stand = {"geprueft": 0, "getroffen": 0, "verschoben": 0, "gelesen": 0, "markiert": 0}
+    stand = {
+        "geprueft": 0,
+        "getroffen": 0,
+        "verschoben": 0,
+        "gelesen": 0,
+        "markiert": 0,
+        "verschlagwortet": 0,
+    }
     if not nachrichten:
         return stand
 
@@ -160,6 +174,10 @@ def anwenden(db: Session, person: Benutzer, nachrichten: list[Nachricht]) -> dic
     # MOVE und COPY nehmen die Flags mit, deshalb zuerst setzen.
     zu_lesen: dict[int, dict[int, Nachricht]] = {}
     zu_markieren: dict[int, dict[int, Nachricht]] = {}
+    # ⚠️ **Das Schlagwort ist ein IMAP-Keyword und geht denselben Weg:** vor dem
+    # Verschieben, denn danach trägt die Mail eine andere UID. Gemerkt wird das
+    # Atom, nicht der Name: Umbenennen ändert nur die Anzeige.
+    zu_schlagworten: dict[str, dict[int, Nachricht]] = {}
 
     for nachricht in nachrichten:
         stand["geprueft"] += 1
@@ -177,6 +195,11 @@ def anwenden(db: Session, person: Benutzer, nachrichten: list[Nachricht]) -> dic
                     zu_lesen.setdefault(nachricht.ordner_id, {})[nachricht.id] = nachricht
                 elif art == "markieren" and not nachricht.markiert:
                     zu_markieren.setdefault(nachricht.ordner_id, {})[nachricht.id] = nachricht
+                elif art == "schlagwort":
+                    atom = str(aktion.get("wert", "")).strip()
+                    vorhanden = {a.lower() for a in schlagwortdienst.atome_lesen(nachricht)}
+                    if atom and atom.lower() not in vorhanden:
+                        zu_schlagworten.setdefault(atom, {})[nachricht.id] = nachricht
                 elif art in ("verschieben", "loeschen"):
                     ziel = _ziel_bestimmen(db, nachricht, aktion, art)
                     if ziel is not None and ziel.id != nachricht.ordner_id:
@@ -191,6 +214,7 @@ def anwenden(db: Session, person: Benutzer, nachrichten: list[Nachricht]) -> dic
 
     stand["gelesen"] += _flag_setzen(db, zu_lesen, rb"\Seen", "gelesen")
     stand["markiert"] += _flag_setzen(db, zu_markieren, rb"\Flagged", "markiert")
+    stand["verschlagwortet"] += _schlagworte_setzen(db, person, zu_schlagworten)
 
     for ordner_id, gruppe in zu_verschieben.items():
         ziel = db.get(Ordner, ordner_id)
@@ -253,6 +277,34 @@ def _flag_setzen(
             setattr(nachricht, spalte, True)
         gesetzt += len(uids)
     db.commit()
+    return gesetzt
+
+
+def _schlagworte_setzen(
+    db: Session, person: Benutzer, gruppen: dict[str, dict[int, Nachricht]]
+) -> int:
+    """Je Schlagwort über ``schlagworte.zuweisen``: erst der Server, dann hier.
+
+    ⚠️ **Auch ein gelöschtes Schlagwort hält nichts auf.** Die Regel kennt nur
+    das Atom; gibt es die Definition nicht mehr, greift diese eine Aktion nicht,
+    und Verschieben und Gelesen laufen trotzdem.
+    """
+    from . import schlagworte as schlagwortdienst
+
+    gesetzt = 0
+    for atom, nachrichten in gruppen.items():
+        zeilen = list(nachrichten.values())
+        for start in range(0, len(zeilen), SCHLAGWORT_BLOCK):
+            try:
+                gesetzt += schlagwortdienst.zuweisen(
+                    db, person, zeilen[start : start + SCHLAGWORT_BLOCK], atom, True
+                )
+            except Exception as fehler:  # noqa: BLE001
+                # Wie beim Verschieben: Eine Regel, die nicht greift, darf den
+                # Abgleich nicht abbrechen.
+                db.rollback()
+                logger.warning("A rule could not set a tag: %s", fehler)
+                break
     return gesetzt
 
 

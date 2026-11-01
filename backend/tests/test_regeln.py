@@ -94,6 +94,7 @@ class Flaggenserver:
 
     def select_folder(self, pfad: str, readonly: bool = False):  # noqa: ARG002
         self.ordner = pfad
+        return {b"PERMANENTFLAGS": (rb"\Seen", rb"\*"), b"UIDVALIDITY": 0}
 
     def add_flags(self, uids, flags):
         if self.weist_ab:
@@ -215,6 +216,116 @@ def test_gelesen_und_markiert_gehen_auf_den_server(db, postfach, server):
 
     assert ("INBOX", (7,), rb"\Seen") in server.gesetzt
     assert ("INBOX", (7,), rb"\Flagged") in server.gesetzt
+
+
+def _schlagwort(db, person, name="Rechnung"):
+    from app.services import schlagworte
+
+    return schlagworte.anlegen(db, person.id, name)
+
+
+NEWSLETTER = [{"feld": "betreff", "vergleich": "enthaelt", "wert": "Newsletter"}]
+
+
+def test_das_schlagwort_geht_auf_den_server_und_in_die_zeile(db, postfach, server):
+    """Es ist ein IMAP-Keyword: sonst nähme der nächste Abgleich es zurück."""
+    person, konto, posteingang, _ = postfach
+    wort = _schlagwort(db, person)
+    n = _mail(db, person, konto, posteingang, 7, betreff="Newsletter")
+    _regel(db, person, NEWSLETTER, [{"art": "schlagwort", "wert": wort.atom}])
+
+    stand = regeln.anwenden(db, person, [n])
+
+    assert ("INBOX", (7,), wort.atom.encode()) in server.gesetzt
+    assert wort.atom in json.loads(n.schlagworte)
+    assert stand["verschlagwortet"] == 1
+
+
+def test_das_schlagwort_kommt_vor_dem_verschieben(db, postfach, server, monkeypatch):
+    """⚠️ Nach dem MOVE trägt die Mail eine andere UID. Das STORE träfe dann eine
+    fremde Mail, und der Server sagte auch noch OK."""
+    from app.services import handeln
+
+    person, konto, posteingang, archiv = postfach
+    wort = _schlagwort(db, person)
+    n = _mail(db, person, konto, posteingang, 7, betreff="Newsletter")
+    _regel(
+        db,
+        person,
+        NEWSLETTER,
+        [{"art": "verschieben", "wert": str(archiv.id)}, {"art": "schlagwort", "wert": wort.atom}],
+    )
+    beim_verschieben: list[list] = []
+    monkeypatch.setattr(
+        handeln, "verschieben", lambda *_a: beim_verschieben.append(list(server.gesetzt))
+    )
+
+    regeln.anwenden(db, person, [n])
+
+    assert beim_verschieben == [[("INBOX", (7,), wort.atom.encode())]]
+
+
+def test_ein_vorhandenes_schlagwort_geht_nicht_noch_einmal_hinaus(db, postfach, server):
+    person, konto, posteingang, _ = postfach
+    wort = _schlagwort(db, person)
+    n = _mail(db, person, konto, posteingang, 1, betreff="Newsletter")
+    n.schlagworte = json.dumps([wort.atom.upper()])
+    db.commit()
+    _regel(db, person, NEWSLETTER, [{"art": "schlagwort", "wert": wort.atom}])
+
+    regeln.anwenden(db, person, [n])
+
+    assert server.gesetzt == []
+
+
+def test_weist_der_server_ab_bleibt_die_zeile_ohne_schlagwort(db, postfach, server):
+    person, konto, posteingang, _ = postfach
+    wort = _schlagwort(db, person)
+    server.weist_ab = True
+    n = _mail(db, person, konto, posteingang, 1, betreff="Newsletter")
+    _regel(db, person, NEWSLETTER, [{"art": "schlagwort", "wert": wort.atom}])
+
+    stand = regeln.anwenden(db, person, [n])
+
+    db.refresh(n)
+    assert wort.atom not in (n.schlagworte or "")
+    assert stand["verschlagwortet"] == 0
+
+
+def test_ein_geloeschtes_schlagwort_haelt_die_uebrigen_aktionen_nicht_auf(db, postfach, server):
+    """Die Regel kennt nur das Atom; die Definition kann fort sein."""
+    person, konto, posteingang, _ = postfach
+    n = _mail(db, person, konto, posteingang, 1, betreff="Newsletter")
+    _regel(
+        db,
+        person,
+        NEWSLETTER,
+        [{"art": "schlagwort", "wert": "gibtesnicht"}, {"art": "gelesen"}],
+    )
+
+    stand = regeln.anwenden(db, person, [n])
+
+    assert stand["gelesen"] == 1 and stand["verschlagwortet"] == 0
+
+
+def test_grosse_ordner_gehen_in_bloecken(db, postfach, server, monkeypatch):
+    """„Jetzt anwenden" trifft ganze Ordner; ein STORE hat eine Zeilengrenze."""
+    person, konto, posteingang, _ = postfach
+    monkeypatch.setattr(regeln, "SCHLAGWORT_BLOCK", 2)
+    wort = _schlagwort(db, person)
+    mails = [_mail(db, person, konto, posteingang, i, betreff="Newsletter") for i in range(1, 6)]
+    _regel(db, person, NEWSLETTER, [{"art": "schlagwort", "wert": wort.atom}])
+
+    stand = regeln.anwenden(db, person, mails)
+
+    assert stand["verschlagwortet"] == 5
+    assert [len(uids) for _, uids, _ in server.gesetzt] == [2, 2, 1]
+
+
+def test_eine_regel_ohne_gewaehltes_schlagwort_wird_abgewiesen():
+    with pytest.raises(regeln.RegelFehler) as f:
+        regeln.pruefen(NEWSLETTER, [{"art": "schlagwort", "wert": " "}])
+    assert str(f.value) == "regel_ohne_schlagwort"
 
 
 def test_weist_der_server_ab_bleibt_die_mail_ungelesen(db, postfach, server):

@@ -14,7 +14,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowDown, ArrowUp, Play, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
+import { schlagworteLaden } from '../api/laden'
 import { useNachfrage } from '../components/Nachfrage'
+import type { Schlagwort } from '../daten/typen'
 import { Button, EmptyState, IconButton, Input, Select, Switch } from '../ds'
 import { servermeldung } from '../lib/servermeldung'
 
@@ -56,7 +58,7 @@ interface KontoZeile {
 
 const FELDER = ['von', 'an', 'betreff', 'inhalt']
 const VERGLEICHE = ['enthaelt', 'enthaelt_nicht', 'ist', 'beginnt', 'endet']
-const ARTEN = ['verschieben', 'gelesen', 'markieren', 'loeschen']
+const ARTEN = ['verschieben', 'gelesen', 'markieren', 'schlagwort', 'loeschen']
 
 /** Was der Rechtsklick „Regel erstellen …" an einer Mail mitgibt. */
 export interface RegelVorlage {
@@ -102,6 +104,7 @@ export function Regeln({ vorlage = null, aufVorlageGenommen }: Props = {}) {
   const [liste, setListe] = useState<RegelZeile[] | null>(null)
   const [konten, setKonten] = useState<KontoZeile[]>([])
   const [ordner, setOrdner] = useState<Record<string, OrdnerZeile[]>>({})
+  const [marken, setMarken] = useState<Schlagwort[]>([])
   // ⚠️ Bis die Ordner da sind, ist „Jetzt anwenden" gesperrt. Ein Klick davor
   // hätte eine leere Auswahl gehabt und stumm nichts getan.
   const [ordnerGeladen, setOrdnerGeladen] = useState(false)
@@ -115,6 +118,9 @@ export function Regeln({ vorlage = null, aufVorlageGenommen }: Props = {}) {
 
   useEffect(() => {
     void laden().catch(() => setListe([]))
+    void schlagworteLaden()
+      .then(setMarken)
+      .catch(() => setMarken([]))
     void api
       .holen<KontoZeile[]>('/api/konten')
       .then(async (k) => {
@@ -228,6 +234,7 @@ export function Regeln({ vorlage = null, aufVorlageGenommen }: Props = {}) {
         regel={offen}
         konten={konten}
         ordner={ordner}
+        marken={marken}
         fehler={fehler}
         aufAendern={setOffen}
         aufSpeichern={() => void speichern(offen)}
@@ -341,6 +348,7 @@ function Formular({
   regel,
   konten,
   ordner,
+  marken,
   fehler,
   aufAendern,
   aufSpeichern,
@@ -349,6 +357,7 @@ function Formular({
   regel: RegelZeile
   konten: KontoZeile[]
   ordner: Record<string, OrdnerZeile[]>
+  marken: Schlagwort[]
   fehler: string
   aufAendern: (r: RegelZeile) => void
   aufSpeichern: () => void
@@ -518,6 +527,29 @@ function Formular({
                   {ziele.map((o) => (
                     <option key={o.id} value={String(o.id)}>
                       {o.pfad}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+            {/* ⚠️ **Der Wert ist das Atom, nicht der Name.** Umbenennen ändert
+                nur die Anzeige; eine Regel mit dem Namen liefe danach ins Leere. */}
+            {a.art === 'schlagwort' && (
+              <div className="min-w-[220px] flex-1">
+                <Select
+                  label={t('regeln.schlagwort')}
+                  value={a.wert}
+                  hint={marken.length === 0 ? t('regeln.schlagwort_keins') : undefined}
+                  onChange={(e) => {
+                    const neu = [...regel.aktionen]
+                    neu[i] = { ...a, wert: e.target.value }
+                    setzen({ aktionen: neu })
+                  }}
+                >
+                  <option value="">—</option>
+                  {marken.map((s) => (
+                    <option key={s.id} value={s.atom}>
+                      {s.name}
                     </option>
                   ))}
                 </Select>
