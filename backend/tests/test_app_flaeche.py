@@ -1228,6 +1228,15 @@ def test_ein_abgeschnittener_style_block_bleibt_leer():
     assert bereinigen.text_aus_html("<html><head><style>#outlook a { padding:0; } body { mar") == ""
 
 
+def test_ein_kommentar_kommt_nicht_in_die_vorschau():
+    """⚠️ Outlooks Weichen stehen in Kommentaren, und ihr ``>`` beendet für die
+    Marken-Regel die Marke mitten darin."""
+    from app.services import bereinigen
+
+    html = "<!--[if gte mso 9]> <xml>Word</xml> <![endif]--><p>Hallo Welt</p>"
+    assert bereinigen.text_aus_html(html) == "Hallo Welt"
+
+
 def test_eine_abgeschnittene_marke_faellt_weg():
     from app.services import bereinigen
 
