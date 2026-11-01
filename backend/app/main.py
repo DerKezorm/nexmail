@@ -373,6 +373,11 @@ async def lebenslauf(_: FastAPI):
             abgleichdienst.anrisse_heilen(db)
             einstellung_schreiben(db, "anrisse_geheilt", "1")
 
+        # Stränge, die das Öffnen einer Mail zerrissen hat. Einmal, wie oben.
+        if einstellung_lesen(db, "straenge_geheilt") != "1":
+            straengedienst.betreff_schluessel_heilen(db)
+            einstellung_schreiben(db, "straenge_geheilt", "1")
+
         weg = sitzungsdienst.aufraeumen(db)
         if weg:
             logger.info("Removed %s expired session(s).", weg)

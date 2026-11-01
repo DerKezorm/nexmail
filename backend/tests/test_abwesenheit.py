@@ -220,7 +220,7 @@ class FalscherKlient:
 
 def _welt(klient, monkeypatch, tage_zurueck: int = 0):
     """Ein Postfach mit Posteingang, Abwesenheit an, heute im Zeitraum."""
-    konto_id = klient.post("/api/konten", json=_eingabe("weg@beispiel.example")).json()["id"]
+    konto_id = klient.post("/api/konten", json=_eingabe("weg@example.com")).json()["id"]
     heute = date(2026, 9, 10)
     monkeypatch.setattr(abwesenheit, "_heute", lambda _z: heute)
     with SessionLocal() as db:
@@ -267,12 +267,31 @@ def test_auf_neue_post_geht_eine_notiz_hinaus(klient, ohne_netz, monkeypatch):
     konto_id, heute = _welt(klient, monkeypatch)
     _einwerfen(konto_id, "posteingang", "fremd@example.org", datetime(2026, 9, 10, 9, tzinfo=timezone.utc))
 
-    verschickt = _erledigen(konto_id, "posteingang", _kopf(To="weg@beispiel.example"))
+    verschickt = _erledigen(konto_id, "posteingang", _kopf(To="weg@example.com"))
     assert verschickt == 1
 
     with SessionLocal() as db:
         gemerkt = db.query(Abwesenheitsantwort).all()
         assert [z.adresse for z in gemerkt] == ["fremd@example.org"]
+
+
+def test_die_notiz_kommt_beim_versandplan_an(klient, ohne_netz, monkeypatch):
+    """⚠️ **Der Versandplan sieht nur Einträge mit ``senden_ab``.** Ohne lag die
+    Notiz im Ausgang, bis jemand nexmail neu startete: eine Abwesenheitsnotiz, die
+    ankommt, wenn man längst zurück ist."""
+    from app.services import senden as sendedienst
+
+    einrichten(klient)
+    konto_id, heute = _welt(klient, monkeypatch)
+    _einwerfen(konto_id, "posteingang", "fremd@example.org", datetime(2026, 9, 10, 9, tzinfo=timezone.utc))
+    _erledigen(konto_id, "posteingang", _kopf(To="weg@example.com"))
+
+    gerufen = []
+    monkeypatch.setattr(sendedienst, "versenden", lambda db, zeile: gerufen.append(zeile.id))
+    with SessionLocal() as db:
+        sendedienst.faellige_geplante(db)
+
+    assert len(gerufen) == 1
 
 
 def test_zweimal_derselbe_absender_gibt_eine_notiz(klient, ohne_netz, monkeypatch):
@@ -283,7 +302,7 @@ def test_zweimal_derselbe_absender_gibt_eine_notiz(klient, ohne_netz, monkeypatc
             konto_id, "posteingang", "fremd@example.org",
             datetime(2026, 9, 10, stunde, tzinfo=timezone.utc),
         )
-    assert _erledigen(konto_id, "posteingang", _kopf(To="weg@beispiel.example")) == 1
+    assert _erledigen(konto_id, "posteingang", _kopf(To="weg@example.com")) == 1
 
 
 def test_ausserhalb_des_posteingangs_wird_nicht_geantwortet(klient, ohne_netz, monkeypatch):
@@ -299,7 +318,7 @@ def test_ausserhalb_des_posteingangs_wird_nicht_geantwortet(klient, ohne_netz, m
         konto_id, "papierkorb", "spam@example.org",
         datetime(2026, 9, 10, 9, tzinfo=timezone.utc),
     )
-    assert _erledigen(konto_id, "papierkorb", _kopf(To="weg@beispiel.example")) == 0
+    assert _erledigen(konto_id, "papierkorb", _kopf(To="weg@example.com")) == 0
 
 
 def test_alte_post_wird_nicht_rueckwirkend_beantwortet(klient, ohne_netz, monkeypatch):
@@ -314,7 +333,7 @@ def test_alte_post_wird_nicht_rueckwirkend_beantwortet(klient, ohne_netz, monkey
         konto_id, "posteingang", "alt@example.org",
         datetime(2026, 8, 20, 9, tzinfo=timezone.utc),
     )
-    assert _erledigen(konto_id, "posteingang", _kopf(To="weg@beispiel.example")) == 0
+    assert _erledigen(konto_id, "posteingang", _kopf(To="weg@example.com")) == 0
 
 
 def test_ausserhalb_des_zeitraums_geht_nichts_hinaus(klient, ohne_netz, monkeypatch):
@@ -328,7 +347,7 @@ def test_ausserhalb_des_zeitraums_geht_nichts_hinaus(klient, ohne_netz, monkeypa
         konto_id, "posteingang", "fremd@example.org",
         datetime(2026, 9, 10, 9, tzinfo=timezone.utc),
     )
-    assert _erledigen(konto_id, "posteingang", _kopf(To="weg@beispiel.example")) == 0
+    assert _erledigen(konto_id, "posteingang", _kopf(To="weg@example.com")) == 0
 
 
 # --- Die Adressen --------------------------------------------------------- #
@@ -338,7 +357,7 @@ def test_einschalten_ohne_text_wird_abgewiesen(klient, ohne_netz):
     """Eine leere Abwesenheitsnotiz ist schlimmer als keine: Der Empfänger
     denkt, er habe etwas kaputtgemacht."""
     einrichten(klient)
-    konto_id = klient.post("/api/konten", json=_eingabe("weg@beispiel.example")).json()["id"]
+    konto_id = klient.post("/api/konten", json=_eingabe("weg@example.com")).json()["id"]
     antwort = klient.put(
         f"/api/abwesenheit/{konto_id}", json={"aktiv": True, "text": "   "}
     )
@@ -348,7 +367,7 @@ def test_einschalten_ohne_text_wird_abgewiesen(klient, ohne_netz):
 
 def test_verdrehter_zeitraum_wird_abgewiesen(klient, ohne_netz):
     einrichten(klient)
-    konto_id = klient.post("/api/konten", json=_eingabe("weg@beispiel.example")).json()["id"]
+    konto_id = klient.post("/api/konten", json=_eingabe("weg@example.com")).json()["id"]
     antwort = klient.put(
         f"/api/abwesenheit/{konto_id}",
         json={"aktiv": True, "text": "weg", "von": "2026-09-14", "bis": "2026-09-05"},
@@ -360,7 +379,7 @@ def test_verdrehter_zeitraum_wird_abgewiesen(klient, ohne_netz):
 def test_einschalten_leert_die_merkliste(klient, ohne_netz):
     """⚠️ „Einmal" gilt je Abwesenheit, nicht je Lebenszeit des Postfachs."""
     einrichten(klient)
-    konto_id = klient.post("/api/konten", json=_eingabe("weg@beispiel.example")).json()["id"]
+    konto_id = klient.post("/api/konten", json=_eingabe("weg@example.com")).json()["id"]
     with SessionLocal() as db:
         db.add(Abwesenheitsantwort(konto_id=konto_id, adresse="alt@example.org"))
         db.commit()
@@ -373,7 +392,7 @@ def test_einschalten_leert_die_merkliste(klient, ohne_netz):
 def test_nachbessern_waehrend_der_abwesenheit_leert_nichts(klient, ohne_netz):
     """Sonst bekämen alle ein zweites Mal eine Notiz, nur weil ein Komma fehlte."""
     einrichten(klient)
-    konto_id = klient.post("/api/konten", json=_eingabe("weg@beispiel.example")).json()["id"]
+    konto_id = klient.post("/api/konten", json=_eingabe("weg@example.com")).json()["id"]
     klient.put(f"/api/abwesenheit/{konto_id}", json={"aktiv": True, "text": "Bin weg."})
     with SessionLocal() as db:
         db.add(Abwesenheitsantwort(konto_id=konto_id, adresse="wer@example.org"))
@@ -387,7 +406,7 @@ def test_nachbessern_waehrend_der_abwesenheit_leert_nichts(klient, ohne_netz):
 def test_fremde_postfaecher_bleiben_zu(klient, zweiter_klient, db, ohne_netz):
     """⚠️ Die Trennung wird gegen einen ZWEITEN Benutzer geprüft, nicht behauptet."""
     einrichten(klient)
-    konto_id = klient.post("/api/konten", json=_eingabe("weg@beispiel.example")).json()["id"]
+    konto_id = klient.post("/api/konten", json=_eingabe("weg@example.com")).json()["id"]
 
     person, geheimnis = zweiten_benutzer_anlegen(db)
     anmelden(zweiter_klient, person.benutzername, "auch-geheim-456", geheimnis)

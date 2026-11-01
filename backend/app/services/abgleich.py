@@ -857,8 +857,6 @@ def koerper_holen(klient, db: Session, nachricht: Nachricht) -> None:
     )
     if besser:
         nachricht.anreisser = besser
-    # Jetzt ist die ganze Kette bekannt - der Strang wird genauer.
-    nachricht.thread_key = mime.strang_kennung(zerlegt) or nachricht.thread_key
 
     blobs = get_settings().blob_dir
     blobs.mkdir(parents=True, exist_ok=True)

@@ -89,6 +89,9 @@ class Zeile(BaseModel):
     konto_id: str
     ordner_id: int
     von: Person
+    #: Die ersten Empfänger. In Gesendet und Entwürfe ist das, wer die Zeile
+    #: benennt; der Absender ist dort man selbst. ``Voll`` trägt alle.
+    an: list[Person] = []
     betreff: str
     anreisser: str
     datum: datetime
@@ -136,7 +139,6 @@ class Abbestellweg(BaseModel):
 
 
 class Voll(Zeile):
-    an: list[Person]
     kopie: list[Person]
     #: Bereinigt und mit ausgeklinkten Bildern.
     html: str
@@ -181,12 +183,17 @@ def _vertraut(db, nachrichten) -> dict[str, str]:
     return absenderpruefung.vertraute_pruefer(db, {n.konto_id for n in nachrichten})
 
 
+#: ⚠️ Eine Rundmail hat Hunderte Empfänger, und die Liste holt bis zu 500 Zeilen.
+ZEILE_EMPFAENGER = 10
+
+
 def _zeile(n: Nachricht, vertraut: dict[str, str] | None = None) -> Zeile:
     return Zeile(
         id=n.id,
         konto_id=n.konto_id,
         ordner_id=n.ordner_id,
         von=Person(name=n.von_name, adresse=n.von_adresse),
+        an=_personen(n.an_json)[:ZEILE_EMPFAENGER],
         betreff=n.betreff,
         anreisser=n.anreisser,
         datum=n.datum,
@@ -656,10 +663,10 @@ def eine(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Voll
         db.commit()
     vertraut = _vertraut(db, [nachricht])
     grund = _zeile(nachricht, vertraut).model_dump()
+    grund["an"] = _personen(nachricht.an_json)
     return Voll(
         **grund,
         abbestellen=_abbestellweg(nachricht, vertraut),
-        an=_personen(nachricht.an_json),
         kopie=_personen(nachricht.kopie_json),
         html=_koerper_fuer_anzeige(nachricht, mit_bildern=freigegeben),
         text=nachricht.koerper_text,

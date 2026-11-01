@@ -129,6 +129,55 @@ def schluessel(
     return message_id or ""
 
 
+def betreff_schluessel_heilen(db: Session) -> int:
+    """Strangschlüssel ``betreff:…`` einmal ersetzen.
+
+    ⚠️ **Bis 0.24.7 riss das Öffnen einer Mail ihren Strang auf.** Beim Holen des
+    Rumpfs schrieb ``koerper_holen`` den alten Schlüssel aus dem Kopf dieser
+    Datei zurück; eine Mail ohne ``References`` bekam den Betreff-Hash, ihre
+    Antworten behielten die ``Message-ID``. Die Marke von ``neu_aufbauen`` half
+    nicht: Sie steht, und jede neu geöffnete Mail riss weiter.
+
+    ⚠️ **Nur diese Zeilen, nicht alles neu.** ``neu_aufbauen`` kennt den Rückfall
+    über den Betreff nicht und zöge solche Stränge auseinander.
+
+    Ältestes zuerst, und alles nur innerhalb eines Benutzers: Dieselbe Mail kann
+    bei zweien liegen.
+    """
+    zeilen = db.execute(
+        select(Nachricht.id, Nachricht.benutzer_id, Nachricht.message_id, Nachricht.referenzen)
+        .where(Nachricht.thread_key.like("betreff:%"))
+        .order_by(Nachricht.datum, Nachricht.id)
+    ).all()
+
+    neu: dict[tuple[str, str], str] = {}
+    zu_setzen: list[dict[str, object]] = []
+    for kennung, benutzer_id, message_id, referenzen in zeilen:
+        kette = [k for k in (referenzen or "").split() if k]
+        strang = next((neu[(benutzer_id, k)] for k in kette if (benutzer_id, k) in neu), "")
+        if not strang and kette:
+            strang = db.execute(
+                select(Nachricht.thread_key)
+                .where(
+                    Nachricht.benutzer_id == benutzer_id,
+                    Nachricht.message_id.in_(kette),
+                    Nachricht.thread_key.not_like("betreff:%"),
+                )
+                .limit(1)
+            ).scalar() or kette[0]
+        strang = strang or message_id or f"zeile:{kennung}"
+        if message_id:
+            neu[(benutzer_id, message_id)] = strang
+        zu_setzen.append({"id": kennung, "thread_key": strang})
+
+    for anfang in range(0, len(zu_setzen), BLOCK):
+        db.execute(update(Nachricht), zu_setzen[anfang : anfang + BLOCK])
+    db.commit()
+    if zu_setzen:
+        logger.info("Thread keys healed: %s message(s).", len(zu_setzen))
+    return len(zu_setzen)
+
+
 #: Wie viele Zeilen auf einmal gelesen bzw. geschrieben werden.
 #:
 #: ⚠️ **Nicht groesser waehlen, um „schneller" zu sein.** Der Block ist die

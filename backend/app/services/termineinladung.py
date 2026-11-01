@@ -178,12 +178,12 @@ def versenden(db: Session, benutzer: Benutzer, termin: Termin) -> int:
     )
     termin.eingeladen_am = jetzt
     db.commit()
-    _hinausschicken(db, zeile)
+    hinausschicken(db, zeile)
     logger.info("An invitation was queued for %s recipient(s).", len(leute))
     return len(leute)
 
 
-def _hinausschicken(db: Session, zeile) -> None:
+def hinausschicken(db: Session, zeile) -> None:
     """Den eingereihten Eintrag gleich versuchen.
 
     ⚠️ **Einreihen allein verschickt nichts.** Bis zum 04.09.2026 endete der
@@ -199,7 +199,7 @@ def _hinausschicken(db: Session, zeile) -> None:
     try:
         sendedienst.versenden(db, zeile)
     except sendedienst.SendeFehler as fehler:
-        logger.warning("The invitation stays in the outbox for now: %s", fehler)
+        logger.warning("The message stays in the outbox for now: %s", fehler)
 
 
 def absagen(db: Session, benutzer: Benutzer, termin: Termin) -> int:
@@ -247,7 +247,7 @@ def absagen(db: Session, benutzer: Benutzer, termin: Termin) -> int:
         ),
     )
     db.commit()
-    _hinausschicken(db, zeile)
+    hinausschicken(db, zeile)
     logger.info("A cancellation was queued for %s recipient(s).", len(leute))
     return len(leute)
 

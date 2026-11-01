@@ -19,7 +19,13 @@ from ..config import get_settings
 from ..db import einstellung_lesen
 from ..deps import AngemeldeterBenutzer, DbSession
 from ..models import Anhang, Konto, Nachricht, Terminantwort
-from ..services import kalender, konten as kontendienst, senden as sendedienst, verfassen
+from ..services import (
+    kalender,
+    konten as kontendienst,
+    senden as sendedienst,
+    termineinladung,
+    verfassen,
+)
 from .einstellungen import SCHLUESSEL_ZEITZONE
 from ..meldung import MeldungHttp
 
@@ -261,7 +267,7 @@ def antworten(
     vorsatz = {"zusage": "Zugesagt", "vorbehalt": "Mit Vorbehalt", "absage": "Abgesagt"}[
         eingabe.antwort
     ]
-    sendedienst.einreihen(
+    zeile = sendedienst.einreihen(
         db,
         konto,
         verfassen.Entwurf(
@@ -292,6 +298,10 @@ def antworten(
         gemerkt.antwort = eingabe.antwort
         gemerkt.gesendet = datetime.now(timezone.utc)
     db.commit()
+
+    # ⚠️ Erst gemerkt, dann gesendet: Scheitert der Versand, bleibt die Antwort
+    # im Ausgang und die Karte sagt trotzdem, was entschieden wurde.
+    termineinladung.hinausschicken(db, zeile)
 
     logger.info("An invitation was answered (%s).", eingabe.antwort)
     gefunden = _einladung(db, person, nachricht)

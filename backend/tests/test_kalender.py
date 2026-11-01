@@ -346,6 +346,46 @@ def test_antworten_merkt_sich_und_verschickt(klient, ohne_netz):
         assert "chefin@example.org" in ausgang[0].an_json
 
 
+def test_eine_antwort_geht_gleich_hinaus(klient, ohne_netz, monkeypatch):
+    """⚠️ **Einreihen verschickt nichts.** Die Antwort lag im Ausgang, bis jemand
+    nexmail neu startete, und der Einladende hörte nie etwas. Gefunden erst mit
+    der iPhone-App gegen die Testinstanz."""
+    from app.services import senden as sendedienst
+    from conftest import einrichten
+
+    gerufen = []
+    monkeypatch.setattr(sendedienst, "versenden", lambda db, zeile: gerufen.append(zeile.betreff))
+    einrichten(klient)
+    kennung = _mail_mit_einladung(
+        klient,
+        _ics("UID:23@example.org", "SUMMARY:Quartalsrunde", "ORGANIZER:mailto:chefin@example.org"),
+    )
+
+    klient.post(f"/api/termine/{kennung}/antwort", json={"antwort": "zusage"})
+
+    assert gerufen == ["Zugesagt: Quartalsrunde"]
+
+
+def test_scheitert_der_versand_bleibt_die_antwort_gemerkt(klient, ohne_netz, monkeypatch):
+    from app.services import senden as sendedienst
+    from conftest import einrichten
+
+    def scheitert(db, zeile):
+        raise sendedienst.SendeFehler("smtp weg")
+
+    monkeypatch.setattr(sendedienst, "versenden", scheitert)
+    einrichten(klient)
+    kennung = _mail_mit_einladung(
+        klient,
+        _ics("UID:24@example.org", "SUMMARY:Quartalsrunde", "ORGANIZER:mailto:chefin@example.org"),
+    )
+
+    antwort = klient.post(f"/api/termine/{kennung}/antwort", json={"antwort": "absage"})
+
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json()["antwort"] == "absage"
+
+
 def test_umentscheiden_ueberschreibt_die_antwort(klient, ohne_netz):
     from conftest import einrichten
 

@@ -199,28 +199,6 @@ def test_betreffkern(betreff, kern):
     assert mime.betreff_kern(betreff) == kern
 
 
-def test_strang_folgt_den_references():
-    """Die Kette ist eindeutig, der Betreff nur wahrscheinlich."""
-    roh = (
-        b"From: a@b.example\r\nSubject: Re: Etwas\r\n"
-        b"References: <wurzel@x.example> <zweig@x.example>\r\n"
-        b"In-Reply-To: <zweig@x.example>\r\n\r\nText\r\n"
-    )
-    assert mime.strang_kennung(mime.zerlegen(roh)) == "<wurzel@x.example>"
-
-
-def test_strang_ueber_betreff_wenn_keine_kette():
-    eins = mime.zerlegen(b"From: a@b.example\r\nSubject: Wochenende am See\r\n\r\nA\r\n")
-    zwei = mime.zerlegen(b"From: c@d.example\r\nSubject: AW: Wochenende am See\r\n\r\nB\r\n")
-    assert mime.strang_kennung(eins) == mime.strang_kennung(zwei)
-
-
-def test_verschiedene_betreffe_verschiedene_straenge():
-    eins = mime.zerlegen(b"From: a@b.example\r\nSubject: Wochenende\r\n\r\nA\r\n")
-    zwei = mime.zerlegen(b"From: a@b.example\r\nSubject: Rechnung\r\n\r\nB\r\n")
-    assert mime.strang_kennung(eins) != mime.strang_kennung(zwei)
-
-
 def test_eine_angehaengte_mail_ist_ein_anhang_und_kein_text():
     """⚠️ **message/rfc822 meldet is_multipart() und ist doch ein Anhang.**
 

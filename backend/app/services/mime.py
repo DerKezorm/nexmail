@@ -321,25 +321,3 @@ _PRAEFIX = re.compile(
 
 def betreff_kern(betreff: str) -> str:
     return _PRAEFIX.sub("", betreff or "").strip()
-
-
-def strang_kennung(zerlegt: Zerlegt) -> str:
-    """Woran zwei Nachrichten als zusammengehörig erkannt werden.
-
-    ⚠️ **Wird ab Stufe 2 mitgeschrieben, obwohl v1 flach anzeigt.** Falsch
-    gruppiert *versteckt* eine Nachricht in einem zugeklappten Strang; das will
-    an echten Mails erprobt sein, bevor es die Standardansicht wird. Wenn die
-    Spalte aber erst später entsteht, entsteht mit ihr eine Wanderung über
-    Hunderttausende Zeilen.
-
-    Die Wurzel der ``References``-Kette schlägt den Betreff: Sie ist eindeutig,
-    der Betreff nur wahrscheinlich.
-    """
-    if zerlegt.references:
-        return zerlegt.references[0]
-    if zerlegt.in_reply_to:
-        return zerlegt.in_reply_to
-    kern = betreff_kern(zerlegt.betreff)
-    if kern:
-        return "betreff:" + hashlib.sha256(kern.lower().encode("utf-8")).hexdigest()[:32]
-    return zerlegt.message_id or ""

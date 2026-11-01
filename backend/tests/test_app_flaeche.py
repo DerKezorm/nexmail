@@ -616,6 +616,22 @@ def test_die_liste_samt_filter(api, stand):
     assert [m["betreff"] for m in anhang] == ["Zweite"]
 
 
+def test_die_zeile_nennt_die_ersten_empfaenger(api, db, person):
+    """In Gesendet ist der Absender man selbst; die Zeile braucht den Empfänger.
+    ⚠️ Gekürzt, die volle Liste steht an der Mail: Eine Rundmail hat Hunderte."""
+    konto, eingang, _ = postfach(db, person)
+    n = mail(db, person, konto, eingang, 1)
+    n.an_json = json.dumps([{"n": f"P{i}", "a": f"p{i}@example.org"} for i in range(15)])
+    db.commit()
+
+    zeile = api("GET", "/messages", params={"ordner_id": eingang.id}).json()[0]
+    voll = api("GET", f"/messages/{n.id}").json()
+
+    assert zeile["an"][0] == {"name": "P0", "adresse": "p0@example.org"}
+    assert len(zeile["an"]) == 10
+    assert len(voll["an"]) == 15
+
+
 def test_die_app_filtert_wie_die_pillen_im_browser(api, db, person, stand):
     """Die Gruppen stehen am Postfach, und die Liste nimmt ``konto_ids``."""
     stand["konto"].tags = "privat"

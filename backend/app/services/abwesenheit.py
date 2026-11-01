@@ -29,7 +29,7 @@ from email.utils import getaddresses
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Abwesenheitsantwort, Konto, Nachricht, Ordner
+from ..models import Abwesenheitsantwort, Konto, Nachricht, Ordner, utcnow
 
 logger = logging.getLogger("nexmail.abwesenheit")
 
@@ -222,7 +222,13 @@ def erledigen(klient, db: Session, konto: Konto, ordner: Ordner, neue: list[Nach
             logger.debug("No auto-reply for one message (%s).", grund)
             continue
         try:
-            sendedienst.einreihen(db, konto, notiz_bauen(konto, n, n.message_id or ""))
+            # ⚠️ **Mit ``senden_ab``, sonst bleibt sie liegen.** Der Versandplan
+            # sieht nur Einträge mit Zeitpunkt, ohne ihn ginge die Notiz erst beim
+            # nächsten Neustart hinaus. Gleich senden geht hier nicht: Der Abgleich
+            # hält das Schloss des Postfachs.
+            sendedienst.einreihen(
+                db, konto, notiz_bauen(konto, n, n.message_id or ""), senden_ab=utcnow()
+            )
         except Exception:  # noqa: BLE001
             # ⚠️ **Ein Fehlschlag darf den Abgleich nicht mitreissen.** Post
             # holen ist wichtiger als Post beantworten.

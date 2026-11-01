@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.models import Nachricht, Ordner
-from app.services import anbieter, konten, straenge
+from app.services import abgleich, anbieter, konten, straenge
 from conftest import einrichten
 from test_konten import _eingabe, _guter_befund
 
@@ -230,6 +230,172 @@ def test_ein_fremder_strang_gibt_nichts_heraus(klient, zweiter_klient, welt, db)
     _, geheimnis = zweiten_benutzer_anlegen(db)
     anmelden(zweiter_klient, "zweiter", "auch-geheim-456", geheimnis)
     assert zweiter_klient.get(f"/api/nachrichten/strang/{a.thread_key}").json() == []
+
+
+class _Rumpfserver:
+    def __init__(self, uid: int, roh: bytes):
+        self.antwort = {uid: {abgleich.GANZE_MAIL_SCHLUESSEL: roh}}
+
+    def select_folder(self, *_a, **_k):
+        return {}
+
+    def fetch(self, *_a, **_k):
+        return self.antwort
+
+
+def test_oeffnen_laesst_den_strang_stehen(welt, db):
+    """⚠️ **Das Öffnen riss das Gespräch auf.** ``koerper_holen`` schrieb bis
+    0.24.7 einen eigenen Schlüssel: bei der ersten Mail eines Gesprächs den
+    Betreff-Hash, während ihre Antworten die ``Message-ID`` behielten. Gefunden
+    mit der iPhone-App, weil dort nach dem Verschieben neu geöffnet wurde."""
+    konto, ordner = welt
+    erste = _legen(db, konto, ordner["posteingang"], kennung="<a@example.com>", betreff="Treffen")
+    antwort = _legen(
+        db, konto, ordner["posteingang"], kennung="<b@example.com>", betreff="Re: Treffen",
+        references=["<a@example.com>"], tage=1,
+    )
+    roh = b"Message-ID: <a@example.com>\r\nSubject: Treffen\r\n\r\nHallo\r\n"
+
+    abgleich.koerper_holen(_Rumpfserver(erste.uid, roh), db, erste)
+    db.commit()
+
+    assert erste.koerper_geholt is not None
+    assert erste.thread_key == "<a@example.com>"
+    assert erste.thread_key == antwort.thread_key
+
+
+def _gerissen(db, konto, ordner):
+    erste = _legen(db, konto, ordner["posteingang"], kennung="<a@example.com>", betreff="Treffen")
+    antwort = _legen(
+        db, konto, ordner["posteingang"], kennung="<b@example.com>", betreff="Re: Treffen",
+        references=["<a@example.com>"], tage=1,
+    )
+    return erste, antwort
+
+
+def test_heilen_fuehrt_zerrissene_gespraeche_zusammen(welt, db):
+    konto, ordner = welt
+    erste, antwort = _gerissen(db, konto, ordner)
+    erste.thread_key = "betreff:alt"
+    db.commit()
+
+    assert straenge.betreff_schluessel_heilen(db) == 1
+
+    db.expire_all()
+    assert erste.thread_key == antwort.thread_key == "<a@example.com>"
+
+
+def test_heilen_folgt_einer_antwort_auf_eine_geheilte_mail(welt, db):
+    """Beide tragen den Hash: Die Antwort erbte ihn, als die erste schon offen war."""
+    konto, ordner = welt
+    erste, antwort = _gerissen(db, konto, ordner)
+    erste.thread_key = antwort.thread_key = "betreff:alt"
+    db.commit()
+
+    assert straenge.betreff_schluessel_heilen(db) == 2
+
+    db.expire_all()
+    assert erste.thread_key == antwort.thread_key == "<a@example.com>"
+
+
+def test_heilen_findet_die_wurzel_in_der_kette(welt, db):
+    """Die Antwort wurde geöffnet, der Vorgänger trägt einen eigenen Schlüssel."""
+    konto, ordner = welt
+    erste, antwort = _gerissen(db, konto, ordner)
+    erste.thread_key = "<aelter@example.com>"
+    antwort.thread_key = "betreff:alt"
+    db.commit()
+
+    straenge.betreff_schluessel_heilen(db)
+
+    db.expire_all()
+    assert antwort.thread_key == "<aelter@example.com>"
+
+
+def test_heilen_nimmt_die_kette_wenn_die_wurzel_fehlt(welt, db):
+    """Die erste Mail ist gelöscht. Dann gilt ihre Kennung, nicht die eigene."""
+    konto, ordner = welt
+    antwort = _legen(
+        db, konto, ordner["posteingang"], kennung="<b@example.com>", betreff="Re: Treffen",
+        references=["<fehlt@example.com>"],
+    )
+    antwort.thread_key = "betreff:alt"
+    db.commit()
+
+    straenge.betreff_schluessel_heilen(db)
+
+    db.expire_all()
+    assert antwort.thread_key == "<fehlt@example.com>"
+
+
+def test_heilen_reicht_den_neuen_schluessel_weiter(welt, db):
+    """Die Antwort nennt nur die Mittlere, und die heilt erst im selben Lauf auf
+    die fehlende Wurzel. In der Datenbank steht das da noch nicht."""
+    konto, ordner = welt
+    mitte = _legen(
+        db, konto, ordner["posteingang"], kennung="<a@example.com>", betreff="Re: Treffen",
+        references=["<wurzel@example.com>"],
+    )
+    antwort = _legen(
+        db, konto, ordner["posteingang"], kennung="<b@example.com>", betreff="Re: Treffen",
+        references=["<a@example.com>"], tage=1,
+    )
+    mitte.thread_key = antwort.thread_key = "betreff:alt"
+    db.commit()
+
+    straenge.betreff_schluessel_heilen(db)
+
+    db.expire_all()
+    assert mitte.thread_key == antwort.thread_key == "<wurzel@example.com>"
+
+
+def test_heilen_uebernimmt_keinen_alten_schluessel_aus_der_kette(welt, db):
+    """Der Vorgänger trägt ein späteres Datum, kommt also erst danach dran. Sein
+    Hash in der Datenbank darf nicht auf die Antwort abfärben."""
+    konto, ordner = welt
+    spaet = _legen(db, konto, ordner["posteingang"], kennung="<a@example.com>", betreff="Treffen", tage=3)
+    antwort = _legen(
+        db, konto, ordner["posteingang"], kennung="<b@example.com>", betreff="Re: Treffen",
+        references=["<a@example.com>"],
+    )
+    spaet.thread_key = antwort.thread_key = "betreff:alt"
+    db.commit()
+
+    straenge.betreff_schluessel_heilen(db)
+
+    db.expire_all()
+    assert antwort.thread_key == spaet.thread_key == "<a@example.com>"
+
+
+def test_der_start_heilt_einmal(welt, db):
+    from fastapi.testclient import TestClient
+
+    from app.db import einstellung_lesen
+    from app.main import app
+    from app.models import Einstellung
+
+    konto, ordner = welt
+    erste, antwort = _gerissen(db, konto, ordner)
+    erste.thread_key = "betreff:alt"
+    db.query(Einstellung).filter_by(schluessel="straenge_geheilt").delete()
+    db.commit()
+
+    with TestClient(app):
+        pass
+
+    db.expire_all()
+    assert erste.thread_key == antwort.thread_key
+    assert einstellung_lesen(db, "straenge_geheilt") == "1"
+
+
+def test_heilen_laesst_gesunde_zeilen_stehen(welt, db):
+    konto, ordner = welt
+    erste, antwort = _gerissen(db, konto, ordner)
+
+    assert straenge.betreff_schluessel_heilen(db) == 0
+
+    db.expire_all()
+    assert erste.thread_key == antwort.thread_key == "<a@example.com>"
 
 
 def test_neu_aufbauen_repariert_zerrissene_straenge(welt, db):
