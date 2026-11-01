@@ -189,7 +189,7 @@ def test_vor_dem_umbau_liegt_ein_ruecksetzpunkt_mit_dem_alten_stand():
 
     ⚠️ **Mit den Zeilen, nicht nur mit der Tabelle.** Frisch geschriebene
     Zeilen liegen im WAL, und eine Kopie der Hauptdatei allein hat sie nicht;
-    ``_sichern`` spielt das Journal vorher ein.
+    SQLites Sicherung liest beides.
     """
     _alte_kontakttabelle([("u1", "Anna", "anna@example.org")])
     ordner = _einstellungen.data_dir / "sicherungen"
@@ -208,3 +208,27 @@ def test_vor_dem_umbau_liegt_ein_ruecksetzpunkt_mit_dem_alten_stand():
         assert kopie.execute("SELECT count(*) FROM kontakt").fetchone()[0] == 1
     finally:
         kopie.close()
+
+
+def test_der_ruecksetzpunkt_ist_keine_dateikopie(monkeypatch):
+    """⚠️ **Eine Dateikopie der offenen Datenbank nimmt der App die Sperren.**
+
+    Unter Linux löscht das Schließen irgendeines Griffs auf die Datei alle
+    Sperren des Prozesses. Das nächste fremde Programm, das nur liest, hält sich
+    danach für den Letzten und räumt ``-wal`` und ``-shm`` weg. Die App schreibt
+    weiter in die gelöschte Datei, und jede neue Verbindung endet mit „disk I/O
+    error". So stand docker-live am 01.11.2026. Unter Windows gibt es diese
+    Sperren nicht, deshalb wird hier der Griff selbst verboten.
+    """
+    import shutil
+
+    from app import db as datenbank
+
+    def verboten(*_a, **_k):
+        raise AssertionError("Die offene Datenbank wurde als Datei kopiert.")
+
+    monkeypatch.setattr(shutil, "copy2", verboten)
+    monkeypatch.setattr(shutil, "copy", verboten)
+    monkeypatch.setattr(shutil, "copyfile", verboten)
+
+    datenbank._sichern()

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+import sqlite3
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
@@ -99,13 +100,21 @@ def _sichern() -> None:
     ordner.mkdir(parents=True, exist_ok=True)
     stempel = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     ziel = ordner / f"nexmail-{stempel}.db"
-    # ⚠️ **Erst das Journal einspielen, dann kopieren.** Nach einem harten
-    # Ende liegen die letzten Aenderungen noch in ``nexmail.db-wal``; eine
-    # Kopie der Hauptdatei allein waere ein Ruecksetzpunkt von vor dem
-    # Absturz, und er saehe vollstaendig aus.
-    with engine.connect() as verbindung:
-        verbindung.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
-    shutil.copy2(_einstellungen.db_path, ziel)
+    # ⚠️ **SQLites Sicherung, nie eine Dateikopie.** Sie liest auch, was noch in
+    # ``nexmail.db-wal`` liegt. Und wer die offene Datei selbst oeffnet und
+    # schliesst, loescht unter Linux damit alle Sperren dieses Prozesses auf
+    # ihr. Am 01.11.2026 auf docker-live: Danach raeumte das naechste fremde
+    # Programm, das nur las, ``-wal`` und ``-shm`` weg. Die App schrieb 34
+    # Minuten in die geloeschte Datei und antwortete dann mit „disk I/O error".
+    quelle = sqlite3.connect(str(_einstellungen.db_path))
+    try:
+        kopie = sqlite3.connect(str(ziel))
+        try:
+            quelle.backup(kopie)
+        finally:
+            kopie.close()
+    finally:
+        quelle.close()
     logger.info("Database backed up to %s before a schema change.", ziel)
 
     # ⚠️ **Hier wird nicht aufgeraeumt.** Wie viele Ruecksetzpunkte liegen
