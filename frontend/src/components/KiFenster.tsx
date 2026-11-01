@@ -14,9 +14,11 @@
  */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, Languages, SpellCheck, Sparkles, WandSparkles } from 'lucide-react'
+import { Check, Languages, MailPlus, SpellCheck, Sparkles, WandSparkles } from 'lucide-react'
 import { api } from '../api/client'
-import { Button, Dialog, Select } from '../ds'
+import { antwortEntwerfen } from '../api/laden'
+import { Button, Dialog, Input, Select } from '../ds'
+import { textAlsHtml } from '../lib/leselinks'
 import { servermeldung } from '../lib/servermeldung'
 
 /** Die Töne, die „Umformulieren" anbietet — dieselben Kennungen wie im Server. */
@@ -48,7 +50,10 @@ const DREI_UMBRUECHE = new RegExp(UMBRUCH + '{3,}', 'g')
  *  an, das der Server abweist. */
 const MIN_WOERTER = 3
 
-type Auftrag = 'rechtschreibung' | 'uebersetzen' | 'umformulieren'
+/** ⚠️ **Muss zu `kidienst.MAX_FRAGE` im Server passen.** */
+const MAX_HINWEIS = 500
+
+type Auftrag = 'rechtschreibung' | 'uebersetzen' | 'umformulieren' | 'antworten'
 
 export interface KiAuswahl {
   /** Der markierte Text als HTML — leer, wenn nichts markiert ist. */
@@ -59,6 +64,9 @@ export interface KiAuswahl {
 
 interface Props {
   auswahl: KiAuswahl
+  /** Die Mail, auf die geantwortet wird. Gesetzt heißt: Ein Entwurf darf aus ihr
+   *  entstehen, und alle Riegel für eingegangene Post sind offen. */
+  antwortAuf?: string
   /** Setzt den bearbeiteten Text zurück in den Editor. */
   aufUebernehmen: (neu: string, aufMarkierung: boolean) => void
   aufSchliessen: () => void
@@ -86,11 +94,16 @@ function alsText(html: string): string {
   return (d.textContent ?? '').replace(DREI_UMBRUECHE, UMBRUCH + UMBRUCH).trim()
 }
 
-export function KiFenster({ auswahl, aufUebernehmen, aufSchliessen }: Props) {
-  const { t } = useTranslation()
+export function KiFenster({ auswahl, antwortAuf, aufUebernehmen, aufSchliessen }: Props) {
+  const { t, i18n } = useTranslation()
   /* Markiertes gewinnt — wer etwas ausgewählt hat, meint es auch. */
   const [aufMarkierung, setAufMarkierung] = useState(Boolean(auswahl.markiert.trim()))
-  const [auftrag, setAuftrag] = useState<Auftrag | null>(null)
+  /* Bei einer leeren Antwort gibt es nur diese eine Wahl. */
+  const [auftrag, setAuftrag] = useState<Auftrag | null>(
+    antwortAuf && woerter(auswahl.ganz) < MIN_WOERTER ? 'antworten' : null,
+  )
+  const [hinweis, setHinweis] = useState('')
+  const [gekuerzt, setGekuerzt] = useState(false)
   const [ton, setTon] = useState<string>(TOENE[0])
   const [sprache, setSprache] = useState<string>(SPRACHEN[0])
   const [ergebnis, setErgebnis] = useState('')
@@ -104,6 +117,16 @@ export function KiFenster({ auswahl, aufUebernehmen, aufSchliessen }: Props) {
     setFehler('')
     setLaeuft(true)
     try {
+      if (was === 'antworten' && antwortAuf) {
+        /* ⚠️ **Blosser Text, Absätze baut erst dieser Aufruf.** Er maskiert: Was
+           das Modell an Auszeichnung schreibt, steht als Zeichen im Entwurf.
+           ⚠️ **Der eigene Teil wird ersetzt, nie eine Markierung darin.** */
+        const raus = await antwortEntwerfen(antwortAuf, hinweis, i18n.language)
+        setGekuerzt(raus.gekuerzt)
+        setAufMarkierung(false)
+        setErgebnis(textAlsHtml(raus.text))
+        return
+      }
       const raus = await api.senden<{ text: string }>('/api/ki/text', {
         text: quelle,
         auftrag: was,
@@ -123,8 +146,8 @@ export function KiFenster({ auswahl, aufUebernehmen, aufSchliessen }: Props) {
       <Dialog
         open
         width={860}
-        title={t('ki.ergebnis')}
-        description={t('ki.ergebnis_hinweis')}
+        title={auftrag === 'antworten' ? t('ki.entwurf') : t('ki.ergebnis')}
+        description={auftrag === 'antworten' ? t('ki.entwurf_hinweis') : t('ki.ergebnis_hinweis')}
         onClose={aufSchliessen}
         footer={
           <>
@@ -147,16 +170,21 @@ export function KiFenster({ auswahl, aufUebernehmen, aufSchliessen }: Props) {
           </>
         }
       >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Gegenueber titel={t('ki.vorher')} text={alsText(quelle)} />
+        {/* ⚠️ **„Vorher" steht nur da, wenn es etwas gibt.** Sonst sähe eine
+            leere Spalte bei der ersten Antwort wie ein Fehler aus. */}
+        <div className={anzahl > 0 ? 'grid gap-3 sm:grid-cols-2' : ''}>
+          {anzahl > 0 && <Gegenueber titel={t('ki.vorher')} text={alsText(quelle)} />}
           <Gegenueber titel={t('ki.nachher')} text={alsText(ergebnis)} hervor />
         </div>
+        {gekuerzt && (
+          <p className="mt-3 mb-0 text-[12px] text-warning">{t('ki.zusammenfassung_gekuerzt')}</p>
+        )}
       </Dialog>
     )
   }
 
   /* --- Zu wenig Text ---------------------------------------------------- */
-  if (anzahl < MIN_WOERTER) {
+  if (anzahl < MIN_WOERTER && !antwortAuf) {
     /* ⚠️ **Nicht drei Auswahlen und ein toter Knopf.** Am 04.09.2026 gemeldet:
        Bei einem leeren Entwurf ging das Fenster auf, bot alles an und liess
        nichts zu. Ein gesperrter Knopf und ein geschluckter Fehler sind
@@ -208,6 +236,7 @@ export function KiFenster({ auswahl, aufUebernehmen, aufSchliessen }: Props) {
     >
       <div className="flex flex-col gap-4">
         {/* ⚠️ Gezeigt, nicht gefragt — der Sonderfall bleibt einen Klick weit weg. */}
+        {anzahl >= MIN_WOERTER && (
         <p className="mb-0 flex flex-wrap items-baseline gap-x-2 text-[13px] text-fg-2">
           <span>
             {aufMarkierung ? t('ki.umfang_markiert') : t('ki.umfang_ganz')}
@@ -224,8 +253,28 @@ export function KiFenster({ auswahl, aufUebernehmen, aufSchliessen }: Props) {
             </button>
           )}
         </p>
+        )}
 
         <div className="flex flex-col gap-2">
+          {antwortAuf && (
+            <Wahl
+              symbol={<MailPlus className="size-4" aria-hidden />}
+              titel={t('ki.antworten')}
+              text={t('ki.antworten_text')}
+              gewaehlt={auftrag === 'antworten'}
+              aufWahl={() => setAuftrag('antworten')}
+            >
+              <Input
+                label={t('ki.hinweis')}
+                placeholder={t('ki.hinweis_platzhalter')}
+                maxLength={MAX_HINWEIS}
+                value={hinweis}
+                onChange={(e) => setHinweis(e.target.value)}
+              />
+            </Wahl>
+          )}
+          {anzahl >= MIN_WOERTER && (
+          <>
           <Wahl
             symbol={<SpellCheck className="size-4" aria-hidden />}
             titel={t('ki.rechtschreibung')}
@@ -267,6 +316,8 @@ export function KiFenster({ auswahl, aufUebernehmen, aufSchliessen }: Props) {
               ))}
             </Select>
           </Wahl>
+          </>
+          )}
         </div>
 
         {fehler && (
@@ -275,7 +326,9 @@ export function KiFenster({ auswahl, aufUebernehmen, aufSchliessen }: Props) {
           </p>
         )}
 
-        <p className="mb-0 text-[12px] text-fg-4">{t('ki.geht_hinaus')}</p>
+        <p className="mb-0 text-[12px] text-fg-4">
+          {auftrag === 'antworten' ? t('ki.antworten_geht_hinaus') : t('ki.geht_hinaus')}
+        </p>
       </div>
     </Dialog>
   )

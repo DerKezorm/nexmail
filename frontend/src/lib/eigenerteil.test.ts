@@ -47,6 +47,37 @@ describe('zitatBeginn', () => {
   })
 })
 
+describe('Kopfzeile des Zitats', () => {
+  it.each([
+    'Am 16.09.2026 um 14:58 schrieb Vera Beispiel:',
+    'On 2026-09-16 14:58, Vera Beispiel wrote:',
+  ])('gehört zum Zitat: %s', (kopf) => {
+    const html = `<p>Mein Text</p><p>${kopf}</p><blockquote style="x"><p>Alt</p></blockquote>`
+    expect(eigenesHtml(html)).toBe('<p>Mein Text</p>')
+    expect(zitatBeginn(html)).toBe(html.indexOf(`<p>${kopf}`))
+  })
+
+  it('lässt eine leere Antwort leer', () => {
+    const html = '<p></p><p>Am 16.09.2026 um 14:58 schrieb Vera:</p><blockquote>Alt</blockquote>'
+    expect(eigenesHtml(html)).toBe('<p></p>')
+  })
+
+  it('nimmt einen eigenen Satz über dem Zitat nicht mit', () => {
+    const html = '<p>Ich schrieb dir gestern, siehe unten:</p><blockquote>Alt</blockquote>'
+    expect(zitatBeginn(html)).toBe(html.indexOf('<blockquote'))
+  })
+
+  it('lässt einen Absatz ohne Zitat in Ruhe', () => {
+    const html = '<p>Am 16.09.2026 um 14:58 schrieb Vera:</p>'
+    expect(zitatBeginn(html)).toBe(html.length)
+  })
+
+  it('sucht vor einer Weiterleitung keine Kopfzeile', () => {
+    const html = '<p>Am 1.1. um 9:00 schrieb ich:</p><p>---------- Weitergeleitete Nachricht ----------</p>'
+    expect(zitatBeginn(html)).toBe(html.indexOf('----------'))
+  })
+})
+
 describe('eigenesHtml', () => {
   it('schneidet das Zitat weg', () => {
     const html = `<p>Meine Antwort</p>${SIGNATUR}<blockquote><p>Alte Mail</p></blockquote>`

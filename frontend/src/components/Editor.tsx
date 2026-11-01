@@ -13,13 +13,13 @@
  * fremdes HTML in den eigenen Entwurf, und das geht denselben Weg wie beim
  * Anzeigen.
  */
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { Editor as TiptapEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
-import { TextStyle } from '@tiptap/extension-text-style'
+import { FontSize, TextStyle } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
 import FontFamily from '@tiptap/extension-font-family'
 import Highlight from '@tiptap/extension-highlight'
@@ -69,6 +69,8 @@ interface Props {
 }
 
 export function Editor({ inhalt, aufAendern, aufBild, aufEditor, aufKi }: Props) {
+  /** Was der Editor selbst gemeldet hat und noch nicht zurückkam. */
+  const gemeldet = useRef<string[]>([])
   const editor = useEditor({
     /* ⚠️ **Nicht schon beim Rendern bauen, sondern in der Wirkung.**
        `useEditor` legt den Editor sonst mitten im Rendern an und plant im
@@ -92,6 +94,7 @@ export function Editor({ inhalt, aufAendern, aufBild, aufEditor, aufKi }: Props)
       StarterKit.configure({ heading: false }),
       Underline,
       TextStyle,
+      FontSize,
       Color,
       FontFamily,
       Highlight.configure({ multicolor: true }),
@@ -100,7 +103,11 @@ export function Editor({ inhalt, aufAendern, aufBild, aufEditor, aufKi }: Props)
       Image.configure({ inline: true }),
     ],
     content: inhalt,
-    onUpdate: ({ editor }) => aufAendern(editor.getHTML()),
+    onUpdate: ({ editor }) => {
+      const html = editor.getHTML()
+      gemeldet.current.push(html)
+      aufAendern(html)
+    },
     editorProps: {
       attributes: {
         class:
@@ -124,6 +131,26 @@ export function Editor({ inhalt, aufAendern, aufBild, aufEditor, aufKi }: Props)
         })
         return true
       },
+      handleDrop(sicht, ereignis) {
+        /* Bilder, die in den Text fallen, stehen dort, wo sie fallen, wie beim
+           Einfügen. ⚠️ **Nur wenn ALLES Bilder sind.** Bei gemischter Auswahl
+           wird alles zum Anhang, sonst teilt sich eine Handlung auf zwei Orte
+           auf. Was hier nicht bleibt, nimmt das Verfassen-Fenster. */
+        const dateien = Array.from(ereignis.dataTransfer?.files ?? [])
+        if (dateien.length === 0 || !dateien.every((d) => d.type.startsWith('image/'))) return false
+        const stelle = sicht.posAtCoords({ left: ereignis.clientX, top: ereignis.clientY })?.pos
+        void Promise.all(dateien.map(aufBild)).then((quellen) => {
+          for (const quelle of quellen.reverse()) {
+            const knoten = sicht.state.schema.nodes.image.create({ src: quelle })
+            sicht.dispatch(
+              stelle === undefined
+                ? sicht.state.tr.replaceSelectionWith(knoten)
+                : sicht.state.tr.insert(stelle, knoten),
+            )
+          }
+        })
+        return true
+      },
     },
   })
 
@@ -141,6 +168,16 @@ export function Editor({ inhalt, aufAendern, aufBild, aufEditor, aufKi }: Props)
        `schema` ist null, und `getHTML()` wirft. Genau daran ist die Anwendung
        am 04.09.2026 gestorben. */
     if (!editor || editor.isDestroyed) return
+    /* ⚠️ **Der eigene Stand kommt verspätet zurück.** Wer schnell tippt, ist dem
+       Zeichnen voraus: `inhalt` ist dann der Text von vor zwei Zeichen. Galt das
+       als neuer Startinhalt, ersetzte es den Text, die Marke sprang, und die
+       nächsten Zeichen landeten woanders. */
+    const stelle = gemeldet.current.lastIndexOf(inhalt)
+    if (stelle !== -1) {
+      gemeldet.current.splice(0, stelle + 1)
+      return
+    }
+    gemeldet.current = []
     if (inhalt !== editor.getHTML()) {
       editor.commands.setContent(inhalt, { emitUpdate: false })
     }
@@ -224,9 +261,10 @@ function Leiste({
         aria-label={t('format.groesse')}
         defaultValue="11"
         onChange={(e) => {
-          // Tiptap kennt keine Punktgrößen; gesetzt wird ein Stil auf der
-          // Textmarke. Das ist genau das, was in Mail-HTML ankommt.
-          editor.chain().focus().setMark('textStyle', { fontSize: `${e.target.value}pt` }).run()
+          /* ⚠️ **Mit eigener Erweiterung.** `setMark` mit einem `fontSize`, das
+             keine Erweiterung kennt, tat seit 0.1.0 nichts: Im Text stand ein
+             leeres `<span>`, und die Auswahl zeigte trotzdem die neue Größe. */
+          editor.chain().focus().setFontSize(`${e.target.value}pt`).run()
         }}
         className="h-7 w-[56px] shrink-0 cursor-pointer rounded-sm border border-line bg-surface-1 px-1.5 text-[12px] text-fg-2 outline-none hover:border-line-strong"
       >

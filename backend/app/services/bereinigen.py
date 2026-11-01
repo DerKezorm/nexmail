@@ -43,8 +43,8 @@ logger = logging.getLogger("nexmail.bereinigen")
 ERLAUBTE_ELEMENTE = {
     "a", "abbr", "b", "blockquote", "br", "caption", "center", "code", "col",
     "colgroup", "dd", "div", "dl", "dt", "em", "figcaption", "figure", "font",
-    "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "li", "ol", "p",
-    "pre", "q", "s", "small", "span", "strike", "strong", "sub", "sup",
+    "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "li", "mark", "ol",
+    "p", "pre", "q", "s", "small", "span", "strike", "strong", "sub", "sup",
     "table", "tbody", "td", "tfoot", "th", "thead", "tr", "u", "ul",
 }
 

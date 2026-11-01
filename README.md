@@ -45,7 +45,8 @@ Every address in them is under `example.com`, `example.org` or
 
 **Mail.** Several mailboxes side by side, plus a merged *All inboxes* view.
 Read, reply, reply-all, forward, move, archive, delete, mark, flag, undo. Drag
-and drop between folders. Keyboard: `Del` to trash, `E` to archive. Which
+and drop between folders. Keyboard: `Del` to trash, `E` to archive, and
+`Ctrl+K` opens a command palette that finds every action and folder. Which
 folder is the trash or the archive nexmail reads from the server's SPECIAL-USE
 flags and from the usual names; where a server has neither, right-click the
 folder and pick *Use as* (on a phone: the *…* next to the folder). Folders
@@ -81,8 +82,8 @@ chain first, subject only as a fallback and only when sender, subject and a
 30-day window all agree. Off by default: grouping wrongly *hides* a message, and
 you notice that at the worst possible moment.
 
-**Writing.** A real formatting toolbar (Tiptap), attachments, pasted images,
-drafts stored in the mailbox rather than in the browser, and an outbox that
+**Writing.** A real formatting toolbar (Tiptap), attachments you can drop onto
+the window, pasted or dropped images inside the text, drafts stored in the mailbox rather than in the browser, and an outbox that
 survives a restart. Recipients become address bubbles as you type; nonsense
 turns red instead of hiding inside a comma list. Set importance, get a
 question when the text mentions an attachment that is not there, and forward
@@ -214,13 +215,16 @@ your signature are never sent, and the AI page lists verbatim what went out.
 Off by default, and the operator can block it for the whole installation or
 for single accounts.
 
-**Summaries, only if you allow them.** With the same service, a button in the
-reading pane summarises a message you received. That sends text somebody else
-wrote to your AI provider, so it is a decision of its own: the operator has a
-separate switch for received mail, each user has one more, and nothing goes out
-until you click. The sender, subject and text then appear verbatim in the same
-list as everything else. The answer is shown as plain text and labelled as what
-it is, because a message can try to talk the model into saying something else.
+**Received mail, only if you allow it.** With the same service, a button in the
+reading pane summarises or translates a message you received, or answers a
+question about it, and a reply can start from a suggested draft. All of that
+sends text somebody else wrote to your AI provider, so it is a decision of its
+own: the operator has a separate switch for received mail, each user has one
+more, and nothing goes out until you click. What went out then appears verbatim
+in the same list as everything else. Answers are shown as plain text and
+labelled as what they are, because a message can try to talk the model into
+saying something else. A suggested reply is plain text too, leaves what it cannot
+know in square brackets, and only reaches your draft when you apply it.
 
 **Unsubscribing.** A message that names a way off its mailing list gets a button
 below the sender, and a question first that says who is about to hear from you.

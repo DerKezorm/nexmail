@@ -30,6 +30,7 @@ import {
   FolderX,
   Paperclip,
   PenLine,
+  RefreshCw,
   Plus,
   Printer,
   Mail,
@@ -149,6 +150,9 @@ import type { Listenfilter } from './api/laden'
 import { zeitzoneSetzen } from './lib/format'
 import { servermeldung } from './lib/servermeldung'
 import { namensraumWurzel, ordnerName } from './lib/ordnername'
+import { ausMenue } from './lib/befehle'
+import type { Befehl } from './lib/befehle'
+import { Befehlspalette } from './components/Befehlspalette'
 
 type Modus = 'dark' | 'light'
 
@@ -166,6 +170,9 @@ interface AppProps {
  *  deshalb hier oben und nicht mitten im Code. */
 /** Vorgabe, bis jemand etwas anderes einstellt: zwei Sekunden. */
 const GELESEN_NACH_VORGABE = 2
+
+/** Ordner gibt es Dutzende; sie erscheinen in der Palette erst beim Suchen. */
+const NUR_GESUCHT = new Set(['ordner'])
 
 /* Die festen Zeitpunkte der Wiedervorlage — Ortszeit rein, ISO-UTC raus,
  * dasselbe Muster wie „Später senden" im Verfassen-Fenster. */
@@ -217,6 +224,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   )
   const [verwaltungsReiter, setVerwaltungsReiter] = useState<VerwaltungsReiter>('protokoll')
   const [ziel, setZiel] = useState<Ziel>({ typ: 'alle' })
+  const [paletteOffen, setPaletteOffen] = useState(false)
   const [gewaehlt, setGewaehlt] = useState<string | null>(null)
   // Alle / nur ungelesene. Gemerkt, weil man selten wechselt und sich sonst
   // jedes Mal neu wundert, wo die Mails geblieben sind.
@@ -1354,6 +1362,28 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     return () => document.removeEventListener('keydown', beiTaste)
   }, [betroffene, handeln, mehrfach.length, menue, t, verfassen.offen, mitLesebereich, lesemodus, geoeffnet])
 
+  /* ⚠️ **Eigener Zuhörer, und auch in Eingabefeldern.** Strg+K ist kein Zeichen,
+     und wer gerade im Suchfeld steht, will genauso weiter. Ein offenes Fenster
+     geht vor: Dort gehört die Tastatur dem Fenster, und die Palette hat keinen
+     Weg, ein halb ausgefülltes Formular zu verlassen. */
+  useEffect(() => {
+    function beiTaste(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'k') return
+      /* ⚠️ **Zuerst das Schließen, und nur hier.** Schlösse die Palette selbst,
+         wäre sie schon weg, wenn die Taste hier ankommt, und ginge wieder auf. */
+      if (paletteOffen) {
+        e.preventDefault()
+        setPaletteOffen(false)
+        return
+      }
+      if (document.querySelector('[aria-modal="true"]')) return
+      e.preventDefault()
+      setPaletteOffen(true)
+    }
+    document.addEventListener('keydown', beiTaste)
+    return () => document.removeEventListener('keydown', beiTaste)
+  }, [paletteOffen])
+
   /* --- Abgleich -------------------------------------------------------- */
 
   /* ⚠️ **Der erste Abgleich eines echten Postfachs dauert Minuten.**
@@ -2071,6 +2101,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           vorbelegt={verfassen.vorbelegt ?? null}
           aufRueckholbar={(ausgangId, bis, daten) => setSendeRueck({ ausgangId, bis, daten })}
           kiAktiv={ich?.ki_aktiv ?? false}
+          kiAntworten={ich?.ki_fremde_post ?? false}
           aufSchliessen={() => setVerfassen((v) => ({ ...v, offen: false }))}
         />
         </Suspense>
@@ -2095,8 +2126,91 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       </div>
     )
   }
+  /** Was die Palette anbietet. Erst beim Öffnen gebaut: `nachrichtEintraege`
+   *  rechnet alle Verschieben-Ziele aus. */
+  function befehleBauen(): Befehl[] {
+    const zu = (a: Ansicht) => () => setAnsicht(a)
+    const offenerOrdner = (z: Ziel) => () => {
+      setAnsicht('mail')
+      setZiel(z)
+    }
+    const offen = ansicht === 'mail' ? nachrichten.find((n) => n.id === gewaehlt) : undefined
+    return [
+      {
+        id: 'neu',
+        gruppe: 'allgemein',
+        text: t('aktion.neu'),
+        symbol: <PenLine />,
+        tun: () => setVerfassen({ offen: true, art: 'neu', bezug: null }),
+      },
+      {
+        id: 'abgleichen',
+        gruppe: 'allgemein',
+        text: t('befehle.abgleichen'),
+        symbol: <RefreshCw />,
+        tun: () => void jetztAbgleichen(),
+      },
+      ...(offen ? ausMenue(nachrichtEintraege(offen, betroffene()), 'mail') : []),
+      { id: 'nav-mail', gruppe: 'bereiche', text: t('nav.mail'), tun: zu('mail') },
+      { id: 'nav-kalender', gruppe: 'bereiche', text: t('nav.kalender'), tun: zu('kalender') },
+      { id: 'nav-aufgaben', gruppe: 'bereiche', text: t('nav.aufgaben'), tun: zu('aufgaben') },
+      { id: 'nav-kontakte', gruppe: 'bereiche', text: t('nav.kontakte'), tun: zu('kontakte') },
+      {
+        id: 'nav-einstellungen',
+        gruppe: 'bereiche',
+        text: t('nav.einstellungen'),
+        tun: zu('einstellungen'),
+      },
+      ...(ich?.ist_betreiber
+        ? [
+            {
+              id: 'nav-verwaltung',
+              gruppe: 'bereiche',
+              text: t('nav.verwaltung'),
+              tun: zu('verwaltung'),
+            },
+          ]
+        : []),
+      {
+        id: 'ordner-alle',
+        gruppe: 'ordner',
+        text: t('ordner.alle_posteingaenge'),
+        tun: offenerOrdner({ typ: 'alle' }),
+      },
+      {
+        id: 'ordner-markiert',
+        gruppe: 'ordner',
+        text: t('ordner.markierte'),
+        tun: offenerOrdner({ typ: 'markiert' }),
+      },
+      ...ordner.map((o) => {
+        const konto = konten.find((k) => k.id === o.kontoId)
+        return {
+          id: `ordner-${o.id}`,
+          gruppe: 'ordner',
+          // Bei mehreren Postfächern gibt es jeden Posteingang mehrmals.
+          text: konten.length > 1 ? `${ordnerName(o, t)} · ${konto?.anzeigename ?? ''}` : ordnerName(o, t),
+          tun: offenerOrdner({ typ: 'ordner', id: o.id }),
+        }
+      }),
+    ]
+  }
+
   return (
     <div className="flex h-full flex-col">
+      {paletteOffen && (
+        <Befehlspalette
+          befehle={befehleBauen()}
+          nurGesucht={NUR_GESUCHT}
+          gruppen={{
+            allgemein: t('befehle.gruppe_allgemein'),
+            mail: t('befehle.gruppe_mail'),
+            bereiche: t('befehle.gruppe_bereiche'),
+            ordner: t('befehle.gruppe_ordner'),
+          }}
+          aufSchliessen={() => setPaletteOffen(false)}
+        />
+      )}
       <Kopfbanner
         ich={ich}
         aufAbmelden={abmelden}
@@ -2570,6 +2684,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         vorbelegt={verfassen.vorbelegt ?? null}
         aufRueckholbar={(ausgangId, bis, daten) => setSendeRueck({ ausgangId, bis, daten })}
         kiAktiv={ich?.ki_aktiv ?? false}
+        kiAntworten={ich?.ki_fremde_post ?? false}
         aufSchliessen={() => setVerfassen((v) => ({ ...v, offen: false }))}
         aufGesendet={() => {
           // Die gesendete Mail liegt jetzt in „Gesendet" - der Ordner soll

@@ -731,6 +731,30 @@ class Zusammenfassungsauftrag(BaseModel):
     sprache: str = Field(default="en", max_length=8)
 
 
+def _sprache(wert: str) -> str:
+    """``de-DE`` zu ``de``: Der Dienst vergleicht gegen seine kurze Liste."""
+    return wert.partition("-")[0].lower()
+
+
+def _fuer_ki(
+    db: DbSession, person: AngemeldeterBenutzer, request: Request, nachricht_id: int
+) -> tuple[Nachricht, str, str]:
+    """Mail, Absender und Text für den KI-Dienst, nach allen Prüfungen."""
+    nachricht = _meine(db, person, nachricht_id)
+    wache = anmeldebremse.torwaechter(request, "ki-text", person.benutzername)
+    wache.fehlgeschlagen()
+    if not kidienst.fremde_post_fuer(db, person):
+        raise MeldungHttp.aus(
+            kidienst.KiFehler("ki_nicht_eingeschaltet"), status.HTTP_400_BAD_REQUEST
+        )
+
+    _koerper_sicherstellen(db, nachricht)
+    text = nachricht.koerper_text or bereinigen.text_aus_html(
+        nachricht.koerper_html or "", laenge=kidienst.MAX_ZEICHEN + 1
+    )
+    return nachricht, f"{nachricht.von_name} <{nachricht.von_adresse}>".strip(), text
+
+
 @router.post("/{nachricht_id}/zusammenfassung", response_model=Zusammenfassung)
 def zusammenfassung(
     nachricht_id: int,
@@ -745,19 +769,7 @@ def zusammenfassung(
     Mail neu öffnet, fragt neu; die Antwort eines Modells gehört nicht
     dauerhaft neben die Mail, als wäre sie ein Teil davon.
     """
-    nachricht = _meine(db, person, nachricht_id)
-    wache = anmeldebremse.torwaechter(request, "ki-text", person.benutzername)
-    wache.fehlgeschlagen()
-    if not kidienst.fremde_post_fuer(db, person):
-        raise MeldungHttp.aus(
-            kidienst.KiFehler("ki_nicht_eingeschaltet"), status.HTTP_400_BAD_REQUEST
-        )
-
-    _koerper_sicherstellen(db, nachricht)
-    text = nachricht.koerper_text or bereinigen.text_aus_html(
-        nachricht.koerper_html or "", laenge=kidienst.MAX_ZEICHEN + 1
-    )
-    absender = f"{nachricht.von_name} <{nachricht.von_adresse}>".strip()
+    nachricht, absender, text = _fuer_ki(db, person, request, nachricht_id)
     try:
         raus, gekuerzt = kidienst.zusammenfassen(
             person,
@@ -765,7 +777,85 @@ def zusammenfassung(
             absender=absender,
             betreff=nachricht.betreff,
             text=text,
-            sprache=eingabe.sprache.partition("-")[0].lower(),
+            sprache=_sprache(eingabe.sprache),
+        )
+    except kidienst.KiFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    return Zusammenfassung(text=raus, gekuerzt=gekuerzt)
+
+
+class Frageauftrag(Zusammenfassungsauftrag):
+    frage: str = Field(max_length=2_000)
+
+
+class Antwortauftrag(Zusammenfassungsauftrag):
+    #: Was in der Antwort stehen soll, in den Worten des Menschen.
+    hinweis: str = Field(default="", max_length=2_000)
+
+
+@router.post("/{nachricht_id}/uebersetzung", response_model=Zusammenfassung)
+def uebersetzung(
+    nachricht_id: int,
+    eingabe: Zusammenfassungsauftrag,
+    person: AngemeldeterBenutzer,
+    request: Request,
+    db: DbSession,
+) -> Zusammenfassung:
+    """Eine eingegangene Mail übersetzen lassen, gespeichert wird nichts."""
+    _, _, text = _fuer_ki(db, person, request, nachricht_id)
+    try:
+        raus, gekuerzt = kidienst.uebersetzen(
+            person, db, text=text, sprache=_sprache(eingabe.sprache)
+        )
+    except kidienst.KiFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    return Zusammenfassung(text=raus, gekuerzt=gekuerzt)
+
+
+@router.post("/{nachricht_id}/frage", response_model=Zusammenfassung)
+def frage(
+    nachricht_id: int,
+    eingabe: Frageauftrag,
+    person: AngemeldeterBenutzer,
+    request: Request,
+    db: DbSession,
+) -> Zusammenfassung:
+    """Eine Frage zu einer eingegangenen Mail beantworten lassen."""
+    nachricht, absender, text = _fuer_ki(db, person, request, nachricht_id)
+    try:
+        raus, gekuerzt = kidienst.frage_beantworten(
+            person,
+            db,
+            absender=absender,
+            betreff=nachricht.betreff,
+            text=text,
+            frage=eingabe.frage,
+            sprache=_sprache(eingabe.sprache),
+        )
+    except kidienst.KiFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    return Zusammenfassung(text=raus, gekuerzt=gekuerzt)
+
+
+@router.post("/{nachricht_id}/antwortentwurf", response_model=Zusammenfassung)
+def antwortentwurf(
+    nachricht_id: int,
+    eingabe: Antwortauftrag,
+    person: AngemeldeterBenutzer,
+    request: Request,
+    db: DbSession,
+) -> Zusammenfassung:
+    """Eine Antwort entwerfen lassen. Sie geht nur ins Fenster, nie hinaus."""
+    nachricht, absender, text = _fuer_ki(db, person, request, nachricht_id)
+    try:
+        raus, gekuerzt = kidienst.antwort_entwerfen(
+            person,
+            db,
+            absender=absender,
+            betreff=nachricht.betreff,
+            text=text,
+            hinweis=eingabe.hinweis,
+            sprache=_sprache(eingabe.sprache),
         )
     except kidienst.KiFehler as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler

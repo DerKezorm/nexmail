@@ -90,6 +90,16 @@ interface Vorlage {
 /** Absatztrenner beim Auslesen der Markierung aus dem Editor. */
 const NN_TRENNER = '\n\n'
 
+/** Größer nimmt der Server nicht an (`verfassen.MAX_ANHANG`). ⚠️ **Hier schon
+ *  geprüft, nicht erst beim Senden:** Gelesen wird die Datei im Browser, und ein
+ *  Film von zwei Gigabyte legt sonst den Reiter lahm, bevor jemand etwas sagt. */
+const MAX_ANHANG_MB = 25
+
+/** Zieht da gerade eine Datei? Text, der im Editor verschoben wird, zählt nicht. */
+function bringtDateien(e: React.DragEvent): boolean {
+  return Array.from(e.dataTransfer.types).includes('Files')
+}
+
 interface Props {
   offen: boolean
   art: Verfassart
@@ -110,6 +120,9 @@ interface Props {
   /** Ob der KI-Dienst dieses Benutzers eingeschaltet ist. Kommt aus `ich`,
    *  nicht aus einem eigenen Abruf — siehe `Ich.ki_aktiv`. */
   kiAktiv?: boolean
+  /** Darf aus der Mail, auf die geantwortet wird, ein Entwurf entstehen?
+   *  `Ich.ki_fremde_post`: Sie hat ein Dritter geschrieben. */
+  kiAntworten?: boolean
 }
 
 /** Base64 zurück in Bytes — für die Anzeige wieder eingefügter Bilder. */
@@ -131,6 +144,7 @@ export function VerfassenFenster({
   aufGesendet,
   aufRueckholbar,
   kiAktiv = false,
+  kiAntworten = false,
 }: Props) {
   const { t } = useTranslation()
 
@@ -146,6 +160,7 @@ export function VerfassenFenster({
   const [betreff, setBetreff] = useState('')
   const [html, setHtml] = useState('')
   const [anlagen, setAnlagen] = useState<Anlage[]>([])
+  const [ziehtDatei, setZiehtDatei] = useState(false)
 
   const [kopieZeigen, setKopieZeigen] = useState(false)
   const [blindZeigen, setBlindZeigen] = useState(false)
@@ -256,6 +271,8 @@ export function VerfassenFenster({
      die Sperre täte ein „Abbrechen" per Taste zwei Dinge auf einmal. */
   const { fragen, fenster: nachfrage } = useNachfrage()
   const frageOffen = useRef(false)
+  /** Der Ausgang mit dem Stand von JETZT, siehe unten. */
+  const bewahren = useRef<() => Promise<void>>(async () => undefined)
 
   useEffect(() => {
     if (!planOffen) return
@@ -468,8 +485,11 @@ export function VerfassenFenster({
   useEffect(() => {
     if (!offen) return
     function beiTaste(e: KeyboardEvent) {
-      // Steht die Anhang-Nachfrage offen, gehört Escape ihr allein.
-      if (e.key === 'Escape' && !frageOffen.current) void schliessenUndBewahren()
+      if (e.key !== 'Escape' || frageOffen.current) return
+      /* ⚠️ **Liegt ein Fenster darüber, gehört Escape ihm allein**: KI-Fenster und
+         Link-Frage. Sonst ging beides zu, und der Entwurf gleich mit. */
+      if (document.querySelectorAll('[aria-modal="true"]').length > 1) return
+      void bewahren.current()
     }
     document.addEventListener('keydown', beiTaste)
     return () => document.removeEventListener('keydown', beiTaste)
@@ -491,22 +511,52 @@ export function VerfassenFenster({
 
   async function anhaengen(dateien: FileList | null) {
     if (!dateien) return
+    setFehler('')
     for (const datei of Array.from(dateien)) {
-      setAnlagen((alt) => [
-        ...alt,
-        {
-          dateiname: datei.name,
-          mime_typ: datei.type || 'application/octet-stream',
-          inhalt_b64: '',
-          cid: '',
-          groesse: datei.size,
-        },
-      ])
-      const b64 = await alsBase64(datei)
-      setAnlagen((alt) =>
-        alt.map((a) => (a.dateiname === datei.name && !a.inhalt_b64 ? { ...a, inhalt_b64: b64 } : a)),
-      )
+      if (datei.size > MAX_ANHANG_MB * 1024 * 1024) {
+        setFehler(t('serverfehler.anhang_zu_gross', { name: datei.name, max_mb: MAX_ANHANG_MB }))
+        continue
+      }
+      /* ⚠️ **Die Zeile ist ihr eigener Schlüssel, nicht der Dateiname.** Zwei
+         gleichnamige Dateien aus verschiedenen Ordnern sind beim Ablegen der
+         Normalfall. */
+      const zeile: Anlage = {
+        dateiname: datei.name,
+        mime_typ: datei.type || 'application/octet-stream',
+        inhalt_b64: '',
+        cid: '',
+        groesse: datei.size,
+      }
+      setAnlagen((alt) => [...alt, zeile])
+      try {
+        const b64 = await alsBase64(datei)
+        setAnlagen((alt) => alt.map((a) => (a === zeile ? { ...a, inhalt_b64: b64 } : a)))
+      } catch {
+        /* Ein abgelegter Ordner steht als Datei in der Liste und lässt sich
+           nicht lesen. Eine leere Zeile bliebe stehen und ginge nie hinaus. */
+        setAnlagen((alt) => alt.filter((a) => a !== zeile))
+        setFehler(t('verfassen.anhang_nicht_lesbar', { name: datei.name }))
+      }
     }
+  }
+
+  /* ⚠️ **Das ganze Fenster nimmt Dateien an, auch der Schleier daneben.** Ohne
+     `preventDefault` öffnet der Browser eine fallengelassene Datei selbst, und
+     der Entwurf ist weg. */
+  function beimZiehen(e: React.DragEvent) {
+    if (!bringtDateien(e)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    setZiehtDatei(true)
+  }
+
+  function beimAblegen(e: React.DragEvent) {
+    setZiehtDatei(false)
+    if (!bringtDateien(e)) return
+    // Bilder hat dann schon der Editor in den Text gesetzt.
+    if (e.defaultPrevented) return
+    e.preventDefault()
+    void anhaengen(e.dataTransfer.files)
   }
 
   /** Ein Bild im Text: als Anhang mit ``cid`` — nicht als data:-URI.
@@ -537,9 +587,14 @@ export function VerfassenFenster({
     return anzeige
   }
 
-  function anlageWeg(index: number) {
-    setAnlagen((alt) => alt.filter((_, i) => i !== index))
+  function anlageWeg(zeile: Anlage) {
+    setAnlagen((alt) => alt.filter((a) => a !== zeile))
   }
+
+  /* ⚠️ **Über einen Griff, nicht direkt.** Der Zuhörer oben entsteht nur neu, wenn
+     `App` neu zeichnet, und das tut sie beim Tippen nicht: Escape sah sonst den
+     Text von damals, hielt das Fenster für leer und warf das Getippte weg. */
+  bewahren.current = schliessenUndBewahren
 
   /* --- Senden ----------------------------------------------------------- */
 
@@ -752,7 +807,12 @@ export function VerfassenFenster({
     }
   }
 
-  const bereit = adressen(an).length + adressen(kopie).length + adressen(blindkopie).length > 0
+  /* ⚠️ **Solange eine Datei noch gelesen wird, geht nichts hinaus.** `nutzdaten`
+     nimmt nur fertige Anlagen; wer eine große Datei ablegt und gleich sendet,
+     verlöre sie sonst ohne ein Wort. */
+  const liestNoch = anlagen.some((a) => !a.inhalt_b64)
+  const bereit =
+    !liestNoch && adressen(an).length + adressen(kopie).length + adressen(blindkopie).length > 0
 
   return (
     <div
@@ -760,13 +820,28 @@ export function VerfassenFenster({
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) void schliessenUndBewahren()
       }}
+      onDragEnter={beimZiehen}
+      onDragOver={beimZiehen}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setZiehtDatei(false)
+      }}
+      onDrop={beimAblegen}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label={art === 'neu' ? t('verfassen.titel_neu') : t('verfassen.titel_antwort')}
-        className="flex h-full max-h-[760px] w-full max-w-[860px] flex-col overflow-hidden rounded-xl border border-line bg-surface-1 shadow-[var(--shadow-3)]"
+        className="relative flex h-full max-h-[760px] w-full max-w-[860px] flex-col overflow-hidden rounded-xl border border-line bg-surface-1 shadow-[var(--shadow-3)]"
       >
+        {ziehtDatei && (
+          <div className="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-accent bg-surface-1/90">
+            <p className="mb-0 flex items-center gap-2 text-sm font-medium text-fg-1">
+              <Paperclip className="size-4" aria-hidden />
+              {t('verfassen.ablegen')}
+            </p>
+          </div>
+        )}
+
         <div className="flex shrink-0 items-center gap-2 border-b border-line-subtle px-4 py-3">
           <PenLine className="size-4 shrink-0 text-fg-3" />
           <h2 className="min-w-0 flex-1 truncate font-display text-[16px] font-medium text-fg-1">
@@ -887,7 +962,7 @@ export function VerfassenFenster({
                   <span className="text-[11px] tabular-nums text-fg-4">{groesse(a.groesse, 'de')}</span>
                   <button
                     type="button"
-                    onClick={() => anlageWeg(i)}
+                    onClick={() => anlageWeg(a)}
                     aria-label={t('aktion.loeschen')}
                     className="text-fg-4 hover:text-danger"
                   >
@@ -1096,6 +1171,9 @@ export function VerfassenFenster({
       {kiAuswahl && (
         <KiFenster
           auswahl={kiAuswahl}
+          antwortAuf={
+            kiAntworten && bezug && (art === 'antwort' || art === 'allen') ? bezug.id : undefined
+          }
           aufUebernehmen={kiUebernehmen}
           aufSchliessen={() => setKiAuswahl(null)}
         />

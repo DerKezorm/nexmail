@@ -71,6 +71,7 @@ const NUR_BREIT = [
   'regeln.spec.ts',
   'sicherungen.spec.ts',
   'umzug.spec.ts',
+  'verfassen_ablegen.spec.ts',
 ]
 const NUR_SCHMAL = [
   'auswahl.spec.ts',

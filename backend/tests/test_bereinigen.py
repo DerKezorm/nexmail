@@ -377,3 +377,27 @@ def test_faerbt_sich_selbst(html, erwartet):
     """
     assert bereinigen.faerbt_sich_selbst(html) is erwartet
 
+
+#: Was der Knopf „Markieren" im Editor erzeugt, wörtlich.
+HERVORGEHOBEN = (
+    '<p><span style="font-size: 14pt"><mark data-color="#fff3a3" '
+    'style="background-color: rgb(255, 243, 163); color: inherit;">'
+    "bis Freitag</mark></span></p>"
+)
+
+
+@pytest.mark.parametrize("weg", [bereinigen.saeubern, bereinigen.fuer_versand])
+def test_die_hervorhebung_aus_dem_editor_bleibt_stehen(weg):
+    """⚠️ **``mark`` fehlte in der Liste.** Der Knopf im Editor erzeugt es, und auf
+    dem Weg hinaus fiel es lautlos weg: Der Text kam an, die Hervorhebung nicht,
+    auch nicht im gespeicherten Entwurf."""
+    sauber = weg(HERVORGEHOBEN)
+    assert "<mark" in sauber
+    assert "background-color: rgb(255, 243, 163)" in sauber
+    assert "font-size: 14pt" in sauber
+    assert "bis Freitag" in sauber
+
+
+def test_mark_bringt_keine_handlung_mit():
+    sauber = bereinigen.saeubern('<mark onclick="alert(1)">Text</mark>')
+    assert sauber == "<mark>Text</mark>"

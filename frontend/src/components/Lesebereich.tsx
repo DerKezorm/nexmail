@@ -20,7 +20,9 @@ import {
   Download,
   Flag,
   ImageOff,
+  Languages,
   MailOpen,
+  MessageCircleQuestion,
   ExternalLink,
   FileDown,
   Moon,
@@ -34,13 +36,21 @@ import {
   Sun,
   Tag,
   Trash2,
-  X,
 } from 'lucide-react'
 import type { Nachricht, Schlagwort } from '../daten/typen'
 import { Absenderbild } from './Absenderbild'
 import type { VolleNachricht } from '../api/laden'
 import type { Einladung } from '../api/laden'
-import { absenderVergessen, bilderAnzeigen, einladungLaden, zusammenfassen } from '../api/laden'
+import {
+  absenderVergessen,
+  bilderAnzeigen,
+  einladungLaden,
+  frageStellen,
+  uebersetzen,
+  zusammenfassen,
+} from '../api/laden'
+import { KiKarte } from './KiKarte'
+import type { KiArt } from './KiKarte'
 import { Einladungskarte } from './Einladungskarte'
 import { anzeigename, groesse, langesDatum } from '../lib/format'
 import { Schlagwortmarke } from './Schlagwortmarke'
@@ -105,8 +115,8 @@ interface Props {
   /** Von dieser Liste abmelden: fragt nach und sagt, ob die Abmeldung
    *  hinausging. Fehlt der Rückruf, gibt es den Knopf nicht. */
   aufAbbestellen?: (n: VolleNachricht) => Promise<boolean>
-  /** Darf diese Mail zusammengefasst werden? Alle Riegel und beide Schalter,
-   *  aus `Ich.ki_fremde_post`. */
+  /** Darf diese Mail an den KI-Dienst? Alle Riegel und beide Schalter, aus
+   *  `Ich.ki_fremde_post`. */
   kiZusammenfassen?: boolean
 }
 
@@ -132,9 +142,12 @@ export function Lesebereich({
   const [meldetAb, setMeldetAb] = useState(false)
   /* ⚠️ **Nur hier, nirgends gespeichert.** Die Antwort eines Modells gehört
      nicht dauerhaft neben eine Mail, als wäre sie ein Teil davon. */
-  const [kurzfassung, setKurzfassung] = useState<{ text: string; gekuerzt: boolean } | null>(null)
-  const [fasstZusammen, setFasstZusammen] = useState(false)
-  const [kurzFehler, setKurzFehler] = useState('')
+  const [kiArt, setKiArt] = useState<KiArt | null>(null)
+  const [kiErgebnis, setKiErgebnis] = useState<{ text: string; gekuerzt: boolean } | null>(null)
+  const [kiLaeuft, setKiLaeuft] = useState(false)
+  const [kiFehler, setKiFehler] = useState('')
+  // Das Menü hinter dem KI-Knopf, gebaut wie „Weitere Aktionen".
+  const [kiMenue, setKiMenue] = useState<{ x: number; y: number } | null>(null)
   const [freigegeben, setFreigegeben] = useState<string | null>(null)
   /* Die Adresse, die gerade dauerhaft freigegeben wurde — für die
      Bestätigungszeile samt „Rückgängig". `null` heißt: nichts gemerkt. */
@@ -174,9 +187,10 @@ export function Lesebereich({
     setEigenerGrund(false)
     setAbbestellt(false)
     setMeldetAb(false)
-    setKurzfassung(null)
-    setFasstZusammen(false)
-    setKurzFehler('')
+    setKiArt(null)
+    setKiErgebnis(null)
+    setKiLaeuft(false)
+    setKiFehler('')
   }, [nachricht?.id])
 
   async function abmelden() {
@@ -194,21 +208,27 @@ export function Lesebereich({
   /* ⚠️ **Dieselbe Wache wie bei den Bildern.** Die Antwort braucht Sekunden, und
      wer weiterklickt, soll nicht die Zusammenfassung der vorigen Mail über der
      nächsten stehen haben. */
-  async function kurzfassen() {
+  async function kiLos(art: KiArt, frage = '') {
     if (!nachricht) return
     const fuer = nachricht.id
-    setKurzFehler('')
-    setKurzfassung(null)
-    setFasstZusammen(true)
+    setKiArt(art)
+    setKiFehler('')
+    setKiErgebnis(null)
+    setKiLaeuft(true)
     try {
-      const raus = await zusammenfassen(fuer, i18n.language)
-      if (aktuelleId.current === fuer) setKurzfassung(raus)
+      const raus =
+        art === 'frage'
+          ? await frageStellen(fuer, frage, i18n.language)
+          : art === 'uebersetzen'
+            ? await uebersetzen(fuer, i18n.language)
+            : await zusammenfassen(fuer, i18n.language)
+      if (aktuelleId.current === fuer) setKiErgebnis(raus)
     } catch (f) {
       if (aktuelleId.current === fuer) {
-        setKurzFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+        setKiFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
       }
     } finally {
-      if (aktuelleId.current === fuer) setFasstZusammen(false)
+      if (aktuelleId.current === fuer) setKiLaeuft(false)
     }
   }
 
@@ -424,9 +444,45 @@ export function Lesebereich({
         {kiZusammenfassen && !istEntwurf && (
           <IconButton
             icon={<Sparkles />}
-            label={t('ki.zusammenfassen')}
-            disabled={fasstZusammen}
-            onClick={() => void kurzfassen()}
+            label={t('ki.menue')}
+            aria-haspopup="menu"
+            aria-expanded={kiMenue !== null}
+            disabled={kiLaeuft}
+            onClick={(e) => {
+              const kasten = e.currentTarget.getBoundingClientRect()
+              setKiMenue({ x: kasten.right, y: kasten.bottom + 4 })
+            }}
+          />
+        )}
+        {kiMenue && (
+          <Kontextmenue
+            x={kiMenue.x}
+            y={kiMenue.y}
+            eintraege={[
+              {
+                id: 'ki-zusammenfassen',
+                text: t('ki.zusammenfassen'),
+                symbol: <Sparkles />,
+                tun: () => void kiLos('zusammenfassen'),
+              },
+              {
+                id: 'ki-uebersetzen',
+                text: t('ki.uebersetzen'),
+                symbol: <Languages />,
+                tun: () => void kiLos('uebersetzen'),
+              },
+              {
+                id: 'ki-frage',
+                text: t('ki.frage_menue'),
+                symbol: <MessageCircleQuestion />,
+                tun: () => {
+                  setKiArt('frage')
+                  setKiErgebnis(null)
+                  setKiFehler('')
+                },
+              },
+            ]}
+            aufSchliessen={() => setKiMenue(null)}
           />
         )}
 
@@ -667,52 +723,23 @@ export function Lesebereich({
           )}
         </header>
 
-        {/* ⚠️ **Als Text, nie als HTML.** Die Mail, aus der das entstand, kann
-            dem Modell einen Link untergeschoben haben. React setzt hier
-            Zeichen, kein Markup, und das Etikett sagt, wessen Worte das sind. */}
-        {(fasstZusammen || kurzfassung || kurzFehler) && (
-          <section
-            aria-label={t('ki.zusammenfassung_titel')}
-            className="mx-6 mt-4 flex flex-col gap-2 rounded-lg border border-line bg-surface-2 px-4 py-3"
-          >
-            <div className="flex items-center gap-2">
-              <Sparkles className="size-4 shrink-0 text-fg-4" aria-hidden />
-              <span className="flex-1 text-[12px] font-semibold text-fg-2">
-                {t('ki.zusammenfassung_titel')}
-              </span>
-              {!fasstZusammen && (
-                <IconButton
-                  icon={<X />}
-                  label={t('ki.zusammenfassung_schliessen')}
-                  onClick={() => {
-                    setKurzfassung(null)
-                    setKurzFehler('')
-                  }}
-                />
-              )}
-            </div>
-            {fasstZusammen && (
-              <p role="status" className="mb-0 text-[13px] text-fg-3">
-                {t('ki.zusammenfassung_laeuft')}
-              </p>
-            )}
-            {kurzFehler && (
-              <p role="alert" className="mb-0 text-[13px] text-danger">
-                {kurzFehler}
-              </p>
-            )}
-            {kurzfassung && (
-              <>
-                <p className="mb-0 text-[13px] whitespace-pre-wrap text-fg-1">{kurzfassung.text}</p>
-                {kurzfassung.gekuerzt && (
-                  <p className="mb-0 text-[12px] text-warning">
-                    {t('ki.zusammenfassung_gekuerzt')}
-                  </p>
-                )}
-                <p className="mb-0 text-[11px] text-fg-4">{t('ki.zusammenfassung_hinweis')}</p>
-              </>
-            )}
-          </section>
+        {kiArt && (
+          <KiKarte
+            /* ⚠️ **Nicht die blosse Kennung.** Der Mailrahmen trägt sie im selben
+               Elternteil; zwei gleiche Schlüssel, und React lässt die Karte beim
+               Wechsel der Mail stehen. Der Schlüssel leert die Frage. */
+            key={`ki-${nachricht.id}`}
+            art={kiArt}
+            laeuft={kiLaeuft}
+            ergebnis={kiErgebnis}
+            fehler={kiFehler}
+            aufFrage={(frage) => void kiLos('frage', frage)}
+            aufSchliessen={() => {
+              setKiArt(null)
+              setKiErgebnis(null)
+              setKiFehler('')
+            }}
+          />
         )}
 
         {einladung && (

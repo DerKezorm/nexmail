@@ -18,6 +18,20 @@
  *  mit dieser Trennzeile. Der eigene Text steht immer **davor**. */
 export const ZITAT_MARKEN = ['<blockquote', '---------- Weitergeleitete Nachricht ----------']
 
+/** Die „Am … schrieb …:"-Zeile, die der Server vor das Zitat setzt. */
+const ZITAT_KOPF = /^(Am .+ schrieb .+|On .+ wrote):$/
+
+/** Wo die Zeile über dem Zitat beginnt, falls dort seine Kopfzeile steht.
+ *
+ *  ⚠️ **Sie gehört zum Zitat.** Sonst zählte sie als eigener Text: Der Dienst
+ *  bekäme sie zum Umformulieren, und „Übernehmen" nähme sie aus der Antwort. */
+function kopfzeileDavor(html: string, zitat: number): number {
+  const anfang = html.lastIndexOf('<p', zitat)
+  if (anfang === -1) return zitat
+  const zeile = html.slice(anfang, zitat).replace(/<[^>]*>/g, '').trim()
+  return ZITAT_KOPF.test(zeile) ? anfang : zitat
+}
+
 /** Wo im HTML das Zitat beginnt — oder die Länge, wenn keines da ist. */
 export function zitatBeginn(html: string): number {
   let schnitt = html.length
@@ -25,7 +39,7 @@ export function zitatBeginn(html: string): number {
     const stelle = html.indexOf(marke)
     if (stelle !== -1 && stelle < schnitt) schnitt = stelle
   }
-  return schnitt
+  return html.startsWith('<blockquote', schnitt) ? kopfzeileDavor(html, schnitt) : schnitt
 }
 
 /** Der Text ohne Auszeichnung, dazu die Stelle jedes Zeichens im HTML.

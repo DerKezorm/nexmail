@@ -380,6 +380,29 @@ export async function zusammenfassen(
   return api.senden(`/api/nachrichten/${id}/zusammenfassung`, { sprache })
 }
 
+export async function uebersetzen(
+  id: string,
+  sprache: string,
+): Promise<{ text: string; gekuerzt: boolean }> {
+  return api.senden(`/api/nachrichten/${id}/uebersetzung`, { sprache })
+}
+
+export async function frageStellen(
+  id: string,
+  frage: string,
+  sprache: string,
+): Promise<{ text: string; gekuerzt: boolean }> {
+  return api.senden(`/api/nachrichten/${id}/frage`, { frage, sprache })
+}
+
+export async function antwortEntwerfen(
+  id: string,
+  hinweis: string,
+  sprache: string,
+): Promise<{ text: string; gekuerzt: boolean }> {
+  return api.senden(`/api/nachrichten/${id}/antwortentwurf`, { hinweis, sprache })
+}
+
 /** Wartet, bis sich im Postfach etwas getan hat, oder ein paar Sekunden. */
 export async function ereignisWarten(seit: number): Promise<{ stand: number }> {
   return api.holen(`/api/nachrichten/ereignisse?seit=${seit}`)
