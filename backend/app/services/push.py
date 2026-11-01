@@ -21,6 +21,11 @@ Zwei Normen, und beide sind Pflicht, nicht Kuer:
   Schluessel angelegt; eine Meldung ohne die passende Unterschrift nimmt der
   Dienst gar nicht erst an.
 
+Die iPhone-App nimmt denselben Weg bis ``an_benutzer`` und biegt dort zum
+Push-Relay ab: Apples Schluessel kann nicht in einem oeffentlichen Abbild liegen.
+Das Verfahren steht im Vertrag ``nexmail-ios/docs/vertrag-push.md``, und ein
+Pruefwert in ``test_push_relay.py`` haelt es gegen die Swift-Seite.
+
 ⚠️ **Der private VAPID-Schluessel ist das einzige echte Geheimnis hier.** Er
 liegt verschluesselt in den Einstellungen (Kontext ``push-vapid``). Wer ihn
 verliert, verliert alle Abonnements auf einmal: Sie haengen am oeffentlichen
@@ -31,23 +36,30 @@ muss. Er wird deshalb **einmal** erzeugt und danach nie wieder angefasst.
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import logging
+import os
 import threading
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
 import http_ece
 import httpx
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from py_vapid import Vapid02
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .. import crypto
+from ..config import get_settings
 from ..db import SessionLocal, einstellung_lesen, einstellung_schreiben
-from ..models import Benutzer, Konto, Nachricht, Ordner, PushAnmeldung, utcnow
+from ..models import Benutzer, Konto, Nachricht, Ordner, PushAnmeldung, Sitzung, utcnow
 from .zeit import zone_der_anwendung
 
 logger = logging.getLogger("nexmail.push")
@@ -83,6 +95,20 @@ RUMPF_GRENZE = 3000
 #: Ein Betreff laenger als das liest auf einem Sperrbildschirm ohnehin niemand.
 TEXT_GRENZE = 120
 
+#: Was in einer Meldung an die App hoechstens steht, vor dem Verschluesseln.
+APP_TITEL_GRENZE = 100
+APP_TEXT_GRENZE = 200
+
+#: Der Relay nimmt hoechstens so viele Zeichen fuer ``collapse``.
+MARKE_GRENZE = 64
+
+#: Wie lange der Relay antworten darf.
+RELAY_SEKUNDEN = 8.0
+
+#: ⚠️ **Steht wortgleich in der iOS-App.** Wer das aendert, macht jede Meldung
+#: unlesbar. Eine neue Fassung bekommt eine neue Kennung.
+HKDF_INFO = b"nexmail-push-v1"
+
 _schloss = threading.Lock()
 
 
@@ -100,6 +126,9 @@ class Meldung:
     ziel: str
     #: Ersetzt eine gleichnamige Meldung, statt sie daneben zu stellen.
     marke: str
+    #: Die Mail, die ein Antippen in der App oeffnet. Leer bei einem Buendel und
+    #: bei einer Erinnerung.
+    kennung: int | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -255,6 +284,169 @@ def _roh(base64url: str) -> bytes:
     return base64.urlsafe_b64decode(base64url + "=" * (-len(base64url) % 4))
 
 
+# --------------------------------------------------------------------------- #
+# Die iPhone-App, ueber den Relay
+# --------------------------------------------------------------------------- #
+
+
+def relay_adresse() -> str:
+    """Die Adresse des Relays. Leer: Der Betreiber will nichts nach aussen."""
+    return get_settings().push_relay.strip().rstrip("/")
+
+
+def schluessel_gueltig(wert: str) -> bool:
+    """Ist das ein oeffentlicher X25519-Schluessel, gegen den sich rechnen laesst?
+
+    Die Probe ist ein echter Austausch: Eine falsche Laenge lehnt schon
+    ``from_public_bytes`` ab.
+
+    ⚠️ **Auch mit genau 32 Byte nicht immer.** Punkte kleiner Ordnung ergeben ein
+    gemeinsames Geheimnis aus lauter Nullen, und ``exchange`` lehnt sie ab. Besser
+    hier mit einer Antwort als spaeter bei jeder Meldung.
+    """
+    try:
+        roh = base64.b64decode(wert, validate=True)
+        X25519PrivateKey.generate().exchange(X25519PublicKey.from_public_bytes(roh))
+    except (binascii.Error, ValueError):
+        return False
+    return True
+
+
+def geraet_merken(db: Session, sitzung: Sitzung, ticket: str, schluessel: str) -> None:
+    """Ticket und Schluessel am Geraet ablegen. Die App ruft das bei jedem Start.
+
+    ⚠️ **Dasselbe Ticket gehoert genau einem Geraet dieser Person.** Wer die App
+    neu installiert und neu koppelt, bringt sein Ticket mit, die alte Sitzung
+    steht noch da, und jede Mail kaeme doppelt. Nur innerhalb der Person: Ein
+    fremdes Geraet soll mit einem erratenen Ticket niemandem etwas abstellen.
+    """
+    doppelte = db.scalars(
+        select(Sitzung).where(
+            Sitzung.benutzer_id == sitzung.benutzer_id,
+            Sitzung.id != sitzung.id,
+            Sitzung.push_ticket == ticket,
+        )
+    )
+    for andere in doppelte:
+        andere.push_ticket = ""
+        andere.push_schluessel = ""
+    sitzung.push_ticket = ticket
+    sitzung.push_schluessel = schluessel
+    db.commit()
+
+
+def geraet_vergessen(db: Session, sitzung: Sitzung) -> None:
+    sitzung.push_ticket = ""
+    sitzung.push_schluessel = ""
+    db.commit()
+
+
+def _geraete(db: Session, person: Benutzer) -> list[Sitzung]:
+    """Die Geraete, die gerade Meldungen bekommen koennen."""
+    if not relay_adresse():
+        return []
+    return list(
+        db.scalars(
+            select(Sitzung).where(
+                Sitzung.benutzer_id == person.id,
+                Sitzung.art == "geraet",
+                Sitzung.push_ticket != "",
+                Sitzung.gueltig_bis > utcnow(),
+            )
+        )
+    )
+
+
+def hat_empfaenger(db: Session, person: Benutzer) -> bool:
+    """Gibt es irgendwo jemanden, der eine Meldung annimmt?"""
+    return bool(person.push_anmeldungen) or bool(_geraete(db, person))
+
+
+def _klartext(meldung: Meldung) -> bytes:
+    """Was die App entschluesselt. ⚠️ **Kompakt, Feldnamen aus dem Vertrag.**"""
+    return json.dumps(
+        {
+            "titel": meldung.titel[:APP_TITEL_GRENZE],
+            "text": meldung.text[:APP_TEXT_GRENZE],
+            "id": meldung.kennung,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _versiegeln(klartext: bytes, geraeteschluessel: str) -> str:
+    """Fuer genau ein Geraet verschluesseln.
+
+    ⚠️ **Wegwerfschluessel und Nonce sind je Aufruf neu.** ChaCha20-Poly1305 mit
+    demselben Schluessel und derselben Nonce verraet beide Klartexte. Der
+    Wegwerfschluessel allein machte den Schluessel schon einmalig; die Nonce
+    verlangt das Verfahren trotzdem so, damit beide Seiten dasselbe rechnen.
+    """
+    wegwerf = X25519PrivateKey.generate()
+    geteilt = wegwerf.exchange(
+        X25519PublicKey.from_public_bytes(base64.b64decode(geraeteschluessel, validate=True))
+    )
+    schluessel = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=HKDF_INFO).derive(geteilt)
+    nonce = os.urandom(12)
+    oeffentlich = wegwerf.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    )
+    geheim = ChaCha20Poly1305(schluessel).encrypt(nonce, klartext, None)
+    return base64.b64encode(oeffentlich + nonce + geheim).decode("ascii")
+
+
+def _ungelesen_im_posteingang(db: Session, person: Benutzer) -> int | None:
+    """Die Zahl am App-Symbol. ⚠️ **Lieber keine als eine falsche.**"""
+    try:
+        return db.scalar(
+            select(func.count())
+            .select_from(Nachricht)
+            .join(Ordner, Nachricht.ordner_id == Ordner.id)
+            .where(
+                Nachricht.benutzer_id == person.id,
+                Nachricht.gelesen.is_(False),
+                Ordner.rolle == "posteingang",
+            )
+        )
+    except SQLAlchemyError:
+        db.rollback()
+        return None
+
+
+def an_geraet(db: Session, sitzung: Sitzung, meldung: Meldung, badge: int | None) -> bool:
+    """Eine Meldung an genau ein Geraet. Wahr, wenn der Relay sie nahm.
+
+    ⚠️ **Nur 410 loescht.** Dann ist das Ticket erloschen, und die App bringt beim
+    naechsten Start ein neues. 429, 502 und ein Netzfehler sagen nichts ueber das
+    Ticket: Es bleibt, und diese Meldung wird nicht wiederholt.
+
+    ⚠️ **Im Fehlertext steht nur die Art des Fehlers.** Er landet im Protokoll,
+    das Ticket darf es nicht, und was der Relay antwortet, kennen wir nicht.
+    """
+    rumpf: dict[str, object] = {
+        "ticket": sitzung.push_ticket,
+        "enc": _versiegeln(_klartext(meldung), sitzung.push_schluessel),
+        "collapse": meldung.marke[:MARKE_GRENZE],
+    }
+    if badge is not None:
+        rumpf["badge"] = badge
+
+    try:
+        with httpx.Client(timeout=RELAY_SEKUNDEN) as klient:
+            antwort = klient.post(f"{relay_adresse()}/v1/send", json=rumpf)
+    except httpx.HTTPError as fehler:
+        raise Zustellfehler(type(fehler).__name__) from fehler
+
+    if antwort.status_code == 410:
+        logger.info("A push ticket is gone; removing it.")
+        geraet_vergessen(db, sitzung)
+        return False
+    if antwort.status_code != 200:
+        raise Zustellfehler(f"HTTP {antwort.status_code}")
+    return True
+
+
 def an_benutzer(db: Session, person: Benutzer, meldung: Meldung) -> bool:
     """An alle Geraete dieses Benutzers. Wahr, wenn mindestens eines es nahm.
 
@@ -271,6 +463,17 @@ def an_benutzer(db: Session, person: Benutzer, meldung: Meldung) -> bool:
         except Zustellfehler as fehler:
             db.rollback()
             logger.info("Push delivery failed for one device: %s", fehler)
+
+    geraete = _geraete(db, person)
+    badge = _ungelesen_im_posteingang(db, person) if geraete else None
+    for sitzung in geraete:
+        # ⚠️ **``ValueError`` gehoert dazu.** Ein Schluessel, den eine eingespielte
+        # Datenbank oder ein Eingriff von Hand verbogen hat, trifft nur sein Geraet.
+        try:
+            angekommen = an_geraet(db, sitzung, meldung, badge) or angekommen
+        except (Zustellfehler, ValueError) as fehler:
+            db.rollback()
+            logger.info("Push delivery failed for one app device: %s", fehler)
     return angekommen
 
 
@@ -352,7 +555,7 @@ def _erinnerungen_fuer(db: Session, person: Benutzer) -> int:
     # beim Ermitteln, nicht beim Senden. Wer ohne angemeldetes Geraet fragt,
     # verbraucht damit Erinnerungen, die nie irgendwo ankamen — und wer sich
     # eine Minute spaeter anmeldet, bekommt sie nie.
-    if not person.push_anmeldungen:
+    if not hat_empfaenger(db, person):
         return 0
 
     faellig = erinnerungsdienst.faellige(db, person, kanal=KANAL, nur_einmal=True)
@@ -405,7 +608,7 @@ def _buchung_zuruecknehmen(db: Session, person: Benutzer, zustellung_id: int) ->
     """
     from ..models import Erinnerungszustellung
 
-    if not person.push_anmeldungen:
+    if not hat_empfaenger(db, person):
         return
     zeile = db.get(Erinnerungszustellung, zustellung_id)
     if zeile is not None:
@@ -441,7 +644,7 @@ def neue_mail_melden(
     daneben.
     """
     person = db.get(Benutzer, konto.benutzer_id)
-    if person is None or not person.push_mail or not person.push_anmeldungen:
+    if person is None or not person.push_mail or not hat_empfaenger(db, person):
         return
     if ruhezeit_jetzt(db, person):
         return
@@ -475,6 +678,7 @@ def neue_mail_melden(
                 text=nachricht.betreff or "(kein Betreff)",
                 ziel="/",
                 marke=f"mail-{nachricht.id}",
+                kennung=nachricht.id,
             ),
         )
 

@@ -84,6 +84,10 @@ services:
       # typo locks out the whole household.
       NEXMAIL_CLIENT_IP: ${NEXMAIL_CLIENT_IP:-}
 
+      # Where notifications for the iPhone app go. They are encrypted for the
+      # device before they leave. Set it empty to send nothing there.
+      NEXMAIL_PUSH_RELAY: ${NEXMAIL_PUSH_RELAY-https://push.nexapps.dev}
+
       # How long a sign-in lasts without use.
       NEXMAIL_SITZUNG_TAGE: 30
 

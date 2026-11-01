@@ -327,6 +327,16 @@ class Sitzung(Base):
     #: Kopfzeile unter ``/api/app/1`` nur ``geraet`` (``deps._sitzung``).
     art: Mapped[str] = mapped_column(String(10), default="browser", server_default="browser")
 
+    #: Wohin Meldungen an dieses Gerät gehen: das Ticket des Push-Relays und der
+    #: öffentliche X25519-Schlüssel des Geräts. Leer heißt: keine Meldungen.
+    #: ⚠️ **An der Sitzung, damit sie mit dem Gerät gehen.** Trennen, „überall
+    #: abmelden" und das Zurücksetzen des Kennworts löschen die Zeile.
+    #: ⚠️ **Im Klartext, wie ``PushAnmeldung``.** Das Ticket ist ohne den Relay
+    #: wertlos, der Schlüssel ohne das Gerät. Ins Protokoll gehört beides nicht,
+    #: und eine Sicherung trägt keine Sitzungen (``sicherung._schlank_machen``).
+    push_ticket: Mapped[str] = mapped_column(String(1024), default="", server_default="")
+    push_schluessel: Mapped[str] = mapped_column(String(64), default="", server_default="")
+
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     zuletzt_gesehen: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     gueltig_bis: Mapped[datetime] = mapped_column(UtcDateTime)

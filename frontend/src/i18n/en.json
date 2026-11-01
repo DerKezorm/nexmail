@@ -1553,7 +1553,8 @@
     "passwort_ohne_anbieter": "While no provider is active, sign-in with a password stays on. Otherwise nobody but you could get in.",
     "passwort_anmeldung_aus": "Sign-in with a password is switched off. Sign in through a provider.",
     "oeffentliche_adresse_ungueltig": "This address cannot be used. Check how it is written.",
-    "ki_frage_fehlt": "Ask a question first."
+    "ki_frage_fehlt": "Ask a question first.",
+    "kein_gueltiger_schluessel": "That is not a valid device key."
   },
   "sicherheit": {
     "aktiv": "Set up and active.",

@@ -392,6 +392,13 @@ no public address is set, and `Secure` on the session cookie with
 takes neither header from anyone. This is the setting the authentik card means
 when it warns that the server sees another scheme than your browser.
 
+**Notifications on the iPhone.** Apple's push key cannot ship in a public image,
+so the iPhone app gets its notifications through a small relay at
+`https://push.nexapps.dev`. Sender and subject are encrypted for the device
+before they leave your server; the relay sees a ticket, that ciphertext and the
+number for the app icon. `NEXMAIL_PUSH_RELAY` points to another relay. Set it
+empty and nothing goes there, and the app offers no notifications.
+
 ## Signing in through an external provider
 
 nexmail speaks OpenID Connect: authentik, Microsoft Entra ID, Keycloak,

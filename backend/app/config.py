@@ -129,6 +129,14 @@ class Settings(BaseSettings):
     # ein einziger Vertipper den ganzen Haushalt aus.
     client_ip: str = ""
 
+    # Der Vermittler zu Apples Push-Dienst, fuer die iPhone-App. Apples Schluessel
+    # kann nicht in einem oeffentlichen Abbild liegen, deshalb haelt ihn dieser
+    # eine Dienst. Er sieht nur Verschluesseltes.
+    #
+    # ⚠️ Leer schaltet das Ganze ab: Dann nennt nexmail die Faehigkeit ``push``
+    # nicht, und die App bietet nichts an.
+    push_relay: str = "https://push.nexapps.dev"
+
     # --- Entwicklung --------------------------------------------------------
 
     cors_origins: list[str] = [

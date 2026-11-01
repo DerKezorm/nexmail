@@ -1553,7 +1553,8 @@
     "passwort_ohne_anbieter": "Solange kein Anbieter aktiv ist, bleibt die Anmeldung mit Passwort an. Sonst käme außer dir niemand herein.",
     "passwort_anmeldung_aus": "Die Anmeldung mit Passwort ist ausgeschaltet. Melde dich über einen Anbieter an.",
     "oeffentliche_adresse_ungueltig": "Diese Adresse lässt sich nicht verwenden. Prüf, wie sie geschrieben ist.",
-    "ki_frage_fehlt": "Stell zuerst eine Frage."
+    "ki_frage_fehlt": "Stell zuerst eine Frage.",
+    "kein_gueltiger_schluessel": "Das ist kein gültiger Geräteschlüssel."
   },
   "sicherheit": {
     "aktiv": "Eingerichtet und aktiv.",

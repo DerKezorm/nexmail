@@ -27,7 +27,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Query, status
 from fastapi.routing import APIRoute
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from .. import __version__
@@ -37,6 +37,7 @@ from ..models import Nachricht
 from ..services import abgleich, aenderungen, aliase as aliasdienst
 from ..services import kidienst
 from ..services import konten as kontendienst
+from ..services import push as pushdienst
 from . import (
     absenderbild,
     aufgaben,
@@ -122,6 +123,8 @@ def _faehigkeiten(db: DbSession, person) -> list[str]:
         raus.append("umformulieren")
     if kidienst.fremde_post_fuer(db, person):
         raus.append("kurzfassung")
+    if pushdienst.relay_adresse():
+        raus.append("push")
     return raus
 
 
@@ -436,6 +439,35 @@ def aenderungen_lesen(
     return Aenderungsseite(eintraege=zeilen, weiter=seite.weiter, mehr=seite.mehr, stand=seite.stand)
 
 
+class Pushziel(BaseModel):
+    #: Das Ticket vom Relay.
+    ticket: str = Field(min_length=1, max_length=1024)
+    #: Der öffentliche X25519-Schlüssel des Geräts, base64 von 32 Byte. Bewusst
+    #: ohne Längengrenze hier: Ein falscher Schlüssel soll ``kein_gueltiger_schluessel``
+    #: geben, kein 422.
+    schluessel: str
+
+
+class Pushstand(BaseModel):
+    status: str = "ok"
+
+
+@router.put("/push", response_model=Pushstand, summary="Where notifications for this device go")
+def push_merken(ziel: Pushziel, sitzung: AktiveSitzung, db: DbSession) -> Pushstand:
+    """Ticket und Geräteschlüssel merken. Die App ruft das bei jedem Start."""
+    if not pushdienst.schluessel_gueltig(ziel.schluessel):
+        raise MeldungHttp(status.HTTP_400_BAD_REQUEST, "kein_gueltiger_schluessel")
+    pushdienst.geraet_merken(db, sitzung, ziel.ticket, ziel.schluessel)
+    return Pushstand()
+
+
+@router.delete("/push", response_model=Pushstand, summary="Stop notifications for this device")
+def push_vergessen(sitzung: AktiveSitzung, db: DbSession) -> Pushstand:
+    """Ticket und Geräteschlüssel vergessen; das Gerät bleibt gekoppelt."""
+    pushdienst.geraet_vergessen(db, sitzung)
+    return Pushstand()
+
+
 #: ⚠️ **Die Liste ist das Versprechen.** ``test_app_zusage.py`` hält sie gegen
 #: die Routentabelle. Eine Adresse kommt nur durch einen Eintrag hier dazu, und
 #: eine, die wegfällt, braucht ``/api/app/2``.
@@ -475,6 +507,7 @@ ZUGESAGT = (
     "/api/app/1/outbox/{ausgang_id}/cancel",
     "/api/app/1/pairing/code",
     "/api/app/1/pairing/{pairing_id}/key",
+    "/api/app/1/push",
     "/api/app/1/search",
     "/api/app/1/sender-image",
     "/api/app/1/snoozes",

@@ -4,6 +4,9 @@
   "DELETE /api/app/1/messages/labels/{atom}": [
     "beruehrt"
   ],
+  "DELETE /api/app/1/push": [
+    "status"
+  ],
   "DELETE /api/app/1/snoozes/{eintrag_id}": [],
   "GET /api/app/1/accounts": [
     "absendername",
@@ -488,5 +491,8 @@
     "verwaist",
     "von_adresse",
     "von_name"
+  ],
+  "PUT /api/app/1/push": [
+    "status"
   ]
 }

@@ -205,7 +205,7 @@ def probe(person: AngemeldeterBenutzer, db: DbSession) -> Response:
     ⚠️ **Sie geht durch die Ruhezeit hindurch.** Wer sie drueckt, will jetzt
     wissen, ob es geht.
     """
-    if not person.push_anmeldungen:
+    if not dienst.hat_empfaenger(db, person):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="kein_geraet_angemeldet"
         )
