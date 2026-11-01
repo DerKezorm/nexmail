@@ -5,7 +5,8 @@ aber je Postfach eine Verbindung dauerhaft belegt — bei iCloud ist das die
 einzige, die es überhaupt gibt, und jede Handlung des Betreibers müsste sie
 erst unterbrechen. Der Takt macht die Verbindung auf, gleicht ab und legt
 wieder auf; dieselbe Verbindung, die auch ein Klick auf „Aktualisieren"
-benutzt, und dasselbe Schloss.
+benutzt, und dasselbe Schloss. Wer den Preis zahlen will, schaltet IDLE je
+Postfach ein (``postfachwache.py``); der Takt läuft trotzdem als Netz darunter.
 
 ⚠️ **Nur der Posteingang.** Ein voller Durchlauf über alle Ordner kostet bei
 einem großen Postfach Sekunden — alle zwei Minuten wäre das eine dauerhafte

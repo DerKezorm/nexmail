@@ -28,6 +28,10 @@ interface Stand {
   /** Ob der Betreiber es fuer diese Installation ueberhaupt erlaubt. */
   erlaubt: boolean
   aktiv: boolean
+  /** Dürfen eingegangene Mails an den Dienst gehen? */
+  fremde_post: boolean
+  /** Hat der Betreiber das freigegeben? */
+  fremde_post_erlaubt: boolean
   url: string
   modell: string
   schluessel_da: boolean
@@ -56,7 +60,7 @@ function anbietername(url: string): string {
   return KACHELN.find((k) => k.url === url)?.name ?? ''
 }
 
-export function KiDienst() {
+export function KiDienst({ ichNeuLaden }: { ichNeuLaden?: () => void }) {
   const { t } = useTranslation()
   const { fragen, fenster: nachfrage } = useNachfrage()
   const [stand, setStand] = useState<Stand | null>(null)
@@ -146,6 +150,7 @@ export function KiDienst() {
       setStand(raus)
       setSchluessel('')
       setGemeldet(t('ki.gespeichert'))
+      ichNeuLaden?.()
       danach?.()
     } catch (f) {
       setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
@@ -210,6 +215,31 @@ export function KiDienst() {
         </div>
         {!steht && <p className="mb-0 text-[12px] text-fg-4">{t('ki.erst_einrichten')}</p>}
       </section>
+
+      {/* --- Eingegangene Post ------------------------------------------- */}
+      {/* ⚠️ **Ein eigener Schalter unter dem ersten.** Der erste gilt dem
+          eigenen Entwurf; hier geht Text hinaus, den jemand anderes
+          geschrieben hat. Gesperrt nennt die Zeile den Grund. */}
+      {stand?.aktiv && (
+        <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
+          {stand.fremde_post_erlaubt ? (
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 flex-col gap-1">
+                <span className="text-[13px] font-semibold text-fg-1">{t('ki.fremde_post')}</span>
+                <p className="mb-0 text-[12px] text-fg-3">{t('ki.fremde_post_hinweis')}</p>
+              </div>
+              <Switch
+                label={t('ki.fremde_post')}
+                checked={stand.fremde_post}
+                disabled={speichert}
+                onCheckedChange={(an) => void sichern({ fremde_post: an })}
+              />
+            </div>
+          ) : (
+            <p className="mb-0 text-[12px] text-fg-3">{t('ki.fremde_post_gesperrt')}</p>
+          )}
+        </section>
+      )}
 
       {/* --- Der eine Zugang, wenn er steht ------------------------------ */}
       {steht && !richtetEin && (

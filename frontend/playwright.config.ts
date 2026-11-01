@@ -64,6 +64,7 @@ const NUR_BREIT = [
   'kalender.spec.ts',
   'kennwort.spec.ts',
   'lesemodus.spec.ts',
+  'lesewerkzeuge.spec.ts',
   'mehrbenutzer.spec.ts',
   'oauth.spec.ts',
   'ordnerrolle.spec.ts',

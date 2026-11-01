@@ -59,6 +59,10 @@ interface Props {
   aufVerfassen: (art: Verfassart, n: Nachricht | null) => void
   /** Ein `mailto:`-Link in der offenen Mail. Siehe `Lesebereich`. */
   aufMailto?: (v: Vorbelegung, n: Nachricht) => void
+  /** Von einer Liste abmelden. Siehe `Lesebereich`. */
+  aufAbbestellen?: (n: VolleNachricht) => Promise<boolean>
+  /** Darf die offene Mail zusammengefasst werden? */
+  kiZusammenfassen?: boolean
   /** Ziehen beginnt — welche Nachrichten kommen mit? */
   aufZiehen?: (n: Nachricht) => string[]
   kompakt?: boolean
@@ -205,6 +209,8 @@ export function MailPage(p: Props) {
       laedt={p.offeneLaedt}
       aufVerfassen={(art, n) => p.aufVerfassen(art, n)}
       aufMailto={p.aufMailto}
+      aufAbbestellen={p.aufAbbestellen}
+      kiZusammenfassen={p.kiZusammenfassen}
       istEntwurf={p.istEntwurf}
       schlagworte={p.schlagworte}
       aufSchlagwort={p.aufSchlagwort}

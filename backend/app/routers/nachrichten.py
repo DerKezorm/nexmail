@@ -7,32 +7,38 @@ hier kein Anzeigefehler, sondern fremde Post.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
 import mimetypes
 import re
+import time
 from datetime import datetime, timezone
 from html import escape
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 
 from ..config import get_settings
 from ..db import einstellung_lesen
 from ..deps import AngemeldeterBenutzer, DbSession
-from ..models import Anhang, Konto, Nachricht, Ordner
+from ..models import Anhang, Konto, Nachricht, Ordner, utcnow
 from ..services import (
+    abbestellen as abbestelldienst,
     abgleich,
     absenderpruefung,
+    anmeldebremse,
     bereinigen,
     bildfreigaben,
     bildvermittler,
+    ereignisse as ereignisdienst,
     handeln,
     imap as imapdienst,
+    kidienst,
     konten as kontendienst,
     mime,
     schlagworte as schlagwortdienst,
@@ -115,6 +121,18 @@ class AnhangZeile(BaseModel):
     inline: bool
 
 
+class Abbestellweg(BaseModel):
+    #: ``einklick`` | ``seite`` | ``mail`` (``services/abbestellen.py``)
+    art: str
+    #: Die Seite oder die ``mailto:``-Adresse. Bei ``einklick`` geht sie nicht
+    #: durch die Oberfläche, der Server liest sie aus der gespeicherten Mail.
+    ziel: str
+    #: Was die Rückfrage nennt: die Domain oder die Adresse.
+    stelle: str
+    #: Ging die Abmeldung schon hinaus?
+    erledigt: bool = False
+
+
 class Voll(Zeile):
     an: list[Person]
     kopie: list[Person]
@@ -133,6 +151,20 @@ class Voll(Zeile):
     #: bekommt ihn auch — siehe ``bereinigen.faerbt_sich_selbst``.
     faerbt_sich_selbst: bool = False
     anhaenge: list[AnhangZeile]
+    #: Wie man sich von dieser Liste abmeldet; ``None`` heißt: kein Knopf.
+    abbestellen: Abbestellweg | None = None
+
+
+def _abbestellweg(nachricht: Nachricht, vertraut: dict[str, str]) -> Abbestellweg | None:
+    weg = abbestelldienst.weg(nachricht, vertraut)
+    if weg is None:
+        return None
+    return Abbestellweg(
+        art=weg.art,
+        ziel="" if weg.art == "einklick" else weg.ziel,
+        stelle=weg.stelle,
+        erledigt=nachricht.abbestellt_am is not None,
+    )
 
 
 def _personen(roh: str) -> list[Person]:
@@ -548,6 +580,42 @@ def _koerper_fuer_anzeige(nachricht: Nachricht, mit_bildern: bool) -> str:
     return html
 
 
+#: So lange wartet eine Anfrage auf eine Änderung.
+#: ⚠️ **Unter den zehn Sekunden von ``docker stop``.** uvicorn wartet beim
+#: Herunterfahren auf laufende Anfragen. Wäre die Zeit länger, träfe jedes
+#: offene Fenster das Beenden des Containers mit einem harten Abbruch.
+EREIGNIS_WARTEN = 8.0
+
+
+class Ereignisstand(BaseModel):
+    stand: int
+
+
+@router.get("/ereignisse", response_model=Ereignisstand)
+async def ereignisse(
+    person: AngemeldeterBenutzer, db: DbSession, seit: int = -1
+) -> Ereignisstand:
+    """Warten, bis sich etwas getan hat. Das offene Fenster fragt immer wieder.
+
+    ⚠️ **Eine Frage je acht Sekunden statt einer stehenden Leitung.** Jede
+    Runde geht durch die Anmeldung, also wirkt „überall abmelden" sofort, und
+    kein Proxy muss etwas von einem Datenstrom wissen.
+
+    ⚠️ **``async``, und die Sitzung geht vorher zu.** Eine gewöhnliche Adresse
+    hielte einen Faden des Servers fest, und zwei Dutzend Reiter stünden dann
+    jedem anderen Aufruf im Weg. Geprüft wird nur eine Zahl im Speicher.
+    """
+    kennung = person.id
+    db.close()
+    ende = time.monotonic() + EREIGNIS_WARTEN
+    while time.monotonic() < ende:
+        jetzt = ereignisdienst.stand(kennung)
+        if jetzt != seit:
+            return Ereignisstand(stand=jetzt)
+        await asyncio.sleep(1)
+    return Ereignisstand(stand=ereignisdienst.stand(kennung))
+
+
 @router.get("/{nachricht_id}", response_model=Voll)
 def eine(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Voll:
     """Eine Nachricht mit Körper — der wird beim ersten Mal geholt."""
@@ -567,9 +635,11 @@ def eine(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Voll
     if nachricht.koerper_geholt is not None and nachricht.hat_anhang != echte:
         nachricht.hat_anhang = echte
         db.commit()
-    grund = _zeile(nachricht, _vertraut(db, [nachricht])).model_dump()
+    vertraut = _vertraut(db, [nachricht])
+    grund = _zeile(nachricht, vertraut).model_dump()
     return Voll(
         **grund,
+        abbestellen=_abbestellweg(nachricht, vertraut),
         an=_personen(nachricht.an_json),
         kopie=_personen(nachricht.kopie_json),
         html=_koerper_fuer_anzeige(nachricht, mit_bildern=freigegeben),
@@ -588,6 +658,92 @@ def eine(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Voll
             for a in nachricht.anhaenge
         ],
     )
+
+
+@router.post("/{nachricht_id}/abbestellen", response_model=Abbestellweg)
+def abbestellen(
+    nachricht_id: int, person: AngemeldeterBenutzer, request: Request, db: DbSession
+) -> Abbestellweg:
+    """Die Abmeldung mit einem Klick hinausschicken (RFC 8058).
+
+    ⚠️ **Nur für ``einklick``, und die Adresse steht in der Datenbank.** Die
+    beiden anderen Wege gehen über den Browser, ein Mensch bestätigt dort.
+
+    ⚠️ **Ein zweiter Klick schickt nichts mehr.** Ein doppeltes ``POST`` wäre
+    harmlos, sähe im Protokoll des Absenders aber aus wie ein Automat.
+
+    ⚠️ **Die Bremse hängt davor, wie am KI-Dienst.** Hier ruft der Server eine
+    fremde Adresse auf; wer eine Mailbox voller Listen hat, soll nexmail nicht
+    als Werkzeug benutzen können.
+    """
+    nachricht = _meine(db, person, nachricht_id)
+    try:
+        weg = abbestelldienst.einklick_weg(nachricht, _vertraut(db, [nachricht]))
+    except abbestelldienst.AbbestellFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_409_CONFLICT) from fehler
+    if nachricht.abbestellt_am is None:
+        wache = anmeldebremse.torwaechter(request, "abbestellen", person.benutzername)
+        wache.fehlgeschlagen()
+        try:
+            abbestelldienst.einklick_senden(weg.ziel)
+        except abbestelldienst.AbbestellFehler as fehler:
+            raise MeldungHttp.aus(fehler, status.HTTP_502_BAD_GATEWAY) from fehler
+        nachricht.abbestellt_am = utcnow()
+        db.commit()
+    return Abbestellweg(art=weg.art, ziel="", stelle=weg.stelle, erledigt=True)
+
+
+class Zusammenfassung(BaseModel):
+    #: ⚠️ **Blosser Text.** Die Oberfläche setzt ihn als Text und rendert nichts.
+    text: str
+    #: War die Mail zu lang, ging nur ihr Anfang hinaus.
+    gekuerzt: bool
+
+
+class Zusammenfassungsauftrag(BaseModel):
+    #: Die Sprache der Oberfläche (``de``, ``en``).
+    sprache: str = Field(default="en", max_length=8)
+
+
+@router.post("/{nachricht_id}/zusammenfassung", response_model=Zusammenfassung)
+def zusammenfassung(
+    nachricht_id: int,
+    eingabe: Zusammenfassungsauftrag,
+    person: AngemeldeterBenutzer,
+    request: Request,
+    db: DbSession,
+) -> Zusammenfassung:
+    """Eine eingegangene Mail zusammenfassen lassen.
+
+    ⚠️ **Es wird nichts gespeichert außer der Liste „Was hinausging".** Wer die
+    Mail neu öffnet, fragt neu; die Antwort eines Modells gehört nicht
+    dauerhaft neben die Mail, als wäre sie ein Teil davon.
+    """
+    nachricht = _meine(db, person, nachricht_id)
+    wache = anmeldebremse.torwaechter(request, "ki-text", person.benutzername)
+    wache.fehlgeschlagen()
+    if not kidienst.fremde_post_fuer(db, person):
+        raise MeldungHttp.aus(
+            kidienst.KiFehler("ki_nicht_eingeschaltet"), status.HTTP_400_BAD_REQUEST
+        )
+
+    _koerper_sicherstellen(db, nachricht)
+    text = nachricht.koerper_text or bereinigen.text_aus_html(
+        nachricht.koerper_html or "", laenge=kidienst.MAX_ZEICHEN + 1
+    )
+    absender = f"{nachricht.von_name} <{nachricht.von_adresse}>".strip()
+    try:
+        raus, gekuerzt = kidienst.zusammenfassen(
+            person,
+            db,
+            absender=absender,
+            betreff=nachricht.betreff,
+            text=text,
+            sprache=eingabe.sprache.partition("-")[0].lower(),
+        )
+    except kidienst.KiFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    return Zusammenfassung(text=raus, gekuerzt=gekuerzt)
 
 
 class Html(BaseModel):

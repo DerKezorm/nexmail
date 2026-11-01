@@ -107,6 +107,9 @@ class Zugangsdaten:
     #: also unverändert — dieselbe Regel wie beim Passwort und bei ``tags``.
     #: Eine leere Liste heißt dagegen ausdrücklich „alle weg".
     aliase: list[Alias] | None = None
+    #: Neue Post sofort sehen (``services/postfachwache.py``). ``None`` heißt
+    #: beim Ändern „unverändert".
+    idle_aktiv: bool | None = None
 
 
 #: Mehr als das braucht niemand, und es hält die Pillenreihe lesbar.
@@ -200,6 +203,7 @@ def anlegen(db: Session, benutzer: Benutzer, daten: Zugangsdaten) -> Konto:
         smtp_sicherheit=daten.smtp_sicherheit,
         smtp_benutzer=daten.smtp_benutzer.strip(),
         tags=tags_normieren(daten.tags),
+        idle_aktiv=bool(daten.idle_aktiv),
         farbe=naechste_farbe(db, benutzer),
         reihenfolge=(hoechste or 0) + 1,
     )
@@ -263,6 +267,8 @@ def aendern(db: Session, benutzer: Benutzer, konto_id: str, daten: Zugangsdaten)
         konto.tags = tags_normieren(daten.tags)
     if daten.aliase is not None:
         aliasdienst.schreiben(konto, daten.aliase)
+    if daten.idle_aktiv is not None:
+        konto.idle_aktiv = daten.idle_aktiv
 
     _anmeldeweg_wechseln(db, benutzer, konto, daten)
 

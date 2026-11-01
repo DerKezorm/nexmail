@@ -35,6 +35,10 @@ class Stand(BaseModel):
     #: man einrichten kann und der beim ersten Handgriff abgewiesen wird,
     #: waere die schlechtere Auskunft.
     erlaubt: bool
+    #: Dürfen eingegangene Mails an den Dienst gehen? Die Wahl des Benutzers.
+    fremde_post: bool = False
+    #: Hat der Betreiber das freigegeben? Sonst nennt die Seite den Grund.
+    fremde_post_erlaubt: bool = False
     #: ⚠️ **Nicht der Schlüssel selbst**, nur ob einer da ist. Er geht nie
     #: zurück, auch nicht an seinen Eigentümer — dieselbe Regel wie beim
     #: Postfach-Passwort.
@@ -45,6 +49,7 @@ class Aenderung(BaseModel):
     #: ⚠️ ``None`` heisst **unverändert** — dieselbe Regel wie beim Passwort.
     #: Eine leere Zeichenkette heisst „weg".
     aktiv: bool | None = None
+    fremde_post: bool | None = None
     url: str | None = Field(default=None, max_length=500)
     modell: str | None = Field(default=None, max_length=200)
     schluessel: str | None = Field(default=None, max_length=500)
@@ -73,7 +78,11 @@ class Modell(BaseModel):
 
 @router.get("", response_model=Stand)
 def stand(person: AngemeldeterBenutzer, db: DbSession) -> Stand:
-    return Stand(erlaubt=kidienst.erlaubt_fuer(db, person), **kidienst.einstellung_lesen(person))
+    return Stand(
+        erlaubt=kidienst.erlaubt_fuer(db, person),
+        fremde_post_erlaubt=kidienst.fremde_post_erlaubt(db),
+        **kidienst.einstellung_lesen(person),
+    )
 
 
 @router.put("", response_model=Stand)
@@ -81,6 +90,7 @@ def aendern(eingabe: Aenderung, person: AngemeldeterBenutzer, db: DbSession) -> 
     try:
         return Stand(
             erlaubt=kidienst.erlaubt_fuer(db, person),
+            fremde_post_erlaubt=kidienst.fremde_post_erlaubt(db),
             **kidienst.einstellung_schreiben(
                 db,
                 person,
@@ -88,6 +98,7 @@ def aendern(eingabe: Aenderung, person: AngemeldeterBenutzer, db: DbSession) -> 
                 url=eingabe.url,
                 modell=eingabe.modell,
                 schluessel=eingabe.schluessel,
+                fremde_post=eingabe.fremde_post,
             )
         )
     except kidienst.KiFehler as fehler:
@@ -243,3 +254,16 @@ def riegel_setzen(eingabe: Riegel, person: Betreiber, db: DbSession) -> Riegel:
     Installation; die Entscheidung, ob Mailtext das Haus verlassen darf, ist
     seine und nicht die eines einzelnen Benutzers."""
     return Riegel(erlaubt=kidienst.erlauben(db, eingabe.erlaubt))
+
+
+@router.get("/fremde-post", response_model=Riegel)
+def fremde_post_lesen(person: AngemeldeterBenutzer, db: DbSession) -> Riegel:
+    """Steht der zweite Riegel offen? Der eigene Schalter hängt davon ab."""
+    return Riegel(erlaubt=kidienst.fremde_post_erlaubt(db))
+
+
+@router.put("/fremde-post", response_model=Riegel)
+def fremde_post_setzen(eingabe: Riegel, person: Betreiber, db: DbSession) -> Riegel:
+    """⚠️ **Nur der Betreiber**, aus demselben Grund wie darüber, und schwerer:
+    Hier geht Text hinaus, den Dritte geschrieben haben."""
+    return Riegel(erlaubt=kidienst.fremde_post_erlauben(db, eingabe.erlaubt))

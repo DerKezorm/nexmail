@@ -34,9 +34,11 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..models import Anhang, Konto, Nachricht, Ordner, utcnow
 from . import (
+    abbestellen as abbestelldienst,
     absenderpruefung,
     abwesenheit as abwesenheitsdienst,
     bereinigen,
+    ereignisse,
     imap as imapdienst,
     konten as kontendienst,
     mime,
@@ -809,6 +811,7 @@ def koerper_holen(klient, db: Session, nachricht: Nachricht) -> None:
     # Rumpf kann ein zitiertes „Importance: high" stehen, das keines ist.
     kopfteil = roh.split(b"\r\n\r\n", 1)[0].split(b"\n\n", 1)[0]
     nachricht.wichtigkeit = _wichtigkeit_deuten(kopfteil)
+    nachricht.abbestellen = abbestelldienst.lesen(kopfteil)
     # ⚠️ **Immer überschreiben, nicht nur wenn leer.** Der Anreißer aus dem
     # Teilabruf ist eine Näherung; hier liegt die ganze, dekodierte Mail vor.
     # Vorher blieb eine einmal falsch gebaute Vorschau für immer stehen — auch
@@ -1102,6 +1105,11 @@ def konto_abgleichen(db: Session, konto: Konto, nur_posteingang: bool = False) -
     _antworten_einsammeln(db, konto, neue)
 
     _melden(db, konto, neue, ergebnis)
+
+    # ⚠️ **Zuletzt, nach den Regeln.** Sonst lädt ein offenes Fenster eine
+    # Liste, aus der die Regel die Mail gleich wieder herausräumt.
+    if any(r.neu or r.nachgeholt or r.entfernt or r.geaendert for r in ergebnis.values()):
+        ereignisse.melden(konto.benutzer_id)
     return ergebnis
 
 

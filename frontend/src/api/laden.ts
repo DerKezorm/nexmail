@@ -64,6 +64,17 @@ interface ApiVoll extends ApiZeile {
   absender_freigegeben: boolean
   faerbt_sich_selbst: boolean
   anhaenge: ApiAnhang[]
+  abbestellen: Abbestellweg | null
+}
+
+/** Wie man sich von einer Liste abmeldet (`services/abbestellen.py`). */
+export interface Abbestellweg {
+  art: 'einklick' | 'seite' | 'mail'
+  /** Die Seite oder die `mailto:`-Adresse; bei `einklick` leer. */
+  ziel: string
+  /** Was die Rückfrage nennt: die Domain oder die Adresse. */
+  stelle: string
+  erledigt: boolean
 }
 
 function person(p: ApiPerson): Person {
@@ -294,6 +305,8 @@ export interface VolleNachricht extends Nachricht {
   /** Legt die Mail eigene Farben fest? Dann rechnet sie mit hellem Grund. */
   faerbtSichSelbst: boolean
   echteAnhaenge: Anhang[]
+  /** `null` heißt: kein Knopf zum Abmelden. */
+  abbestellen: Abbestellweg | null
 }
 
 export async function nachrichtLaden(id: string): Promise<VolleNachricht> {
@@ -309,6 +322,7 @@ export async function nachrichtLaden(id: string): Promise<VolleNachricht> {
     absenderFreigegeben: roh.absender_freigegeben,
     faerbtSichSelbst: roh.faerbt_sich_selbst,
     hatFremdbilder: roh.geblockte_bilder > 0,
+    abbestellen: roh.abbestellen ?? null,
     echteAnhaenge: roh.anhaenge
       .filter((a) => !a.inline)
       .map((a) => ({
@@ -352,6 +366,23 @@ export async function absenderVergessen(adresse: string): Promise<void> {
 
 export async function abgleichen(): Promise<{ neu: number; entfernt: number; ordner: number }> {
   return api.senden('/api/nachrichten/abgleichen', {})
+}
+
+/** Die Abmeldung mit einem Klick; die Adresse kennt nur der Server. */
+export async function abbestellen(id: string): Promise<Abbestellweg> {
+  return api.senden(`/api/nachrichten/${id}/abbestellen`, {})
+}
+
+export async function zusammenfassen(
+  id: string,
+  sprache: string,
+): Promise<{ text: string; gekuerzt: boolean }> {
+  return api.senden(`/api/nachrichten/${id}/zusammenfassung`, { sprache })
+}
+
+/** Wartet, bis sich im Postfach etwas getan hat, oder ein paar Sekunden. */
+export async function ereignisWarten(seit: number): Promise<{ stand: number }> {
+  return api.holen(`/api/nachrichten/ereignisse?seit=${seit}`)
 }
 
 /* Eine reine Textmail wird in <pre> gezeigt. Ohne Maskierung stünde darin

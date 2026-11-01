@@ -17,7 +17,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, XCircle } from 'lucide-react'
-import { Button, Input, Select } from '../ds'
+import { Button, Input, Select, Switch } from '../ds'
 import { Schlagwortfeld } from '../components/Schlagwortfeld'
 import { Absenderfeld } from '../components/Absenderfeld'
 import type { Absenderalias } from '../components/Absenderfeld'
@@ -55,9 +55,11 @@ interface Felder {
   smtp_port: number
   smtp_sicherheit: string
   smtp_benutzer: string
+  idle_aktiv: boolean
 }
 
 const LEER: Felder = {
+  idle_aktiv: false,
   anzeigename: '',
   tags: [],
   aliase: [],
@@ -97,6 +99,7 @@ export function KontoFormular({
   const [felder, setFelder] = useState<Felder>(
     bestehend
       ? {
+          idle_aktiv: bestehend.idle_aktiv ?? false,
           anzeigename: bestehend.anzeigename,
           tags: bestehend.tags ?? [],
           aliase: bestehend.aliase ?? [],
@@ -250,6 +253,7 @@ export function KontoFormular({
       smtp_benutzer: felder.smtp_benutzer.trim(),
       smtp_passwort: zugangId ? '' : felder.passwort,
       oauth_zugang_id: zugangId,
+      idle_aktiv: felder.idle_aktiv,
     }
   }
 
@@ -365,6 +369,30 @@ export function KontoFormular({
         aufAendern={(aliase) => setzen({ aliase })}
         hauptadresse={felder.adresse}
       />
+
+      {/* ⚠️ **Der Satz daneben gehört dazu.** Wer das einschaltet, belegt eine
+          zweite Verbindung beim Anbieter; und kann der Server kein IDLE, soll
+          man das hier lesen statt zu warten. */}
+      <div className="flex items-start justify-between gap-3 rounded-md border border-line bg-surface-2 px-3 py-2">
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className="text-[13px] font-medium text-fg-1">{t('konto.sofort')}</span>
+          <p className="mb-0 text-[12px] text-fg-3">{t('konto.sofort_hinweis')}</p>
+          {felder.idle_aktiv && bestehend?.idle_aktiv && bestehend.idle_zustand && (
+            <p role="status" className="mb-0 text-[12px] text-fg-4">
+              {bestehend.idle_zustand === 'kein_idle'
+                ? t('konto.sofort_kein_idle')
+                : bestehend.idle_zustand === 'getrennt'
+                  ? t('konto.sofort_getrennt')
+                  : t('konto.sofort_lauscht')}
+            </p>
+          )}
+        </div>
+        <Switch
+          label={t('konto.sofort')}
+          checked={felder.idle_aktiv}
+          onCheckedChange={(an) => setzen({ idle_aktiv: an })}
+        />
+      </div>
 
       {zugaenge.length > 0 && (
         <Select

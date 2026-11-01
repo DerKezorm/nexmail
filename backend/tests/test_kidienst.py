@@ -195,7 +195,13 @@ def test_ab_werk_ist_alles_aus(person):
     """⚠️ **Die wichtigste Zusicherung dieser Datei.** Wer nexmail installiert,
     schickt nichts an einen fremden Dienst, bis er es selbst einschaltet."""
     stand = dienst.einstellung_lesen(person)
-    assert stand == {"aktiv": False, "url": "", "modell": "", "schluessel_da": False}
+    assert stand == {
+        "aktiv": False,
+        "fremde_post": False,
+        "url": "",
+        "modell": "",
+        "schluessel_da": False,
+    }
 
 
 def test_der_schluessel_liegt_verschluesselt_da(db, person):
@@ -265,6 +271,8 @@ def test_die_adressen_gehoeren_dem_benutzer(klient, person):
     assert klient.get("/api/ki").json() == {
         "erlaubt": False,
         "aktiv": False,
+        "fremde_post": False,
+        "fremde_post_erlaubt": False,
         "url": "",
         "modell": "",
         "schluessel_da": False,

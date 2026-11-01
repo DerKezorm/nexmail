@@ -166,6 +166,9 @@ export interface Ich {
    *  Punkt in der Leiste — er muss auch dastehen, wenn noch nichts
    *  eingeschaltet ist. */
   ki_erlaubt: boolean
+  /** Ob eine eingegangene Mail zusammengefasst werden darf: alle Riegel und
+   *  beide Schalter. Daran hängt der Knopf im Lesebereich. */
+  ki_fremde_post: boolean
   /** Ob Logos der Absenderdomains geholt werden (Darstellung → Bilder).
    *  Die Bildadresse trägt den Stand, damit Umschalten ohne F5 wirkt. */
   absenderlogos: boolean
@@ -279,4 +282,8 @@ export interface KontoZeile {
   oauth_zugang_id?: string
   /** Wie viele Kalender an derselben Zustimmung hängen. */
   oauth_kalender?: number
+  /** Hält nexmail eine zweite Verbindung für neue Post offen (IMAP IDLE)? */
+  idle_aktiv?: boolean
+  /** Was die Wache gerade tut: 'lauscht', 'getrennt', 'kein_idle' oder leer. */
+  idle_zustand?: string
 }

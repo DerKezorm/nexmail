@@ -71,6 +71,7 @@ const VerfassenFenster = lazy(() =>
   import('./components/VerfassenFenster').then((m) => ({ default: m.VerfassenFenster })),
 )
 import type { Sendedaten, Verfassart } from './components/VerfassenFenster'
+import { mailtoLesen } from './lib/leselinks'
 import type { Vorbelegung } from './lib/leselinks'
 import type { Ziel } from './components/Ordnerspalte'
 import { Lesebereich } from './components/Lesebereich'
@@ -102,7 +103,9 @@ import { KONTO_RUECKWEG } from './lib/kontorueckweg'
 import { Erinnerungsfenster } from './components/Erinnerungsfenster'
 import { api, ApiFehler } from './api/client'
 import {
+  abbestellen,
   abgleichen,
+  ereignisWarten,
   SEITE,
   merkpunkt,
   kontenLaden,
@@ -411,6 +414,48 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
    *  Postfach, in dem die Mail liegt. */
   const mailtoOeffnen = (v: Vorbelegung, n: Nachricht) =>
     setVerfassen({ offen: true, art: 'neu', bezug: null, vorbelegt: { ...v, kontoId: n.kontoId } })
+
+  /** Von einer Liste abmelden.
+   *
+   * ⚠️ **Jeder Weg fragt zuerst, und die Frage nennt die Gegenstelle.** Der
+   * Knopf steht in nexmails eigener Oberfläche, seine Adresse aber hat der
+   * Absender geschrieben. Eine gefälschte Mail darf dadurch nicht
+   * vertrauenswürdiger aussehen als ein Link in ihrem Text.
+   *
+   * ⚠️ **Eine Mail geht nur übers Verfassen-Fenster hinaus.** Sie trägt die
+   * eigene Adresse, und nexmail verschickt nichts ungefragt. */
+  async function abbestellenFragen(n: VolleNachricht): Promise<boolean> {
+    const weg = n.abbestellen
+    if (!weg) return false
+    const fragesatz = {
+      einklick: t('lesen.abbestellen_einklick_frage', { stelle: weg.stelle }),
+      seite: t('lesen.abbestellen_seite_frage', { stelle: weg.stelle }),
+      mail: t('lesen.abbestellen_mail_frage', { stelle: weg.stelle }),
+    }
+    const ja = await fragen({
+      titel: t('lesen.abbestellen_titel'),
+      text: fragesatz[weg.art],
+      knopf: t('lesen.abbestellen'),
+    })
+    if (ja !== true) return false
+
+    if (weg.art === 'seite') {
+      window.open(weg.ziel, '_blank', 'noopener,noreferrer')
+      return false
+    }
+    if (weg.art === 'mail') {
+      const vorbelegt = mailtoLesen(weg.ziel)
+      if (vorbelegt) mailtoOeffnen(vorbelegt, n)
+      return false
+    }
+    try {
+      await abbestellen(n.id)
+      return true
+    } catch (f) {
+      setStoerung(servermeldung(f, t('anmeldung.fehler_allgemein')))
+      return false
+    }
+  }
 
   /* ⚠️ **Ein Riegel, keine Bedingung.** Sobald das Fenster einmal offen war,
      bleibt es im Baum — von da an verhält sich alles wie vorher, samt „Senden
@@ -1338,6 +1383,73 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     }
   }
 
+  /* Was der Server inzwischen geholt hat, kommt von selbst in die Liste.
+   *
+   * ⚠️ **Bis 0.24.7 lud die Liste nur nach einer eigenen Handlung neu.** Takt
+   * und Wache legten neue Post in die Datenbank, und das offene Fenster
+   * erfuhr nichts davon. Hier wartet eine Anfrage nach der anderen, bis der
+   * Zähler sich ändert (`GET /api/nachrichten/ereignisse`).
+   *
+   * ⚠️ **Ein verborgener Reiter fragt nicht.** Sonst hielten zehn offene Reiter
+   * zehn Leitungen fest, und bei HTTP/1.1 sind nur sechs je Adresse frei. Beim
+   * Zurückkommen geht es sofort weiter, und der Zähler zeigt, was war.
+   *
+   * ⚠️ **Über Refs, nicht über die Abhängigkeiten.** `listeLaden` ändert sich
+   * mit jedem Ordnerwechsel; die Schleife fing sonst jedes Mal von vorn an und
+   * vergäße ihren Stand. */
+  const listeLadenRef = useRef(listeLaden)
+  listeLadenRef.current = listeLaden
+  const stammLadenRef = useRef(stammLaden)
+  stammLadenRef.current = stammLaden
+  useEffect(() => {
+    let vorbei = false
+    let weiter: (() => void) | null = null
+    const warten = (ms: number) =>
+      new Promise<void>((fertig) => {
+        const uhr = window.setTimeout(fertig, ms)
+        weiter = () => {
+          window.clearTimeout(uhr)
+          fertig()
+        }
+      })
+    const sichtbar = () => {
+      if (!document.hidden) weiter?.()
+    }
+    document.addEventListener('visibilitychange', sichtbar)
+
+    async function lauschen() {
+      let stand = -1
+      while (!vorbei) {
+        if (document.hidden) {
+          await warten(60_000)
+          continue
+        }
+        try {
+          const neu = await ereignisWarten(stand)
+          if (vorbei) return
+          if (stand !== -1 && neu.stand !== stand) {
+            void stammLadenRef.current()
+            void listeLadenRef.current(
+              Math.min(Math.max(SEITE, nachrichtenRef.current.length), 500),
+            )
+          }
+          stand = neu.stand
+        } catch {
+          // ⚠️ Ein Neustart des Servers ist kein Grund für eine Meldung; die
+          // Handlungen sagen es selbst, wenn er wirklich weg ist.
+          await warten(15_000)
+        }
+      }
+    }
+    void lauschen()
+
+    return () => {
+      vorbei = true
+      weiter?.()
+      document.removeEventListener('visibilitychange', sichtbar)
+    }
+  }, [])
+
   /* --- Postausgang: geplanten Versand abbrechen ------------------------- */
 
   async function ausgangAbbrechen(eintrag: Ausgangseintrag) {
@@ -1939,8 +2051,11 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
             aufVerfassen={(art, n) => setVerfassen({ offen: true, art, bezug: n })}
             aufMailto={mailtoOeffnen}
             bildQuelle={absenderbilder ? bildQuelle : undefined}
+            aufAbbestellen={abbestellenFragen}
+            kiZusammenfassen={ich?.ki_fremde_post ?? false}
           />
         )}
+        {nachfrage}
 
         {verfassenGebraucht && (
         <Suspense fallback={null}>
@@ -2095,6 +2210,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 aufSchublade={setSchubladeOffen}
                 aufVerfassen={(art, n) => setVerfassen({ offen: true, art, bezug: n })}
                 aufMailto={mailtoOeffnen}
+                aufAbbestellen={abbestellenFragen}
+                kiZusammenfassen={ich?.ki_fremde_post ?? false}
                 istEntwurf={offeneIstEntwurf}
                 kompakt={dichte === 'kompakt'}
                 anreisserZeigen={anreisserZeigen}
@@ -2243,7 +2360,9 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           )}
 
           {ansicht === 'kontakte' && <KontaktePage />}
-          {ansicht === 'ki' && <KiSeite istBetreiber={ich?.ist_betreiber ?? false} />}
+          {ansicht === 'ki' && (
+            <KiSeite istBetreiber={ich?.ist_betreiber ?? false} ichNeuLaden={ichNeuLaden} />
+          )}
 
           {ansicht === 'ueber' && <UeberPage />}
 

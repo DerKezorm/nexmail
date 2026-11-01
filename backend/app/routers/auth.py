@@ -86,6 +86,9 @@ class Ich(BaseModel):
     #: Ob dieses Konto KI-Dienste ueberhaupt benutzen darf (Installation
     #: UND Konto). Daran haengt der Punkt in der Leiste.
     ki_erlaubt: bool = False
+    #: Ob eine eingegangene Mail zusammengefasst werden darf: alle Riegel und
+    #: beide Schalter. Daran haengt der Knopf im Lesebereich.
+    ki_fremde_post: bool = False
     #: Die laufende Version und bis wohin dieses Konto „Was ist neu“ gesehen
     #: hat. Weichen sie ab und gibt es zur laufenden einen Eintrag, steht der
     #: Banner da. ⚠️ **Verglichen wird auf Gleichheit, nicht auf „neuer“**:
@@ -440,6 +443,7 @@ def ich(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
         ki_aktiv=person.ki_aktiv and kidienst.erlaubt_fuer(db, person),
         absenderlogos=person.absenderlogos_laden,
         ki_erlaubt=kidienst.erlaubt_fuer(db, person),
+        ki_fremde_post=kidienst.fremde_post_fuer(db, person),
         hat_kennwort=bool(person.passwort_hash),
         version=__version__,
         wasneu_gesehen=person.wasneu_gesehen,

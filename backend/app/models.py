@@ -146,6 +146,12 @@ class Benutzer(Base):
     #: **Ausnahmeliste**, nicht die Einladungsliste.
     ki_erlaubt: Mapped[bool] = mapped_column(Boolean, default=True)
     ki_aktiv: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Dürfen **eingegangene** Mails an den Dienst gehen (Zusammenfassen)?
+    #: ⚠️ **Eine eigene Frage, ab Werk aus.** Ein Entwurf ist der eigene Text;
+    #: eine eingegangene Mail hat jemand anderes geschrieben, und der hat nie
+    #: zugestimmt, dass sie bei einem KI-Anbieter landet. Der Betreiber hat
+    #: dafür zusätzlich einen eigenen Riegel (``kidienst.fremde_post_erlaubt``).
+    ki_fremde_post: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     #: Die Basisadresse, OpenAI-foermig. Mit Schraegstrich am Ende, damit
     #: ``urljoin`` daraus ``…/models`` und ``…/chat/completions`` macht.
     ki_url: Mapped[str] = mapped_column(String(500), default="")
@@ -496,6 +502,14 @@ class Konto(Base):
     #: Lesen der Ordnerliste, leer heißt: keiner oder noch nicht gefragt.
     namensraum: Mapped[str] = mapped_column(String(100), default="", server_default="")
 
+    #: Hält nexmail eine zweite Verbindung offen, um neue Post sofort zu sehen
+    #: (IMAP IDLE, ``services/postfachwache.py``)?
+    #: ⚠️ **Je Postfach und ab Werk aus.** Alles andere in nexmail kommt mit
+    #: einer Verbindung je Postfach aus, und mancher Anbieter wirft darüber
+    #: hinaus heraus. Das soll niemanden treffen, der es nicht eingeschaltet
+    #: hat. Der Takt läuft in jedem Fall weiter.
+    idle_aktiv: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+
     benutzer: Mapped[Benutzer] = relationship()
     ordner: Mapped[list["Ordner"]] = relationship(
         back_populates="konto", cascade="all, delete-orphan"
@@ -708,6 +722,16 @@ class Nachricht(Base):
     #: bekommen kein Logo; nachgeholt wird die Zeile nicht.
     pruefer: Mapped[str] = mapped_column(String(255), default="")
     dmarc_bestanden: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    #: Wie man sich von dieser Liste abmeldet, als JSON aus ``List-Unsubscribe``
+    #: (``services/abbestellen.py``). Leer heißt: keine Angabe.
+    #: ⚠️ **Gesetzt beim Holen des Körpers**, nicht beim Abgleich: Gebraucht
+    #: wird es nur an einer offenen Mail. Schon früher geöffnete Mails bekommen
+    #: es nicht nachträglich; das hieße, beim Öffnen wieder den Mailserver zu
+    #: fragen, und der nächste Newsletter trägt es ohnehin.
+    abbestellen: Mapped[str] = mapped_column(Text, default="", server_default="")
+    #: Wann die Abmeldung hinausging. Ein zweites Mal wird nicht gefragt.
+    abbestellt_am: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
 
     anreisser: Mapped[str] = mapped_column(Text, default="")
     koerper_text: Mapped[str] = mapped_column(Text, default="")

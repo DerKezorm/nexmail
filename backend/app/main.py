@@ -427,11 +427,17 @@ async def lebenslauf(_: FastAPI):
     # „fuenf Minuten vorher“ waere bei einem weiteren Takt im schlechtesten
     # Fall erst nach dem Termin draußen.
     taktdienst.push_starten()
+    # ⚠️ Nach dem Takt und an ihm hängend: Wer ihn abschaltet, meint genau das,
+    # was die Wache täte. Ohne eingeschaltetes Postfach hält sie keine Leitung.
+    from .services import postfachwache
+
+    postfachwache.starten()
 
     logger.info("nexmail %s is ready.", __version__)
     try:
         yield
     finally:
+        postfachwache.anhalten()
         taktdienst.anhalten()
 
 

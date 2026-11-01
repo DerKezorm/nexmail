@@ -30,15 +30,17 @@ import {
   Plus,
   Printer,
   ReplyAll,
+  Sparkles,
   Sun,
   Tag,
   Trash2,
+  X,
 } from 'lucide-react'
 import type { Nachricht, Schlagwort } from '../daten/typen'
 import { Absenderbild } from './Absenderbild'
 import type { VolleNachricht } from '../api/laden'
 import type { Einladung } from '../api/laden'
-import { absenderVergessen, bilderAnzeigen, einladungLaden } from '../api/laden'
+import { absenderVergessen, bilderAnzeigen, einladungLaden, zusammenfassen } from '../api/laden'
 import { Einladungskarte } from './Einladungskarte'
 import { anzeigename, groesse, langesDatum } from '../lib/format'
 import { Schlagwortmarke } from './Schlagwortmarke'
@@ -53,6 +55,7 @@ import { leseseite } from '../lib/leserahmen'
 import { ankername, linkart, mailtoLesen } from '../lib/leselinks'
 import type { Vorbelegung } from '../lib/leselinks'
 import { useGemerkt } from '../lib/haken'
+import { servermeldung } from '../lib/servermeldung'
 
 interface Props {
   nachricht: VolleNachricht | null
@@ -99,6 +102,12 @@ interface Props {
   /** Die Bildadresse des Absenders, dieselbe wie in der Liste. Fehlt sie,
    *  stehen nur die Initialen da. */
   bildQuelle?: (n: Nachricht) => string
+  /** Von dieser Liste abmelden: fragt nach und sagt, ob die Abmeldung
+   *  hinausging. Fehlt der Rückruf, gibt es den Knopf nicht. */
+  aufAbbestellen?: (n: VolleNachricht) => Promise<boolean>
+  /** Darf diese Mail zusammengefasst werden? Alle Riegel und beide Schalter,
+   *  aus `Ich.ki_fremde_post`. */
+  kiZusammenfassen?: boolean
 }
 
 export function Lesebereich({
@@ -115,8 +124,17 @@ export function Lesebereich({
   dunkelmodus,
   aufMailto,
   bildQuelle,
+  aufAbbestellen,
+  kiZusammenfassen = false,
 }: Props) {
   const { t, i18n } = useTranslation()
+  const [abbestellt, setAbbestellt] = useState(false)
+  const [meldetAb, setMeldetAb] = useState(false)
+  /* ⚠️ **Nur hier, nirgends gespeichert.** Die Antwort eines Modells gehört
+     nicht dauerhaft neben eine Mail, als wäre sie ein Teil davon. */
+  const [kurzfassung, setKurzfassung] = useState<{ text: string; gekuerzt: boolean } | null>(null)
+  const [fasstZusammen, setFasstZusammen] = useState(false)
+  const [kurzFehler, setKurzFehler] = useState('')
   const [freigegeben, setFreigegeben] = useState<string | null>(null)
   /* Die Adresse, die gerade dauerhaft freigegeben wurde — für die
      Bestätigungszeile samt „Rückgängig". `null` heißt: nichts gemerkt. */
@@ -154,7 +172,45 @@ export function Lesebereich({
     setHoehe(0)
     setEinladung(null)
     setEigenerGrund(false)
+    setAbbestellt(false)
+    setMeldetAb(false)
+    setKurzfassung(null)
+    setFasstZusammen(false)
+    setKurzFehler('')
   }, [nachricht?.id])
+
+  async function abmelden() {
+    if (!nachricht || !aufAbbestellen) return
+    const fuer = nachricht.id
+    setMeldetAb(true)
+    try {
+      const ging = await aufAbbestellen(nachricht)
+      if (ging && aktuelleId.current === fuer) setAbbestellt(true)
+    } finally {
+      if (aktuelleId.current === fuer) setMeldetAb(false)
+    }
+  }
+
+  /* ⚠️ **Dieselbe Wache wie bei den Bildern.** Die Antwort braucht Sekunden, und
+     wer weiterklickt, soll nicht die Zusammenfassung der vorigen Mail über der
+     nächsten stehen haben. */
+  async function kurzfassen() {
+    if (!nachricht) return
+    const fuer = nachricht.id
+    setKurzFehler('')
+    setKurzfassung(null)
+    setFasstZusammen(true)
+    try {
+      const raus = await zusammenfassen(fuer, i18n.language)
+      if (aktuelleId.current === fuer) setKurzfassung(raus)
+    } catch (f) {
+      if (aktuelleId.current === fuer) {
+        setKurzFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+      }
+    } finally {
+      if (aktuelleId.current === fuer) setFasstZusammen(false)
+    }
+  }
 
   /* ⚠️ **Mit Wache gegen die späte Antwort.** Wer weiterklickt, während die
      Einladung noch geladen wird, soll nicht die des vorigen Termins vor sich
@@ -365,6 +421,15 @@ export function Lesebereich({
         )}
         <span className="flex-1" />
 
+        {kiZusammenfassen && !istEntwurf && (
+          <IconButton
+            icon={<Sparkles />}
+            label={t('ki.zusammenfassen')}
+            disabled={fasstZusammen}
+            onClick={() => void kurzfassen()}
+          />
+        )}
+
         {/* ⚠️ **Beides führt an nexmail vorbei — mit Absicht.**
             Die `.eml` ist die Mail, wie sie ankam: alles drin, nichts
             bereinigt. Genau das braucht man, um sie aufzubewahren oder
@@ -571,7 +636,84 @@ export function Lesebereich({
               {langesDatum(nachricht.datum, i18n.language)}
             </time>
           </div>
+
+          {/* ⚠️ **Eine eigene Zeile, nicht in der Leiste oben.** Der Knopf
+              gehört zu dieser Mail und trägt den Namen des Absenders auf dem
+              Weg zur Rückfrage; zwischen Löschen und Drucken wäre er ein
+              Fehlklick von einer Handlung nach draußen entfernt. */}
+          {nachricht.abbestellen && aufAbbestellen && !istEntwurf && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {abbestellt || nachricht.abbestellen.erledigt ? (
+                <>
+                  <Check className="size-4 shrink-0 text-success" aria-hidden />
+                  <p className="mb-0 min-w-0 flex-1 text-[12px] text-fg-4">
+                    {t('lesen.abbestellt', { stelle: nachricht.abbestellen.stelle })}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mb-0 text-[12px] text-fg-4">{t('lesen.abbestellen_hinweis')}</p>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={meldetAb}
+                    onClick={() => void abmelden()}
+                  >
+                    {t('lesen.abbestellen')}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
         </header>
+
+        {/* ⚠️ **Als Text, nie als HTML.** Die Mail, aus der das entstand, kann
+            dem Modell einen Link untergeschoben haben. React setzt hier
+            Zeichen, kein Markup, und das Etikett sagt, wessen Worte das sind. */}
+        {(fasstZusammen || kurzfassung || kurzFehler) && (
+          <section
+            aria-label={t('ki.zusammenfassung_titel')}
+            className="mx-6 mt-4 flex flex-col gap-2 rounded-lg border border-line bg-surface-2 px-4 py-3"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-4 shrink-0 text-fg-4" aria-hidden />
+              <span className="flex-1 text-[12px] font-semibold text-fg-2">
+                {t('ki.zusammenfassung_titel')}
+              </span>
+              {!fasstZusammen && (
+                <IconButton
+                  icon={<X />}
+                  label={t('ki.zusammenfassung_schliessen')}
+                  onClick={() => {
+                    setKurzfassung(null)
+                    setKurzFehler('')
+                  }}
+                />
+              )}
+            </div>
+            {fasstZusammen && (
+              <p role="status" className="mb-0 text-[13px] text-fg-3">
+                {t('ki.zusammenfassung_laeuft')}
+              </p>
+            )}
+            {kurzFehler && (
+              <p role="alert" className="mb-0 text-[13px] text-danger">
+                {kurzFehler}
+              </p>
+            )}
+            {kurzfassung && (
+              <>
+                <p className="mb-0 text-[13px] whitespace-pre-wrap text-fg-1">{kurzfassung.text}</p>
+                {kurzfassung.gekuerzt && (
+                  <p className="mb-0 text-[12px] text-warning">
+                    {t('ki.zusammenfassung_gekuerzt')}
+                  </p>
+                )}
+                <p className="mb-0 text-[11px] text-fg-4">{t('ki.zusammenfassung_hinweis')}</p>
+              </>
+            )}
+          </section>
+        )}
 
         {einladung && (
           <Einladungskarte

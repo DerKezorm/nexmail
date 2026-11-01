@@ -214,6 +214,30 @@ your signature are never sent, and the AI page lists verbatim what went out.
 Off by default, and the operator can block it for the whole installation or
 for single accounts.
 
+**Summaries, only if you allow them.** With the same service, a button in the
+reading pane summarises a message you received. That sends text somebody else
+wrote to your AI provider, so it is a decision of its own: the operator has a
+separate switch for received mail, each user has one more, and nothing goes out
+until you click. The sender, subject and text then appear verbatim in the same
+list as everything else. The answer is shown as plain text and labelled as what
+it is, because a message can try to talk the model into saying something else.
+
+**Unsubscribing.** A message that names a way off its mailing list gets a button
+below the sender, and a question first that says who is about to hear from you.
+If the sender offers one-click unsubscribing (RFC 8058) and the message passed
+your provider's sender check, nexmail's server sends the request. Otherwise the
+sender's page opens in a new tab, or a prepared message waits in the compose
+window for you to send. In the junk folder there is no button: unsubscribing
+there tells a spammer the address is read. Messages opened before this feature
+existed keep what they had; the next one from the list has the button.
+
+**New mail right away.** An open window now follows what the server fetched, so
+the list updates by itself. By default that happens with the regular sync, every
+two minutes. Turn on *See new mail right away* for a mailbox and nexmail keeps a
+second connection open (IMAP IDLE), and a new message shows up within seconds.
+It is off by default because some providers limit connections; if the server
+cannot do IDLE, the form says so and the regular sync carries on.
+
 **Moving between mailboxes.** Right-click a message, *Move*, and pick a folder
 of another account. Dragging works within one account only. `MOVE` and `COPY`
 only work inside one connection, so this fetches, appends at the target,

@@ -25,6 +25,7 @@ from ..services import (
     imap as imapdienst,
     konten as kontendienst,
     ordner as ordnerdienst,
+    postfachwache,
     wiedervorlage as wiedervorlagedienst,
 )
 from ..services import aliase as aliasdienst
@@ -97,6 +98,8 @@ class Eingabe(BaseModel):
     aliase: list[AliasEingabe] | None = None
     #: Statt der Passwoerter: eine erteilte Zustimmung (OAuth).
     oauth_zugang_id: str = Field(default="", max_length=32)
+    #: Neue Post sofort sehen. ⚠️ Nicht mitgeschickt heisst unveraendert.
+    idle_aktiv: bool | None = None
 
     def als_zugangsdaten(self) -> Zugangsdaten:
         felder = self.model_dump()
@@ -217,6 +220,10 @@ class KontoAntwort(BaseModel):
     #: gehoert in die Rueckfrage**, sonst hakt man „Kalender mit entfernen" an,
     #: ohne zu wissen, wie viele das sind.
     oauth_kalender: int = 0
+    idle_aktiv: bool = False
+    #: Was die Postfachwache gerade tut: ``lauscht``, ``getrennt``, ``kein_idle``
+    #: oder leer. Sonst sähe man nicht, dass ein Server kein IDLE kann.
+    idle_zustand: str = ""
 
 
 def _antwort(konto) -> KontoAntwort:
@@ -245,6 +252,8 @@ def _antwort(konto) -> KontoAntwort:
         oauth_art=konto.oauth_zugang.art if konto.oauth_zugang else "",
         oauth_zugang_id=konto.oauth_zugang_id or "",
         oauth_kalender=len(konto.oauth_zugang.kalender) if konto.oauth_zugang else 0,
+        idle_aktiv=konto.idle_aktiv,
+        idle_zustand=postfachwache.zustand(konto.id),
     )
 
 
@@ -416,6 +425,7 @@ def aendern(
     if konto.stoerung:
         konto.stoerung = ""
         db.commit()
+    postfachwache.nachsehen()
     return _antwort(konto)
 
 
