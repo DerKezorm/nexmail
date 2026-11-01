@@ -11,7 +11,7 @@
  */
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { anmelden, jederKnopfHatEinenNamen, keineRohenSchluessel, postfach } from './hilfen'
+import { anmelden, jederKnopfHatEinenNamen, keineRohenSchluessel, postfach, TESTPOSTFACH } from './hilfen'
 
 test.beforeEach(({ page: _page }, info) => {
   test.skip(info.project.name === 'schmal', 'Der Lesebereich wird breit geprüft.')
@@ -158,6 +158,64 @@ test('Beim Wechsel der Mail fällt die Zusammenfassung weg', async ({ page }) =>
   await page.locator('button[draggable="true"]').nth(1).click()
 
   await expect(page.getByText('Das gehört zur ersten Mail.')).toHaveCount(0)
+})
+
+/* ⚠️ Gemessen an der Farbe, nicht am Klassennamen: Mit 10 bis 14 % Deckkraft
+   stand die Liste mitten in der Meldung und ließ sich kaum lesen. */
+test('Eine Absage steht auf deckendem Grund', async ({ page }) => {
+  await vorspielen(page, null)
+  await page.route('**/api/nachrichten/loeschen', (route) =>
+    route.fulfill({ status: 400, json: { detail: 'liegt_schon_dort' } }),
+  )
+  await ersteMailOeffnen(page)
+
+  await page.keyboard.press('Delete')
+
+  const meldung = page.getByRole('alert').filter({ hasText: 'liegt' })
+  await expect(meldung).toBeVisible()
+  const grund = await meldung.evaluate((e) => getComputedStyle(e).backgroundColor)
+  expect(grund, `Hintergrund ${grund}`).toMatch(/^rgb\(/)
+})
+
+test('Eine Mail lässt sich auf den Ordner eines anderen Postfachs ziehen', async ({ page }) => {
+  /* ⚠️ Bis 0.24.7 wies die Ordnerspalte das ab, obwohl der Server es längst
+     konnte. Vorgespielt: Der Test soll keine echte Mail umziehen. */
+  await vorspielen(page, null)
+  const gesendet: { ids: string[]; ordner_id: string }[] = []
+  await page.route('**/api/nachrichten/verschieben', async (route) => {
+    gesendet.push(route.request().postDataJSON())
+    await route.fulfill({ json: { bewegt: 1, nicht_bewegt: 0, rueckweg: null } })
+  })
+  await ersteMailOeffnen(page)
+  const fremde = page
+    .locator('section')
+    .filter({ hasNotText: TESTPOSTFACH })
+    .getByRole('button', { name: 'Posteingang' })
+  test.skip((await fremde.count()) === 0, 'Braucht ein zweites Postfach.')
+
+  await page.locator('button[draggable="true"]').first().dragTo(fremde.last())
+
+  await expect.poll(() => gesendet.length).toBe(1)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('Was liegenblieb, steht neben dem Rückgängig', async ({ page }) => {
+  await vorspielen(page, null)
+  await page.route('**/api/nachrichten/loeschen', (route) =>
+    route.fulfill({
+      json: {
+        bewegt: 1,
+        nicht_bewegt: 2,
+        rueckweg: { konto_id: '', quelle_pfad: '', ziel_pfad: '', message_ids: ['<a@example.org>'], text: '', teile: [] },
+      },
+    }),
+  )
+  await ersteMailOeffnen(page)
+
+  await page.keyboard.press('Delete')
+
+  await expect(page.getByRole('alert').filter({ hasText: 'Nicht verschoben: 2' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeVisible()
 })
 
 test('Eine Änderung beim Server kommt ohne Handlung in die Liste', async ({ page }) => {

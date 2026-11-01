@@ -53,6 +53,11 @@ class Rueckweg:
     #: Nur gesetzt, wenn der Zug ueber eine Kontogrenze ging. Leer heisst:
     #: dasselbe Postfach, und der Rueckweg ist der einfache.
     ziel_konto_id: str = ""
+    #: Nur bei einer Auswahl aus mehreren Ordnern: je Ordner ein Rückweg, und die
+    #: Felder oben bleiben leer. Siehe ``_je_ordner``.
+    teile: list[Rueckweg] = field(default_factory=list)
+    #: Mails einer solchen Auswahl, die liegenblieben, weil ihr Teil scheiterte.
+    nicht_bewegt: int = 0
 
 
 def _kann_move(klient) -> bool:
@@ -88,24 +93,72 @@ def _ziel_finden(db: Session, konto: Konto, rolle: str) -> Ordner:
     return ordner
 
 
+def _je_ordner(db: Session, nachrichten: list[Nachricht], ziel_von, text: str) -> Rueckweg:
+    """Eine Auswahl Ordner für Ordner erledigen.
+
+    ⚠️ **Mehrere Ordner sind der Normalfall**, nicht die Ausnahme: „Alle
+    Posteingänge", „Markiert" und jede Suche mischen Postfächer und Ordner. Ein
+    IMAP-Befehl kennt aber nur einen Ordner, also ist es je Ordner ein Zug, und
+    jede Mail landet im Ziel ihres eigenen Postfachs.
+
+    ⚠️ **Ein Teil, der scheitert, hält die anderen nicht auf.** Wer auf den
+    ersten Fehler hin abbricht, lässt die übrigen Postfächer stehen und verliert
+    den Rückweg dessen, was schon erledigt ist. Scheitert alles, kommt der erste
+    Fehler heraus, wie beim einzelnen Zug.
+    """
+    gruppen: dict[tuple[str, int], list[Nachricht]] = {}
+    for nachricht in nachrichten:
+        gruppen.setdefault((nachricht.konto_id, nachricht.ordner_id), []).append(nachricht)
+
+    if len(gruppen) == 1:
+        return _ein_ordner(db, nachrichten, ziel_von(nachrichten[0]), text)
+
+    teile: list[Rueckweg] = []
+    nicht_bewegt = 0
+    erster = None
+    for (konto_id, ordner_id), gruppe in gruppen.items():
+        try:
+            ziel = ziel_von(gruppe[0])
+            # Was schon dort liegt, ist erledigt, nicht gescheitert.
+            if ordner_id != ziel.id:
+                teile.append(_ein_ordner(db, gruppe, ziel, text))
+        except Exception as fehler:  # noqa: BLE001
+            db.rollback()
+            nicht_bewegt += len(gruppe)
+            erster = erster or fehler
+            logger.warning("Mailbox %s kept %s message(s): %s", konto_id, len(gruppe), fehler)
+
+    if not teile:
+        raise erster or HandelnFehler("liegt_schon_dort")
+    return Rueckweg(
+        konto_id="",
+        quelle_pfad="",
+        ziel_pfad="",
+        message_ids=[kennung for teil in teile for kennung in teil.message_ids],
+        text=text,
+        teile=teile,
+        nicht_bewegt=nicht_bewegt,
+    )
+
+
 def verschieben(
     db: Session, nachrichten: list[Nachricht], ziel: Ordner, text: str = ""
 ) -> Rueckweg:
-    """Nachrichten in einen anderen Ordner desselben Postfachs schieben."""
+    """Nachrichten in einen Ordner schieben, von wo auch immer sie kommen."""
     if not nachrichten:
         raise HandelnFehler("nichts_ausgewaehlt")
+    return _je_ordner(db, nachrichten, lambda _: ziel, text)
 
-    konto_ids = {n.konto_id for n in nachrichten}
-    if len(konto_ids) != 1:
-        raise HandelnFehler("mehrere_postfaecher")
+
+def _ein_ordner(
+    db: Session, nachrichten: list[Nachricht], ziel: Ordner, text: str = ""
+) -> Rueckweg:
+    """Nachrichten aus genau einem Ordner schieben."""
     if ziel.konto_id != nachrichten[0].konto_id:
         # Über die Kontogrenze ist ein anderer Vorgang: Der Server kann nicht
         # kopieren, was er nicht hat. Siehe ``ueber_konten``.
         return ueber_konten(db, nachrichten, ziel, text)
 
-    quelle_ids = {n.ordner_id for n in nachrichten}
-    if len(quelle_ids) != 1:
-        raise HandelnFehler("mehrere_ordner")
     if nachrichten[0].ordner_id == ziel.id:
         raise HandelnFehler("liegt_schon_dort")
 
@@ -202,8 +255,6 @@ def ueber_konten(
     ziel_konto = db.get(Konto, ziel.konto_id)
     if quell_konto is None or ziel_konto is None:
         raise HandelnFehler("postfach_weg")
-    if len({n.ordner_id for n in nachrichten}) != 1:
-        raise HandelnFehler("mehrere_ordner")
 
     quell_pw, _ = kontendienst.passwoerter_lesen(quell_konto)
     ziel_pw, _ = kontendienst.passwoerter_lesen(ziel_konto)
@@ -294,11 +345,38 @@ def ueber_konten(
 
 
 def in_rolle(db: Session, nachrichten: list[Nachricht], rolle: str, text: str = "") -> Rueckweg:
-    """In den Papierkorb, ins Archiv oder in den Junk-Ordner."""
+    """In den Papierkorb, ins Archiv oder in den Junk-Ordner.
+
+    ⚠️ **Jede Mail in den ihres eigenen Postfachs.** Das Ziel hängt deshalb an
+    der Mail, nicht an der Auswahl.
+    """
     if not nachrichten:
         raise HandelnFehler("nichts_ausgewaehlt")
-    konto = db.get(Konto, nachrichten[0].konto_id)
-    return verschieben(db, nachrichten, _ziel_finden(db, konto, rolle), text)
+
+    def ziel_von(nachricht: Nachricht) -> Ordner:
+        return _ziel_finden(db, db.get(Konto, nachricht.konto_id), rolle)
+
+    return _je_ordner(db, nachrichten, ziel_von, text)
+
+
+def _zurueck_in_teilen(db: Session, weg: Rueckweg) -> int:
+    """Eine gemischte Auswahl zurücknehmen, Teil für Teil.
+
+    ⚠️ Auch hier hält ein Teil, der scheitert, die anderen nicht auf. Gemeldet
+    wird er trotzdem: Rückgängig soll nicht „erledigt" sagen, solange Post fehlt.
+    """
+    zurueckgeholt = 0
+    erster = None
+    for teil in weg.teile:
+        try:
+            zurueckgeholt += zurueck(db, teil)
+        except Exception as fehler:  # noqa: BLE001
+            db.rollback()
+            erster = erster or fehler
+            logger.warning("Mailbox %s kept its messages: %s", teil.konto_id, fehler)
+    if erster is not None:
+        raise erster
+    return zurueckgeholt
 
 
 def zurueck(db: Session, weg: Rueckweg) -> int:
@@ -307,6 +385,8 @@ def zurueck(db: Session, weg: Rueckweg) -> int:
     Gesucht wird im Zielordner nach der ``Message-ID`` — die überlebt das
     Verschieben, die Nummer nicht.
     """
+    if weg.teile:
+        return _zurueck_in_teilen(db, weg)
     if not weg.message_ids:
         raise HandelnFehler("kein_rueckweg")
 

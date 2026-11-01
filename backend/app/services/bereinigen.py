@@ -113,6 +113,11 @@ _IMG_AUSGEKLINKT = re.compile(
 )
 _TAGS = re.compile(r"<[^>]+>")
 _LEERRAUM = re.compile(r"\s+")
+_KOMMENTARE = re.compile(r"<!--.*?(?:-->|\Z)", re.DOTALL)
+_UNSICHTBAR = re.compile(
+    r"<(style|script|title|head)\b[^>]*>.*?(?:</\1\s*>|\Z)", re.DOTALL | re.IGNORECASE
+)
+_ANGEFANGEN = re.compile(r"<[^>]*\Z")
 
 
 def saeubern(roh: str) -> str:
@@ -300,8 +305,18 @@ def faerbt_sich_selbst(html: str) -> bool:
 
 
 def text_aus_html(html: str, laenge: int = 200) -> str:
-    """Ein Anreißer für die Liste, aus HTML wenn nichts anderes da ist."""
-    ohne = _TAGS.sub(" ", html)
+    """Ein Anreißer für die Liste, aus HTML wenn nichts anderes da ist.
+
+    ⚠️ **Erst was nie angezeigt wird, dann die Marken.** ``_TAGS`` nimmt nur die
+    Marken weg; der Text in ``<style>`` blieb stehen, und bei Newslettern stand
+    ``#outlook a { padding:0; }`` in der Liste. Der Abgleich holt nur 512 Byte:
+    Oft endet der Block gar nicht, deshalb gilt das Dateiende als Ende, und
+    eine abgeschnittene Marke am Schluss fällt ebenfalls weg.
+    """
+    ohne = _KOMMENTARE.sub(" ", html)
+    ohne = _UNSICHTBAR.sub(" ", ohne)
+    ohne = _TAGS.sub(" ", ohne)
+    ohne = _ANGEFANGEN.sub(" ", ohne)
     ohne = (
         ohne.replace("&nbsp;", " ")
         .replace("&amp;", "&")

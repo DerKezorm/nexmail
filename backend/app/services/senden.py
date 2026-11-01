@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import smtplib
+import threading
 from datetime import datetime, timedelta, timezone
 from email import message_from_bytes
 from email.utils import getaddresses, parseaddr
@@ -228,6 +229,18 @@ def versenden(db: Session, zeile: Ausgang) -> None:
     zeile.letzter_fehler = ""
     db.commit()
 
+    # ⚠️ **Mit Frist (die App) läuft die Ablage im Hintergrund.** Sie wartet auf
+    # das Schloss des Postfachs, und das hält beim Nachholen der Abgleich. Die
+    # Frist griffe hier, die Mail wäre draußen und fehlte im Gesendet-Ordner.
+    if abgleich.SCHLOSS_FRIST.get() is not None:
+        threading.Thread(
+            target=_spaeter_ablegen,
+            args=(konto.id, roh, datei),
+            name="nexmail-gesendet",
+            daemon=True,
+        ).start()
+        return
+
     try:
         _in_gesendet_ablegen(db, konto, roh)
     except Exception as fehler:  # noqa: BLE001
@@ -235,6 +248,20 @@ def versenden(db: Session, zeile: Ausgang) -> None:
         # bringt den Benutzer dazu, sie ein zweites Mal zu schicken.
         logger.warning("The message was sent but could not be filed in Sent: %s", fehler)
 
+    datei.unlink(missing_ok=True)
+
+
+def _spaeter_ablegen(konto_id: str, roh: bytes, datei: Path) -> None:
+    """Die Gesendet-Kopie ohne Anfrage dahinter; hier darf es dauern."""
+    from ..db import SessionLocal
+
+    try:
+        with SessionLocal() as db:
+            konto = db.get(Konto, konto_id)
+            if konto is not None:
+                _in_gesendet_ablegen(db, konto, roh)
+    except Exception as fehler:  # noqa: BLE001
+        logger.warning("The message was sent but could not be filed in Sent: %s", fehler)
     datei.unlink(missing_ok=True)
 
 

@@ -338,8 +338,6 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   // selbst — eine Meldung, die man wegklicken muss, wird weggeklickt.
   const { fragen, fenster: nachfrage } = useNachfrage()
   const [stoerung, setStoerung] = useState('')
-  // Aus welchem Postfach gerade eine Nachricht gezogen wird.
-  const [ziehtAus, setZiehtAus] = useState('')
   const stoerUhr = useRef<number | undefined>(undefined)
   useEffect(() => {
     if (!stoerung) return
@@ -1177,13 +1175,18 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
 
   const handeln = useCallback(
     async (
-      tun: () => Promise<{ bewegt: number; rueckweg: Rueckweg | null }>,
+      tun: () => Promise<{ bewegt: number; nicht_bewegt?: number; rueckweg: Rueckweg | null }>,
       text: string,
     ) => {
       const vorher = vorDerHandlung()
       try {
         const ergebnis = await tun()
         merkeRueckweg(text, ergebnis.rueckweg)
+        // ⚠️ Der Rest ist erledigt, also keine Absage. Aber was liegenblieb,
+        // muss dastehen: Sonst steht „gelöscht" über Post, die noch da ist.
+        if (ergebnis.nicht_bewegt) {
+          setStoerung(t('stoerung.nicht_alle', { anzahl: ergebnis.nicht_bewegt }))
+        }
       } catch (f) {
         // ⚠️ **Nicht schlucken.** Hier stand einmal ein leeres `catch` mit der
         // Begründung, es ändere sich ja nichts. Genau das war das Problem: Der
@@ -2241,16 +2244,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                     ? { links: wischLinks, rechts: wischRechts, ausfuehren: wischAusfuehren }
                     : undefined
                 }
-                ziehtAusKonto={ziehtAus}
-                aufAbweisung={setStoerung}
-                aufZiehen={(n) => {
-                  // Merken, aus welchem Postfach gezogen wird — die
-                  // Ordnerspalte kann Fremde damit begründet abweisen.
-                  setZiehtAus(n.kontoId)
-                  return betroffene(n.id)
-                }}
+                aufZiehen={(n) => betroffene(n.id)}
                 aufAblegen={(ordnerId, ids) => {
-                  setZiehtAus('')
                   void handeln(() => verschieben(ids, ordnerId), t('rueck.verschoben'))
                 }}
                 aufPostfachHinzufuegen={postfachHinzufuegen}
@@ -2469,13 +2464,16 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       )}
 
       {/* Was nicht ging, und warum. Sitzt an derselben Stelle wie der
-          Rückweg — dort schaut man nach einer Handlung ohnehin hin. */}
+          Rückweg — dort schaut man nach einer Handlung ohnehin hin.
+          ⚠️ **Deckender Grund, nicht `bg-danger-soft`.** Das sind 10 bis 14 %
+          Deckkraft für Flächen im Fluss; über der Liste stand der Text darunter
+          mitten in der Meldung. */}
       {stoerung && (
         <div
           role="alert"
-          className="fixed bottom-5 left-1/2 z-[71] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-danger bg-danger-soft px-4 py-2 shadow-[var(--shadow-3)]"
+          className="fixed bottom-5 left-1/2 z-[71] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-danger bg-surface-1 px-4 py-2 shadow-[var(--shadow-3)]"
         >
-          <span className="text-[13px] text-danger">{stoerung}</span>
+          <span className="text-[13px] text-fg-1">{stoerung}</span>
         </div>
       )}
 
@@ -2486,7 +2484,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       {stammFehler && (
         <div
           role="alert"
-          className="fixed top-[calc(var(--kopf-h,56px)+12px)] left-1/2 z-[71] flex max-w-[min(92vw,560px)] -translate-x-1/2 items-center gap-3 rounded-lg border border-danger bg-danger-soft px-4 py-2.5 shadow-[var(--shadow-3)]"
+          className="fixed top-[calc(var(--kopf-h,56px)+12px)] left-1/2 z-[71] flex max-w-[min(92vw,560px)] -translate-x-1/2 items-center gap-3 rounded-lg border border-danger bg-surface-1 px-4 py-2.5 shadow-[var(--shadow-3)]"
         >
           <span className="text-[13px] text-fg-1">{stammFehler}</span>
           <button

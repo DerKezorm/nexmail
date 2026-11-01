@@ -204,6 +204,7 @@
     "grund_kennwort_lang": "The password needs {{fehlen}} more character(s)."
   },
   "einstellungen": {
+    "iphone": "Connect iPhone",
     "api": "API keys",
     "abwesenheit": "Out of office",
     "aktiv": "Active",
@@ -988,7 +989,6 @@
     "name": "Name",
     "name_platzhalter": "e.g. Invoices",
     "umbenennen_hinweis": "Subfolders are renamed along with it.",
-    "fremdes_postfach": "IMAP cannot move messages between mailboxes. Forward the message instead.",
     "alles_gelesen": "Mark all as read",
     "markierte": "Flagged",
     "postausgang": "Outbox",
@@ -1242,7 +1242,30 @@
     "zu_betreiber": "API keys are turned off. Existing keys get no data at the moment, and new ones cannot be created.",
     "zuletzt": "last used {{wann}}"
   },
+  "iphone": {
+    "code_abtippen": "Or enter this in the app by hand:",
+    "adresse": "Address",
+    "code": "Code",
+    "abgelaufen": "This code has expired.",
+    "verbunden": "{{geraet}} is connected.",
+    "verbunden_hinweis": "The device is now listed under Security with your signed-in devices. You can disconnect it there.",
+    "wartet": "Waiting for the app. The code is good until {{zeit}}, for one device.",
+    "hinweis": "Scan the code with the iPhone's camera. A device has the same rights as your browser.",
+    "knopf": "Show code",
+    "neu": "Show a new code",
+    "zurueckziehen": "Withdraw",
+    "riegel": "Allow the iPhone app",
+    "riegel_hinweis": "While this is off, no app gets in, not even one already connected. The devices stay in the list.",
+    "riegel_zu": "The operator has turned the iPhone app off."
+  },
   "serverfehler": {
+    "app_abgeschaltet": "The operator has turned the iPhone app off for this installation.",
+    "app_adresse_fehlt": "The QR code needs the address nexmail is reachable at. Enter it under Administration, Server.",
+    "app_kopplung_unbekannt": "This code is not valid, or no longer. Show a new one in the browser.",
+    "app_von_vorn": "The stored state is too old and has to be read again.",
+    "app_zu_viele_kopplungen": "{{max}} codes are already open. Wait for them to expire, or withdraw one.",
+    "nachricht_laedt": "The message is still coming from the mail server. Try again in {{sekunden}} seconds.",
+    "postfach_beschaeftigt": "This mailbox is catching up on a lot of mail. Try again in {{sekunden}} seconds.",
     "abbestellen_abgewiesen": "The sender's server refused the request ({{code}}).",
     "abbestellen_adresse_unerlaubt": "This unsubscribe address is not allowed: it points into your own network or does not use HTTPS.",
     "abbestellen_nicht_erreichbar": "The sender's server could not be reached. Try again later.",
@@ -1398,8 +1421,6 @@
     "kopie_nicht_aufraeumbar": "The copy could not be cleaned up: {{grund}}",
     "liegt_schon_dort": "The message is already there.",
     "mbox_zu_gross": "The file is larger than {{max_gb}} GB. Thunderbird writes one mbox per folder; import them one at a time.",
-    "mehrere_ordner": "Please move from one folder at a time.",
-    "mehrere_postfaecher": "Messages from several mailboxes cannot be moved together.",
     "merkpunkt_unbrauchbar": "The bookmark for loading more is unusable.",
     "nachricht_unbekannt": "There is no such message.",
     "nachricht_weg": "The server no longer knows that message.",
@@ -1618,6 +1639,7 @@
   "stoerung": {
     "stamm": "Your mailboxes could not be loaded. They are not gone. The server is just not answering right now.",
     "nochmal": "Try again",
+    "nicht_alle": "Not moved: {{anzahl}}. Their mailbox has no matching folder or did not answer.",
     "zugangsdaten": "The mail server rejects the credentials: {{namen}}.",
     "zugangsdaten_folge": "No new mail arrives there until the password is right.",
     "zugangsdaten_knopf": "Open credentials"

@@ -95,11 +95,6 @@ interface Props {
   aufEinklappen: (kontoId: string) => void
   /** Fallengelassene Nachrichten in diesen Ordner verschieben. */
   aufAblegen?: (ordnerId: string, ids: string[]) => void
-  /** Aus welchem Postfach die gezogenen Nachrichten kommen — leer heißt: es
-   *  wird gerade nichts gezogen. */
-  ziehtAusKonto?: string
-  /** Ein Satz, warum ein Ordner den Zug nicht annehmen kann. */
-  aufAbweisung?: (grund: string) => void
   /** Gesetzt heißt: Jeder Ordner trägt ein sichtbares „…", das sein Menü als
    *  Blatt öffnet. ⚠️ Nur schmal gesetzt: Am Telefon gibt es keinen
    *  Rechtsklick, und ein langer Druck wäre ein Griff, den man nicht sieht. */
@@ -132,8 +127,6 @@ export function Ordnerspalte({
   eingeklappt,
   aufEinklappen,
   aufAblegen,
-  ziehtAusKonto = '',
-  aufAbweisung,
   gruppe,
   aufGruppe,
   ausgangZahl,
@@ -143,17 +136,6 @@ export function Ordnerspalte({
   // ist Ziehen ein Ratespiel: Man lässt los und weiß erst hinterher, wo es
   // gelandet ist.
   const [ueber, setUeber] = useState<string | null>(null)
-
-
-
-  /** Warum dieser Ordner den gerade gezogenen Zug nicht annehmen kann. */
-  function abweisungFuer(o: Ordner): string {
-    if (!ziehtAusKonto || o.kontoId === ziehtAusKonto) return ''
-    // ⚠️ IMAP kennt kein Verschieben über Kontogrenzen. Das ist keine Lücke
-    // in nexmail, sondern eine Eigenschaft des Protokolls — und genau deshalb
-    // muss es dastehen statt still nicht zu funktionieren.
-    return t('ordner.fremdes_postfach')
-  }
   const { t } = useTranslation()
 
   // ⚠️ Die Zahl an „Alle Posteingänge" folgt demselben Schlagwort wie die
@@ -293,11 +275,9 @@ export function Ordnerspalte({
                 onContextMenu={(e) => aufKontext(e, o)}
                 aufMenue={aufMenue ? () => aufMenue(o) : undefined}
                 ablegbar={Boolean(aufAblegen)}
-                abweisung={abweisungFuer(o)}
                 ueber={ueber === o.id}
                 aufUeber={(an) => setUeber(an ? o.id : null)}
                 aufAblegen={(ids) => aufAblegen?.(o.id, ids)}
-                aufAbweisungZeile={aufAbweisung}
               />
             ))}
           </section>
@@ -352,11 +332,9 @@ export function Ordnerspalte({
                     aufMenue={aufMenue ? () => aufMenue(o) : undefined}
                     onClick={() => aufZiel({ typ: 'ordner', id: o.id })}
                     ablegbar={Boolean(aufAblegen)}
-                    abweisung={abweisungFuer(o)}
                     ueber={ueber === o.id}
                     aufUeber={(an) => setUeber(an ? o.id : null)}
                     aufAblegen={(ids) => aufAblegen?.(o.id, ids)}
-                    aufAbweisungZeile={aufAbweisung}
                   />
                 ))}
             </section>
@@ -398,12 +376,9 @@ interface ZeileProps {
   tiefe?: number
   /** Nimmt dieser Ordner gezogene Nachrichten an? */
   ablegbar?: boolean
-  /** ⚠️ Gesetzt heißt: Der Ordner nimmt den Zug **nicht** an, und warum. */
-  abweisung?: string
   ueber?: boolean
   aufUeber?: (an: boolean) => void
   aufAblegen?: (ids: string[]) => void
-  aufAbweisungZeile?: (grund: string) => void
 }
 
 /* ⚠️ **Ein Unterordner gehört unter seinen Ordner, nicht ans Ende der Liste.**
@@ -477,11 +452,9 @@ function Zeile({
   stern,
   tiefe = 0,
   ablegbar = false,
-  abweisung = '',
   ueber = false,
   aufUeber,
   aufAblegen,
-  aufAbweisungZeile,
 }: ZeileProps) {
   const { t } = useTranslation()
   const knopf = (
@@ -495,10 +468,7 @@ function Zeile({
               // ⚠️ **``preventDefault`` ist hier keine Formsache.** Ohne das
               // lehnt der Browser das Ablegen ab, und der Ordner wirkt tot.
               e.preventDefault()
-              // ⚠️ **Ein Ordner, der nicht darf, sagt warum.** Vorher nahm er
-              // den Zug einfach nicht an — für den Betreiber sah das aus wie
-              // ein hakendes Ziehen, nicht wie eine Regel.
-              e.dataTransfer.dropEffect = abweisung ? 'none' : 'move'
+              e.dataTransfer.dropEffect = 'move'
               if (!ueber) aufUeber?.(true)
             }
           : undefined
@@ -509,10 +479,6 @@ function Zeile({
           ? (e) => {
               e.preventDefault()
               aufUeber?.(false)
-              if (abweisung) {
-                aufAbweisungZeile?.(abweisung)
-                return
-              }
               try {
                 const ids = JSON.parse(e.dataTransfer.getData('text/nexmail-nachrichten') || '[]')
                 if (Array.isArray(ids) && ids.length > 0) aufAblegen?.(ids)
@@ -530,9 +496,7 @@ function Zeile({
       className={
         'flex w-full min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] ' +
         'transition-colors duration-[var(--dur-fast)] [&>svg]:size-4 [&>svg]:shrink-0 ' +
-        (ueber && abweisung
-          ? 'bg-danger-soft ring-1 ring-danger ring-inset text-danger cursor-not-allowed'
-          : ueber
+        (ueber
           ? 'bg-accent-soft ring-1 ring-accent-line ring-inset text-accent-text'
           : aktiv
             ? 'bg-accent-soft font-medium text-accent-text'

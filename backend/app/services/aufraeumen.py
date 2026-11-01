@@ -106,6 +106,15 @@ def ki_vorgaenge_aufraeumen(db) -> int:
     return kidienst.vorgaenge_aufraeumen(db)
 
 
+def app_stand_aufraeumen(db) -> None:
+    """Der Änderungs-Feed und abgelaufene Kopplungen, wie die KI-Liste unabhängig
+    davon, ob ein Benutzer eine Aufräumrunde fällig hatte."""
+    from . import aenderungen, app_kopplung
+
+    aenderungen.aufraeumen(db)
+    app_kopplung.aufraeumen(db)
+
+
 def runde() -> dict[str, int]:
     """Eine Runde ueber alle Benutzer, bei denen sie faellig ist."""
     stand = {"benutzer": 0, "geloescht": 0}
@@ -148,6 +157,7 @@ def runde() -> dict[str, int]:
         # den zwei Tests woertlich festhalten; was hier wegfaellt, sind keine
         # Nachrichten und gehoert nicht in ``geloescht``.
         ki_vorgaenge_aufraeumen(db)
+        app_stand_aufraeumen(db)
 
         # ⚠️ **Nach dem Loeschen den Volltextindex zusammenschieben.** FTS5
         # traegt eine Loeschung als eigenen Eintrag nach; die alten Segmente

@@ -230,13 +230,6 @@ def test_geloescht_wird_erst_nach_dem_nachsehen(db, welt, monkeypatch):
     assert ablauf.index("nachsehen") < ablauf.index("loeschen")
 
 
-def test_aus_zwei_ordnern_auf_einmal_geht_nicht(db, welt):
-    _, _, quelle, ziel, nachrichten = welt
-    nachrichten[1].ordner_id = quelle.id + 99
-    with pytest.raises(handeln.HandelnFehler):
-        handeln.verschieben(db, nachrichten, ziel)
-
-
 # --- Rückgängig über die Grenze ------------------------------------------- #
 
 

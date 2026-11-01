@@ -148,8 +148,10 @@ def holen(db: Session, request: Request) -> Sitzung | None:
     if not token:
         return None
 
+    # ⚠️ **Nur Browser-Sitzungen.** Ein Gerätetoken im Cookie öffnet nichts,
+    # auch wenn sein Hash in derselben Tabelle steht.
     sitzung = db.execute(
-        select(Sitzung).where(Sitzung.token_hash == _hash(token))
+        select(Sitzung).where(Sitzung.token_hash == _hash(token), Sitzung.art == "browser")
     ).scalar_one_or_none()
     if sitzung is None:
         return None
@@ -167,6 +169,58 @@ def holen(db: Session, request: Request) -> Sitzung | None:
         sitzung.gueltig_bis = utcnow() + timedelta(days=get_settings().sitzung_tage)
         db.commit()
 
+    return sitzung
+
+
+#: Die Vorsilbe eines Gerätetokens. ``nxm_`` trägt der API-Schlüssel.
+GERAET_VORSILBE = "nxa_"
+
+#: ⚠️ **Zehn Jahre, also praktisch ohne Ablauf.** Eine App, die drei Wochen
+#: im Urlaub nicht geöffnet wurde, soll nicht neu gekoppelt werden müssen.
+#: Getrennt wird ein Gerät ausdrücklich, nicht durch eine Uhr.
+GERAET_TAGE = 3650
+
+
+def geraet_anlegen(db: Session, benutzer: Benutzer, name: str, adresse: str) -> str:
+    """Ein Gerät anlegen. Der Rückgabewert steht nur hier im Klartext."""
+    token = GERAET_VORSILBE + secrets.token_urlsafe(48)
+    db.add(
+        Sitzung(
+            benutzer_id=benutzer.id,
+            token_hash=_hash(token),
+            bestaetigt=True,
+            art="geraet",
+            geraet=name,
+            adresse=adresse,
+            gueltig_bis=utcnow() + timedelta(days=GERAET_TAGE),
+        )
+    )
+    db.commit()
+    return token
+
+
+def geraet_holen(db: Session, request: Request) -> Sitzung | None:
+    """Die Sitzung zur Kopfzeile ``Authorization: Bearer nxa_…`` - oder nichts.
+
+    ⚠️ **Nur die Kopfzeile, nie das Cookie.** Dieselbe Trennung wie in
+    ``holen``, andersherum. ``isascii`` steht davor, weil ``_hash`` sonst an
+    einer fremden Kopfzeile mit einem 500 umfiele.
+    """
+    art, _, wert = request.headers.get("authorization", "").partition(" ")
+    wert = wert.strip()
+    if art.lower() != "bearer" or not wert.startswith(GERAET_VORSILBE) or not wert.isascii():
+        return None
+
+    sitzung = db.execute(
+        select(Sitzung).where(Sitzung.token_hash == _hash(wert), Sitzung.art == "geraet")
+    ).scalar_one_or_none()
+    if sitzung is None or sitzung.gueltig_bis <= utcnow():
+        return None
+
+    if (utcnow() - sitzung.zuletzt_gesehen) > timedelta(hours=1):
+        sitzung.zuletzt_gesehen = utcnow()
+        sitzung.adresse = anmeldebremse.adresse_von(request)
+        db.commit()
     return sitzung
 
 

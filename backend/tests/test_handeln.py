@@ -406,6 +406,32 @@ def test_leeren_fremder_ordner_geht_nicht(klient, zweiter_klient, db, welt):
     assert antwort.status_code == 404
 
 
+# --- Andere offene Fenster erfahren es -------------------------------------- #
+
+
+def test_jede_handlung_am_ganzen_ordner_meldet_sich(db, welt):
+    """⚠️ Der Änderungs-Feed des iPhones sieht es über die Datenbank, ein offenes
+    Fenster im Browser nur über den Zähler. Rückgängig, Leeren und „alles
+    gelesen" liefen an ihm vorbei; der Stand im Browser blieb bis zum Takt alt."""
+    from app.models import Benutzer
+    from app.routers import nachrichten as wege
+    from app.services import ereignisse
+
+    _, konto, posteingang = welt
+    person = db.get(Benutzer, konto.benutzer_id)
+    papierkorb = next(o for o in konto.ordner if o.rolle == "papierkorb")
+    rueck = handeln.in_rolle(db, [_mail(db, "Erste")], "archiv")
+
+    for tun in (
+        lambda: wege.ordner_gelesen(posteingang.id, person, db),
+        lambda: wege.leeren(papierkorb.id, person, db),
+        lambda: wege.zurueck(wege.Rueckwunsch(**rueck.__dict__), person, db),
+    ):
+        vorher = ereignisse.stand(person.id)
+        tun()
+        assert ereignisse.stand(person.id) == vorher + 1
+
+
 # --- Wenn das Postfach nicht antwortet -------------------------------------- #
 
 

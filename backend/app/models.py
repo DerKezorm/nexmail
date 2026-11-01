@@ -319,11 +319,72 @@ class Sitzung(Base):
     geraet: Mapped[str] = mapped_column(String(200), default="")
     adresse: Mapped[str] = mapped_column(String(64), default="")
 
+    #: ``browser`` oder ``geraet`` (die iPhone-App).
+    #: ⚠️ **Ein Gerät ist eine Sitzung, kein eigener Schlüssel.** So steht es
+    #: von selbst in der Geräteliste, und „überall abmelden" und das Zurücksetzen
+    #: des Kennworts trennen es, ohne dass jemand daran denken muss. Die Art
+    #: trennt die beiden Türen: Ein Cookie öffnet nur ``browser``, die
+    #: Kopfzeile unter ``/api/app/1`` nur ``geraet`` (``deps._sitzung``).
+    art: Mapped[str] = mapped_column(String(10), default="browser", server_default="browser")
+
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     zuletzt_gesehen: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     gueltig_bis: Mapped[datetime] = mapped_column(UtcDateTime)
 
     benutzer: Mapped[Benutzer] = relationship(back_populates="sitzungen")
+
+
+class AppKopplung(Base):
+    """Ein QR-Code oder kurzer Code, mit dem sich die iPhone-App verbindet.
+
+    ⚠️ **Hier liegt kein Gerät und kein Schlüssel.** Der entsteht erst beim
+    Abholen; ein ungescannter Code hinterlässt nichts, das etwas öffnet.
+    Geheimnis und Code stehen nur als Hash in der Tabelle.
+    """
+
+    __tablename__ = "app_kopplung"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    geheimnis_hash: Mapped[str] = mapped_column(String(64))
+    code_hash: Mapped[str] = mapped_column(String(64), index=True)
+    gilt_bis: Mapped[datetime] = mapped_column(UtcDateTime)
+    #: Gesetzt heißt: abgeholt. Eine Kopplung gilt für ein Gerät.
+    abgeholt: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    geraet: Mapped[str] = mapped_column(String(200), default="")
+
+
+class Aenderung(Base):
+    """Was sich geändert hat, für den Offline-Speicher der App.
+
+    ⚠️ **Geschrieben von SQLite-Triggern, nicht von Python**
+    (``services/aenderungen.py``). Der Abgleich und die Aufräumwege schreiben
+    per ``update()`` und ``delete()`` an der ORM-Schicht vorbei; ein Ereignis
+    dort sähe die Hälfte nicht.
+
+    ⚠️ **``AUTOINCREMENT``, also nie eine Nummer zweimal, und je Ziel eine
+    Zeile.** SQLite hat genau einen Schreiber, deshalb steht keine kleinere
+    Nummer nachträglich auf: Wer bis ``n`` gelesen hat, hat nichts verpasst.
+    """
+
+    __tablename__ = "aenderung"
+    __table_args__ = (
+        Index("ix_aenderung_ziel", "art", "kennung"),
+        Index("ix_aenderung_lauf", "benutzer_id", "seq"),
+        {"sqlite_autoincrement": True},
+    )
+
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    benutzer_id: Mapped[str] = mapped_column(String(32))
+    #: ``nachricht``, ``ordner`` oder ``postfach``.
+    art: Mapped[str] = mapped_column(String(10))
+    kennung: Mapped[str] = mapped_column(String(40))
+    konto_id: Mapped[str] = mapped_column(String(32), default="")
+    weg: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Sekunden seit 1970: Was älter als die Frist ist, fällt beim Aufräumen.
+    zeit: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class OidcVerknuepfung(Base):

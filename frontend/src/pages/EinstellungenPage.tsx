@@ -21,6 +21,7 @@ import { KontoFormular } from './KontoFormular'
 import { Schlagworte } from './Schlagworte'
 import { KiDienst } from './KiDienst'
 import { ApiSchluessel } from './ApiSchluessel'
+import { IphoneVerbinden } from './IphoneVerbinden'
 import { Sicherheit } from './Sicherheit'
 import { Regeln, type RegelVorlage } from './Regeln'
 import { Abwesenheit } from './Abwesenheit'
@@ -39,6 +40,7 @@ export type Reiter =
   | 'benachrichtigungen'
   | 'ki'
   | 'api'
+  | 'iphone'
   | 'darstellung'
 
 interface Props {
@@ -105,11 +107,11 @@ export function EinstellungenPage({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-canvas">
-      {/* ⚠️ 1140 statt 900: Zehn Reiter brauchen einzeilig gemessen rund
+      {/* ⚠️ 1280 statt 900: Elf Reiter passen sonst nicht einzeilig; zehn brauchten rund
           1064 px (18.09.2026). Bei 900 brachen „KI-Dienst" und „API-Schlüssel"
           zweizeilig um, und die Leiste lief trotzdem über den Rand. Wer einen
           Reiter dazunimmt, misst neu; `einstellungen.spec.ts` schlägt an. */}
-      <div className="mx-auto w-full max-w-[1140px] px-6 py-6">
+      <div className="mx-auto w-full max-w-[1280px] px-6 py-6">
         <h1 className="mb-4 font-display text-[24px] font-medium text-fg-1">
           {t('einstellungen.titel')}
         </h1>
@@ -131,6 +133,7 @@ export function EinstellungenPage({
             { id: 'benachrichtigungen', label: t('einstellungen.benachrichtigungen') },
             { id: 'ki', label: t('einstellungen.ki') },
             { id: 'api', label: t('einstellungen.api') },
+            { id: 'iphone', label: t('einstellungen.iphone') },
             { id: 'darstellung', label: t('einstellungen.darstellung') },
           ]}
         />
@@ -183,6 +186,8 @@ export function EinstellungenPage({
             <KiDienst />
           ) : reiter === 'api' ? (
             <ApiSchluessel istBetreiber={Boolean(ich?.ist_betreiber)} />
+          ) : reiter === 'iphone' ? (
+            <IphoneVerbinden istBetreiber={Boolean(ich?.ist_betreiber)} />
           ) : reiter === 'benachrichtigungen' ? (
             <Benachrichtigungen />
           ) : (

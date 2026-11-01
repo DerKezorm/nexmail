@@ -94,9 +94,6 @@ interface Props {
   aufNeuesSchlagwort?: (n: Nachricht) => void
   /** Fallengelassen über einem Ordner. */
   aufAblegen?: (ordnerId: string, ids: string[]) => void
-  /** Aus welchem Postfach gerade gezogen wird. */
-  ziehtAusKonto?: string
-  aufAbweisung?: (grund: string) => void
   /** Liegt die geöffnete Nachricht im Entwurfsordner? */
   istEntwurf?: boolean
   aufPostfachHinzufuegen: () => void
@@ -282,8 +279,6 @@ export function MailPage(p: Props) {
       aufMenue={p.schmal ? p.aufOrdnerMenue : undefined}
       favoriten={p.favoriten}
       aufAblegen={p.aufAblegen}
-      ziehtAusKonto={p.ziehtAusKonto}
-      aufAbweisung={p.aufAbweisung}
       eingeklappt={p.eingeklappt}
       aufEinklappen={p.aufEinklappen}
     />

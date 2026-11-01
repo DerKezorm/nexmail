@@ -7,7 +7,7 @@
  * `whitespace-nowrap`, also zeigt scrollWidth die Wahrheit.
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, zuEinstellungen } from './hilfen'
+import { anmelden, jederKnopfHatEinenNamen, keineRohenSchluessel, zuEinstellungen } from './hilfen'
 
 test.beforeEach(({}, info) => {
   test.skip(info.project.name === 'schmal', 'Schmal rollt die Leiste seitlich, das ist gewollt.')
@@ -29,4 +29,38 @@ test('Alle Reiter passen einzeilig auf die Seite', async ({ page }) => {
     m.noetig,
     `Die Reiter brauchen ${m.noetig} px, die Leiste hat ${m.breite}.`,
   ).toBeLessThanOrEqual(m.breite)
+})
+
+test('iPhone verbinden zeigt QR-Code, kurzen Code und Stand', async ({ page }) => {
+  await anmelden(page)
+  await zuEinstellungen(page)
+  await page.getByRole('tab', { name: 'iPhone verbinden' }).click()
+
+  await page.getByRole('button', { name: 'Code anzeigen' }).click()
+
+  /* ⚠️ Gemessen, nicht nur gesucht: Ohne `viewBox` schnitt die Fläche den Code
+     rechts und unten ab. Er war sichtbar, und kein Telefon konnte ihn lesen. */
+  const code = page.getByRole('img', { name: 'iPhone verbinden' })
+  await expect(code).toBeVisible()
+  const m = await code.evaluate((rahmen) => {
+    const flaeche = rahmen.getBoundingClientRect()
+    const muster = rahmen.querySelector('svg path.qrline')!.getBoundingClientRect()
+    return {
+      breite: flaeche.width,
+      links: muster.left - flaeche.left,
+      rechts: flaeche.right - muster.right,
+      oben: muster.top - flaeche.top,
+      unten: flaeche.bottom - muster.bottom,
+    }
+  })
+  expect(m.breite).toBe(200)
+  // Vier Module Ruhezone auf jeder Seite, also etwas Weiß ringsum.
+  for (const seite of [m.links, m.rechts, m.oben, m.unten]) expect(seite).toBeGreaterThan(5)
+  await expect(page.getByText(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/)).toBeVisible()
+  await expect(page.getByText(/Wartet auf die App/)).toBeVisible()
+  await keineRohenSchluessel(page)
+  await jederKnopfHatEinenNamen(page)
+
+  await page.getByRole('button', { name: 'Zurückziehen' }).click()
+  await expect(page.getByRole('button', { name: 'Code anzeigen' })).toBeVisible()
 })

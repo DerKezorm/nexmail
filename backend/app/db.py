@@ -364,6 +364,10 @@ def init_db() -> None:
 
     schema_anlegen(engine)
 
+    from .services import aenderungen
+
+    aenderungen.schema_anlegen(engine)
+
     _einstellungen.blob_dir.mkdir(parents=True, exist_ok=True)
 
     with SessionLocal() as db:

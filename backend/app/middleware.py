@@ -157,6 +157,40 @@ class SicherheitskopfMiddleware:
         await self.app(scope, receive, senden)
 
 
+#: Wie lange die App auf das Schloss eines Postfachs wartet.
+APP_SCHLOSS_SEKUNDEN = 15.0
+#: Wie lange sie auf den ersten Abruf einer Mail wartet.
+APP_KOERPER_SEKUNDEN = 20.0
+
+
+class AppFristMiddleware:
+    """Fristen für ``/api/app/1``: ein Telefon wartet nicht stundenlang.
+
+    ⚠️ **Hier und nicht in einer Abhängigkeit.** Der Wert steckt in einer
+    ``ContextVar``, und eine gewöhnliche Abhängigkeit läuft in einem eigenen
+    Kontext im Thread-Pool: Was sie setzt, sähe der Handler nie. Eine
+    ASGI-Schicht setzt ihn in der Aufgabe der Anfrage, und von dort erbt ihn
+    jeder Handler. Außerhalb der Fläche ändert sich nichts.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        if scope["type"] != "http" or not scope.get("path", "").startswith("/api/app/"):
+            await self.app(scope, receive, send)
+            return
+        from .services import abgleich
+
+        schloss = abgleich.SCHLOSS_FRIST.set(APP_SCHLOSS_SEKUNDEN)
+        koerper = abgleich.KOERPER_FRIST.set(APP_KOERPER_SEKUNDEN)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            abgleich.KOERPER_FRIST.reset(koerper)
+            abgleich.SCHLOSS_FRIST.reset(schloss)
+
+
 class VorgangMiddleware:
     """Jede Anfrage bekommt eine Nummer — und die steht in jeder Log-Zeile.
 

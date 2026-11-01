@@ -14,6 +14,7 @@ import logging
 import mimetypes
 import re
 import time
+from dataclasses import asdict
 from datetime import datetime, timezone
 from html import escape
 from zoneinfo import ZoneInfo
@@ -21,7 +22,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import case, func, select
+from sqlalchemy import case, false, func, or_, select
 
 from ..config import get_settings
 from ..db import einstellung_lesen
@@ -31,6 +32,7 @@ from ..services import (
     abbestellen as abbestelldienst,
     abgleich,
     absenderpruefung,
+    aliase as aliasdienst,
     anmeldebremse,
     bereinigen,
     bildfreigaben,
@@ -276,6 +278,15 @@ def liste(
         abfrage = abfrage.where(Nachricht.gelesen.is_(False))
     elif filter == "markiert":
         abfrage = abfrage.where(Nachricht.markiert.is_(True))
+    elif filter == "anhang":
+        abfrage = abfrage.where(Nachricht.hat_anhang.is_(True))
+    elif filter == "an_mich":
+        # ⚠️ **Hauptadressen und Aliasse, klein verglichen.** ``an_json`` trägt
+        # sie schon klein; eine Adresse fremder Schreibweise fände sonst nichts.
+        eigene = {k.adresse.lower() for k in kontendienst.meine(db, person)}
+        for konto in kontendienst.meine(db, person):
+            eigene.update(a.adresse.lower() for a in aliasdienst.lesen(konto))
+        abfrage = abfrage.where(or_(*(Nachricht.an_json.contains(f'"{a}"') for a in eigene), false()))
 
     if schlagwort:
         abfrage = abfrage.where(schlagwortdienst.traegt_atom(schlagwort))
@@ -541,6 +552,14 @@ def _meine(db, person, nachricht_id: int) -> Nachricht:
 def _koerper_sicherstellen(db, nachricht: Nachricht) -> None:
     """Den Körper nachholen, falls er noch nie geholt wurde."""
     if nachricht.koerper_geholt is not None:
+        return
+    # ⚠️ **Mit Frist (die App) in einem eigenen Faden.** Der Abruf lässt sich
+    # nicht abbrechen; läuft die Frist ab, antwortet die App „gleich noch einmal",
+    # und die Mail liegt beim nächsten Versuch schon da.
+    frist = abgleich.KOERPER_FRIST.get()
+    if frist is not None:
+        abgleich.koerper_mit_frist(nachricht.id, frist)
+        db.refresh(nachricht)
         return
     konto = db.get(Konto, nachricht.konto_id)
     imap_pw, _ = kontendienst.passwoerter_lesen(konto)
@@ -1124,6 +1143,7 @@ def flags_setzen(
         .count()
     )
     db.commit()
+    ereignisdienst.melden(person.id)
     return _zeile(nachricht)
 
 
@@ -1140,6 +1160,9 @@ class Verschiebewunsch(Auswahl):
 
 class Zugergebnis(BaseModel):
     bewegt: int
+    #: Mails einer Auswahl aus mehreren Ordnern, die liegenblieben, weil ihr
+    #: Postfach nicht mitmachte. Der Rest ist trotzdem erledigt.
+    nicht_bewegt: int = 0
     #: Was zum Zurücknehmen gebraucht wird. Die Oberfläche schickt es
     #: unverändert an /zurueck.
     rueckweg: dict | None = None
@@ -1153,14 +1176,19 @@ def _auswahl(db, person, ids: list[int]) -> list[Nachricht]:
     return [_meine(db, person, kennung) for kennung in ids]
 
 
-def _zug(db, tun) -> Zugergebnis:
+def _zug(db, person, tun) -> Zugergebnis:
     try:
         weg = tun()
     except handeln.HandelnFehler as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     except imapdienst.Verbindungsfehler as fehler:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=fehler.text) from fehler
-    return Zugergebnis(bewegt=len(weg.message_ids), rueckweg=weg.__dict__)
+    # ⚠️ **Die anderen Geräte sollen es auch erfahren.** Der Takt sieht darin
+    # nichts Neues: Die Datenbank kennt den Stand ja schon.
+    ereignisdienst.melden(person.id)
+    return Zugergebnis(
+        bewegt=len(weg.message_ids), nicht_bewegt=weg.nicht_bewegt, rueckweg=asdict(weg)
+    )
 
 
 @router.post("/verschieben", response_model=Zugergebnis)
@@ -1174,29 +1202,29 @@ def verschieben(wunsch: Verschiebewunsch, person: AngemeldeterBenutzer, db: DbSe
     konto = db.get(Konto, ziel.konto_id)
     if konto is None or konto.benutzer_id != person.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    return _zug(db, lambda: handeln.verschieben(db, nachrichten, ziel))
+    return _zug(db, person, lambda: handeln.verschieben(db, nachrichten, ziel))
 
 
 @router.post("/loeschen", response_model=Zugergebnis)
 def loeschen(auswahl: Auswahl, person: AngemeldeterBenutzer, db: DbSession) -> Zugergebnis:
     """In den Papierkorb — nicht endgültig. Dafür gibt es „Ordner leeren"."""
     nachrichten = _auswahl(db, person, auswahl.ids)
-    return _zug(db, lambda: handeln.in_rolle(db, nachrichten, "papierkorb"))
+    return _zug(db, person, lambda: handeln.in_rolle(db, nachrichten, "papierkorb"))
 
 
 @router.post("/archivieren", response_model=Zugergebnis)
 def archivieren(auswahl: Auswahl, person: AngemeldeterBenutzer, db: DbSession) -> Zugergebnis:
     nachrichten = _auswahl(db, person, auswahl.ids)
-    return _zug(db, lambda: handeln.in_rolle(db, nachrichten, "archiv"))
+    return _zug(db, person, lambda: handeln.in_rolle(db, nachrichten, "archiv"))
 
 
 @router.post("/junk", response_model=Zugergebnis)
 def junk(auswahl: Auswahl, person: AngemeldeterBenutzer, db: DbSession) -> Zugergebnis:
     nachrichten = _auswahl(db, person, auswahl.ids)
-    return _zug(db, lambda: handeln.in_rolle(db, nachrichten, "junk"))
+    return _zug(db, person, lambda: handeln.in_rolle(db, nachrichten, "junk"))
 
 
-class Rueckwunsch(BaseModel):
+class Rueckteil(BaseModel):
     konto_id: str
     quelle_pfad: str
     ziel_pfad: str
@@ -1208,6 +1236,21 @@ class Rueckwunsch(BaseModel):
     ziel_konto_id: str = ""
 
 
+class Rueckwunsch(Rueckteil):
+    #: Bei einer Auswahl aus mehreren Ordnern: je Ordner ein Rückweg.
+    teile: list[Rueckteil] = []
+
+
+def _rueckweg(teil: Rueckteil) -> handeln.Rueckweg:
+    return handeln.Rueckweg(
+        konto_id=teil.konto_id,
+        quelle_pfad=teil.quelle_pfad,
+        ziel_pfad=teil.ziel_pfad,
+        message_ids=teil.message_ids,
+        ziel_konto_id=teil.ziel_konto_id,
+    )
+
+
 @router.post("/zurueck", response_model=Zugergebnis)
 def zurueck(wunsch: Rueckwunsch, person: AngemeldeterBenutzer, db: DbSession) -> Zugergebnis:
     """Einen Zug zurücknehmen.
@@ -1216,23 +1259,23 @@ def zurueck(wunsch: Rueckwunsch, person: AngemeldeterBenutzer, db: DbSession) ->
     zurück, was sie bekommen hat — und das kommt aus dem Browser.
     """
     # ⚠️ **Beide Postfächer**, nicht nur das erste: Mit einer fremden
-    # ``ziel_konto_id`` holte man sonst fremde Post in das eigene.
-    for kennung in {wunsch.konto_id, wunsch.ziel_konto_id} - {""}:
-        konto = db.get(Konto, kennung)
-        if konto is None or konto.benutzer_id != person.id:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    # ``ziel_konto_id`` holte man sonst fremde Post in das eigene. Und **jeder
+    # Teil**: Ein ``teile`` kommt genauso aus dem Browser.
+    for teil in [wunsch, *wunsch.teile]:
+        for kennung in {teil.konto_id, teil.ziel_konto_id} - {""}:
+            konto = db.get(Konto, kennung)
+            if konto is None or konto.benutzer_id != person.id:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-    weg = handeln.Rueckweg(
-        konto_id=wunsch.konto_id,
-        quelle_pfad=wunsch.quelle_pfad,
-        ziel_pfad=wunsch.ziel_pfad,
-        message_ids=wunsch.message_ids,
-        ziel_konto_id=wunsch.ziel_konto_id,
-    )
+    weg = _rueckweg(wunsch)
+    weg.teile = [_rueckweg(teil) for teil in wunsch.teile]
     try:
         anzahl = handeln.zurueck(db, weg)
     except handeln.HandelnFehler as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    finally:
+        # Auch wenn ein Teil scheiterte: Die anderen haben sich bewegt.
+        ereignisdienst.melden(person.id)
     return Zugergebnis(bewegt=anzahl)
 
 
@@ -1246,9 +1289,11 @@ def leeren(ordner_id: int, person: AngemeldeterBenutzer, db: DbSession) -> Zuger
     if konto is None or konto.benutzer_id != person.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     try:
-        return Zugergebnis(bewegt=handeln.ordner_leeren(db, ordner))
+        anzahl = handeln.ordner_leeren(db, ordner)
     except handeln.HandelnFehler as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    ereignisdienst.melden(person.id)
+    return Zugergebnis(bewegt=anzahl)
 
 
 @router.post("/ordner/{ordner_id}/gelesen", response_model=Zugergebnis)
@@ -1265,9 +1310,11 @@ def ordner_gelesen(ordner_id: int, person: AngemeldeterBenutzer, db: DbSession) 
     if konto is None or konto.benutzer_id != person.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     try:
-        return Zugergebnis(bewegt=handeln.ordner_als_gelesen(db, konto, ordner))
+        anzahl = handeln.ordner_als_gelesen(db, konto, ordner)
     except handeln.HandelnFehler as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    ereignisdienst.melden(person.id)
+    return Zugergebnis(bewegt=anzahl)
 
 
 class Abgleichergebnis(BaseModel):

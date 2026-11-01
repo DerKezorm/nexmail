@@ -929,9 +929,9 @@ export function KalenderPage() {
       {fehler && (
         <div
           role="alert"
-          className="fixed bottom-5 left-1/2 z-[71] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-danger bg-danger-soft px-4 py-2 shadow-[var(--shadow-3)]"
+          className="fixed bottom-5 left-1/2 z-[71] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-danger bg-surface-1 px-4 py-2 shadow-[var(--shadow-3)]"
         >
-          <span className="text-[13px] text-danger">{fehler}</span>
+          <span className="text-[13px] text-fg-1">{fehler}</span>
         </div>
       )}
 

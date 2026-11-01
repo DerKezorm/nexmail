@@ -18,13 +18,35 @@ from sqlalchemy.orm import Session
 from .db import get_db
 from .models import ApiSchluessel, Benutzer, Sitzung
 from .services import apischluessel as apidienst
+from .services import app_kopplung
 from .services import sitzung as sitzungsdienst
 
 DbSession = Annotated[Session, Depends(get_db)]
 
 
+#: Die Fläche der iPhone-App. Hier zählt nur die Kopfzeile, überall sonst nur
+#: das Cookie.
+APP_FLAECHE = "/api/app/"
+
+
 def _sitzung(request: Request, db: Session) -> Sitzung:
-    lage = sitzungsdienst.holen(db, request)
+    """Wer fragt: die eine Stelle, an der beide Türen getrennt werden.
+
+    ⚠️ **Entschieden wird am Pfad, nicht an dem, was mitgeschickt wurde.**
+    Würde hier genommen, was gerade dabei ist, öffnete ein Gerätetoken jede
+    Adresse und ein Cookie die Fläche der App. So sieht ``/api/app/1`` kein
+    Cookie und der Rest keine Kopfzeile. Die Handler sind dieselben, und keiner
+    muss davon wissen. ``scope["path"]`` hat den Unterpfad schon verloren
+    (``BasisPfadMiddleware``).
+    """
+    if request.scope.get("path", "").startswith(APP_FLAECHE):
+        if not app_kopplung.erlaubt(db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="app_abgeschaltet"
+            )
+        lage = sitzungsdienst.geraet_holen(db, request)
+    else:
+        lage = sitzungsdienst.holen(db, request)
     if lage is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -89,6 +111,18 @@ def nur_betreiber(person: Annotated[Benutzer, Depends(angemeldet)]) -> Benutzer:
             detail="nur_betreiber",
         )
     return person
+
+
+def nur_geraet(sitzung: Annotated[Sitzung, Depends(angemeldete_sitzung)]) -> Benutzer:
+    """Der Schutz von ``/api/app/1``, ausdrücklich und zählbar.
+
+    ``_sitzung`` trennt schon am Pfad. Diese Abhängigkeit hängt zusätzlich an
+    der ganzen Fläche, damit ``test_waechter.py`` sie abzählen kann und ein Router,
+    der falsch eingehängt wird, nicht still an der Wache vorbeiläuft.
+    """
+    if sitzung.art != "geraet":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="nicht_angemeldet")
+    return sitzung.benutzer
 
 
 def api_zugriff(request: Request, db: DbSession) -> ApiSchluessel:

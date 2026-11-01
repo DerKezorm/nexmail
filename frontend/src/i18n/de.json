@@ -204,6 +204,7 @@
     "grund_kennwort_lang": "Das Kennwort braucht noch {{fehlen}} Zeichen."
   },
   "einstellungen": {
+    "iphone": "iPhone verbinden",
     "api": "API-Schlüssel",
     "abwesenheit": "Abwesenheit",
     "aktiv": "Aktiv",
@@ -988,7 +989,6 @@
     "name": "Name",
     "name_platzhalter": "z. B. Rechnungen",
     "umbenennen_hinweis": "Unterordner werden mit umbenannt.",
-    "fremdes_postfach": "Zwischen zwei Postfächern kann IMAP nicht verschieben. Leite die Nachricht stattdessen weiter.",
     "alles_gelesen": "Alles als gelesen markieren",
     "markierte": "Markierte",
     "postausgang": "Postausgang",
@@ -1242,7 +1242,30 @@
     "zu_betreiber": "API-Schlüssel sind ausgeschaltet. Vorhandene Schlüssel bekommen gerade keine Daten, neue lassen sich nicht anlegen.",
     "zuletzt": "zuletzt benutzt {{wann}}"
   },
+  "iphone": {
+    "code_abtippen": "Oder in der App von Hand eintragen:",
+    "adresse": "Adresse",
+    "code": "Code",
+    "abgelaufen": "Dieser Code ist abgelaufen.",
+    "verbunden": "{{geraet}} ist verbunden.",
+    "verbunden_hinweis": "Das Gerät steht jetzt unter Sicherheit bei den angemeldeten Geräten. Dort lässt es sich trennen.",
+    "wartet": "Wartet auf die App. Der Code gilt bis {{zeit}} für ein Gerät.",
+    "hinweis": "Scanne den Code mit der Kamera des iPhones. Ein Gerät hat dieselben Rechte wie dein Browser.",
+    "knopf": "Code anzeigen",
+    "neu": "Neuen Code anzeigen",
+    "zurueckziehen": "Zurückziehen",
+    "riegel": "iPhone-App erlauben",
+    "riegel_hinweis": "Ausgeschaltet kommt keine App mehr herein, auch keine schon verbundene. Die Geräte bleiben in der Liste.",
+    "riegel_zu": "Der Betreiber hat die iPhone-App abgeschaltet."
+  },
   "serverfehler": {
+    "app_abgeschaltet": "Der Betreiber hat die iPhone-App für diese Installation abgeschaltet.",
+    "app_adresse_fehlt": "Für den QR-Code fehlt die Adresse, unter der nexmail erreichbar ist. Trag sie unter Verwaltung, Server ein.",
+    "app_kopplung_unbekannt": "Dieser Code gilt nicht oder nicht mehr. Lass im Browser einen neuen anzeigen.",
+    "app_von_vorn": "Der gespeicherte Stand ist zu alt und muss neu gelesen werden.",
+    "app_zu_viele_kopplungen": "Es sind schon {{max}} Codes offen. Warte, bis sie ablaufen, oder zieh einen zurück.",
+    "nachricht_laedt": "Die Mail kommt noch vom Mailserver. Versuch es in {{sekunden}} Sekunden noch einmal.",
+    "postfach_beschaeftigt": "Das Postfach holt gerade viel Post nach. Versuch es in {{sekunden}} Sekunden noch einmal.",
     "abbestellen_abgewiesen": "Der Server des Absenders hat die Abmeldung abgewiesen ({{code}}).",
     "abbestellen_adresse_unerlaubt": "Diese Abmeldeadresse ist nicht erlaubt: Sie zeigt ins eigene Netz oder nutzt kein HTTPS.",
     "abbestellen_nicht_erreichbar": "Der Server des Absenders war nicht erreichbar. Versuch es später noch einmal.",
@@ -1398,8 +1421,6 @@
     "kopie_nicht_aufraeumbar": "Die Kopie ließ sich nicht aufräumen: {{grund}}",
     "liegt_schon_dort": "Die Nachricht liegt schon dort.",
     "mbox_zu_gross": "Die Datei ist größer als {{max_gb}} GB. Thunderbird legt je Ordner eine eigene mbox an, bitte einzeln einspielen.",
-    "mehrere_ordner": "Bitte nur aus einem Ordner auf einmal verschieben.",
-    "mehrere_postfaecher": "Nachrichten aus mehreren Postfächern lassen sich nicht zusammen verschieben.",
     "merkpunkt_unbrauchbar": "Der Merkpunkt zum Weiterlesen ist unbrauchbar.",
     "nachricht_unbekannt": "Diese Nachricht gibt es nicht.",
     "nachricht_weg": "Der Server kennt diese Nachricht nicht mehr.",
@@ -1618,6 +1639,7 @@
   "stoerung": {
     "stamm": "Deine Postfächer ließen sich nicht laden. Sie sind nicht weg, der Server antwortet nur gerade nicht.",
     "nochmal": "Noch einmal versuchen",
+    "nicht_alle": "Nicht verschoben: {{anzahl}}. Ihr Postfach hat keinen passenden Ordner oder hat nicht geantwortet.",
     "zugangsdaten": "Der Mailserver lehnt die Zugangsdaten ab: {{namen}}.",
     "zugangsdaten_folge": "Neue Mails kommen dort nicht mehr an, bis das Passwort stimmt.",
     "zugangsdaten_knopf": "Zugangsdaten öffnen"

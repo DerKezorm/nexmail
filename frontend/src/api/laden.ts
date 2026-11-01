@@ -410,6 +410,8 @@ export interface Rueckweg {
 
 export interface Zugergebnis {
   bewegt: number
+  /** Mails einer gemischten Auswahl, deren Postfach nicht mitgemacht hat. */
+  nicht_bewegt?: number
   rueckweg: Rueckweg | null
 }
 

@@ -32,12 +32,19 @@ def test_jede_adresse_ist_entschieden():
     # ``angemeldete_sitzung``, und der Test meldete /api/auth/abmelden als
     # ungeschuetzt - obwohl es das nicht war. Ein Waechter, der falschen Alarm
     # schlaegt, wird abgeschaltet; deshalb steht die Liste hier vollstaendig.
-    from app.deps import angemeldet, angemeldete_sitzung, api_zugriff, halbe_sitzung
+    from app.deps import (
+        angemeldet,
+        angemeldete_sitzung,
+        api_zugriff,
+        halbe_sitzung,
+        nur_geraet,
+    )
 
     # ``api_zugriff`` ist der vierte: ``/api/v1`` nimmt einen API-Schluessel
     # statt einer Sitzung. Er ist kein schwaecherer Schutz, sondern ein
-    # anderer - und nur lesend, siehe routers/api_v1.py.
-    geschuetzt = {angemeldet, angemeldete_sitzung, halbe_sitzung, api_zugriff}
+    # anderer - und nur lesend, siehe routers/api_v1.py. ``nur_geraet`` ist der
+    # fuenfte: ``/api/app/1`` nimmt nur ein Geraetetoken.
+    geschuetzt = {angemeldet, angemeldete_sitzung, halbe_sitzung, api_zugriff, nur_geraet}
     unentschieden: list[str] = []
 
     for route in _api_routen():
@@ -65,6 +72,39 @@ def test_jede_adresse_ist_entschieden():
         + "\n\nEntweder Depends(angemeldet) setzen oder mit Begründung in "
         "OEFFENTLICHE_PFADE eintragen."
     )
+
+
+def _alle_abhaengigkeiten(dependant, gesehen=None) -> set:
+    gesehen = gesehen if gesehen is not None else set()
+    for unter in dependant.dependencies:
+        gesehen.add(unter.call)
+        _alle_abhaengigkeiten(unter, gesehen)
+    return gesehen
+
+
+def test_die_flaeche_der_app_ist_zu_und_nur_sie_traegt_den_schutz():
+    """⚠️ **Der eigene Schutz, ausdrücklich gezählt.** Ein Router, der ohne
+    ``nur_geraet`` eingehängt wird, fiele sonst nur dem Cookie-Test auf, und eine
+    Adresse draußen mit dieser Wache wäre im Browser plötzlich tot."""
+    from app.deps import nur_geraet
+
+    ohne = []
+    draussen = []
+    for route in _api_routen():
+        auf_der_flaeche = route.path.startswith("/api/app/")
+        hat_ihn = nur_geraet in _alle_abhaengigkeiten(route.dependant)
+        if auf_der_flaeche and not hat_ihn and route.path not in OEFFENTLICHE_PFADE:
+            ohne.append(route.path)
+        if hat_ihn and not auf_der_flaeche:
+            draussen.append(route.path)
+    assert ohne == []
+    assert draussen == []
+    assert sum(1 for r in _api_routen() if r.path.startswith("/api/app/")) > 40
+
+
+def test_oeffentlich_ist_auf_der_flaeche_nur_das_abholen():
+    auf_der_flaeche = {p for p in OEFFENTLICHE_PFADE if p.startswith("/api/app/")}
+    assert auf_der_flaeche == {"/api/app/1/pairing/{pairing_id}/key", "/api/app/1/pairing/code"}
 
 
 def test_jeder_eintrag_auf_der_liste_hat_einen_grund():

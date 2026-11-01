@@ -114,9 +114,9 @@ Google or any other CardDAV server) that are read and written back line by
 line, with a question instead of an overwrite when a card changed on both
 sides, and a vCard file can be imported straight into one of them;
 contact groups that expand into their members when picked as a recipient;
-rules that run after each sync and only on new mail, can be run once over a
-folder that is already full, and can be started from a message with a
-right-click (*Create rule*); signatures per mailbox.
+rules that run after each sync and only on new mail, can move, mark, flag and
+tag, can be run once over a folder that is already full, and can be started
+from a message with a right-click (*Create rule*); signatures per mailbox.
 
 **Housekeeping.** Trash and junk can empty themselves after a number of days —
 off by default, measured by how long a message has been in the folder, and
@@ -238,12 +238,14 @@ second connection open (IMAP IDLE), and a new message shows up within seconds.
 It is off by default because some providers limit connections; if the server
 cannot do IDLE, the form says so and the regular sync carries on.
 
-**Moving between mailboxes.** Right-click a message, *Move*, and pick a folder
-of another account. Dragging works within one account only. `MOVE` and `COPY`
-only work inside one connection, so this fetches, appends at the target,
-checks that it really arrived, and only then deletes at the source.
-That order is the whole safety: the worst case is a message that exists twice,
-which you can see and clean up.
+**Moving between mailboxes.** Drag a message onto a folder of another account,
+or right-click it, *Move*, and pick one. `MOVE` and `COPY` only work inside one
+connection, so this fetches, appends at the target, checks that it really
+arrived, and only then deletes at the source. That order is the whole safety:
+the worst case is a message that exists twice, which you can see and clean up.
+A selection may span mailboxes and folders, as in *All inboxes* or a search:
+`Del` puts every message into the trash of its own mailbox, *Archive* into its
+own archive, and undo brings them all back.
 
 **Moving in and out.** Import a Thunderbird `mbox`, or download a folder as
 `mbox` or as a ZIP of `.eml` files. What is already there is skipped by

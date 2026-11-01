@@ -156,6 +156,16 @@ def _schlank_machen(db_datei: Path) -> dict:
         vorher = verbindung.execute("select count(*) from nachricht").fetchone()[0]
 
         verbindung.execute("delete from nachricht")
+        # ⚠️ **Nach den Nachrichten**: Deren Trigger schreiben hier für jede
+        # eine Zeile. Der Horizont sagt einer App, deren Nummer vor der
+        # Sicherung liegt, dass ihr Speicher nicht mehr passt: Die Mails
+        # kommen nach dem Einspielen mit neuen Kennungen zurück.
+        verbindung.execute("delete from aenderung")
+        verbindung.execute(
+            "insert or replace into einstellung (schluessel, wert) "
+            "select 'aenderung_horizont', coalesce(max(seq), 0) from sqlite_sequence "
+            "where name = 'aenderung'"
+        )
         # ⚠️ Ein ``delete`` auf der FTS-Tabelle raeumt bei ``content='…'``
         # nicht auf - der Index blieb dabei mit 1,03 MB stehen. Erst dieser
         # Befehl leert ihn wirklich.

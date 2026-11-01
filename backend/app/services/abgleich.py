@@ -23,15 +23,18 @@ import base64
 import json
 import logging
 import quopri
+import re
 import sys
 import threading
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..meldung import Meldung
 from ..models import Anhang, Konto, Nachricht, Ordner, utcnow
 from . import (
     abbestellen as abbestelldienst,
@@ -68,6 +71,27 @@ FORTSCHRITT_JE = 2000
 
 #: Ein Ordner, der länger braucht, meldet am Ende seine Dauer.
 LANGSAM_SEKUNDEN = 60.0
+
+
+#: Wie lange eine Anfrage auf das Schloss eines Postfachs wartet. ``None`` heißt:
+#: so lange es dauert, wie im Browser. Unter ``/api/app/1`` setzt die
+#: ``AppFristMiddleware`` eine Frist.
+SCHLOSS_FRIST: ContextVar[float | None] = ContextVar("schloss_frist", default=None)
+#: Wie lange eine Anfrage auf den ersten Abruf einer Mail wartet.
+KOERPER_FRIST: ContextVar[float | None] = ContextVar("koerper_frist", default=None)
+
+#: So lange läuft ein Vorgang im Hintergrund, den keine Anfrage mehr abwartet.
+HINTERGRUND_FRIST = 60.0
+
+
+class WartenFehler(Meldung):
+    """Gerade geht es nicht, gleich wieder. Wird zu 503 samt ``Retry-After``.
+
+    ⚠️ **Der Anlass ist der Nebenbefund aus Issue #9.** Beim Nachholen hält der
+    Abgleich das Schloss eines Postfachs stundenlang. Ein Browser wartet dann,
+    eine App auf dem Telefon darf das nicht: Dort hängt sonst der Spinner, bis
+    iOS die Anfrage abschießt, und niemand erfährt warum.
+    """
 
 
 class Verbindungshalter:
@@ -112,7 +136,17 @@ class Kontoschloss:
         if not self._schloss.acquire(blocking=False):
             # Vor dem Warten gemerkt: Danach hält es schon der Wartende selbst.
             halter, seit = self._halter, self._seit
-            self._schloss.acquire()
+            frist = SCHLOSS_FRIST.get()
+            if frist is None:
+                self._schloss.acquire()
+            elif not self._schloss.acquire(timeout=frist):
+                logger.info(
+                    "%s gave up on the mailbox lock after %.0f s, held by %s.",
+                    _wer(sys._getframe(1)),
+                    frist,
+                    halter or "?",
+                )
+                raise WartenFehler("postfach_beschaeftigt", sekunden=30)
             gewartet = time.monotonic() - beginn
             if gewartet >= WARTEN_MELDEN:
                 logger.info(
@@ -847,6 +881,130 @@ def koerper_holen(klient, db: Session, nachricht: Nachricht) -> None:
         )
     nachricht.hat_anhang = any(not a.eingebettet(zerlegt.html) for a in zerlegt.anhaenge)
     db.commit()
+
+
+_unterwegs: dict[int, threading.Thread] = {}
+_unterwegs_fehler: dict[int, Exception] = {}
+_unterwegs_schloss = threading.Lock()
+
+
+def _koerper_im_faden(nachricht_id: int) -> None:
+    from ..db import SessionLocal
+
+    SCHLOSS_FRIST.set(HINTERGRUND_FRIST)
+    try:
+        with SessionLocal() as db:
+            nachricht = db.get(Nachricht, nachricht_id)
+            if nachricht is None or nachricht.koerper_geholt is not None:
+                return
+            konto = db.get(Konto, nachricht.konto_id)
+            with HALTER.schloss(konto.id):
+                klient = imapdienst.fuer_konto(db, konto)
+                try:
+                    koerper_holen(klient, db, nachricht)
+                finally:
+                    try:
+                        klient.logout()
+                    except Exception:  # noqa: BLE001
+                        pass
+    except Exception as fehler:  # noqa: BLE001 - die wartende Anfrage bekommt ihn
+        _unterwegs_fehler[nachricht_id] = fehler
+
+
+def koerper_mit_frist(nachricht_id: int, frist: float) -> None:
+    """Den ersten Abruf einer Mail abwarten, aber nicht länger als ``frist``.
+
+    ⚠️ **Ein Faden, weil sich ein IMAP-Abruf nicht abbrechen lässt.** Eine große
+    Mail braucht auf einer schlechten Leitung Minuten. Die Anfrage kommt nach
+    der Frist mit „gleich noch einmal" zurück, der Faden läuft weiter und legt
+    die Mail ab. Der nächste Versuch findet sie fertig vor, statt von vorn
+    anzufangen. Fragt die App erneut, solange er läuft, wartet sie auf denselben.
+    """
+    with _unterwegs_schloss:
+        faden = _unterwegs.get(nachricht_id)
+        if faden is None or not faden.is_alive():
+            _unterwegs_fehler.pop(nachricht_id, None)
+            faden = threading.Thread(
+                target=_koerper_im_faden,
+                args=(nachricht_id,),
+                name="nexmail-koerper",
+                daemon=True,
+            )
+            _unterwegs[nachricht_id] = faden
+            faden.start()
+    faden.join(frist)
+    if faden.is_alive():
+        raise WartenFehler("nachricht_laedt", sekunden=5)
+    with _unterwegs_schloss:
+        _unterwegs.pop(nachricht_id, None)
+        fehler = _unterwegs_fehler.pop(nachricht_id, None)
+    if fehler is not None:
+        raise fehler
+
+
+_laufende_abgleiche: set[str] = set()
+
+
+def im_hintergrund(konto_id: str, nur_posteingang: bool = True) -> bool:
+    """Einen Abgleich anstoßen und nicht auf ihn warten. Falsch: läuft schon.
+
+    ⚠️ **Für das Ziehen in der App.** Ein voller Abgleich dauert beim ersten
+    Mal Stunden, und mehr als einer je Postfach hilft nichts. Das Ergebnis
+    kommt über den Änderungs-Feed.
+    """
+    from ..db import SessionLocal
+
+    with _unterwegs_schloss:
+        if konto_id in _laufende_abgleiche:
+            return False
+        _laufende_abgleiche.add(konto_id)
+
+    def lauf() -> None:
+        SCHLOSS_FRIST.set(HINTERGRUND_FRIST)
+        try:
+            with SessionLocal() as db:
+                konto = db.get(Konto, konto_id)
+                if konto is not None:
+                    konto_abgleichen(db, konto, nur_posteingang=nur_posteingang)
+        except Exception as fehler:  # noqa: BLE001 - niemand wartet darauf
+            logger.info("A background sync did not finish: %s", type(fehler).__name__)
+        finally:
+            with _unterwegs_schloss:
+                _laufende_abgleiche.discard(konto_id)
+
+    threading.Thread(target=lauf, name="nexmail-app-abgleich", daemon=True).start()
+    return True
+
+
+#: So beginnt ein Anreißer, der aus einem ``<style>``-Block entstand.
+#: ⚠️ **Hinter der Klammer ein einzelnes Wort samt Doppelpunkt**, wie jede
+#: CSS-Eigenschaft. „Der Preis {inkl. Steuer: 19 %}" bleibt so stehen.
+_CSS_ANFANG = re.compile(r"\s*[@#.*:a-zA-Z][^{}]{0,120}\{\s*[a-zA-Z-]+\s*:")
+
+
+def anrisse_heilen(db: Session) -> int:
+    """Vorschauen ersetzen, die aus Stylesheet-Text bestehen. Einmal, beim Start.
+
+    Bis 0.24.7 stand in der Liste bei Newslettern ``#outlook a { padding:0; }``.
+    Neue Mails sind jetzt in Ordnung, die gespeicherten bleiben sonst, bis jemand
+    sie öffnet. ⚠️ **Der Vorfilter ist ``LIKE``**, damit nicht jede Zeile durch
+    Python muss. Lässt sich aus dem Körper nichts bauen, bleibt die Vorschau
+    leer; das ist besser als CSS.
+    """
+    geheilt = 0
+    for nachricht in db.scalars(select(Nachricht).where(Nachricht.anreisser.like("%{%:%"))):
+        if not _CSS_ANFANG.match(nachricht.anreisser):
+            continue
+        nachricht.anreisser = (
+            bereinigen.anreisser(nachricht.koerper_text)
+            if nachricht.koerper_text
+            else bereinigen.text_aus_html(nachricht.koerper_html or "")
+        )
+        geheilt += 1
+    if geheilt:
+        db.commit()
+        logger.info("Rebuilt the preview of %s message(s).", geheilt)
+    return geheilt
 
 
 def blobs_aufraeumen(db: Session) -> int:

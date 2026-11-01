@@ -23,8 +23,9 @@ from . import __version__
 from .config import get_settings
 from . import meldung as meldungsmodul
 from .db import SessionLocal, init_db
-from .deps import angemeldet
+from .deps import angemeldet, nur_geraet
 from .middleware import (
+    AppFristMiddleware,
     BasisPfadMiddleware,
     OberflaechePackenMiddleware,
     SchemaVomProxyMiddleware,
@@ -35,6 +36,8 @@ from .routers import (
     absenderbild as absenderbild_router,
     abwesenheit as abwesenheit_router,
     api_v1 as api_v1_router,
+    app1 as app1_router,
+    app_kopplung as app_kopplung_router,
     apischluessel as apischluessel_router,
     aufgaben as aufgaben_router,
     mailoauth as mailoauth_router,
@@ -65,6 +68,7 @@ from .routers import (
     ueber as ueber_router,
     verfassen,
 )
+from .services.abgleich import WartenFehler
 from .services import imap as imapdienst
 from .vendor import nexoidc
 from .services import sitzung as sitzungsdienst
@@ -127,6 +131,14 @@ nexoidc.configure(
 #: einen nennen zu können, hat wahrscheinlich vergessen, die Abhängigkeit zu
 #: setzen.
 OEFFENTLICHE_PFADE: dict[str, str] = {
+    "/api/app/1/pairing/{pairing_id}/key": (
+        "Hier holt sich die iPhone-App ihren Schlüssel, also hat sie noch keinen. Das "
+        "Geheimnis aus dem QR-Code steht in der Kopfzeile, davor die Anmeldebremse."
+    ),
+    "/api/app/1/pairing/code": (
+        "Derselbe Weg mit dem kurzen Code zum Abtippen: Wer ihn benutzt, hat noch "
+        "keinen Schlüssel. Die Bremse zählt je Adresse, der Code gilt zehn Minuten."
+    ),
     "/api/health": (
         "Der Docker-Healthcheck läuft ohne Anmeldung — er soll ja gerade dann "
         "antworten, wenn etwas nicht stimmt."
@@ -353,6 +365,14 @@ async def lebenslauf(_: FastAPI):
 
         schlagwortdienst.technische_aufraeumen(db)
 
+        # Vorschauen aus Stylesheet-Text. Einmal, gemerkt an einem Schluessel:
+        # Neue Mails sind in Ordnung, und der Lauf sieht jede verdaechtige Zeile an.
+        if einstellung_lesen(db, "anrisse_geheilt") != "1":
+            from .services import abgleich as abgleichdienst
+
+            abgleichdienst.anrisse_heilen(db)
+            einstellung_schreiben(db, "anrisse_geheilt", "1")
+
         weg = sitzungsdienst.aufraeumen(db)
         if weg:
             logger.info("Removed %s expired session(s).", weg)
@@ -484,6 +504,20 @@ async def _verbindungsfehler(request: Request, fehler: imapdienst.Verbindungsfeh
     return JSONResponse(status_code=status.HTTP_502_BAD_GATEWAY, content={"detail": fehler.text})
 
 
+@app.exception_handler(WartenFehler)
+async def _warten(request: Request, fehler: WartenFehler):
+    """Gerade geht es nicht, gleich wieder.
+
+    503 samt ``Retry-After``, damit die App weiß, dass die Handlung nicht
+    gescheitert ist: Sie bleibt in ihrer Warteschlange und kommt noch einmal.
+    """
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": fehler.kennung, "werte": fehler.werte},
+        headers={"Retry-After": str(fehler.werte.get("sekunden", 30))},
+    )
+
+
 if einstellungen_.cors_origins:
     # Nur für den Entwicklungsbetrieb: Im Container liefert derselbe Server
     # die Oberfläche aus, dann ist nichts „cross origin".
@@ -527,6 +561,12 @@ app.include_router(apischluessel_router.router, dependencies=NUR_ANGEMELDET)
 # keine Sitzung. Jede einzelne haengt an ``deps.api_zugriff``; der Waechter
 # in ``test_waechter.py`` zaehlt das als Schutz.
 app.include_router(api_v1_router.router)
+# ⚠️ **``nur_geraet`` an der ganzen Fläche.** Die Handler tragen ihr gewöhnliches
+# ``angemeldet``; welche Tür das öffnet, entscheidet ``deps._sitzung`` am Pfad.
+app.include_router(app1_router.router, dependencies=[Depends(nur_geraet)])
+# Ohne Wache: Wer hier ankommt, hat noch keinen Schlüssel (OEFFENTLICHE_PFADE).
+app.include_router(app_kopplung_router.public_router)
+app.include_router(app_kopplung_router.router, dependencies=NUR_ANGEMELDET)
 # ⚠️ **Nicht als Ganzes geschuetzt.** Der Rueckweg vom Anbieter ist eine
 # Navigation von fremder Seite; er traegt seinen eigenen Nachweis (Anlauf-
 # Cookie plus signierter Zustand) und darf deshalb ohne Sitzung ankommen.
@@ -716,6 +756,7 @@ app.add_middleware(SicherheitskopfMiddleware)
 # ⚠️ **Vor den Sicherheitskopfzeilen, damit sie jede Antwort sieht** — auch
 # die, die eine Ausnahme auslöst. Ohne das fehlte ausgerechnet beim Absturz
 # die Vorgangsnummer.
+app.add_middleware(AppFristMiddleware)
 app.add_middleware(VorgangMiddleware)
 
 # ⚠️ **Weiter außen als die Vorgangsnummer**, damit die fertige Antwort
