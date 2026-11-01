@@ -206,7 +206,7 @@ each operator registers their own. The administration page says so plainly
 rather than letting you guess why nothing works.
 
 **Rephrasing with AI, if you want it.** Every user can connect their own AI
-service under *Settings*: an address, a key and a model. nexmail knows no
+service on the *AI* page: an address, a key and a model. nexmail knows no
 provider; anything that speaks the common chat completions interface works,
 from Claude, Gemini or OpenAI to Ollama on a machine in your own network. In
 the editor it fixes spelling, translates, or rephrases in one of nine tones,

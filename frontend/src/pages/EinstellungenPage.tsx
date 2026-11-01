@@ -19,7 +19,6 @@ import { Benachrichtigungen } from './Benachrichtigungen'
 import { Darstellung } from './Darstellung'
 import { KontoFormular } from './KontoFormular'
 import { Schlagworte } from './Schlagworte'
-import { KiDienst } from './KiDienst'
 import { ApiSchluessel } from './ApiSchluessel'
 import { IphoneVerbinden } from './IphoneVerbinden'
 import { Sicherheit } from './Sicherheit'
@@ -38,7 +37,6 @@ export type Reiter =
   | 'schlagworte'
   | 'sicherheit'
   | 'benachrichtigungen'
-  | 'ki'
   | 'api'
   | 'iphone'
   | 'darstellung'
@@ -108,7 +106,7 @@ export function EinstellungenPage({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-canvas">
       {/* ⚠️ 1280 statt 900: Elf Reiter passen sonst nicht einzeilig; zehn brauchten rund
-          1064 px (18.09.2026). Bei 900 brachen „KI-Dienst" und „API-Schlüssel"
+          1064 px (18.09.2026). Bei 900 brachen die langen Namen wie „API-Schlüssel"
           zweizeilig um, und die Leiste lief trotzdem über den Rand. Wer einen
           Reiter dazunimmt, misst neu; `einstellungen.spec.ts` schlägt an. */}
       <div className="mx-auto w-full max-w-[1280px] px-6 py-6">
@@ -131,7 +129,6 @@ export function EinstellungenPage({
             { id: 'schlagworte', label: t('einstellungen.schlagworte') },
             { id: 'sicherheit', label: t('einstellungen.sicherheit') },
             { id: 'benachrichtigungen', label: t('einstellungen.benachrichtigungen') },
-            { id: 'ki', label: t('einstellungen.ki') },
             { id: 'api', label: t('einstellungen.api') },
             { id: 'iphone', label: t('einstellungen.iphone') },
             { id: 'darstellung', label: t('einstellungen.darstellung') },
@@ -182,8 +179,6 @@ export function EinstellungenPage({
             <Schlagworte aufGeaendert={aufSchlagworteGeaendert} />
           ) : reiter === 'sicherheit' ? (
             <Sicherheit ich={ich} ichNeuLaden={ichNeuLaden} />
-          ) : reiter === 'ki' ? (
-            <KiDienst />
           ) : reiter === 'api' ? (
             <ApiSchluessel istBetreiber={Boolean(ich?.ist_betreiber)} />
           ) : reiter === 'iphone' ? (

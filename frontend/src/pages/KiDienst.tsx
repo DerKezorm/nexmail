@@ -229,7 +229,7 @@ export function KiDienst({ ichNeuLaden }: { ichNeuLaden?: () => void }) {
                 <p className="mb-0 text-[12px] text-fg-3">{t('ki.fremde_post_hinweis')}</p>
               </div>
               <Switch
-                label={t('ki.fremde_post')}
+                label={t('ki.fremde_post_schalter')}
                 checked={stand.fremde_post}
                 disabled={speichert}
                 onCheckedChange={(an) => void sichern({ fremde_post: an })}

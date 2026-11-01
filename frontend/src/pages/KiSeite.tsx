@@ -12,6 +12,10 @@
  * die KI auf zwei Orte verteilt — Erlaubnis in der Verwaltung, eigener Zugang
  * in den Einstellungen —, und das ist schlechter als ein schlecht gelegener
  * Ort: Man findet die eine Hälfte und hält sie für das Ganze.
+ *
+ * ⚠️ **Nur hier, nicht auch als Reiter in den Einstellungen.** Der stand bis
+ * 01.11.2026 daneben, ohne `ichNeuLaden`: Wer dort schaltete, sah die Knöpfe in
+ * Mail und Editor erst nach dem Neuladen.
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'

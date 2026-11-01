@@ -31,6 +31,16 @@ test('Alle Reiter passen einzeilig auf die Seite', async ({ page }) => {
   ).toBeLessThanOrEqual(m.breite)
 })
 
+test('Die KI hat ihren eigenen Ort, keinen zweiten in den Einstellungen', async ({ page }) => {
+  /* ⚠️ Der Reiter daneben lud `ich` nicht nach: Dort geschaltet, standen die
+     Knöpfe in Mail und Editor erst nach dem Neuladen da. */
+  await anmelden(page)
+  await zuEinstellungen(page)
+
+  await expect(page.getByRole('tab', { name: 'Signaturen' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: /KI/ })).toHaveCount(0)
+})
+
 test('iPhone verbinden zeigt QR-Code, kurzen Code und Stand', async ({ page }) => {
   await anmelden(page)
   await zuEinstellungen(page)
