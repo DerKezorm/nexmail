@@ -41,6 +41,7 @@ from ..services import push as pushdienst
 from . import (
     absenderbild,
     aufgaben,
+    aufgabenziele,
     ki,
     kontakte,
     konten,
@@ -118,7 +119,9 @@ class AppSelbstauskunft(BaseModel):
 
 
 def _faehigkeiten(db: DbSession, person) -> list[str]:
-    raus = ["abbestellen", "aenderungen", "endgueltig_loeschen", "wiedervorlage"]
+    # ``todoapps``: Die Adressen für Todo-Apps gibt es. Ob die Person eine
+    # verbunden hat, sagt ``/task-apps``; verbunden wird nur im Browser.
+    raus = ["abbestellen", "aenderungen", "endgueltig_loeschen", "todoapps", "wiedervorlage"]
     if kidienst.erlaubt_fuer(db, person) and person.ki_aktiv:
         raus.append("umformulieren")
     if kidienst.fremde_post_fuer(db, person):
@@ -250,6 +253,26 @@ _zweitschrift(
     "Empty the trash or junk for good",
 )
 _zweitschrift("/tasks", aufgaben.router, aufgaben.anlegen, "POST", "Make a task from a message")
+# ⚠️ **Todo-Apps: nur anlegen und wählen, nie verbinden.** Den Token trägt man
+# im Browser ein (Einrichten bleibt dort); die App fragt, ob es Verbindungen
+# gibt, holt die Listen und legt an. Gibt es keine, bleibt ``/tasks`` der Weg.
+_zweitschrift(
+    "/tasks/with-target",
+    aufgaben.router,
+    aufgaben.mit_ziel,
+    "POST",
+    "Make a task from a message in nexmail or a connected to-do app",
+)
+_zweitschrift(
+    "/task-apps", aufgabenziele.router, aufgabenziele.stand, "GET", "Connected to-do apps"
+)
+_zweitschrift(
+    "/task-lists",
+    aufgabenziele.router,
+    aufgabenziele.listen,
+    "GET",
+    "The lists of every connected to-do app",
+)
 
 # --- Eine Mail ------------------------------------------------------------- #
 
@@ -529,5 +552,8 @@ ZUGESAGT = (
     "/api/app/1/snoozes",
     "/api/app/1/snoozes/{eintrag_id}",
     "/api/app/1/sync",
+    "/api/app/1/task-apps",
+    "/api/app/1/task-lists",
     "/api/app/1/tasks",
+    "/api/app/1/tasks/with-target",
 )

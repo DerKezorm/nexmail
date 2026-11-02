@@ -319,6 +319,25 @@
     "nachricht_id",
     "zurueck_pfad"
   ],
+  "GET /api/app/1/task-apps": [
+    "standard",
+    "verbindungen",
+    "verbindungen.angelegt",
+    "verbindungen.art",
+    "verbindungen.fehler",
+    "verbindungen.id",
+    "verbindungen.name",
+    "verbindungen.zuletzt_abgeglichen"
+  ],
+  "GET /api/app/1/task-lists": [
+    "art",
+    "fehler",
+    "listen",
+    "listen.name",
+    "listen.ziel",
+    "name",
+    "verbindung_id"
+  ],
   "POST /api/app/1/ai/text": [
     "text"
   ],
@@ -501,6 +520,25 @@
     "verwaist",
     "von_adresse",
     "von_name"
+  ],
+  "POST /api/app/1/tasks/with-target": [
+    "aufgabe",
+    "aufgabe.betreff",
+    "aufgabe.erledigt",
+    "aufgabe.faellig",
+    "aufgabe.fern_art",
+    "aufgabe.fern_geloescht",
+    "aufgabe.fern_liste",
+    "aufgabe.fern_url",
+    "aufgabe.fern_verbunden",
+    "aufgabe.id",
+    "aufgabe.konto_id",
+    "aufgabe.mail_datum",
+    "aufgabe.nachricht_id",
+    "aufgabe.verwaist",
+    "aufgabe.von_adresse",
+    "aufgabe.von_name",
+    "neu"
   ],
   "PUT /api/app/1/push": [
     "status"

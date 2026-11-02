@@ -17,6 +17,7 @@ import pytest
 
 from app.db import einstellung_schreiben
 from app.models import Aufgabe, Aufgabenverbindung, Benutzer
+from app.routers.app1 import ZUGESAGT
 from app.services import aufgabenziele, todoist
 from conftest import anmelden, zweiten_benutzer_anlegen
 from test_aufgaben import ohne_netz, welt  # noqa: F401
@@ -535,3 +536,68 @@ def test_eine_erledigte_in_der_liste_der_offenen_bleibt_erledigt(klient, verbund
     aufgabenziele.abgleichen(db, db.query(Benutzer).first())
     db.expire_all()
     assert db.get(Aufgabe, aufgabe_id).erledigt is not None
+
+
+# --- Die iPhone-App ------------------------------------------------------------ #
+
+
+@pytest.fixture
+def geraet(klient, verbunden):
+    """Ein gekoppeltes Gerät: nur Bearer, kein Keks."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from test_app_flaeche import abholen, koppeln
+
+    with TestClient(app, base_url="http://testserver") as c:
+        schluessel = abholen(c, koppeln(klient)).json()["key"]
+        c.headers["Authorization"] = f"Bearer {schluessel}"
+        yield c
+
+
+def test_die_app_sieht_verbindungen_und_listen(geraet, verbunden):
+    assert "todoapps" in geraet.get("/api/app/1/me").json()["faehigkeiten"]
+    stand = geraet.get("/api/app/1/task-apps").json()
+    assert [v["id"] for v in stand["verbindungen"]] == [verbunden]
+    assert TOKEN not in json.dumps(stand)
+    listen = geraet.get("/api/app/1/task-lists").json()
+    assert [l["name"] for l in listen[0]["listen"]] == ["Inbox", "Arbeit", "Arbeit › Kunden"]
+
+
+def test_die_app_legt_in_todoist_an_und_bekommt_kein_doppel(geraet, verbunden, welt, fern):  # noqa: F811
+    _, _, ids = welt
+    wunsch = {
+        "nachricht_id": ids[0],
+        "ziel": f"{verbunden}:p-arbeit",
+        "faellig": "2026-11-06",
+        "adresse": "https://mail.example.com",
+    }
+    erste = geraet.post("/api/app/1/tasks/with-target", json=wunsch)
+    assert erste.status_code == 200, erste.text
+    assert erste.json()["neu"] is True
+    assert erste.json()["aufgabe"]["fern_url"].endswith("/t1")
+    assert fern.rumpfe[-1]["due_date"] == "2026-11-06"
+    assert "https://mail.example.com/?mail=" in fern.rumpfe[-1]["description"]
+
+    zweite = geraet.post("/api/app/1/tasks/with-target", json=wunsch).json()
+    assert zweite["neu"] is False
+    assert len(fern.rumpfe) == 1
+
+
+def test_ein_abgelehnter_token_wirft_die_app_nicht_hinaus(geraet, verbunden, welt, fern):  # noqa: F811
+    """⚠️ 409, nie 401: Bei 401 hielte die App ihr Gerät für getrennt."""
+    _, _, ids = welt
+    fern.stoerung = 401
+    antwort = geraet.post(
+        "/api/app/1/tasks/with-target", json={"nachricht_id": ids[0], "ziel": f"{verbunden}:p-arbeit"}
+    )
+    assert antwort.status_code == 409
+    assert antwort.json()["detail"] == "todoist_zugang_ungueltig"
+    assert geraet.get("/api/app/1/me").status_code == 200
+
+
+def test_verbinden_geht_nicht_ueber_die_app(geraet):
+    """Einrichten bleibt im Browser: Die App hat keine Adresse dafür, und die
+    des Browsers nimmt das Gerätetoken nicht."""
+    assert geraet.post("/api/aufgabenziele", json={"art": "todoist", "zugang": TOKEN}).status_code == 401
+    assert all("aufgabenziele" not in p for p in ZUGESAGT)
