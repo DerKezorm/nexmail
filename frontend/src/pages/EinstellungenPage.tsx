@@ -26,6 +26,7 @@ import { Regeln, type RegelVorlage } from './Regeln'
 import { Abwesenheit } from './Abwesenheit'
 import { Signaturen } from './Signaturen'
 import { Textvorlagen } from './Textvorlagen'
+import { TodoApps } from './TodoApps'
 import { api } from '../api/client'
 import type { KontoZeile } from '../api/client'
 
@@ -35,6 +36,7 @@ export type Reiter =
   | 'signaturen'
   | 'abwesenheit'
   | 'schlagworte'
+  | 'aufgaben'
   | 'sicherheit'
   | 'benachrichtigungen'
   | 'api'
@@ -127,6 +129,7 @@ export function EinstellungenPage({
             { id: 'signaturen', label: t('einstellungen.signaturen') },
             { id: 'abwesenheit', label: t('einstellungen.abwesenheit') },
             { id: 'schlagworte', label: t('einstellungen.schlagworte') },
+            { id: 'aufgaben', label: t('einstellungen.aufgaben') },
             { id: 'sicherheit', label: t('einstellungen.sicherheit') },
             { id: 'benachrichtigungen', label: t('einstellungen.benachrichtigungen') },
             { id: 'api', label: t('einstellungen.api') },
@@ -177,6 +180,8 @@ export function EinstellungenPage({
             </div>
           ) : reiter === 'schlagworte' ? (
             <Schlagworte aufGeaendert={aufSchlagworteGeaendert} />
+          ) : reiter === 'aufgaben' ? (
+            <TodoApps />
           ) : reiter === 'sicherheit' ? (
             <Sicherheit ich={ich} ichNeuLaden={ichNeuLaden} />
           ) : reiter === 'api' ? (

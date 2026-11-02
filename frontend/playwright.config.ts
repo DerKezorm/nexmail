@@ -70,6 +70,7 @@ const NUR_BREIT = [
   'ordnerrolle.spec.ts',
   'regeln.spec.ts',
   'sicherungen.spec.ts',
+  'todoapps.spec.ts',
   'umzug.spec.ts',
   'verfassen_ablegen.spec.ts',
 ]

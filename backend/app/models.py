@@ -193,6 +193,15 @@ class Benutzer(Base):
     #: niemanden an, den der Mensch davor nicht angefunkt haben will.
     absenderlogos_laden: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    #: Wohin „Zu Aufgabe machen" ohne weitere Wahl geht: leer heisst
+    #: nexmails eigene Liste, sonst ``<verbindung>:<liste>``. ⚠️ **Zeigt das
+    #: Ziel auf eine getrennte Verbindung, gilt wieder die eigene Liste** —
+    #: ein Standard, der ins Leere zeigt, darf nicht jeden Handgriff scheitern
+    #: lassen (``aufgabenziele.standard_von``).
+    aufgaben_standard: Mapped[str] = mapped_column(
+        String(200), default="", server_default=""
+    )
+
     # --- Web Push --------------------------------------------------------- #
     #
     # ⚠️ **Wobei gemeldet wird, gehoert dem Benutzer; ob ueberhaupt, dem
@@ -1282,12 +1291,67 @@ class Aufgabe(Base):
     reihenfolge: Mapped[int] = mapped_column(Integer, default=0)
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
+    # --- Wenn eine Todo-App die Aufgabe verwaltet ------------------------- #
+    #
+    # ⚠️ **Dann gehört der Haken der Todo-App.** ``erledigt`` und ``faellig``
+    # sind hier nur ihr letzter bekannter Stand, nachgezogen im Abgleich
+    # (``aufgabenziele.abgleichen``). Abhaken in nexmail geht erst zur App und
+    # schreibt hier nur, was sie angenommen hat.
+    #: Leer heisst: nexmails eigene Aufgabe. Sonst ``todoist`` usw. Bleibt
+    #: stehen, wenn die Verbindung getrennt wird — die Aufgabe liegt ja noch
+    #: dort, und der Link fuehrt weiter hin.
+    fern_art: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    #: Die Verbindung, ueber die abgeglichen wird. ``None`` nach dem Trennen.
+    verbindung_id: Mapped[str | None] = mapped_column(String(32), default=None)
+    #: Die Kennung bei der Todo-App.
+    fern_id: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    fern_url: Mapped[str] = mapped_column(Text, default="", server_default="")
+    #: Der Name der Liste (des Projekts) beim Anlegen — nur zum Anzeigen.
+    fern_liste: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    #: ⚠️ **In der App geloescht.** Die Zeile bleibt mit ihrem Abzug stehen und
+    #: sagt es, aus demselben Grund wie die verwaiste Mail: Lautlos
+    #: verschwinden waere genau dann falsch, wenn man sie sucht.
+    fern_geloescht: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+
     __table_args__ = (
         # ⚠️ Dieselbe Mail nicht zweimal in der Liste. Ohne das entstehen
         # Doppel, sobald jemand den Menuepunkt zweimal trifft — und abhaken
         # muss man dann beide.
         UniqueConstraint("benutzer_id", "message_id", name="uq_aufgabe_mail"),
     )
+
+
+class Aufgabenverbindung(Base):
+    """Eine verbundene Todo-App eines Benutzers — Todoist, spaeter weitere.
+
+    ⚠️ **Je Benutzer, nicht je Installation**, wie der KI-Dienst: Jeder bringt
+    seinen eigenen Zugang mit, und der Betreiber muss nichts vorgeben.
+
+    ⚠️ **Mehrere Zeilen je Benutzer, wie bei den Kalendern.** Zwei
+    Todoist-Konten oder Todoist neben einer anderen App sind gewollt; die
+    Listen (Projekte) holt nexmail live, gespeichert wird nur der Zugang.
+
+    ⚠️ **Der Zugang ist ein Passwort** und liegt verschluesselt, Kontext
+    ``aufgabenverbindung:<id>:zugang``. Er geht nie zurueck an die Oberflaeche.
+    """
+
+    __tablename__ = "aufgabenverbindung"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    #: ``todoist``
+    art: Mapped[str] = mapped_column(String(20))
+    #: Zum Wiedererkennen, wenn es zwei derselben Art gibt („Todoist Arbeit").
+    name: Mapped[str] = mapped_column(String(80), default="")
+    zugang: Mapped[str] = mapped_column(Text, default="")
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    zuletzt_abgeglichen: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    #: ⚠️ **Eine Kennung, kein Satz**, und sichtbar in den Einstellungen: Ein
+    #: zurueckgezogener Token sieht sonst aus wie eine Todo-App, die nichts
+    #: mehr meldet.
+    letzter_fehler: Mapped[str] = mapped_column(String(80), default="")
 
 
 class Wiedervorlage(Base):

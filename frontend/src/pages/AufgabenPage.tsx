@@ -8,15 +8,21 @@
  * lautlos seine Liste mitlöschen. Eine verwaiste Aufgabe steht weiter da, sagt
  * es und trägt trotzdem noch Betreff und Absender — sonst weiß niemand mehr,
  * worum es ging.
+ *
+ * ⚠️ **Eine Aufgabe in einer Todo-App gehört dieser App.** Sie steht hier
+ * trotzdem, mit ihrer Liste und einem Link dorthin; Haken und Datum sind der
+ * letzte Stand, den der Abgleich geholt hat. Abhaken geht über die App, das
+ * Datum ändert man nur dort.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, GripVertical, ListChecks, MailWarning, Trash2 } from 'lucide-react'
+import { Check, ExternalLink, GripVertical, ListChecks, MailWarning, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import type { Konto } from '../daten/typen'
 import { PUNKT_KLASSE } from '../lib/farben'
 import { EmptyState, IconButton } from '../ds'
 import { servermeldung } from '../lib/servermeldung'
+import { ARTNAME } from '../lib/aufgabenziele'
 
 export interface AufgabenZeile {
   id: number
@@ -29,6 +35,14 @@ export interface AufgabenZeile {
   erledigt: string | null
   faellig: string | null
   verwaist: boolean
+  /** Leer heißt: nexmails eigene Aufgabe. Sonst die Todo-App, `todoist`. */
+  fern_art: string
+  fern_url: string
+  fern_liste: string
+  /** In der App gelöscht — die Zeile sagt es, statt zu verschwinden. */
+  fern_geloescht: boolean
+  /** Nach dem Trennen der Verbindung: nicht mehr abgeglichen. */
+  fern_verbunden: boolean
 }
 
 interface Props {
@@ -58,7 +72,21 @@ export function AufgabenPage({ konten, aufMail, aufAenderung }: Props) {
   }, [t])
 
   useEffect(() => {
-    void laden()
+    void (async () => {
+      await laden()
+      /* ⚠️ **Erst zeigen, dann nachsehen.** Die Liste steht sofort mit dem
+         letzten Stand da; was die Todo-Apps inzwischen sagen, kommt einen
+         Augenblick später. Scheitert das, bleibt der letzte Stand stehen —
+         der Grund steht an der Verbindung in den Einstellungen. */
+      try {
+        await api.senden('/api/aufgaben/abgleichen', {})
+        await laden()
+        aufAenderung?.()
+      } catch {
+        /* Der letzte Stand bleibt; siehe oben. */
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [laden])
 
   async function mit(tun: () => Promise<unknown>) {
@@ -119,6 +147,7 @@ export function AufgabenPage({ konten, aufMail, aufAenderung }: Props) {
             const farbe = konten.find((k) => k.id === z.konto_id)?.farbe
             const faellig = z.faellig ? new Date(z.faellig) : null
             const ueberfaellig = Boolean(faellig && !z.erledigt && faellig < new Date())
+            const inApp = Boolean(z.fern_art && z.fern_verbunden && !z.fern_geloescht)
 
             return (
               <li
@@ -209,6 +238,42 @@ export function AufgabenPage({ konten, aufMail, aufAenderung }: Props) {
                       </span>
                     )}
 
+                    {z.fern_art && (
+                      <span className="flex items-center gap-1">
+                        {z.fern_liste || ARTNAME[z.fern_art] || z.fern_art}
+                        {z.fern_url && (
+                          <a
+                            href={z.fern_url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            aria-label={t('aufgaben.in_app_oeffnen')}
+                            title={t('aufgaben.in_app_oeffnen')}
+                            className="text-fg-4 hover:text-accent-text"
+                          >
+                            <ExternalLink className="size-3" aria-hidden />
+                          </a>
+                        )}
+                      </span>
+                    )}
+
+                    {z.fern_geloescht && (
+                      <span className="flex items-center gap-1 text-warning">
+                        <MailWarning className="size-3" />
+                        {t('aufgaben.in_app_geloescht')}
+                      </span>
+                    )}
+
+                    {/* ⚠️ **Das Datum einer App-Aufgabe nur lesen.** Geändert
+                        wird es in der App; hier wäre es beim nächsten
+                        Abgleich still wieder überschrieben. */}
+                    {inApp ? (
+                      faellig && (
+                        <span className={ueberfaellig ? 'text-danger' : ''}>
+                          {faellig.toLocaleDateString(undefined, { timeZone: 'UTC' })}
+                        </span>
+                      )
+                    ) : (
+                    <>
                     {/* ⚠️ **Ohne Datum bleibt hier nur das Kalendersymbol.**
                         Ein leeres `<input type="date">` malt „tt.mm.jjjj" hin,
                         und das stünde bei den meisten Aufgaben — die haben
@@ -241,6 +306,8 @@ export function AufgabenPage({ konten, aufMail, aufAenderung }: Props) {
                         }
                       />
                     </label>
+                    </>
+                    )}
 
                     {/* ⚠️ **Das Eingangsdatum der Mail steht hier nicht.**
                         Zwei unbeschriftete Daten nebeneinander liest niemand
@@ -252,7 +319,7 @@ export function AufgabenPage({ konten, aufMail, aufAenderung }: Props) {
 
                 <IconButton
                   icon={<Trash2 />}
-                  label={t('aufgaben.entfernen')}
+                  label={z.fern_art ? t('aufgaben.entfernen_nur_hier') : t('aufgaben.entfernen')}
                   onClick={() => void mit(() => api.loeschen(`/api/aufgaben/${z.id}`))}
                 />
               </li>

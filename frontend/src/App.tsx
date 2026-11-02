@@ -153,6 +153,9 @@ import { namensraumWurzel, ordnerName } from './lib/ordnername'
 import { ausMenue } from './lib/befehle'
 import type { Befehl } from './lib/befehle'
 import { Befehlspalette } from './components/Befehlspalette'
+import { AufgabeAnlegen } from './components/AufgabeAnlegen'
+import type { Mailkopf } from './components/AufgabeAnlegen'
+import type { ZielStand } from './lib/aufgabenziele'
 
 type Modus = 'dark' | 'light'
 
@@ -346,6 +349,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   // selbst — eine Meldung, die man wegklicken muss, wird weggeklickt.
   const { fragen, fenster: nachfrage } = useNachfrage()
   const [stoerung, setStoerung] = useState('')
+  /** Die Mails, für die das Fenster „Zu Aufgabe machen" offen steht. */
+  const [aufgabeFuer, setAufgabeFuer] = useState<Mailkopf[]>([])
   const stoerUhr = useRef<number | undefined>(undefined)
   useEffect(() => {
     if (!stoerung) return
@@ -1683,6 +1688,21 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           tun: () => {
             void (async () => {
               try {
+                /* ⚠️ **Ohne verbundene Todo-App bleibt es ein Klick**, wie
+                   vor den Todo-Apps. Erst mit einer Verbindung gibt es etwas
+                   zu wählen, und erst dann kommt das Fenster. Gefragt wird
+                   bei jedem Griff: Eine gerade in den Einstellungen
+                   verbundene App soll sofort zählen. */
+                const ziele = await api.holen<ZielStand>('/api/aufgabenziele')
+                if (ziele.verbindungen.length) {
+                  setAufgabeFuer(
+                    ids.map((id) => ({
+                      id: Number(id),
+                      betreff: id === n.id ? n.betreff : '',
+                    })),
+                  )
+                  return
+                }
                 for (const id of ids) {
                   await api.senden('/api/aufgaben', { nachricht_id: id })
                 }
@@ -2026,11 +2046,27 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     () => new URLSearchParams(window.location.search).get('nachricht'),
     [],
   )
+  /* Der Link aus einer Todo-App: `?mail=<Message-ID>`. ⚠️ **Über die
+     Message-ID, nicht die Zeilennummer**, weil die Zeile beim Verschieben
+     wechselt und der Link monatelang in der App steht. Der Server sucht nur
+     in der eigenen Post. */
+  const soloMail = useMemo(
+    () => new URLSearchParams(window.location.search).get('mail'),
+    [],
+  )
   const [soloNachricht, setSoloNachricht] = useState<VolleNachricht | null>(null)
   const [soloStand, setSoloStand] = useState<'laedt' | 'da' | 'fehlt'>('laedt')
   useEffect(() => {
-    if (!soloId) return
-    nachrichtLaden(soloId)
+    if (!soloId && !soloMail) return
+    const kennung = soloId
+      ? Promise.resolve(soloId)
+      : api
+          .holen<{ nachricht_id: number }>(
+            `/api/aufgaben/mail?message_id=${encodeURIComponent(soloMail ?? '')}`,
+          )
+          .then((f) => String(f.nachricht_id))
+    kennung
+      .then(nachrichtLaden)
       .then((n) => {
         setSoloNachricht(n)
         setSoloStand('da')
@@ -2038,7 +2074,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       })
       .catch(() => setSoloStand('fehlt'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [soloId])
+  }, [soloId, soloMail])
   async function abmelden() {
     try {
       await api.senden('/api/auth/abmelden', {})
@@ -2068,7 +2104,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   /* Nach saemtlichen Hooks, damit deren Reihenfolge in beiden Zweigen gleich
      bleibt. Das Fenster traegt bewusst weder NavRail noch Spalten: Es ist die
      eine Nachricht, sonst nichts — geschlossen wird es wie ein Fenster. */
-  if (soloId) {
+  if (soloId || soloMail) {
     return (
       <div className="flex h-full flex-col bg-canvas">
         {soloStand === 'fehlt' ? (
@@ -2672,6 +2708,12 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       )}
 
       {nachfrage}
+
+      <AufgabeAnlegen
+        mails={aufgabeFuer}
+        aufZu={() => setAufgabeFuer([])}
+        aufFertig={() => void aufgabenZaehlen()}
+      />
 
       {verfassenGebraucht && (
       <Suspense fallback={null}>

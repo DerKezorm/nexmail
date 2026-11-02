@@ -249,6 +249,14 @@ def kalender_runde(db) -> None:
         alle_abgleichen(db, person)
         buecher_abgleichen(db, person)
 
+    # ⚠️ **Die Todo-Apps auch hier**, aus demselben Grund: Ein erledigter
+    # Haken auf dem Telefon soll ankommen, auch wenn niemand die Post holt.
+    # Zehn Minuten reichen; beim Oeffnen der Aufgabenliste wird zusaetzlich
+    # nachgesehen.
+    from .aufgabenziele import alle_abgleichen as aufgaben_abgleichen
+
+    aufgaben_abgleichen(db)
+
 
 def _kalenderschleife() -> None:
     while not _kalender_halt.wait(KALENDER_TAKT_SEKUNDEN):
