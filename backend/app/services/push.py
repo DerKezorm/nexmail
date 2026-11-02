@@ -98,6 +98,11 @@ TEXT_GRENZE = 120
 #: Was in einer Meldung an die App hoechstens steht, vor dem Verschluesseln.
 APP_TITEL_GRENZE = 100
 APP_TEXT_GRENZE = 200
+APP_VORSCHAU_GRENZE = 120
+
+#: ⚠️ **In Byte, nicht in Zeichen.** Der Relay nimmt 3000 Zeichen ``enc``, also
+#: 2250 Byte, und davon gehen 60 an Wegwerfschluessel, Nonce und Tag.
+APP_KLARTEXT_GRENZE = 2190
 
 #: Der Relay nimmt hoechstens so viele Zeichen fuer ``collapse``.
 MARKE_GRENZE = 64
@@ -129,6 +134,8 @@ class Meldung:
     #: Die Mail, die ein Antippen in der App oeffnet. Leer bei einem Buendel und
     #: bei einer Erinnerung.
     kennung: int | None = None
+    #: Der Anfang der Mail, die dritte Zeile in der App. Der Browser zeigt ihn nicht.
+    vorschau: str = ""
 
 
 # --------------------------------------------------------------------------- #
@@ -362,17 +369,29 @@ def hat_empfaenger(db: Session, person: Benutzer) -> bool:
     return bool(person.push_anmeldungen) or bool(_geraete(db, person))
 
 
+def _kompakt(daten: dict[str, object]) -> bytes:
+    return json.dumps(daten, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
 def _klartext(meldung: Meldung) -> bytes:
-    """Was die App entschluesselt. ⚠️ **Kompakt, Feldnamen aus dem Vertrag.**"""
-    return json.dumps(
-        {
-            "titel": meldung.titel[:APP_TITEL_GRENZE],
-            "text": meldung.text[:APP_TEXT_GRENZE],
-            "id": meldung.kennung,
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-    ).encode("utf-8")
+    """Was die App entschluesselt. ⚠️ **Kompakt, Feldnamen aus dem Vertrag.**
+
+    ⚠️ **``vorschau`` weicht, nicht die Meldung.** Titel und Text passen immer,
+    das haelt ein Test fest. Mit dem Anfang der Mail dazu kann es zu viel werden:
+    Ein Steuerzeichen ist im JSON sechs Byte lang, und ein zu langes ``enc`` weist
+    der Relay ab.
+    """
+    daten: dict[str, object] = {
+        "titel": meldung.titel[:APP_TITEL_GRENZE],
+        "text": meldung.text[:APP_TEXT_GRENZE],
+        "id": meldung.kennung,
+    }
+    vorschau = meldung.vorschau[:APP_VORSCHAU_GRENZE].strip()
+    if vorschau:
+        mit_vorschau = _kompakt({**daten, "vorschau": vorschau})
+        if len(mit_vorschau) <= APP_KLARTEXT_GRENZE:
+            return mit_vorschau
+    return _kompakt(daten)
 
 
 def _versiegeln(klartext: bytes, geraeteschluessel: str) -> str:
@@ -679,6 +698,7 @@ def neue_mail_melden(
                 ziel="/",
                 marke=f"mail-{nachricht.id}",
                 kennung=nachricht.id,
+                vorschau=nachricht.anreisser,
             ),
         )
 

@@ -175,13 +175,16 @@ def postfach(db, person, adresse="anna@example.org", rolle="posteingang") -> tup
     return konto, ordner
 
 
-def mail(db, person, konto, ordner, uid=1, gelesen=False, betreff="Treffen am Samstag") -> Nachricht:
+def mail(
+    db, person, konto, ordner, uid=1, gelesen=False, betreff="Treffen am Samstag", anreisser=""
+) -> Nachricht:
     n = Nachricht(
         benutzer_id=person.id,
         konto_id=konto.id,
         ordner_id=ordner.id,
         uid=uid,
         betreff=betreff,
+        anreisser=anreisser,
         von_name="Mia Beispiel",
         von_adresse="mia@example.org",
         datum=utcnow(),
@@ -252,6 +255,54 @@ def test_auch_der_schlimmste_betreff_bleibt_unter_der_grenze(zeichen):
     """⚠️ Steuerzeichen werden im JSON sechs Byte lang, ein Emoji vier."""
     klar = push._klartext(push.Meldung(titel=zeichen * 500, text=zeichen * 500, ziel="/", marke="m"))
     assert len(push._versiegeln(klar, OEFFENTLICH)) <= 3000
+
+
+def test_die_grenze_ist_genau_das_was_der_relay_nimmt():
+    assert len(push._versiegeln(b"x" * push.APP_KLARTEXT_GRENZE, OEFFENTLICH)) <= 3000
+    assert len(push._versiegeln(b"x" * (push.APP_KLARTEXT_GRENZE + 1), OEFFENTLICH)) > 3000
+
+
+def test_die_vorschau_wird_gekuerzt_und_endet_nicht_mit_leerraum():
+    def vorschau(wert):
+        klar = push._klartext(push.Meldung(titel="t", text="x", ziel="/", marke="m", vorschau=wert))
+        return json.loads(klar)["vorschau"]
+
+    assert vorschau("v" * 300) == "v" * 120
+    assert vorschau("v" * 119 + " danach") == "v" * 119
+
+
+@pytest.mark.parametrize("wert", ["", "   ", "\n\t "])
+def test_ohne_text_fehlt_das_feld(wert):
+    klar = push._klartext(push.Meldung(titel="t", text="x", ziel="/", marke="m", vorschau=wert))
+    assert "vorschau" not in json.loads(klar)
+
+
+def test_die_grenze_zaehlt_byte_nicht_zeichen():
+    """⚠️ Ein Steuerzeichen ist ein Zeichen und im JSON sechs Byte."""
+    schwer = {"titel": "\x01" * 100, "text": "\x01" * 200}
+
+    def klartext(vorschau):
+        return push._klartext(push.Meldung(**schwer, ziel="/", marke="m", vorschau=vorschau))
+
+    frei = push.APP_KLARTEXT_GRENZE - len(push._kompakt({**schwer, "id": None, "vorschau": ""}))
+    passt = "\x01" * (frei // 6) + "v" * (frei % 6)
+
+    assert len(passt) <= push.APP_VORSCHAU_GRENZE
+    assert len(klartext(passt)) == push.APP_KLARTEXT_GRENZE
+    assert "vorschau" not in json.loads(klartext(passt + "v"))
+
+
+def test_was_nicht_passt_verliert_nur_die_vorschau(db, person, relay):
+    geraet(db, person)
+    konto, eingang = postfach(db, person)
+    n = mail(db, person, konto, eingang, betreff="\x01" * 200, anreisser="\x01" * 120)
+    n.von_name = "\x01" * 100
+    db.commit()
+
+    push.neue_mail_melden(db, konto, [n.id], set())
+
+    assert relay.inhalte() == [{"titel": "\x01" * 100, "text": "\x01" * 200, "id": n.id}]
+    assert len(relay.sendungen[0][1]["enc"]) <= 3000
 
 
 # --- Der Schlüssel --------------------------------------------------------- #
@@ -477,13 +528,36 @@ def test_ein_geraet_zaehlt_wie_eine_anmeldung(db, person, relay):
     assert relay.sendungen[0][1]["collapse"] == f"mail-{n.id}"
 
 
+def test_die_mail_bringt_ihren_anfang_mit(db, person, relay):
+    geraet(db, person)
+    konto, eingang = postfach(db, person)
+    n = mail(db, person, konto, eingang, anreisser="Passt dir Samstag um zehn?")
+
+    push.neue_mail_melden(db, konto, [n.id], set())
+
+    assert relay.inhalte() == [
+        {
+            "titel": "Mia Beispiel",
+            "text": "Treffen am Samstag",
+            "id": n.id,
+            "vorschau": "Passt dir Samstag um zehn?",
+        }
+    ]
+    assert "Samstag" not in json.dumps(relay.sendungen[0][1])
+
+
+def test_der_browser_bekommt_die_vorschau_nicht():
+    meldung = push.Meldung(titel="t", text="x", ziel="/", marke="m", vorschau="geheim genug")
+    assert "vorschau" not in json.loads(push._rumpf(meldung))
+
+
 def test_ein_buendel_traegt_keine_kennung(db, person, relay):
     person.push_mail_buendeln = True
     db.commit()
     geraet(db, person)
     konto, eingang = postfach(db, person)
-    a = mail(db, person, konto, eingang, uid=1)
-    b = mail(db, person, konto, eingang, uid=2)
+    a = mail(db, person, konto, eingang, uid=1, anreisser="Passt dir Samstag?")
+    b = mail(db, person, konto, eingang, uid=2, anreisser="Passt dir Sonntag?")
 
     push.neue_mail_melden(db, konto, [a.id, b.id], set())
 
@@ -757,6 +831,19 @@ def test_das_ticket_steht_in_keinem_protokoll(db, person, antworten, caplog, ant
 
     assert TICKET not in caplog.text
     assert OEFFENTLICH not in caplog.text
+
+
+@pytest.mark.parametrize("antwort", [200, 410, 502, httpx.ConnectError("weg")])
+def test_die_vorschau_steht_in_keinem_protokoll(db, person, antworten, caplog, antwort):
+    geraet(db, person)
+    konto, eingang = postfach(db, person)
+    n = mail(db, person, konto, eingang, anreisser="Passt dir Samstag um zehn?")
+    antworten(antwort)
+
+    with caplog.at_level(logging.DEBUG):
+        push.neue_mail_melden(db, konto, [n.id], set())
+
+    assert "Passt dir" not in caplog.text
 
 
 def test_ein_fehlschlag_steht_genau_einmal_im_protokoll(db, person, antworten, caplog):
