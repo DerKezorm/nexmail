@@ -74,5 +74,30 @@
       "Newsletters no longer show CSS in the message list.",
       "nexmail is ready for an iPhone app, which pairs under “Connect iPhone”."
     ]
+  },
+  "0.26.0": {
+    "lead": "Tasks from mail can now go to Todoist, and what you complete there, nexmail sees too.",
+    "sections": [
+      {
+        "title": "Connect Todoist",
+        "where": "Settings, the “Tasks” tab",
+        "body": "Paste the API token from Todoist. nexmail checks it and keeps it encrypted. It is yours alone, everyone connects their own app. This is also where you pick the default list: your Todoist list, or nexmail's own list as before."
+      },
+      {
+        "title": "List and due date when you create it",
+        "where": "“Turn into task” on a message",
+        "body": "With a connection, nexmail asks briefly: title, list and due date, with Today, Tomorrow and Next week one tap away. Only the title, the date, the sender and a link back to the mail go to Todoist, never the text of the mail. If a mail already has a task, nexmail says where instead of making a second one."
+      },
+      {
+        "title": "Done in both directions",
+        "where": "The task list",
+        "body": "Tick a task in nexmail and Todoist knows right away. Complete, reschedule or delete it in Todoist and nexmail follows a few minutes later, or at once when you open the task list. The date of a Todoist task is changed in Todoist."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "Removing a Todoist task takes it out of nexmail only, it stays in Todoist.",
+      "Tasks created directly in Todoist do not show up in nexmail. The list stays the list of your mail."
+    ]
   }
 }

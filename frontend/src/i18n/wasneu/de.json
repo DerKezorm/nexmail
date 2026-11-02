@@ -74,5 +74,30 @@
       "In der Mailliste steht bei Newslettern kein CSS mehr.",
       "nexmail ist für eine iPhone-App vorbereitet, gekoppelt wird sie unter „iPhone verbinden“."
     ]
+  },
+  "0.26.0": {
+    "lead": "Aufgaben aus Mails können jetzt in Todoist landen, und was du dort erledigst, sieht nexmail auch.",
+    "sections": [
+      {
+        "title": "Todoist verbinden",
+        "where": "Einstellungen, Reiter „Aufgaben“",
+        "body": "Trag den API-Token aus Todoist ein, nexmail prüft ihn und merkt ihn sich verschlüsselt. Das gilt nur für dich, jeder verbindet seine eigene App. Dort wählst du auch die Standardliste: deine Todoist-Liste oder wie bisher nexmails eigene."
+      },
+      {
+        "title": "Liste und Fälligkeit beim Anlegen",
+        "where": "„Zu Aufgabe machen“ an einer Mail",
+        "body": "Mit einer Verbindung fragt nexmail kurz nach: Titel, Liste und Fälligkeit, mit Heute, Morgen und Nächste Woche zum Antippen. Nach Todoist gehen nur Titel, Datum, Absender und ein Link zurück zur Mail, nie der Text der Mail. Gibt es zu einer Mail schon eine Aufgabe, sagt nexmail wo, statt eine zweite anzulegen."
+      },
+      {
+        "title": "Erledigt in beiden Richtungen",
+        "where": "Aufgabenliste",
+        "body": "Hakst du in nexmail ab, erfährt es Todoist sofort. Erledigst, verschiebst oder löschst du die Aufgabe in Todoist, zieht nexmail das nach ein paar Minuten nach, beim Öffnen der Aufgabenliste gleich. Das Datum einer Todoist-Aufgabe änderst du in Todoist."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Entfernen nimmt eine Todoist-Aufgabe nur aus nexmail, in Todoist bleibt sie.",
+      "Aufgaben, die direkt in Todoist entstehen, zeigt nexmail nicht. Die Liste bleibt die der Mails."
+    ]
   }
 }

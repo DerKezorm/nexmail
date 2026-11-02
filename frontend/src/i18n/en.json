@@ -93,7 +93,7 @@
     "verknuepfung_loesen_text": "{{wer}} will no longer sign in through {{name}}. Your password confirms it."
   },
   "todoapps": {
-    "einleitung": "Connect your to-do app, and “Make a task” can put the task there. When you complete it in the app, nexmail sees that a few minutes later.",
+    "einleitung": "Connect your to-do app, and “Turn into task” can put the task there. When you complete it in the app, nexmail sees that a few minutes later.",
     "verbunden": "Connected",
     "in_ordnung": "Connected and reachable",
     "token_abgelehnt": "Todoist no longer accepts the token. Disconnect and connect again with a new token.",

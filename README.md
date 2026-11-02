@@ -26,7 +26,7 @@ Roundcube is webmail bolted onto one mailbox. Thunderbird does not run in a
 browser. Commercial clients want to pull your mail onto their servers. nexmail
 is the third option — and if you can use Outlook, you should feel at home.
 
-> **Version 0.25.1.** It reads, writes, searches, sorts, labels, sends,
+> **Version 0.26.0.** It reads, writes, searches, sorts, labels, sends,
 > schedules, prints, answers for you while you are away, keeps a calendar and
 > your address books in sync with iCloud or Google, invites people to your own
 > appointments, rephrases a draft with an AI service of your choice, backs
@@ -106,7 +106,11 @@ reach lets you conclude a message does not exist.
 **Tasks.** Turn a message into a task, tick it off, drag it into order, give it
 a due date. The task survives its message: if the mail is moved from your phone,
 the task follows it by `Message-ID`; if the mail is deleted, the task stays and
-says so.
+says so. Each user can connect their own Todoist account under *Settings → Tasks*
+and send tasks to a Todoist list instead. Only the title, the due date, the
+sender and a link back to the mail go there, never the text of the mail. Ticking
+a task in nexmail closes it in Todoist, and what you complete, reschedule or
+delete in Todoist comes back within a few minutes.
 
 **Contacts, rules, signatures.** An address book with several numbers,
 addresses and postal addresses per contact, the card's photo, vCard import and
