@@ -28,5 +28,51 @@
     ],
     "smallTitle": "Außerdem",
     "small": []
+  },
+  "0.25.0": {
+    "lead": "Abmelden mit einem Klick, KI-Hilfe für eingegangene Post, eine Befehlspalette, und neue Mails erscheinen jetzt von selbst.",
+    "sections": [
+      {
+        "title": "Von Newslettern abmelden",
+        "where": "Lesebereich, Knopf „Abmelden“ bei Mails aus einer Liste",
+        "body": "Bietet eine Mail einen Abmeldeweg, steht ein Knopf bereit. Ist der Absender geprüft, erledigt nexmail das selbst, sonst öffnet sich die Abmeldeseite oder eine vorbereitete Mail. Vorher fragt nexmail nach und nennt die Gegenstelle. Der Knopf erscheint bei Mails, die du nach dem Update zum ersten Mal öffnest."
+      },
+      {
+        "title": "KI für eingegangene Mails",
+        "where": "Seite KI in der Leiste, Schalter „Meine eingegangenen Mails“, danach im Lesebereich und beim Antworten",
+        "body": "Mit einem eingerichteten KI-Dienst fasst nexmail eine Mail zusammen, übersetzt sie, beantwortet eine Frage dazu oder entwirft eine Antwort. Das ist ab Werk aus, weil die Mail dabei an deinen Dienst geht, und der Betreiber muss es zusätzlich freigeben. Alle Einstellungen zur KI stehen jetzt auf der Seite KI."
+      },
+      {
+        "title": "Alles über eine Taste",
+        "where": "Überall, mit Strg+K",
+        "body": "Ein Suchfeld findet Ordner, Bereiche und die Handgriffe an der geöffneten Mail, ganz ohne Maus."
+      },
+      {
+        "title": "Neue Post erscheint von selbst",
+        "where": "Mailliste, und je Postfach der Schalter „Neue Post sofort sehen“",
+        "body": "Ein offenes Fenster lädt neue Mails jetzt selbst nach. Noch schneller geht es mit „Neue Post sofort sehen“. Der Schalter hält eine zweite Verbindung zum Mailserver offen und ist deshalb ab Werk aus."
+      },
+      {
+        "title": "Anhänge ablegen",
+        "where": "Fenster zum Verfassen",
+        "body": "Dateien lassen sich direkt ins Fenster ziehen. Bilder, die du in den Text ziehst, landen genau an dieser Stelle."
+      },
+      {
+        "title": "Auswahl über mehrere Postfächer",
+        "where": "Alle Posteingänge und die Ordnerspalte",
+        "body": "Löschen, Archivieren und Verschieben gehen jetzt auch, wenn die Auswahl aus mehreren Postfächern stammt. Jede Mail landet im Papierkorb oder Archiv ihres eigenen Postfachs, und Rückgängig holt alle zurück. Auch das Ziehen in ein anderes Postfach geht jetzt."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Antworten auf Termineinladungen und Abwesenheitsnotizen gehen jetzt sofort hinaus. Vorher blieben sie bis zum nächsten Neustart liegen.",
+      "Das Öffnen einer Mail reißt ihr Gespräch nicht mehr auseinander. Schon getrennte Gespräche wachsen nach dem Update wieder zusammen.",
+      "Beim schnellen Tippen gehen keine Zeichen mehr verloren, und Escape wirft Getipptes nicht mehr weg.",
+      "Hervorheben und Schriftgröße kommen jetzt beim Empfänger an.",
+      "Ein Anhang, der noch eingelesen wird, sperrt das Senden, statt still wegzufallen.",
+      "Regeln können ein Schlagwort setzen.",
+      "In der Mailliste steht bei Newslettern kein CSS mehr.",
+      "nexmail ist für eine iPhone-App vorbereitet, gekoppelt wird sie unter „iPhone verbinden“."
+    ]
   }
 }

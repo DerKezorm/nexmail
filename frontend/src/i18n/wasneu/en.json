@@ -28,5 +28,51 @@
     ],
     "smallTitle": "Also",
     "small": []
+  },
+  "0.25.0": {
+    "lead": "One-click unsubscribe, AI help for mail you receive, a command palette, and new mail now shows up by itself.",
+    "sections": [
+      {
+        "title": "Unsubscribe from newsletters",
+        "where": "Reading pane, the “Unsubscribe” button on mail from a list",
+        "body": "When a mail offers a way out, a button is there. If the sender is verified, nexmail does it for you, otherwise the unsubscribe page or a prepared mail opens. nexmail asks first and names the other side. The button shows on mail you open for the first time after the update."
+      },
+      {
+        "title": "AI for mail you receive",
+        "where": "The AI page in the sidebar, switch “My received mail”, then in the reading pane and when replying",
+        "body": "With an AI service set up, nexmail summarises a mail, translates it, answers a question about it or drafts a reply. This is off by default because the mail goes to your service, and the operator has to allow it as well. All AI settings now live on the AI page."
+      },
+      {
+        "title": "Everything from one key",
+        "where": "Anywhere, with Ctrl+K",
+        "body": "A search field finds folders, sections and the actions for the open mail, without touching the mouse."
+      },
+      {
+        "title": "New mail shows up by itself",
+        "where": "The message list, and per mailbox the switch “See new mail right away”",
+        "body": "An open window now loads new mail by itself. “See new mail right away” is faster still. It keeps a second connection to the mail server open and is therefore off by default."
+      },
+      {
+        "title": "Drop attachments",
+        "where": "The compose window",
+        "body": "Files can be dragged straight into the window. Pictures you drag into the text land at that very spot."
+      },
+      {
+        "title": "Selections across mailboxes",
+        "where": "All inboxes and the folder column",
+        "body": "Delete, archive and move now work when a selection spans several mailboxes. Each mail goes to the trash or archive of its own mailbox, and undo brings them all back. Dragging into another mailbox works too."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "Replies to invitations and out-of-office notes now go out right away. Before, they waited for the next restart.",
+      "Opening a mail no longer tears its conversation apart. Conversations that were split grow back together after the update.",
+      "Fast typing no longer loses characters, and Escape no longer throws away what you typed.",
+      "Highlighting and font size now reach the recipient.",
+      "An attachment that is still being read blocks sending instead of quietly dropping out.",
+      "Rules can add a tag.",
+      "Newsletters no longer show CSS in the message list.",
+      "nexmail is ready for an iPhone app, which pairs under “Connect iPhone”."
+    ]
   }
 }
