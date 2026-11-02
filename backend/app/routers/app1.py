@@ -121,7 +121,15 @@ class AppSelbstauskunft(BaseModel):
 def _faehigkeiten(db: DbSession, person) -> list[str]:
     # ``todoapps``: Die Adressen für Todo-Apps gibt es. Ob die Person eine
     # verbunden hat, sagt ``/task-apps``; verbunden wird nur im Browser.
-    raus = ["abbestellen", "aenderungen", "endgueltig_loeschen", "todoapps", "wiedervorlage"]
+    # ``aufgabenliste``: ``GET /tasks`` samt Abhaken, Entfernen und Abgleich.
+    raus = [
+        "abbestellen",
+        "aenderungen",
+        "aufgabenliste",
+        "endgueltig_loeschen",
+        "todoapps",
+        "wiedervorlage",
+    ]
     if kidienst.erlaubt_fuer(db, person) and person.ki_aktiv:
         raus.append("umformulieren")
     if kidienst.fremde_post_fuer(db, person):
@@ -253,6 +261,27 @@ _zweitschrift(
     "Empty the trash or junk for good",
 )
 _zweitschrift("/tasks", aufgaben.router, aufgaben.anlegen, "POST", "Make a task from a message")
+# Die Liste wie im Browser, samt dem, was eine Todo-App dazu weiß. ⚠️ Der Haken
+# einer App-Aufgabe geht erst dorthin; ein abgelehnter Token ist 409, nie 401.
+_zweitschrift("/tasks", aufgaben.router, aufgaben.liste, "GET", "The task list")
+# ⚠️ **Vor ``/tasks/{aufgabe_id}``**, wie ``/reihenfolge`` im Browser.
+_zweitschrift(
+    "/tasks/sync",
+    aufgaben.router,
+    aufgaben.abgleichen,
+    "POST",
+    "Ask the connected to-do apps what changed",
+)
+_zweitschrift(
+    "/tasks/{aufgabe_id}", aufgaben.router, aufgaben.aendern, "PATCH", "Tick a task or set its date"
+)
+_zweitschrift(
+    "/tasks/{aufgabe_id}",
+    aufgaben.router,
+    aufgaben.entfernen,
+    "DELETE",
+    "Remove a task from nexmail (it stays in the to-do app)",
+)
 # ⚠️ **Todo-Apps: nur anlegen und wählen, nie verbinden.** Den Token trägt man
 # im Browser ein (Einrichten bleibt dort); die App fragt, ob es Verbindungen
 # gibt, holt die Listen und legt an. Gibt es keine, bleibt ``/tasks`` der Weg.
@@ -555,5 +584,7 @@ ZUGESAGT = (
     "/api/app/1/task-apps",
     "/api/app/1/task-lists",
     "/api/app/1/tasks",
+    "/api/app/1/tasks/sync",
     "/api/app/1/tasks/with-target",
+    "/api/app/1/tasks/{aufgabe_id}",
 )

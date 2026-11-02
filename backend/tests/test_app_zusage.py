@@ -82,8 +82,10 @@ def test_jede_zugesagte_adresse_hat_eine_antwortform():
         "DELETE /api/app/1/device",
         "DELETE /api/app/1/drafts/{uid}",
         "DELETE /api/app/1/snoozes/{eintrag_id}",
+        "DELETE /api/app/1/tasks/{aufgabe_id}",
         "GET /api/app/1/messages/{nachricht_id}/attachments/{anhang_id}",
         "GET /api/app/1/sender-image",
+        "POST /api/app/1/tasks/sync",
     }
     assert ohne <= erlaubt_leer, f"Ohne festgehaltene Felder: {sorted(ohne - erlaubt_leer)}"
 

@@ -601,3 +601,147 @@ def test_verbinden_geht_nicht_ueber_die_app(geraet):
     des Browsers nimmt das Gerätetoken nicht."""
     assert geraet.post("/api/aufgabenziele", json={"art": "todoist", "zugang": TOKEN}).status_code == 401
     assert all("aufgabenziele" not in p for p in ZUGESAGT)
+
+
+# --- Die Aufgabenliste in der App ---------------------------------------------- #
+
+
+def _in_die_app(geraet, verbunden, nachricht_id):
+    antwort = geraet.post(
+        "/api/app/1/tasks/with-target",
+        json={"nachricht_id": nachricht_id, "ziel": f"{verbunden}:p-arbeit"},
+    )
+    assert antwort.status_code == 200, antwort.text
+    return antwort.json()["aufgabe"]["id"]
+
+
+def test_die_app_sieht_ihre_aufgaben_samt_todo_app(geraet, verbunden, welt, fern):  # noqa: F811
+    _, _, ids = welt
+    assert "aufgabenliste" in geraet.get("/api/app/1/me").json()["faehigkeiten"]
+    fern_id = _in_die_app(geraet, verbunden, ids[0])
+    eigene = geraet.post("/api/app/1/tasks", json={"nachricht_id": ids[1]})
+    assert eigene.status_code == 201
+    # ``POST /tasks`` bleibt die schmale Zeile, wie im Abdruck.
+    assert "fern_art" not in eigene.json()
+
+    liste = {z["id"]: z for z in geraet.get("/api/app/1/tasks").json()}
+    assert set(liste) == {fern_id, eigene.json()["id"]}
+    zeile = liste[fern_id]
+    assert zeile["fern_art"] == "todoist"
+    assert zeile["fern_url"].endswith("/t1")
+    assert zeile["fern_verbunden"] is True
+    assert zeile["fern_geloescht"] is False
+    assert zeile["nachricht_id"] == ids[0]
+    assert liste[eigene.json()["id"]]["fern_art"] == ""
+
+
+def test_die_app_hakt_ab_und_todoist_erfaehrt_es(geraet, verbunden, welt, fern):  # noqa: F811
+    _, _, ids = welt
+    aufgabe_id = _in_die_app(geraet, verbunden, ids[0])
+
+    an = geraet.patch(f"/api/app/1/tasks/{aufgabe_id}", json={"erledigt": True})
+    assert an.status_code == 200, an.text
+    assert an.json()["erledigt"] is not None
+    assert fern.aufgaben["t1"]["checked"] is True
+
+    aus = geraet.patch(f"/api/app/1/tasks/{aufgabe_id}", json={"erledigt": False})
+    assert aus.json()["erledigt"] is None
+    assert fern.aufgaben["t1"]["checked"] is False
+
+
+def test_ein_abgelehnter_token_beim_abhaken_ist_409_und_der_haken_bleibt(
+    geraet, verbunden, welt, fern  # noqa: F811
+):
+    """⚠️ 409, nie 401: Bei 401 trennt die App ihr Gerät."""
+    _, _, ids = welt
+    aufgabe_id = _in_die_app(geraet, verbunden, ids[0])
+    fern.stoerung = 401
+
+    antwort = geraet.patch(f"/api/app/1/tasks/{aufgabe_id}", json={"erledigt": True})
+    assert antwort.status_code == 409
+    assert antwort.json()["detail"] == "todoist_zugang_ungueltig"
+    assert geraet.get("/api/app/1/tasks").json()[0]["erledigt"] is None
+    assert geraet.get("/api/app/1/me").status_code == 200
+
+
+def test_das_datum_setzt_die_app_nur_bei_eigenen_aufgaben(geraet, verbunden, welt, fern):  # noqa: F811
+    _, _, ids = welt
+    fern_id = _in_die_app(geraet, verbunden, ids[0])
+    eigene_id = geraet.post("/api/app/1/tasks", json={"nachricht_id": ids[1]}).json()["id"]
+    datum = {"faellig": "2026-11-09T00:00:00Z", "faellig_setzen": True}
+
+    abgewiesen = geraet.patch(f"/api/app/1/tasks/{fern_id}", json=datum)
+    assert abgewiesen.status_code == 400
+    assert abgewiesen.json()["detail"] == "aufgabe_datum_in_der_app"
+
+    gesetzt = geraet.patch(f"/api/app/1/tasks/{eigene_id}", json=datum)
+    assert gesetzt.status_code == 200
+    assert gesetzt.json()["faellig"].startswith("2026-11-09")
+    # Nicht mitgeschickt heißt unverändert: Abhaken lässt das Datum stehen.
+    erledigt = geraet.patch(f"/api/app/1/tasks/{eigene_id}", json={"erledigt": True}).json()
+    assert erledigt["faellig"].startswith("2026-11-09")
+
+
+def test_entfernen_nimmt_sie_nur_aus_nexmail(geraet, verbunden, welt, fern):  # noqa: F811
+    _, _, ids = welt
+    aufgabe_id = _in_die_app(geraet, verbunden, ids[0])
+    vorher = len(fern.anfragen)
+
+    assert geraet.delete(f"/api/app/1/tasks/{aufgabe_id}").status_code == 204
+    assert geraet.get("/api/app/1/tasks").json() == []
+    assert fern.anfragen[vorher:] == []
+    assert fern.aufgaben["t1"]["checked"] is False
+
+
+def test_eine_fremde_aufgabe_gibt_es_fuer_die_app_nicht(
+    geraet, klient, zweiter_klient, verbunden, welt, fern, db  # noqa: F811
+):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from test_app_flaeche import abholen, koppeln
+
+    _, _, ids = welt
+    aufgabe_id = _in_die_app(geraet, verbunden, ids[0])
+    _, geheimnis = zweiten_benutzer_anlegen(db)
+    anmelden(zweiter_klient, "zweiter", "auch-geheim-456", geheimnis)
+
+    with TestClient(app, base_url="http://testserver") as fremd:
+        schluessel = abholen(fremd, koppeln(zweiter_klient)).json()["key"]
+        fremd.headers["Authorization"] = f"Bearer {schluessel}"
+
+        assert fremd.get("/api/app/1/tasks").json() == []
+        for antwort in (
+            fremd.patch(f"/api/app/1/tasks/{aufgabe_id}", json={"erledigt": True}),
+            fremd.delete(f"/api/app/1/tasks/{aufgabe_id}"),
+        ):
+            assert antwort.status_code == 404
+            assert antwort.json()["detail"] == "aufgabe_unbekannt"
+        # Dieselbe Antwort wie bei einer Kennung, die es gar nicht gibt.
+        keine = fremd.patch("/api/app/1/tasks/999999", json={"erledigt": True})
+        assert (keine.status_code, keine.json()) == (404, {"detail": "aufgabe_unbekannt"})
+
+    assert fern.aufgaben["t1"]["checked"] is False
+    assert [z["id"] for z in geraet.get("/api/app/1/tasks").json()] == [aufgabe_id]
+
+
+def test_der_abgleich_aus_der_app_holt_den_haken_ohne_fehler_nach_aussen(
+    geraet, verbunden, welt, fern, db  # noqa: F811
+):
+    _, _, ids = welt
+    aufgabe_id = _in_die_app(geraet, verbunden, ids[0])
+    fern.erledigen("t1")
+
+    assert geraet.post("/api/app/1/tasks/sync").status_code == 204
+    assert geraet.get("/api/app/1/tasks").json()[0]["erledigt"].startswith("2026-11-03T08:30")
+    # Dieselbe Bremse wie im Browser: Der nächste Zug fragt nicht noch einmal.
+    vorher = len(fern.anfragen)
+    assert geraet.post("/api/app/1/tasks/sync").status_code == 204
+    assert len(fern.anfragen) == vorher
+
+    aufgabenziele._zuletzt_beim_oeffnen.clear()
+    fern.stoerung = 401
+    assert geraet.post("/api/app/1/tasks/sync").status_code == 204
+    assert db.get(Aufgabenverbindung, verbunden).letzter_fehler == "todoist_zugang_ungueltig"
+    assert db.get(Aufgabe, aufgabe_id).erledigt is not None
+    assert geraet.get("/api/app/1/me").status_code == 200

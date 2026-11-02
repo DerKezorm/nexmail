@@ -8,6 +8,7 @@
     "status"
   ],
   "DELETE /api/app/1/snoozes/{eintrag_id}": [],
+  "DELETE /api/app/1/tasks/{aufgabe_id}": [],
   "GET /api/app/1/accounts": [
     "absendername",
     "adresse",
@@ -338,6 +339,40 @@
     "name",
     "verbindung_id"
   ],
+  "GET /api/app/1/tasks": [
+    "betreff",
+    "erledigt",
+    "faellig",
+    "fern_art",
+    "fern_geloescht",
+    "fern_liste",
+    "fern_url",
+    "fern_verbunden",
+    "id",
+    "konto_id",
+    "mail_datum",
+    "nachricht_id",
+    "verwaist",
+    "von_adresse",
+    "von_name"
+  ],
+  "PATCH /api/app/1/tasks/{aufgabe_id}": [
+    "betreff",
+    "erledigt",
+    "faellig",
+    "fern_art",
+    "fern_geloescht",
+    "fern_liste",
+    "fern_url",
+    "fern_verbunden",
+    "id",
+    "konto_id",
+    "mail_datum",
+    "nachricht_id",
+    "verwaist",
+    "von_adresse",
+    "von_name"
+  ],
   "POST /api/app/1/ai/text": [
     "text"
   ],
@@ -521,6 +556,7 @@
     "von_adresse",
     "von_name"
   ],
+  "POST /api/app/1/tasks/sync": [],
   "POST /api/app/1/tasks/with-target": [
     "aufgabe",
     "aufgabe.betreff",
