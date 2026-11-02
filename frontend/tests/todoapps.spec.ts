@@ -178,7 +178,13 @@ test('Die Liste zeigt Todoist-Aufgaben mit Link und ohne Datumsfeld', async ({ p
   })
   await page.route(/\/api\/aufgaben$/, (route) =>
     route.request().method() === 'GET'
-      ? route.fulfill({ json: [zeile(), zeile({ id: 902, fern_art: '', fern_url: '', fern_liste: '', betreff: 'Selbst', faellig: null })] })
+      ? route.fulfill({
+          json: [
+            zeile(),
+            zeile({ id: 902, fern_art: '', fern_url: '', fern_liste: '', betreff: 'Selbst', faellig: null }),
+            zeile({ id: 903, betreff: 'Dort geloescht', fern_geloescht: true }),
+          ],
+        })
       : route.fallback(),
   )
   await page.route('**/api/aufgaben/abgleichen', (route) => route.fulfill({ status: 204 }))
@@ -190,6 +196,10 @@ test('Die Liste zeigt Todoist-Aufgaben mit Link und ohne Datumsfeld', async ({ p
   await expect(app.getByRole('link', { name: 'In der Todo-App öffnen' })).toBeVisible()
   await expect(app.getByLabel('Fällig am')).toHaveCount(0)
   await expect(app.getByRole('button', { name: /in der Todo-App bleibt sie/ })).toBeVisible()
+
+  const weg = page.locator('li').filter({ hasText: 'Dort geloescht' })
+  await expect(weg.getByText('In der Todo-App gelöscht')).toBeVisible()
+  await expect(weg.getByRole('link')).toHaveCount(0)
 
   const eigene = page.locator('li').filter({ hasText: 'Selbst' })
   await expect(eigene.getByLabel('Fällig am')).toBeVisible()

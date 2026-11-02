@@ -38,6 +38,11 @@ describe('Namen', () => {
     expect(zielname(gruppen, 'v3:p')).toBe('')
   })
 
+  it('wiederholt den App-Namen nicht, wenn die Verbindung so heißt', () => {
+    expect(gruppenname({ art: 'todoist', name: 'todoist' })).toBe('Todoist')
+    expect(gruppenname({ art: 'todoist', name: ' Todoist ' })).toBe('Todoist')
+  })
+
   it('kennt eine unbekannte Art nur mit ihrem Kürzel', () => {
     expect(gruppenname({ art: 'anders', name: '' })).toBe('anders')
   })

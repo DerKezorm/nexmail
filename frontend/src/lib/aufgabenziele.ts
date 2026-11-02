@@ -40,7 +40,9 @@ export const ARTNAME: Record<string, string> = {
 
 export function gruppenname(g: { art: string; name: string }): string {
   const art = ARTNAME[g.art] ?? g.art
-  return g.name ? `${art} · ${g.name}` : art
+  // Wer die Verbindung „todoist" nennt, soll nicht „Todoist · todoist" lesen.
+  const name = g.name.trim()
+  return name && name.toLowerCase() !== art.toLowerCase() ? `${art} · ${name}` : art
 }
 
 /** Der Name einer Liste mit ihrer App davor („Todoist › Arbeit"). */

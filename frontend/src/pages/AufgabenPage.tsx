@@ -241,7 +241,9 @@ export function AufgabenPage({ konten, aufMail, aufAenderung }: Props) {
                     {z.fern_art && (
                       <span className="flex items-center gap-1">
                         {z.fern_liste || ARTNAME[z.fern_art] || z.fern_art}
-                        {z.fern_url && (
+                        {/* Eine in der App gelöschte Aufgabe hat dort keine
+                            Seite mehr; der Link führte ins Leere. */}
+                        {z.fern_url && !z.fern_geloescht && (
                           <a
                             href={z.fern_url}
                             target="_blank"
