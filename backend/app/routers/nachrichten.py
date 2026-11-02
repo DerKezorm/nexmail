@@ -1309,6 +1309,18 @@ def loeschen(auswahl: Auswahl, person: AngemeldeterBenutzer, db: DbSession) -> Z
     return _zug(db, person, lambda: handeln.in_rolle(db, nachrichten, "papierkorb"))
 
 
+@router.post("/endgueltig", response_model=Zugergebnis)
+def endgueltig(auswahl: Auswahl, person: AngemeldeterBenutzer, db: DbSession) -> Zugergebnis:
+    """⚠️ Ohne Rückweg, darum kein ``rueckweg``. Nur aus Papierkorb und Junk."""
+    nachrichten = _auswahl(db, person, auswahl.ids)
+    try:
+        geloescht, liegen = handeln.endgueltig_loeschen(db, nachrichten)
+    except handeln.HandelnFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    ereignisdienst.melden(person.id)
+    return Zugergebnis(bewegt=geloescht, nicht_bewegt=liegen)
+
+
 @router.post("/archivieren", response_model=Zugergebnis)
 def archivieren(auswahl: Auswahl, person: AngemeldeterBenutzer, db: DbSession) -> Zugergebnis:
     nachrichten = _auswahl(db, person, auswahl.ids)

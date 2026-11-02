@@ -331,6 +331,11 @@
   "POST /api/app/1/drafts": [
     "uid"
   ],
+  "POST /api/app/1/folders/{ordner_id}/empty": [
+    "bewegt",
+    "nicht_bewegt",
+    "rueckweg"
+  ],
   "POST /api/app/1/folders/{ordner_id}/read": [
     "bewegt",
     "nicht_bewegt",
@@ -342,6 +347,11 @@
     "rueckweg"
   ],
   "POST /api/app/1/messages/delete": [
+    "bewegt",
+    "nicht_bewegt",
+    "rueckweg"
+  ],
+  "POST /api/app/1/messages/delete-forever": [
     "bewegt",
     "nicht_bewegt",
     "rueckweg"

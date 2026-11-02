@@ -555,6 +555,96 @@ def ordner_leeren(db: Session, ordner: Ordner) -> int:
     return anzahl
 
 
+#: Wo endgültig gelöscht werden darf. Dieselben beiden wie beim Leeren.
+ENDGUELTIG_ROLLEN = ("papierkorb", "junk")
+
+
+def endgueltig_loeschen(db: Session, nachrichten: list[Nachricht]) -> tuple[int, int]:
+    """Ausgewählte Mails endgültig löschen. Gibt (gelöscht, liegengeblieben).
+
+    ⚠️ **Liegt auch nur eine woanders, geschieht gar nichts.** Nie still ins Ziel
+    umdeuten: Wer in einer anderen Liste tippt, meinte „in den Papierkorb", und
+    Post ohne Rückweg zu verlieren ist schlimmer als eine Absage.
+
+    ⚠️ **Je Ordner ein Zug, wie bei ``_je_ordner``.** Ein Teil, der scheitert,
+    hält die anderen nicht auf; scheitert alles, kommt der erste Fehler heraus.
+    """
+    if not nachrichten:
+        raise HandelnFehler("nichts_ausgewaehlt")
+    if any(n.ordner.rolle not in ENDGUELTIG_ROLLEN for n in nachrichten):
+        raise HandelnFehler("nur_papierkorb_und_junk")
+
+    gruppen: dict[int, list[Nachricht]] = {}
+    for nachricht in {n.id: n for n in nachrichten}.values():
+        gruppen.setdefault(nachricht.ordner_id, []).append(nachricht)
+
+    geloescht = 0
+    liegen = 0
+    erster = None
+    for gruppe in gruppen.values():
+        try:
+            geloescht += _endgueltig_ein_ordner(db, gruppe)
+        except Exception as fehler:  # noqa: BLE001
+            db.rollback()
+            liegen += len(gruppe)
+            erster = erster or fehler
+            logger.warning(
+                "Mailbox %s kept %s message(s) it should delete: %s",
+                gruppe[0].konto_id, len(gruppe), fehler,
+            )
+
+    if not geloescht and erster is not None:
+        raise erster
+    return geloescht, liegen
+
+
+def _endgueltig_ein_ordner(db: Session, nachrichten: list[Nachricht]) -> int:
+    konto = db.get(Konto, nachrichten[0].konto_id)
+    ordner = nachrichten[0].ordner
+    uids = [n.uid for n in nachrichten]
+    bloecke = [uids[i : i + 500] for i in range(0, len(uids), 500)]
+
+    imap_pw, _ = kontendienst.passwoerter_lesen(konto)
+    with abgleich.HALTER.schloss(konto.id):
+        klient = imapdienst.fuer_konto(db, konto)
+        try:
+            klient.select_folder(ordner.pfad, readonly=False)
+            uidplus = any(k.upper() == "UIDPLUS" for k in imapdienst.faehigkeiten(klient))
+            for block in bloecke:
+                klient.add_flags(block, [rb"\Deleted"])
+            if uidplus:
+                for block in bloecke:
+                    klient.uid_expunge(block)
+            else:
+                # ⚠️ **Ein blankes EXPUNGE nimmt alles mit ``\Deleted``**, auch was
+                # ein anderes Programm gerade markiert hat. Nur wenn der Server
+                # sagt, dass es allein die gewählten sind.
+                if not set(klient.search(["DELETED"])) <= set(uids):
+                    for block in bloecke:
+                        klient.remove_flags(block, [rb"\Deleted"])
+                    raise HandelnFehler("endgueltig_nicht_allein")
+                klient.expunge()
+        finally:
+            try:
+                klient.logout()
+            except Exception:  # noqa: BLE001
+                pass
+
+    for nachricht in nachrichten:
+        db.delete(nachricht)
+    # ⚠️ Ausspülen, bevor gezählt wird, dieselbe autoflush-Falle wie beim Verschieben.
+    db.flush()
+    ordner.anzahl = db.query(Nachricht).filter(Nachricht.ordner_id == ordner.id).count()
+    ordner.ungelesen = (
+        db.query(Nachricht)
+        .filter(Nachricht.ordner_id == ordner.id, Nachricht.gelesen.is_(False))
+        .count()
+    )
+    db.commit()
+    logger.warning("%s message(s) deleted for good from %s.", len(uids), ordner.pfad)
+    return len(uids)
+
+
 def alte_entfernen(db: Session, ordner: Ordner, stichtag) -> int:
     """Nachrichten, die aelter als der Stichtag sind, endgueltig loeschen.
 

@@ -118,7 +118,7 @@ class AppSelbstauskunft(BaseModel):
 
 
 def _faehigkeiten(db: DbSession, person) -> list[str]:
-    raus = ["abbestellen", "aenderungen", "wiedervorlage"]
+    raus = ["abbestellen", "aenderungen", "endgueltig_loeschen", "wiedervorlage"]
     if kidienst.erlaubt_fuer(db, person) and person.ki_aktiv:
         raus.append("umformulieren")
     if kidienst.fremde_post_fuer(db, person):
@@ -200,6 +200,13 @@ _zweitschrift(
     "/messages/archive", nachrichten.router, nachrichten.archivieren, "POST", "Archive messages"
 )
 _zweitschrift("/messages/junk", nachrichten.router, nachrichten.junk, "POST", "Move to junk")
+_zweitschrift(
+    "/messages/delete-forever",
+    nachrichten.router,
+    nachrichten.endgueltig,
+    "POST",
+    "Delete messages for good, only from trash or junk",
+)
 _zweitschrift("/messages/undo", nachrichten.router, nachrichten.zurueck, "POST", "Undo a move")
 _zweitschrift(
     "/messages/labels/{atom}",
@@ -234,6 +241,13 @@ _zweitschrift(
     nachrichten.ordner_gelesen,
     "POST",
     "Mark a folder as read",
+)
+_zweitschrift(
+    "/folders/{ordner_id}/empty",
+    nachrichten.router,
+    nachrichten.leeren,
+    "POST",
+    "Empty the trash or junk for good",
 )
 _zweitschrift("/tasks", aufgaben.router, aufgaben.anlegen, "POST", "Make a task from a message")
 
@@ -484,12 +498,14 @@ ZUGESAGT = (
     "/api/app/1/drafts",
     "/api/app/1/drafts/{uid}",
     "/api/app/1/events",
+    "/api/app/1/folders/{ordner_id}/empty",
     "/api/app/1/folders/{ordner_id}/read",
     "/api/app/1/labels",
     "/api/app/1/me",
     "/api/app/1/messages",
     "/api/app/1/messages/archive",
     "/api/app/1/messages/delete",
+    "/api/app/1/messages/delete-forever",
     "/api/app/1/messages/junk",
     "/api/app/1/messages/labels/{atom}",
     "/api/app/1/messages/move",
