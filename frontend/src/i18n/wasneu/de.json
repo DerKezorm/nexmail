@@ -99,5 +99,30 @@
       "Entfernen nimmt eine Todoist-Aufgabe nur aus nexmail, in Todoist bleibt sie.",
       "Aufgaben, die direkt in Todoist entstehen, zeigt nexmail nicht. Die Liste bleibt die der Mails."
     ]
+  },
+  "0.27.0": {
+    "lead": "Aufgaben aus Mails können jetzt auch an ein eigenes Programm gehen, über einen Webhook.",
+    "sections": [
+      {
+        "title": "Webhook verbinden",
+        "where": "Einstellungen, Reiter „Aufgaben“",
+        "body": "Neben Todoist steht jetzt „Webhook verbinden“. nexmail schickt jede Aufgabe als JSON an deine Adresse, unterschrieben mit einem Geheimnis, das nur einmal angezeigt wird. Gespeichert wird die Adresse erst, wenn sie auf eine Probe antwortet; „Test senden“ prüft sie später noch einmal und nennt den Status, wenn etwas nicht stimmt."
+      },
+      {
+        "title": "Nur senden, oder zurückmelden",
+        "where": "Einstellungen eines Webhooks und „API-Schlüssel“",
+        "body": "Mit „Nur senden“ führt nexmail die Aufgabe nicht in der eigenen Liste, weil sie im anderen Programm erledigt wird. Oder das Programm meldet zurück: Ein API-Schlüssel mit „Darf Aufgaben abhaken“ hakt Aufgaben über die Schnittstelle ab und öffnet sie wieder."
+      },
+      {
+        "title": "Text der Mail nur mit Freigabe",
+        "where": "Verwaltung, Reiter „Server“",
+        "body": "Ein Webhook kann den Text der Mail mitschicken, wenn sein Benutzer es einschaltet und der Betreiber es erlaubt. Ab Werk ist das aus. Adressen im eigenen Netz gehen wie bei Kalendern erst, wenn der Betreiber sie freigibt."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "localhost bekommt beim Webhook einen eigenen Hinweis: Im Container ist das nexmail selbst, gemeint ist die Adresse des Rechners im Netz.",
+      "Hakst du eine Webhook-Aufgabe in nexmail ab, erfährt es das Programm sofort."
+    ]
   }
 }

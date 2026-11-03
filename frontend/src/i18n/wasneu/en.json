@@ -99,5 +99,30 @@
       "Removing a Todoist task takes it out of nexmail only, it stays in Todoist.",
       "Tasks created directly in Todoist do not show up in nexmail. The list stays the list of your mail."
     ]
+  },
+  "0.27.0": {
+    "lead": "Tasks from mail can now also go to a tool of your own, through a webhook.",
+    "sections": [
+      {
+        "title": "Connect a webhook",
+        "where": "Settings, the “Tasks” tab",
+        "body": "Next to Todoist there is now “Connect a webhook”. nexmail sends every task as JSON to your address, signed with a secret that is shown only once. The address is saved only after it answers a probe; “Send test” checks it again later and names the status if something is wrong."
+      },
+      {
+        "title": "Send only, or report back",
+        "where": "A webhook's settings and “API keys”",
+        "body": "With “Send only”, nexmail does not keep the task in its own list, because it gets done in the other tool. Or the tool reports back: an API key with “May tick off tasks” completes and reopens tasks through the API."
+      },
+      {
+        "title": "Message text only when allowed",
+        "where": "Administration, the “Server” tab",
+        "body": "A webhook can include the text of the message if its user turns it on and the operator allows it. It is off by default. Addresses on the local network work, as with calendars, only once the operator allows them."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "For a webhook, localhost gets its own hint: inside the container it is nexmail itself, what you want is the host's address on your network.",
+      "Tick a webhook task in nexmail and the tool hears about it right away."
+    ]
   }
 }
