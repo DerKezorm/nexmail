@@ -25,6 +25,8 @@ class Eintrag(BaseModel):
     praefix: str
     stufe: str
     konten: list[str]
+    #: Darf Aufgaben abhaken und wieder oeffnen (``/api/v1/tasks``).
+    aufgaben: bool
     angelegt: datetime
     zuletzt_benutzt: datetime | None
 
@@ -38,6 +40,7 @@ class Eingabe(BaseModel):
     name: str = Field(default="", max_length=200)
     stufe: str = "anzahl"
     konten: list[str] = Field(default_factory=list, max_length=200)
+    aufgaben: bool = False
 
 
 class Neu(Eintrag):
@@ -57,6 +60,7 @@ def _eintrag(zeile: ApiSchluessel, eigene: set[str]) -> Eintrag:
         stufe=zeile.stufe,
         # Entfernte Postfaecher fallen hier heraus, wie beim Lesen.
         konten=[k for k in dienst.konten_lesen(zeile) if k in eigene],
+        aufgaben=zeile.aufgaben,
         angelegt=zeile.angelegt,
         zuletzt_benutzt=zeile.zuletzt_benutzt,
     )
@@ -97,7 +101,9 @@ def anlegen(eingabe: Eingabe, person: AngemeldeterBenutzer, db: DbSession) -> Ne
     if not dienst.erlaubt(db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="api_schluessel_abgeschaltet")
     try:
-        zeile, klartext = dienst.anlegen(db, person, eingabe.name, eingabe.stufe, eingabe.konten)
+        zeile, klartext = dienst.anlegen(
+            db, person, eingabe.name, eingabe.stufe, eingabe.konten, eingabe.aufgaben
+        )
     except dienst.SchluesselFehler as fehler:
         raise _abgewiesen(fehler) from fehler
     eigene = {k.id for k in dienst.eigene_konten(db, person.id)}
@@ -110,7 +116,7 @@ def aendern(
 ) -> Eintrag:
     try:
         zeile = dienst.aendern(
-            db, person, schluessel_id, eingabe.name, eingabe.stufe, eingabe.konten
+            db, person, schluessel_id, eingabe.name, eingabe.stufe, eingabe.konten, eingabe.aufgaben
         )
     except dienst.SchluesselFehler as fehler:
         raise _abgewiesen(fehler) from fehler

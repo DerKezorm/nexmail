@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from ..config import get_settings
 from ..db import einstellung_lesen, einstellung_schreiben
 from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
-from ..services import bildfreigaben, netzfreigabe, systempost
+from ..services import bildfreigaben, netzfreigabe, systempost, webhook
 from ..services.aufraeumen import ERLAUBTE_TAGE
 from ..meldung import MeldungHttp
 from ..services.adresse import fuer_modul, ohne_vorbau
@@ -128,6 +128,25 @@ def eigenes_netz_lesen(_: Betreiber, db: DbSession) -> EigenesNetz:
 def eigenes_netz_setzen(eingabe: EigenesNetz, _: Betreiber, db: DbSession) -> EigenesNetz:
     """Der Riegel aus ``services/netzfreigabe.py``; dort steht, was er kostet."""
     return EigenesNetz(erlaubt=netzfreigabe.erlauben(db, eingabe.erlaubt))
+
+
+# --- Text der Mail an Webhooks -------------------------------------------- #
+
+
+class WebhookMailtext(BaseModel):
+    erlaubt: bool = False
+
+
+@router.get("/webhook-mailtext", response_model=WebhookMailtext)
+def webhook_mailtext_lesen(_: Betreiber, db: DbSession) -> WebhookMailtext:
+    return WebhookMailtext(erlaubt=webhook.mailtext_erlaubt(db))
+
+
+@router.put("/webhook-mailtext", response_model=WebhookMailtext)
+def webhook_mailtext_setzen(eingabe: WebhookMailtext, _: Betreiber, db: DbSession) -> WebhookMailtext:
+    """⚠️ **Ab Werk zu.** Mit der Freigabe kann jeder Benutzer den Text seiner
+    Mails an eine Adresse seiner Wahl schicken lassen (``services/webhook.py``)."""
+    return WebhookMailtext(erlaubt=webhook.mailtext_erlauben(db, eingabe.erlaubt))
 
 
 # --- Aufraeumen: Papierkorb und Junk selbst leeren ------------------------ #

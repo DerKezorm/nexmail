@@ -1312,6 +1312,11 @@ class Aufgabe(Base):
     #: sagt es, aus demselben Grund wie die verwaiste Mail: Lautlos
     #: verschwinden waere genau dann falsch, wenn man sie sucht.
     fern_geloescht: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    #: ⚠️ **Nur gesendet, nicht gefuehrt** (Webhook mit „Nur senden"). Die
+    #: Zeile steht nicht in der Liste und zaehlt nicht als offen; sie haelt nur
+    #: fest, dass diese Mail schon hinausging, damit ein zweiter Klick kein
+    #: zweites ``task.created`` ausloest.
+    nur_gesendet: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     __table_args__ = (
         # ⚠️ Dieselbe Mail nicht zweimal in der Liste. Ohne das entstehen
@@ -1341,7 +1346,7 @@ class Aufgabenverbindung(Base):
     benutzer_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
     )
-    #: ``todoist``
+    #: ``todoist`` | ``webhook``
     art: Mapped[str] = mapped_column(String(20))
     #: Zum Wiedererkennen, wenn es zwei derselben Art gibt („Todoist Arbeit").
     name: Mapped[str] = mapped_column(String(80), default="")
@@ -1352,6 +1357,13 @@ class Aufgabenverbindung(Base):
     #: zurueckgezogener Token sieht sonst aus wie eine Todo-App, die nichts
     #: mehr meldet.
     letzter_fehler: Mapped[str] = mapped_column(String(80), default="")
+    #: Nur Webhook: ``task.created`` senden und hier keine Aufgabe fuehren
+    #: (``Aufgabe.nur_gesendet``). Fuer Empfaenger, in denen die Aufgabe lebt.
+    nur_senden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    #: Nur Webhook: den Text der Mail mitschicken. ⚠️ Gilt nur, solange der
+    #: Betreiber es erlaubt (``webhook.SCHALTER_TEXT``); gefragt wird bei jedem
+    #: Senden.
+    mit_text: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 
 class Wiedervorlage(Base):
@@ -2069,6 +2081,11 @@ class ApiSchluessel(Base):
     #: mit den Postfaechern des Besitzers**: Ein entferntes Postfach faellt so
     #: von selbst heraus, und eine fremde Kennung findet nie etwas.
     konten_json: Mapped[str] = mapped_column(Text, default="[]")
+    #: ⚠️ **Der eine schreibende Weg:** Aufgaben abhaken und wieder oeffnen
+    #: (``POST /api/v1/tasks/{id}/complete``), fuer den Empfaenger eines
+    #: Webhooks. Nur Aufgaben aus den Postfaechern am Schluessel; Mails liest
+    #: der Schluessel damit nicht mehr als vorher.
+    aufgaben: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     #: ⚠️ Nicht bei jeder Abfrage geschrieben, sondern hoechstens einmal je

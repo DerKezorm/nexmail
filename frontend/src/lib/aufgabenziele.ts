@@ -36,6 +36,7 @@ export interface ZielGruppe {
 /** Was in der Oberfläche als Name der App steht. */
 export const ARTNAME: Record<string, string> = {
   todoist: 'Todoist',
+  webhook: 'Webhook',
 }
 
 export function gruppenname(g: { art: string; name: string }): string {

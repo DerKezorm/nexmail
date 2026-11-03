@@ -11,8 +11,9 @@ from sqlalchemy import select
 from ..deps import AngemeldeterBenutzer, DbSession
 from ..models import Nachricht
 from ..services import aufgaben as dienst
-from ..services import aufgabenziele, todoist
+from ..services import aufgabenziele, todoist, webhook
 from ..meldung import MeldungHttp
+from .nachrichten import _koerper_sicherstellen
 
 router = APIRouter(prefix="/api/aufgaben", tags=["aufgaben"])
 
@@ -130,6 +131,10 @@ def _status(fehler: Exception) -> int:
         return status.HTTP_429_TOO_MANY_REQUESTS
     if isinstance(fehler, todoist.TodoistFehler) and kennung != "todoist_zugang_fehlt":
         return status.HTTP_502_BAD_GATEWAY
+    # ⚠️ Eine Adresse, die nexmail nicht ansprechen darf, ist eine Eingabe,
+    # kein Ausfall des Empfaengers.
+    if isinstance(fehler, webhook.WebhookFehler) and not kennung.startswith("webhook_adresse_"):
+        return status.HTTP_502_BAD_GATEWAY
     if kennung in ("aufgabe_unbekannt", "nachricht_unbekannt", "aufgabenverbindung_unbekannt"):
         return status.HTTP_404_NOT_FOUND
     return status.HTTP_400_BAD_REQUEST
@@ -137,7 +142,9 @@ def _status(fehler: Exception) -> int:
 
 def _frisch(db, person, aufgabe_id: int) -> ZeileVoll:
     # Frisch nachschlagen: Die Mail kann inzwischen umgezogen sein.
-    for sicht in dienst.alle(db, person):
+    # ⚠️ Mit Gesendetem: Auch eine Mail, die nur an einen Webhook ging, soll
+    # sagen koennen, wohin.
+    for sicht in dienst.alle(db, person, mit_gesendeten=True):
         if sicht.aufgabe.id == aufgabe_id:
             return _voll(sicht)
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
@@ -161,8 +168,9 @@ def mit_ziel(wunsch: ZielWunsch, person: AngemeldeterBenutzer, db: DbSession) ->
             liste_name=wunsch.liste_name,
             faellig=wunsch.faellig,
             vom_browser=wunsch.adresse,
+            koerper=lambda n: _koerper_sicherstellen(db, n),
         )
-    except (dienst.AufgabenFehler, aufgabenziele.ZielFehler, todoist.TodoistFehler) as fehler:
+    except (dienst.AufgabenFehler, aufgabenziele.ZielFehler, *aufgabenziele.AppFehler) as fehler:
         raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
     return Angelegt(aufgabe=_frisch(db, person, aufgabe.id), neu=neu)
 
@@ -227,7 +235,7 @@ def aendern(
         if wunsch.faellig_setzen:
             aufgabenziele.faelligkeit(db, person, aufgabe_id, wunsch.faellig)
         aufgabe = dienst.eine(db, person, aufgabe_id)
-    except (dienst.AufgabenFehler, aufgabenziele.ZielFehler, todoist.TodoistFehler) as fehler:
+    except (dienst.AufgabenFehler, aufgabenziele.ZielFehler, *aufgabenziele.AppFehler) as fehler:
         raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
     return _frisch(db, person, aufgabe.id)
 

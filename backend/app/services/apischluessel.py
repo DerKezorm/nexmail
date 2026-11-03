@@ -117,7 +117,7 @@ def _pruefen(db: Session, person: Benutzer, name: str, stufe: str, konten: list[
 
 
 def anlegen(
-    db: Session, person: Benutzer, name: str, stufe: str, konten: list[str]
+    db: Session, person: Benutzer, name: str, stufe: str, konten: list[str], aufgaben: bool = False
 ) -> tuple[ApiSchluessel, str]:
     """Legt einen Schluessel an und gibt den Klartext **ein einziges Mal** heraus."""
     name, gewaehlt = _pruefen(db, person, name, stufe, konten)
@@ -135,16 +135,28 @@ def anlegen(
         praefix=klartext[: len(VORSILBE) + 6],
         stufe=stufe,
         konten_json=json.dumps(gewaehlt),
+        aufgaben=aufgaben,
     )
     db.add(zeile)
     db.commit()
     db.refresh(zeile)
-    logger.info("An API key was created (scope %s, %d mailboxes).", stufe, len(gewaehlt))
+    logger.info(
+        "An API key was created (scope %s, %d mailboxes%s).",
+        stufe,
+        len(gewaehlt),
+        ", may tick tasks" if aufgaben else "",
+    )
     return zeile, klartext
 
 
 def aendern(
-    db: Session, person: Benutzer, schluessel_id: str, name: str, stufe: str, konten: list[str]
+    db: Session,
+    person: Benutzer,
+    schluessel_id: str,
+    name: str,
+    stufe: str,
+    konten: list[str],
+    aufgaben: bool = False,
 ) -> ApiSchluessel | None:
     zeile = eigener(db, person, schluessel_id)
     if zeile is None:
@@ -153,6 +165,7 @@ def aendern(
     zeile.name = name
     zeile.stufe = stufe
     zeile.konten_json = json.dumps(gewaehlt)
+    zeile.aufgaben = aufgaben
     db.commit()
     logger.info("An API key was changed (scope %s, %d mailboxes).", stufe, len(gewaehlt))
     return zeile

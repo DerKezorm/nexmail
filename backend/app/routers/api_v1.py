@@ -1,12 +1,18 @@
 """Die Schnittstelle fuer andere Anwendungen: lesen mit einem API-Schluessel.
 
-Gebaut fuer Dashboards wie nexdeck. Drei Adressen, alle nur lesend:
+Gebaut fuer Dashboards wie nexdeck. Drei Adressen lesen:
 
 * ``GET /api/v1/me`` - wem der Schluessel gehoert, was er darf, welche
   Postfaecher er sieht. Daraus baut ein Dashboard seine Auswahlliste.
 * ``GET /api/v1/summary`` - ungelesene Mails im Posteingang, je Postfach.
 * ``GET /api/v1/messages/latest`` - Absender und Betreff der neuesten Mails.
   Nur mit der Stufe ``betreff``.
+
+Und zwei schreiben, fuer den Empfaenger eines Webhooks (Issue #17):
+
+* ``POST /api/v1/tasks/{id}/complete`` und ``/reopen`` - eine Aufgabe abhaken
+  oder wieder oeffnen. Nur mit einem Schluessel, an dem ``aufgaben`` steht,
+  und nur Aufgaben aus den Postfaechern am Schluessel.
 
 ⚠️ **Die Feldnamen sind englisch**, anders als der Rest der Schnittstelle.
 Diese Adressen gehoeren nicht der eigenen Oberflaeche, sondern fremden
@@ -32,8 +38,10 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from ..deps import ApiZugriff, DbSession
-from ..models import Benutzer, Nachricht, Ordner
+from ..meldung import MeldungHttp
+from ..models import Aufgabe, Benutzer, Nachricht, Ordner
 from ..services import apischluessel as dienst
+from ..services import aufgabenziele, todoist
 
 router = APIRouter(prefix="/api/v1", tags=["api-v1"])
 
@@ -58,6 +66,8 @@ class Key(BaseModel):
     name: str
     #: ``count`` or ``headers``.
     scope: str
+    #: May complete and reopen tasks.
+    tasks: bool = False
 
 
 class Me(BaseModel):
@@ -106,7 +116,11 @@ def me(schluessel: ApiZugriff, db: DbSession) -> Me:
             username=person.benutzername if person else "",
             display_name=(person.anzeigename if person else "") or "",
         ),
-        key=Key(name=schluessel.name, scope=SCOPE.get(schluessel.stufe, "count")),
+        key=Key(
+            name=schluessel.name,
+            scope=SCOPE.get(schluessel.stufe, "count"),
+            tasks=schluessel.aufgaben,
+        ),
         mailboxes=[_mailbox(k) for k in dienst.freigegebene_konten(db, schluessel)],
     )
 
@@ -196,3 +210,47 @@ def latest(
             for n in db.scalars(abfrage)
         ]
     )
+
+
+class Task(BaseModel):
+    id: str
+    #: What the receiver of the webhook answered to ``task.created``, if anything.
+    external_id: str | None
+    title: str
+    done: bool
+    completed_at: datetime | None
+
+
+def _haken(schluessel, db, task_id: str, erledigt: bool) -> Task:
+    """⚠️ **Eine fremde Aufgabe sieht aus wie eine, die es nicht gibt**, und
+    ebenso eine aus einem Postfach, das nicht am Schluessel steht."""
+    if not schluessel.aufgaben:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="api_schluessel_ohne_aufgaben")
+    aufgabe = db.get(Aufgabe, int(task_id)) if task_id.isdigit() and len(task_id) < 18 else None
+    konten = {k.id for k in dienst.freigegebene_konten(db, schluessel)}
+    if aufgabe is None or aufgabe.benutzer_id != schluessel.benutzer_id or aufgabe.konto_id not in konten:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="aufgabe_unbekannt")
+    person = db.get(Benutzer, schluessel.benutzer_id)
+    try:
+        aufgabe = aufgabenziele.von_aussen_abhaken(db, person, aufgabe, erledigt)
+    except todoist.TodoistFehler as fehler:
+        # Eine Todoist-Aufgabe geht erst zu Todoist; lehnt es ab, bleibt der Haken.
+        raise MeldungHttp.aus(fehler, status.HTTP_502_BAD_GATEWAY) from fehler
+    return Task(
+        id=str(aufgabe.id),
+        external_id=aufgabe.fern_id or None,
+        title=aufgabe.betreff,
+        done=aufgabe.erledigt is not None,
+        completed_at=aufgabe.erledigt,
+    )
+
+
+@router.post("/tasks/{task_id}/complete", response_model=Task)
+def complete(task_id: str, schluessel: ApiZugriff, db: DbSession) -> Task:
+    """Eine Aufgabe abhaken. Schon erledigt bleibt erledigt, mit der alten Zeit."""
+    return _haken(schluessel, db, task_id, True)
+
+
+@router.post("/tasks/{task_id}/reopen", response_model=Task)
+def reopen(task_id: str, schluessel: ApiZugriff, db: DbSession) -> Task:
+    return _haken(schluessel, db, task_id, False)

@@ -11,9 +11,10 @@ im Netz des Betreibers ansprechen lassen. Wer nexmail allein oder im Haushalt
 benutzt, verliert dabei nichts; wer Fremde eingeladen hat, soll es wissen,
 bevor er den Schalter umlegt. Die Oberflaeche sagt es an derselben Stelle.
 
-⚠️ **Nur Kalender, Adressbuecher und ICS-Abos.** Der Bildvermittler bleibt
-zu, egal wie der Schalter steht: Dort kommt die Adresse aus einer fremden
-Mail, nicht von einem angemeldeten Menschen.
+⚠️ **Nur Kalender, Adressbuecher, ICS-Abos und Webhooks** (seit Issue #17:
+ein selbstgebautes Programm im selben Netz). Der Bildvermittler bleibt zu,
+egal wie der Schalter steht: Dort kommt die Adresse aus einer fremden Mail,
+nicht von einem angemeldeten Menschen.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ def erlaubt(db: Session) -> bool:
 def erlauben(db: Session, ja: bool) -> bool:
     einstellung_schreiben(db, SCHALTER, "1" if ja else "0")
     logger.info(
-        "The operator %s calendar and address book servers on the local network.",
+        "The operator %s calendar and address book servers and webhooks on the local network.",
         "allowed" if ja else "blocked",
     )
     return ja

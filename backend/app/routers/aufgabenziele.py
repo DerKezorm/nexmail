@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Request, status
 from pydantic import BaseModel, Field
 
 from ..deps import AngemeldeterBenutzer, DbSession
 from ..meldung import MeldungHttp
-from ..services import aufgabenziele, todoist
+from ..services import anmeldebremse, aufgabenziele, todoist, webhook
 from .aufgaben import _status
 
 router = APIRouter(prefix="/api/aufgabenziele", tags=["aufgabenziele"])
@@ -124,3 +124,116 @@ def listen(person: AngemeldeterBenutzer, db: DbSession) -> list[Gruppe]:
         )
         for g in aufgabenziele.ziele(db, person)
     ]
+
+
+# --- Webhook ------------------------------------------------------------------ #
+
+
+class WebhookNeu(BaseModel):
+    url: str = Field(min_length=1, max_length=webhook.MAX_ADRESSE)
+    name: str = Field(default="", max_length=80)
+    #: Leer heisst: nexmail erzeugt eins.
+    geheimnis: str = Field(default="", max_length=webhook.MAX_GEHEIMNIS)
+    nur_senden: bool = False
+    mit_text: bool = False
+
+
+class WebhookVerbunden(BaseModel):
+    verbindung: Verbindung
+    #: ⚠️ **Genau einmal, hier.** Danach zeigt nexmail es nicht mehr.
+    geheimnis: str
+
+
+class WebhookAenderung(BaseModel):
+    url: str = Field(min_length=1, max_length=webhook.MAX_ADRESSE)
+    nur_senden: bool = False
+    mit_text: bool = False
+
+
+class WebhookEinstellung(BaseModel):
+    url: str
+    nur_senden: bool
+    mit_text: bool
+    #: Ob der Betreiber den Text der Mail freigegeben hat. Ohne Freigabe
+    #: bleibt ``mit_text`` gespeichert, wirkt aber nicht.
+    mailtext_erlaubt: bool
+
+
+def _bremse(request: Request, person) -> None:
+    """⚠️ **Hier steht die Bremse**, anders als beim Todoist-Token: Die
+    Adresse kommt aus der Anfrage. Gezaehlt wird jeder Aufruf, nicht nur ein
+    gescheiterter, wie bei der Modellliste des KI-Dienstes; begrenzt werden
+    soll ja der Aufruf, der hinausgeht."""
+    anmeldebremse.torwaechter(request, "webhook", person.benutzername).fehlgeschlagen()
+
+
+def _einstellung(db, s: aufgabenziele.WebhookStand) -> WebhookEinstellung:
+    return WebhookEinstellung(
+        url=s.url,
+        nur_senden=s.nur_senden,
+        mit_text=s.mit_text,
+        mailtext_erlaubt=webhook.mailtext_erlaubt(db),
+    )
+
+
+@router.post("/webhook", response_model=WebhookVerbunden, status_code=status.HTTP_201_CREATED)
+def webhook_verbinden(
+    eingabe: WebhookNeu, request: Request, person: AngemeldeterBenutzer, db: DbSession
+) -> WebhookVerbunden:
+    _bremse(request, person)
+    try:
+        v, geheimnis = aufgabenziele.webhook_verbinden(
+            db,
+            person,
+            eingabe.url,
+            name=eingabe.name,
+            geheimnis=eingabe.geheimnis,
+            nur_senden=eingabe.nur_senden,
+            mit_text=eingabe.mit_text,
+        )
+    except (aufgabenziele.ZielFehler, webhook.WebhookFehler) as fehler:
+        raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
+    return WebhookVerbunden(verbindung=_verbindung(v), geheimnis=geheimnis)
+
+
+@router.get("/{verbindung_id}/webhook", response_model=WebhookEinstellung)
+def webhook_lesen(verbindung_id: str, person: AngemeldeterBenutzer, db: DbSession) -> WebhookEinstellung:
+    try:
+        return _einstellung(db, aufgabenziele.webhook_stand(db, person, verbindung_id))
+    except (aufgabenziele.ZielFehler, webhook.WebhookFehler) as fehler:
+        raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
+
+
+@router.put("/{verbindung_id}/webhook", response_model=WebhookEinstellung)
+def webhook_aendern(
+    verbindung_id: str,
+    eingabe: WebhookAenderung,
+    request: Request,
+    person: AngemeldeterBenutzer,
+    db: DbSession,
+) -> WebhookEinstellung:
+    _bremse(request, person)
+    try:
+        s = aufgabenziele.webhook_aendern(
+            db,
+            person,
+            verbindung_id,
+            url=eingabe.url,
+            nur_senden=eingabe.nur_senden,
+            mit_text=eingabe.mit_text,
+        )
+    except (aufgabenziele.ZielFehler, webhook.WebhookFehler) as fehler:
+        raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
+    return _einstellung(db, s)
+
+
+@router.post("/{verbindung_id}/test", status_code=status.HTTP_204_NO_CONTENT)
+def webhook_testen(
+    verbindung_id: str, request: Request, person: AngemeldeterBenutzer, db: DbSession
+) -> None:
+    """Der Knopf „Test senden": ein ``ping``, und der Status, wenn es nicht 2xx war."""
+    _bremse(request, person)
+    try:
+        aufgabenziele.webhook_testen(db, person, verbindung_id)
+    except (aufgabenziele.ZielFehler, webhook.WebhookFehler) as fehler:
+        raise MeldungHttp.aus(fehler, _status(fehler)) from fehler

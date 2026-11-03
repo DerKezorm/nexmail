@@ -28,6 +28,8 @@ interface Eintrag {
   praefix: string
   stufe: Stufe
   konten: string[]
+  /** Darf Aufgaben abhaken und wieder öffnen (`/api/v1/tasks`). */
+  aufgaben: boolean
   angelegt: string
   zuletzt_benutzt: string | null
 }
@@ -42,6 +44,7 @@ interface Entwurf {
   name: string
   stufe: Stufe
   konten: string[]
+  aufgaben: boolean
 }
 
 export function ApiSchluessel({ istBetreiber }: { istBetreiber: boolean }) {
@@ -90,7 +93,12 @@ export function ApiSchluessel({ istBetreiber }: { istBetreiber: boolean }) {
     setFehler('')
     setLaeuft(true)
     try {
-      const koerper = { name: entwurf.name, stufe: entwurf.stufe, konten: entwurf.konten }
+      const koerper = {
+        name: entwurf.name,
+        stufe: entwurf.stufe,
+        konten: entwurf.konten,
+        aufgaben: entwurf.aufgaben,
+      }
       if (entwurf.id) {
         await api.aendern(`/api/apischluessel/${entwurf.id}`, koerper)
         setEntwurf(null)
@@ -213,6 +221,7 @@ export function ApiSchluessel({ istBetreiber }: { istBetreiber: boolean }) {
                           ? t('apischluessel.stufe_kurz_betreff')
                           : t('apischluessel.stufe_kurz_anzahl')}
                       </Badge>
+                      {e.aufgaben && <Badge tone="neutral">{t('apischluessel.aufgaben_kurz')}</Badge>}
                     </span>
                     <span className="block truncate text-[12px] text-fg-3">
                       {e.konten.length
@@ -234,7 +243,13 @@ export function ApiSchluessel({ istBetreiber }: { istBetreiber: boolean }) {
                     size="sm"
                     onClick={() => {
                       setFehler('')
-                      setEntwurf({ id: e.id, name: e.name, stufe: e.stufe, konten: e.konten })
+                      setEntwurf({
+                        id: e.id,
+                        name: e.name,
+                        stufe: e.stufe,
+                        konten: e.konten,
+                        aufgaben: e.aufgaben,
+                      })
                     }}
                   />
                   <IconButton
@@ -262,6 +277,7 @@ export function ApiSchluessel({ istBetreiber }: { istBetreiber: boolean }) {
                   name: '',
                   stufe: 'anzahl',
                   konten: konten.length === 1 ? [konten[0].id] : [],
+                  aufgaben: false,
                 })
               }}
             >
@@ -373,6 +389,12 @@ function Formular({
         ))}
         <p className="mb-0 text-[12px] text-fg-3">{t('apischluessel.postfaecher_hinweis')}</p>
       </fieldset>
+      <Checkbox
+        label={t('apischluessel.aufgaben')}
+        description={t('apischluessel.aufgaben_hinweis')}
+        checked={entwurf.aufgaben}
+        onCheckedChange={(an) => aendern({ ...entwurf, aufgaben: an })}
+      />
       {fehler && (
         <p role="alert" className="mb-0 text-[13px] text-danger">
           {fehler}
@@ -384,12 +406,23 @@ function Formular({
 
 /** Der Klartext, einmal. Mit Kopierknopf, der auch ohne HTTPS geht.
  *
+ * Auch für das Geheimnis eines Webhooks (`TodoApps.tsx`): dieselbe Lage,
+ * dasselbe Fenster, nur ohne die Adresse fürs Dashboard darunter.
+ *
  * ⚠️ **`navigator.clipboard` gibt es nur in einem sicheren Kontext.** Ein
  * nexmail unter `http://nas:8080` im eigenen Netz ist keiner; dort fehlt die
  * Schnittstelle ganz. Dann wird das Feld markiert und über `execCommand`
  * kopiert, und notfalls steht der Schlüssel markiert zum Abschreiben da.
  */
-function Klartext({ schluessel }: { schluessel: string }) {
+export function Klartext({
+  schluessel,
+  hinweis,
+  mitAdresse = true,
+}: {
+  schluessel: string
+  hinweis?: string
+  mitAdresse?: boolean
+}) {
   const { t } = useTranslation()
   const huelle = useRef<HTMLDivElement>(null)
   const [kopiert, setKopiert] = useState(false)
@@ -415,7 +448,7 @@ function Klartext({ schluessel }: { schluessel: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="mb-0 text-[13px] text-fg-2">{t('apischluessel.einmal')}</p>
+      <p className="mb-0 text-[13px] text-fg-2">{hinweis ?? t('apischluessel.einmal')}</p>
       <div className="flex items-end gap-2">
         <div ref={huelle} className="min-w-0 flex-1">
           <Input
@@ -433,7 +466,7 @@ function Klartext({ schluessel }: { schluessel: string }) {
           {kopiert ? t('apischluessel.kopiert') : t('apischluessel.kopieren')}
         </Button>
       </div>
-      <Adresse />
+      {mitAdresse && <Adresse />}
     </div>
   )
 }

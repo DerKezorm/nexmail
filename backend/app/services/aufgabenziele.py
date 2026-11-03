@@ -12,13 +12,20 @@ Datum. Abhaken in nexmail geht zuerst zur App; was sie ablehnt, aendert hier
 nichts.
 
 ⚠️ **Hinaus geht nur, was der Mensch im Fenster sieht:** Titel, Faelligkeit,
-Absender und ein Link zurueck zur Mail. Der Text der Mail bleibt hier.
+Absender und ein Link zurueck zur Mail. Der Text der Mail bleibt hier — mit
+einer Ausnahme: ein Webhook, an dem der Benutzer es eingeschaltet und der
+Betreiber es erlaubt hat (``webhook.py``).
+
+⚠️ **Ein Webhook ist die andere Richtung.** Er laesst sich nicht fragen, also
+gehoert der Haken dort nexmail: Abhaken hier geht als Ereignis hinaus, und der
+Abgleich laesst Webhooks aus. Zurueck kommt ein Haken nur ueber ``/api/v1``.
 """
 
 from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote, urlsplit
@@ -31,14 +38,22 @@ from .. import crypto
 from ..config import get_settings
 from ..db import einstellung_lesen
 from ..meldung import Meldung
-from ..models import Aufgabe, Aufgabenverbindung, Benutzer, Nachricht, neue_id
+from ..models import Aufgabe, Aufgabenverbindung, Benutzer, Konto, Nachricht, neue_id
 from . import adresse as adressdienst
-from . import aufgaben, todoist
+from . import aufgaben, bereinigen, todoist, webhook
 
 logger = logging.getLogger("nexmail.aufgabenziele")
 
 #: Die Arten, die es gibt. Weitere kommen als eigener Dienst dazu.
-ARTEN = ("todoist",)
+ARTEN = ("todoist", "webhook")
+
+#: Was ein Fehler einer Todo-App sein kann. Beide tragen eine Kennung.
+AppFehler = (todoist.TodoistFehler, webhook.WebhookFehler)
+
+#: ⚠️ **Ein Deckel fuer den Text der Mail**, je Feld. Ein Newsletter mit
+#: eingebetteten Bildern kommt sonst als mehrere Megabyte JSON beim Empfaenger
+#: an; was abgeschnitten ist, sagt ``text_truncated``.
+MAX_MAILTEXT = 500_000
 
 #: ⚠️ **Erledigte werden noch so lange nachgesehen**, damit ein Wieder-Oeffnen
 #: in der App auch hier ankommt. Danach gilt der letzte Stand; sonst fragte
@@ -84,7 +99,7 @@ def _jetzt() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _fehler_merken(v: Aufgabenverbindung, fehler: todoist.TodoistFehler) -> None:
+def _fehler_merken(v: Aufgabenverbindung, fehler: Meldung) -> None:
     v.letzter_fehler = fehler.kennung[:80]
 
 
@@ -114,8 +129,11 @@ def verbinden(db: Session, person: Benutzer, art: str, zugang: str, name: str = 
     ⚠️ **Ein Token, den die App ablehnt, wird nie gespeichert.** Sonst stuende
     eine Verbindung da, die beim ersten Handgriff scheitert, und der Fehler
     zeigte sich weit weg von der Stelle, an der er entstand.
+
+    ⚠️ **Nur Apps mit Token.** Ein Webhook braucht eine Adresse und ein
+    Geheimnis statt eines Tokens und kommt ueber ``webhook_verbinden``.
     """
-    if art not in ARTEN:
+    if art != "todoist":
         raise ZielFehler("aufgabenart_unbekannt")
     zugang = zugang.strip()
     todoist.listen(zugang)
@@ -145,6 +163,108 @@ def trennen(db: Session, person: Benutzer, verbindung_id: str) -> None:
     logger.info("A to-do app was disconnected.")
 
 
+# --- Webhook ----------------------------------------------------------------- #
+
+
+@dataclass
+class WebhookStand:
+    url: str
+    nur_senden: bool
+    mit_text: bool
+
+
+def _webhook(db: Session, person: Benutzer, verbindung_id: str) -> Aufgabenverbindung:
+    v = eine_verbindung(db, person, verbindung_id)
+    if v.art != "webhook":
+        raise ZielFehler("aufgabenverbindung_unbekannt")
+    return v
+
+
+def _ping(zugang: webhook.Zugang, name: str) -> None:
+    """⚠️ **Erst ein ``ping``, dann speichern**, wie beim Todoist-Token: Eine
+    Adresse, die nicht mit 2xx antwortet, stuende sonst als Verbindung da und
+    scheiterte erst beim ersten „Zu Aufgabe machen"."""
+    webhook.senden(zugang, "ping", {"connection": {"name": name}})
+
+
+def webhook_verbinden(
+    db: Session,
+    person: Benutzer,
+    url: str,
+    *,
+    name: str = "",
+    geheimnis: str = "",
+    nur_senden: bool = False,
+    mit_text: bool = False,
+) -> tuple[Aufgabenverbindung, str]:
+    """Einen Webhook verbinden. Gibt die Verbindung und das Geheimnis zurueck.
+
+    ⚠️ **Das Geheimnis kommt genau einmal heraus**, wie ein API-Schluessel.
+    Ohne eigenes erzeugt nexmail eins. Wer es verliert, trennt und verbindet
+    neu.
+    """
+    url = webhook.adresse_bereinigen(url)
+    geheimnis = geheimnis.strip() or webhook.neues_geheimnis()
+    if len(geheimnis) > webhook.MAX_GEHEIMNIS:
+        raise ZielFehler("webhook_geheimnis_zu_lang", max=webhook.MAX_GEHEIMNIS)
+    zugang = webhook.Zugang(url=url, geheimnis=geheimnis)
+    name = name.strip()[:80]
+    _ping(zugang, name)
+
+    v = Aufgabenverbindung(
+        id=neue_id(),
+        benutzer_id=person.id,
+        art="webhook",
+        name=name,
+        nur_senden=nur_senden,
+        mit_text=mit_text,
+    )
+    v.zugang = crypto.verschluesseln(webhook.zugang_schreiben(zugang), _kontext(v.id))
+    db.add(v)
+    db.commit()
+    logger.info("A webhook was connected.")
+    return v, geheimnis
+
+
+def webhook_stand(db: Session, person: Benutzer, verbindung_id: str) -> WebhookStand:
+    v = _webhook(db, person, verbindung_id)
+    return WebhookStand(
+        url=webhook.zugang_lesen(_zugang(v)).url, nur_senden=v.nur_senden, mit_text=v.mit_text
+    )
+
+
+def webhook_aendern(
+    db: Session, person: Benutzer, verbindung_id: str, *, url: str, nur_senden: bool, mit_text: bool
+) -> WebhookStand:
+    """⚠️ **Eine neue Adresse bekommt erst ihr ``ping``**, sonst bleibt die alte.
+    Das Geheimnis bleibt dasselbe; der Empfaenger muss nichts nachtragen."""
+    v = _webhook(db, person, verbindung_id)
+    zugang = webhook.zugang_lesen(_zugang(v))
+    url = webhook.adresse_bereinigen(url)
+    if url != zugang.url:
+        neu = webhook.Zugang(url=url, geheimnis=zugang.geheimnis)
+        _ping(neu, v.name)
+        v.zugang = crypto.verschluesseln(webhook.zugang_schreiben(neu), _kontext(v.id))
+        v.letzter_fehler = ""
+    v.nur_senden = nur_senden
+    v.mit_text = mit_text
+    db.commit()
+    return WebhookStand(url=url, nur_senden=v.nur_senden, mit_text=v.mit_text)
+
+
+def webhook_testen(db: Session, person: Benutzer, verbindung_id: str) -> None:
+    """Der Knopf „Test senden". Der Fehler steht danach auch an der Verbindung."""
+    v = _webhook(db, person, verbindung_id)
+    try:
+        _ping(webhook.zugang_lesen(_zugang(v)), v.name)
+    except webhook.WebhookFehler as fehler:
+        _fehler_merken(v, fehler)
+        db.commit()
+        raise
+    v.letzter_fehler = ""
+    db.commit()
+
+
 # --- Ziele ----------------------------------------------------------------- #
 
 
@@ -158,6 +278,17 @@ def ziele(db: Session, person: Benutzer) -> list[Gruppe]:
     heraus: list[Gruppe] = []
     for v in verbindungen(db, person):
         gruppe = Gruppe(verbindung_id=v.id, art=v.art, name=v.name)
+        if v.art == "webhook":
+            # Ein Webhook hat genau eine Liste, und fragen laesst er sich nicht:
+            # Sie heisst nach dem Rechner, an den gesendet wird.
+            try:
+                url = webhook.zugang_lesen(_zugang(v)).url
+            except (webhook.WebhookFehler, crypto.SchluesselFehler) as fehler:
+                gruppe.fehler = fehler.kennung
+            else:
+                gruppe.listen = [Liste(ziel=f"{v.id}:{webhook.LISTE}", name=webhook.ziel_name(url))]
+            heraus.append(gruppe)
+            continue
         try:
             gruppe.listen = [
                 Liste(ziel=f"{v.id}:{l.id}", name=l.name) for l in todoist.listen(_zugang(v))
@@ -264,12 +395,17 @@ def anlegen(
     liste_name: str = "",
     faellig: date | None = None,
     vom_browser: str = "",
+    koerper: Callable[[Nachricht], None] | None = None,
 ) -> tuple[Aufgabe, bool]:
     """Eine Aufgabe aus einer Mail, dort, wo der Mensch sie haben will.
 
     Gibt die Aufgabe zurueck und ob sie neu ist. ⚠️ **Gibt es zu dieser Mail
     schon eine, kommt die zurueck** — auch wenn sie woanders liegt als das
     gewaehlte Ziel. Kein Fehler, kein Doppel.
+
+    ``koerper`` holt den Text der Mail nach, wenn er noch nie geholt wurde;
+    gebraucht nur von einem Webhook mit Mailtext. Der Router reicht seinen
+    eigenen Weg herein, weil der die Frist der App kennt.
     """
     nachricht = db.get(Nachricht, nachricht_id)
     if nachricht is None or nachricht.benutzer_id != person.id:
@@ -289,6 +425,18 @@ def anlegen(
         return aufgabe, True
 
     v, liste_id = _zerlegen(db, person, ziel)
+    if v.art == "webhook":
+        return _per_webhook(
+            db,
+            person,
+            nachricht,
+            v,
+            titel=titel,
+            liste_name=liste_name,
+            faellig=faellig,
+            link=mail_link(db, nachricht.message_id, vom_browser),
+            koerper=koerper,
+        )
     try:
         stand = todoist.anlegen(
             _zugang(v),
@@ -343,6 +491,141 @@ def anlegen(
     return aufgabe, True
 
 
+# --- Was ein Webhook bekommt --------------------------------------------------- #
+#
+# ⚠️ **Feldnamen englisch**, wie unter ``/api/v1``: Sie gehoeren fremden
+# Programmen. Die Form steht in der README; wer hier ein Feld umbenennt, bricht
+# jeden Empfaenger da draussen.
+
+
+def _iso(wann: datetime | None) -> str | None:
+    return wann.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if wann else None
+
+
+def _aufgabe_daten(a: Aufgabe) -> dict:
+    return {
+        "id": str(a.id),
+        # Was der Empfaenger auf ``task.created`` als ``id`` nannte.
+        "external_id": a.fern_id or None,
+        "title": a.betreff,
+        "due_date": a.faellig.date().isoformat() if a.faellig else None,
+        "completed_at": _iso(a.erledigt),
+    }
+
+
+def _mail_daten(db: Session, nachricht: Nachricht, link: str) -> dict:
+    konto = db.get(Konto, nachricht.konto_id) if nachricht.konto_id else None
+    return {
+        "message_id": nachricht.message_id or None,
+        "subject": nachricht.betreff or "",
+        "from": nachricht.von_adresse or "",
+        "from_name": nachricht.von_name or "",
+        "date": _iso(nachricht.datum),
+        "mailbox": konto.anzeigename if konto else "",
+        "mailbox_address": konto.adresse if konto else "",
+        "link": link or None,
+    }
+
+
+def _mailtext(nachricht: Nachricht, koerper: Callable[[Nachricht], None] | None) -> dict:
+    """Der Text der Mail, und das HTML, wenn sie eins hat.
+
+    ⚠️ **Das HTML ist das bereinigte**, das auch der Lesebereich zeigt: ohne
+    Skripte und ohne nachgeladene Bilder. Was zu lang ist, faellt beim HTML
+    ganz weg statt mitten in einer Marke zu enden.
+
+    ⚠️ **Ohne Text kein stiller Versand.** Laesst sich die Mail nicht holen,
+    scheitert das Anlegen; eine Aufgabe ohne den Text, den der Empfaenger
+    braucht, faellt dort erst Tage spaeter auf.
+    """
+    if nachricht.koerper_geholt is None and koerper is not None:
+        koerper(nachricht)
+    if nachricht.koerper_geholt is None:
+        raise ZielFehler("webhook_mailtext_fehlt")
+    html = nachricht.koerper_html or ""
+    text = nachricht.koerper_text or bereinigen.text_aus_html(html, laenge=MAX_MAILTEXT + 1)
+    return {
+        "text": text[:MAX_MAILTEXT],
+        "html": html if html and len(html) <= MAX_MAILTEXT else None,
+        "text_truncated": len(text) > MAX_MAILTEXT or len(html) > MAX_MAILTEXT,
+    }
+
+
+def _per_webhook(
+    db: Session,
+    person: Benutzer,
+    nachricht: Nachricht,
+    v: Aufgabenverbindung,
+    *,
+    titel: str,
+    liste_name: str,
+    faellig: date | None,
+    link: str,
+    koerper: Callable[[Nachricht], None] | None,
+) -> tuple[Aufgabe, bool]:
+    """``task.created`` an den Webhook, und die Zeile hier.
+
+    ⚠️ **Die Zeile steht vor dem Senden**, anders als bei Todoist: Der
+    Empfaenger bekommt nexmails Kennung mit, und die gibt es erst nach dem
+    Speichern. Ohne 2xx wird sie wieder geloescht; nichts bleibt halb.
+    Waehrend des Sendens die Schreibsperre der Datenbank zu halten, haette
+    jeden Abgleich bis zu zehn Sekunden aufgehalten.
+    """
+    zugang = webhook.zugang_lesen(_zugang(v))
+    mail = _mail_daten(db, nachricht, link)
+    if v.mit_text and webhook.mailtext_erlaubt(db):
+        mail.update(_mailtext(nachricht, koerper))
+
+    kleinste = db.scalar(
+        select(Aufgabe.reihenfolge)
+        .where(Aufgabe.benutzer_id == person.id)
+        .order_by(Aufgabe.reihenfolge)
+        .limit(1)
+    )
+    aufgabe = Aufgabe(
+        benutzer_id=person.id,
+        konto_id=nachricht.konto_id,
+        nachricht_id=nachricht.id,
+        message_id=nachricht.message_id,
+        betreff=titel,
+        von_name=nachricht.von_name,
+        von_adresse=nachricht.von_adresse,
+        mail_datum=nachricht.datum,
+        faellig=_als_zeitpunkt(faellig),
+        reihenfolge=(kleinste if kleinste is not None else 0) - 1,
+        fern_art="webhook",
+        verbindung_id=v.id,
+        fern_liste=liste_name.strip()[:200],
+        nur_gesendet=v.nur_senden,
+    )
+    db.add(aufgabe)
+    try:
+        db.commit()
+    except IntegrityError:
+        # ⚠️ Zwei Anfragen zugleich: Die zweite sendet gar nicht erst.
+        db.rollback()
+        schon = _vorhanden(db, person, nachricht)
+        if schon is None:
+            raise
+        return schon, False
+
+    try:
+        antwort = webhook.senden(
+            zugang, "task.created", {"task": _aufgabe_daten(aufgabe), "message": mail}
+        )
+    except webhook.WebhookFehler as fehler:
+        db.delete(aufgabe)
+        _fehler_merken(v, fehler)
+        db.commit()
+        raise
+    aufgabe.fern_id = antwort.id
+    aufgabe.fern_url = antwort.url
+    v.letzter_fehler = ""
+    db.commit()
+    logger.info("A message was sent to a webhook as a task%s.", " (send only)" if v.nur_senden else "")
+    return aufgabe, True
+
+
 # --- Haken und Datum ----------------------------------------------------------- #
 
 
@@ -361,15 +644,51 @@ def abhaken(db: Session, person: Benutzer, aufgabe_id: int, erledigt: bool) -> A
     v = _verwaltet(db, aufgabe)
     if v is not None and erledigt != (aufgabe.erledigt is not None):
         try:
-            if erledigt:
+            if v.art == "webhook":
+                _haken_senden(db, v, aufgabe, erledigt)
+            elif erledigt:
                 todoist.schliessen(_zugang(v), aufgabe.fern_id)
             else:
                 todoist.oeffnen(_zugang(v), aufgabe.fern_id)
-        except todoist.TodoistFehler as fehler:
+        except AppFehler as fehler:
             _fehler_merken(v, fehler)
             db.commit()
             raise
+        v.letzter_fehler = ""
     return aufgaben.abhaken(db, person, aufgabe_id, erledigt)
+
+
+def _haken_senden(db: Session, v: Aufgabenverbindung, aufgabe: Aufgabe, erledigt: bool) -> None:
+    """⚠️ **Der Stand nach dem Haken**, nicht der davor: ``completed_at`` ist
+    beim Empfaenger sonst leer, gerade wenn er es braucht."""
+    daten = _aufgabe_daten(aufgabe)
+    daten["completed_at"] = _iso(datetime.now(timezone.utc)) if erledigt else None
+    webhook.senden(
+        webhook.zugang_lesen(_zugang(v)),
+        "task.completed" if erledigt else "task.reopened",
+        {
+            "task": daten,
+            "message": {
+                "message_id": aufgabe.message_id or None,
+                "link": mail_link(db, aufgabe.message_id) or None,
+            },
+        },
+    )
+
+
+def von_aussen_abhaken(db: Session, person: Benutzer, aufgabe: Aufgabe, erledigt: bool) -> Aufgabe:
+    """Ein Haken ueber ``/api/v1``, vom Empfaenger eines Webhooks.
+
+    ⚠️ **Kein Echo.** Kommt der Haken von dort, geht er nicht als
+    ``task.completed`` wieder hinaus: Der Empfaenger weiss es schon, und ein
+    Empfaenger, der auf jedes Ereignis mit einem Haken antwortet, liefe sonst
+    im Kreis. Eine Todoist-Aufgabe geht dagegen den gewoehnlichen Weg, zuerst
+    zu Todoist; dort gehoert ihr der Haken.
+    """
+    v = _verwaltet(db, aufgabe)
+    if v is not None and v.art == "webhook":
+        return aufgaben.abhaken(db, person, aufgabe.id, erledigt)
+    return abhaken(db, person, aufgabe.id, erledigt)
 
 
 def faelligkeit(db: Session, person: Benutzer, aufgabe_id: int, wann: datetime | None) -> Aufgabe:
@@ -434,6 +753,10 @@ def abgleichen(db: Session, person: Benutzer, *, beim_oeffnen: bool = False) -> 
         _zuletzt_beim_oeffnen[person.id] = jetzt
 
     for v in verbindungen(db, person):
+        if v.art == "webhook":
+            # ⚠️ Nichts zu fragen. Und ``letzter_fehler`` bleibt stehen: Er
+            # sagt, dass das letzte Senden scheiterte, bis eins gelingt.
+            continue
         try:
             _eine_abgleichen(db, v)
             v.letzter_fehler = ""

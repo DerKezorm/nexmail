@@ -71,17 +71,23 @@ def _wiederfinden(db: Session, benutzer: Benutzer, aufgabe: Aufgabe) -> Nachrich
     return zeile if zeile is not None and zeile.benutzer_id == benutzer.id else None
 
 
-def alle(db: Session, benutzer: Benutzer) -> list[Sicht]:
+def alle(db: Session, benutzer: Benutzer, *, mit_gesendeten: bool = False) -> list[Sicht]:
     """Offene zuerst, in der gezogenen Reihenfolge; Erledigte darunter.
 
     ⚠️ **Erledigte verschwinden nicht.** Wer gerade abgehakt hat, will es
     einen Moment lang noch sehen — und wer sich vertan hat, will es
     zurueckholen koennen, ohne die Mail zu suchen.
+
+    ⚠️ **Nur Gesendetes schon** (``Aufgabe.nur_gesendet``): Die Aufgabe lebt
+    beim Empfaenger des Webhooks, hier stuende sie fuer immer offen.
+    ``mit_gesendeten`` braucht nur das Fenster, das sagt, wohin eine Mail
+    schon ging.
     """
+    abfrage = select(Aufgabe).where(Aufgabe.benutzer_id == benutzer.id)
+    if not mit_gesendeten:
+        abfrage = abfrage.where(Aufgabe.nur_gesendet.is_(False))
     zeilen = db.execute(
-        select(Aufgabe)
-        .where(Aufgabe.benutzer_id == benutzer.id)
-        .order_by(
+        abfrage.order_by(
             # SQLite sortiert NULL zuerst — genau richtig: offen vor erledigt.
             Aufgabe.erledigt.is_(None).desc(),
             Aufgabe.reihenfolge,
@@ -200,7 +206,9 @@ def offene(db: Session, benutzer: Benutzer) -> int:
     return len(
         db.execute(
             select(Aufgabe.id).where(
-                Aufgabe.benutzer_id == benutzer.id, Aufgabe.erledigt.is_(None)
+                Aufgabe.benutzer_id == benutzer.id,
+                Aufgabe.erledigt.is_(None),
+                Aufgabe.nur_gesendet.is_(False),
             )
         ).all()
     )

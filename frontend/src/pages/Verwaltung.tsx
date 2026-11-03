@@ -16,7 +16,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { KeyRound, Network, ScrollText, Server } from 'lucide-react'
+import { KeyRound, Network, ScrollText, Server, Webhook } from 'lucide-react'
 import { api } from '../api/client'
 import type { Ich } from '../api/client'
 import { Button, EmptyState, Input, Select, Switch, Tabs } from '../ds'
@@ -168,6 +168,8 @@ function Serverdaten() {
 
       <EigenesNetz />
 
+      <WebhookMailtext />
+
       <Postausgang />
     </div>
   )
@@ -221,6 +223,61 @@ function EigenesNetz() {
         <div className="shrink-0">
           <Switch
             label={t('verwaltung.eigenes_netz_erlauben')}
+            checked={erlaubt ?? false}
+            disabled={erlaubt === null}
+            onCheckedChange={(an) => void umlegen(an)}
+          />
+        </div>
+      </div>
+      {fehler && <p className="mb-0 text-[13px] text-danger">{fehler}</p>}
+    </section>
+  )
+}
+
+/** Der Riegel für den Text der Mail an Webhooks (Issue #17).
+ *
+ * ⚠️ **Dieselbe Form wie das eigene Netz, und aus demselben Grund.** Mit der
+ * Freigabe kann jeder Benutzer den Text seiner Mails an eine Adresse seiner
+ * Wahl schicken lassen. Ob Mailtext das Haus verlässt, entscheidet der
+ * Betreiber; der Benutzer schaltet es danach an seinem Webhook ein.
+ */
+function WebhookMailtext() {
+  const { t } = useTranslation()
+  const [erlaubt, setErlaubt] = useState<boolean | null>(null)
+  const [fehler, setFehler] = useState('')
+
+  useEffect(() => {
+    api
+      .holen<{ erlaubt: boolean }>('/api/einstellungen/webhook-mailtext')
+      .then((e) => setErlaubt(e.erlaubt))
+      .catch((f) => setFehler(servermeldung(f, t('anmeldung.fehler_allgemein'))))
+  }, [t])
+
+  async function umlegen(an: boolean) {
+    setFehler('')
+    try {
+      const e = await api.aendern<{ erlaubt: boolean }>('/api/einstellungen/webhook-mailtext', {
+        erlaubt: an,
+      })
+      setErlaubt(e.erlaubt)
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-[240px] flex-1 flex-col gap-1">
+          <span className="flex items-center gap-2 text-[13px] font-semibold text-fg-1">
+            <Webhook className="size-4 text-fg-4" aria-hidden />
+            {t('verwaltung.webhook_mailtext')}
+          </span>
+          <p className="mb-0 text-[12px] text-fg-3">{t('verwaltung.webhook_mailtext_hinweis')}</p>
+        </div>
+        <div className="shrink-0">
+          <Switch
+            label={t('verwaltung.webhook_mailtext_erlauben')}
             checked={erlaubt ?? false}
             disabled={erlaubt === null}
             onCheckedChange={(an) => void umlegen(an)}

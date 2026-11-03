@@ -46,7 +46,7 @@ test('Der Schalter wirkt beim Umlegen und übersteht das Neuladen', async ({ pag
   await expect(schalter).toHaveAttribute('aria-checked', String(vorher))
 
   /* ⚠️ Der Preis steht neben dem Schalter, nicht in einer README. */
-  await expect(page.getByText(/jeder Benutzer dieser Installation/)).toBeVisible()
+  await expect(page.getByText(/jeder Benutzer dieser Installation nexmail eine Adresse/)).toBeVisible()
   await jederKnopfHatEinenNamen(page)
   await keineRohenSchluessel(page)
 
@@ -68,5 +68,33 @@ test('Der Schalter wirkt beim Umlegen und übersteht das Neuladen', async ({ pag
     await page.request.put(ADRESSE, { data: { erlaubt: vorher } })
   }
   expect(await standBeimServer(page)).toBe(vorher)
+  await absagen.pruefen()
+})
+
+const TEXT = '/api/einstellungen/webhook-mailtext'
+
+test('Der Schalter für den Text der Mail an Webhooks wirkt beim Umlegen und nennt den Preis', async ({ page }) => {
+  const absagen = serverabsagen(page)
+  const vorher = ((await (await page.request.get(TEXT)).json()) as { erlaubt: boolean }).erlaubt
+  await zumServer(page)
+  let schalter = page.getByRole('switch', { name: 'Text erlauben' })
+  await expect(schalter).toHaveAttribute('aria-checked', String(vorher))
+  await expect(page.getByText(/den Text seiner Mails an eine Adresse seiner Wahl/)).toBeVisible()
+
+  try {
+    const geschrieben = page.waitForResponse(
+      (a) => a.request().method() === 'PUT' && a.url().endsWith(TEXT),
+    )
+    await schalter.click()
+    expect((await geschrieben).status()).toBe(200)
+    await page.reload()
+    await zumServer(page)
+    schalter = page.getByRole('switch', { name: 'Text erlauben' })
+    await expect(schalter).toHaveAttribute('aria-checked', String(!vorher))
+    await page.screenshot({ path: 'test-results/verwaltung-webhook-mailtext.png', fullPage: true })
+  } finally {
+    // Die Entwicklungsdatenbank gehört nicht diesem Test.
+    await page.request.put(TEXT, { data: { erlaubt: vorher } })
+  }
   await absagen.pruefen()
 })

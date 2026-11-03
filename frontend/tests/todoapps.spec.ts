@@ -233,7 +233,8 @@ test('Der Reiter Aufgaben verbindet Todoist und nennt einen abgelehnten Token', 
   const token = page.getByLabel('API-Token')
   await expect(token).toHaveAttribute('type', 'password')
   await token.fill('nur-ein-probetoken')
-  await page.getByRole('button', { name: 'Verbinden' }).click()
+  // Todoist steht über dem Webhook; beide Formulare haben „Verbinden“.
+  await page.getByRole('button', { name: 'Verbinden' }).first().click()
   await expect(page.getByText('Todoist nimmt den Token nicht mehr an', { exact: false })).toBeVisible()
   expect(gesendet[0]).toMatchObject({ art: 'todoist', zugang: 'nur-ein-probetoken' })
   // Der Token steht nach dem Verbinden nirgends mehr auf der Seite.
@@ -241,6 +242,104 @@ test('Der Reiter Aufgaben verbindet Todoist und nennt einen abgelehnten Token', 
   await expect(page.getByLabel('Standardliste')).toBeVisible()
   await keineRohenSchluessel(page)
   await page.screenshot({ path: 'test-results/todoapps-reiter.png', fullPage: true })
+})
+
+const WEBHOOK = {
+  id: 'v2',
+  art: 'webhook',
+  name: 'Praxis',
+  fehler: '',
+  angelegt: '2026-11-03T10:00:00Z',
+  zuletzt_abgeglichen: null,
+}
+
+test('Ein Webhook wird verbunden, sein Geheimnis steht genau einmal da', async ({ page }) => {
+  const gesendet: Array<Record<string, unknown>> = []
+  let verbunden = false
+  await page.route('**/api/aufgabenziele', (route) =>
+    route.fulfill({ json: { standard: '', verbindungen: verbunden ? [WEBHOOK] : [] } }),
+  )
+  await page.route('**/api/aufgabenziele/listen', (route) =>
+    route.fulfill({
+      json: verbunden
+        ? [{ verbindung_id: 'v2', art: 'webhook', name: 'Praxis', fehler: '', listen: [{ ziel: 'v2:webhook', name: 'praxis.example.com' }] }]
+        : [],
+    }),
+  )
+  await page.route('**/api/aufgabenziele/webhook', async (route) => {
+    gesendet.push(route.request().postDataJSON())
+    verbunden = true
+    await route.fulfill({ status: 201, json: { verbindung: WEBHOOK, geheimnis: 'whsec_nur_ein_probegeheimnis' } })
+  })
+  await anmelden(page)
+  await zuEinstellungen(page)
+  await page.getByRole('tab', { name: 'Aufgaben' }).click()
+
+  // Die Beschriftung trägt den Hinweis mit, deshalb nach dem Anfang.
+  await page.getByRole('textbox', { name: /^Adresse/ }).fill('https://praxis.example.com/hook')
+  await page.getByRole('textbox', { name: /^Name \(optional\) Zum Wiedererkennen/ }).fill('Praxis')
+  await page.getByText('Nur senden', { exact: true }).click()
+  await page.getByRole('button', { name: 'Verbinden' }).last().click()
+
+  const fenster = page.getByRole('dialog')
+  await expect(fenster.getByText('Webhook verbunden')).toBeVisible()
+  await expect(fenster.getByRole('textbox')).toHaveValue('whsec_nur_ein_probegeheimnis')
+  expect(gesendet).toEqual([
+    {
+      url: 'https://praxis.example.com/hook',
+      name: 'Praxis',
+      geheimnis: '',
+      nur_senden: true,
+      mit_text: false,
+    },
+  ])
+  await jederKnopfHatEinenNamen(page)
+  await keineRohenSchluessel(page)
+  await page.screenshot({ path: 'test-results/todoapps-webhook-geheimnis.png' })
+
+  await fenster.getByRole('button', { name: 'Schließen' }).last().click()
+  await expect(fenster).toHaveCount(0)
+  await expect(page.getByText('whsec_nur_ein_probegeheimnis')).toHaveCount(0)
+  await expect(page.getByText('Webhook · Praxis').first()).toBeVisible()
+  await expect(page.getByLabel('Standardliste')).toContainText('Webhook · Praxis › praxis.example.com')
+})
+
+test('Die Einstellungen eines Webhooks: Test senden nennt den Status, gesperrter Text sagt warum', async ({ page }) => {
+  const geaendert: Array<Record<string, unknown>> = []
+  await page.route('**/api/aufgabenziele', (route) =>
+    route.fulfill({ json: { standard: '', verbindungen: [WEBHOOK] } }),
+  )
+  await page.route('**/api/aufgabenziele/listen', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/aufgabenziele/v2/webhook', async (route) => {
+    const stand = { url: 'https://praxis.example.com/hook', nur_senden: false, mit_text: false, mailtext_erlaubt: false }
+    if (route.request().method() === 'PUT') {
+      const rumpf = route.request().postDataJSON() as Record<string, unknown>
+      geaendert.push(rumpf)
+      await route.fulfill({ json: { ...stand, ...rumpf } })
+      return
+    }
+    await route.fulfill({ json: stand })
+  })
+  await page.route('**/api/aufgabenziele/v2/test', (route) =>
+    route.fulfill({ status: 502, json: { detail: 'webhook_fehler', werte: { status: 401 } } }),
+  )
+  await anmelden(page)
+  await zuEinstellungen(page)
+  await page.getByRole('tab', { name: 'Aufgaben' }).click()
+  await page.getByRole('button', { name: 'Einstellungen' }).last().click()
+
+  await expect(page.getByText('nicht freigegeben', { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: 'Test senden' }).click()
+  await expect(page.getByRole('alert')).toContainText('HTTP 401')
+
+  // Ein Schalter speichert sofort, mit der gespeicherten Adresse, nicht mit
+  // einer halb getippten.
+  await page.getByRole('textbox', { name: /^Adresse/ }).first().fill('https://halb')
+  await page.getByText('Nur senden', { exact: true }).first().click()
+  await expect.poll(() => geaendert.length).toBe(1)
+  expect(geaendert[0]).toEqual({ url: 'https://praxis.example.com/hook', nur_senden: true, mit_text: false })
+  await keineRohenSchluessel(page)
+  await page.screenshot({ path: 'test-results/todoapps-webhook-einstellungen.png', fullPage: true })
 })
 
 test('Der Link aus Todoist öffnet die Mail über ihre Message-ID', async ({ page }) => {

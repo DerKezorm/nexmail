@@ -110,7 +110,9 @@ says so. Each user can connect their own Todoist account under *Settings → Tas
 and send tasks to a Todoist list instead. Only the title, the due date, the
 sender and a link back to the mail go there, never the text of the mail. Ticking
 a task in nexmail closes it in Todoist, and what you complete, reschedule or
-delete in Todoist comes back within a few minutes.
+delete in Todoist comes back within a few minutes. For tools of your own there is
+a webhook target: nexmail posts each task as signed JSON to an address you
+choose (see [Webhooks for tasks](#webhooks-for-tasks)).
 
 **Contacts, rules, signatures.** An address book with several numbers,
 addresses and postal addresses per contact, the card's photo, vCard import and
@@ -516,20 +518,111 @@ sender and subject*. The text of a message is never available through a key.
 Keys are stored as hashes and shown once; revoking one takes effect on the
 next request.
 
-All addresses are `GET`, answer JSON and expect the key as
+All addresses answer JSON and expect the key as
 `Authorization: Bearer nxm_…`. A browser session does not open them, and a key
-opens nothing else.
+opens nothing else. Only the two task addresses write, and only with a key that
+has *May tick off tasks* set; that is meant for the receiver of a webhook.
 
 | Address | Returns |
 |---|---|
-| `/api/v1/me` | owner, key name and scope (`count` or `headers`), the mailboxes the key may see |
-| `/api/v1/summary` | unread messages in the inbox, in total and per mailbox, with `status` `ok` or `sign_in_failed` |
-| `/api/v1/messages/latest` | sender, subject, date and read state of the newest inbox messages; needs scope `headers`. Optional: `mailbox=<id>` (repeatable), `limit=1..20` (default 5), `unread_only=true` |
+| `GET /api/v1/me` | owner, key name, scope (`count` or `headers`), `tasks` (whether the key may tick off tasks), the mailboxes the key may see |
+| `GET /api/v1/summary` | unread messages in the inbox, in total and per mailbox, with `status` `ok` or `sign_in_failed` |
+| `GET /api/v1/messages/latest` | sender, subject, date and read state of the newest inbox messages; needs scope `headers`. Optional: `mailbox=<id>` (repeatable), `limit=1..20` (default 5), `unread_only=true` |
+| `POST /api/v1/tasks/{id}/complete` | ticks off a task from one of the key's mailboxes; returns `id`, `external_id`, `title`, `done`, `completed_at` |
+| `POST /api/v1/tasks/{id}/reopen` | reopens it; same answer |
 
 Errors come as `{"detail": "<code>"}`: `api_schluessel_fehlt` and
-`api_schluessel_ungueltig` (401), `api_schluessel_abgeschaltet` and
-`api_schluessel_nur_anzahl` (403), `postfach_unbekannt` (404). Counts are as
-fresh as nexmail's last sync with the mail server.
+`api_schluessel_ungueltig` (401), `api_schluessel_abgeschaltet`,
+`api_schluessel_nur_anzahl` and `api_schluessel_ohne_aufgaben` (403),
+`postfach_unbekannt` and `aufgabe_unbekannt` (404). Counts are as fresh as
+nexmail's last sync with the mail server.
+
+## Webhooks for tasks
+
+Under *Settings → Tasks* each user can connect a webhook next to Todoist. It
+then shows up as a list in *Turn into task*, and nexmail sends the task as a
+`POST` with a JSON body to your address. Before it saves the webhook, nexmail
+sends a `ping` and keeps the address only if it answers with 2xx; *Send test*
+does the same later and shows the status code if it does not.
+
+**What arrives.** `task.created` when a message becomes a task, `task.completed`
+and `task.reopened` when it is ticked or unticked in nexmail, and `ping`.
+
+```json
+{
+  "event": "task.created",
+  "sent_at": "2026-11-03T08:15:00Z",
+  "task": {
+    "id": "42",
+    "external_id": null,
+    "title": "Order confirmation",
+    "due_date": "2026-11-10",
+    "completed_at": null
+  },
+  "message": {
+    "message_id": "<abc123@example.org>",
+    "subject": "Order confirmation",
+    "from": "supplier@example.com",
+    "from_name": "Supplier",
+    "date": "2026-11-03T08:12:00Z",
+    "mailbox": "Work",
+    "mailbox_address": "me@example.com",
+    "link": "https://nexmail.example.org/?mail=%3Cabc123%40example.org%3E"
+  }
+}
+```
+
+`task.completed` and `task.reopened` carry the same `task` and only
+`message_id` and `link` under `message`. If your endpoint answers `task.created`
+with JSON such as `{"id": "T-17", "url": "https://…"}`, nexmail keeps both: the
+`id` comes back as `external_id` in later events, and the `url` becomes the link
+to the task in nexmail.
+
+**The text of the message** (`text`, `html`, `text_truncated` under `message`)
+is only sent if the user turns it on for the webhook *and* the operator allows
+it under *Administration → Server*. It is off by default, because on a shared
+installation any user can enter any address. `html` is the cleaned HTML nexmail
+shows itself, without scripts; very long messages are cut, and `text_truncated`
+says so.
+
+**The signature.** Every request carries
+`X-Nexmail-Signature: sha256=<hex>`, an HMAC-SHA256 over
+`<X-Nexmail-Timestamp>.<raw body>` with the webhook's secret. The secret is shown
+once when you connect; leave the field empty and nexmail creates one. Check the
+signature against the raw body and reject old timestamps, so a recorded request
+cannot be replayed. In Python:
+
+```python
+import hashlib, hmac, time
+
+def valid(secret: str, headers, body: bytes) -> bool:
+    stamp = headers["X-Nexmail-Timestamp"]
+    if abs(time.time() - int(stamp)) > 300:
+        return False
+    expected = hmac.new(secret.encode(), stamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(headers["X-Nexmail-Signature"], f"sha256={expected}")
+```
+
+`X-Nexmail-Event` names the event, `X-Nexmail-Delivery` is a random ID per
+request.
+
+**Who owns the checkbox.** A webhook cannot be asked what happened, so by
+default the task stays in nexmail and nexmail owns the checkbox. Two ways to
+change that:
+
+- *Send only*: nexmail sends `task.created` and keeps no task of its own. The
+  message still remembers where it went, so a second click does not send it
+  again.
+- Report back: create an API key with *May tick off tasks* for the same
+  mailboxes and call `POST /api/v1/tasks/{id}/complete` or `/reopen` with the
+  `task.id` from the payload. Such a change is not sent back to the webhook.
+
+**Addresses.** Only `http` and `https`, no credentials in the URL, and
+redirects are not followed. Addresses on the local network work only after the
+operator allows them under *Administration → Server* (the same switch as for
+calendar servers). `localhost` never works: inside the container it is nexmail
+itself. If your tool runs on the same host as the nexmail container, use the
+host's address on your network, for example `http://10.0.0.20:8080/hook`.
 
 ## Security, honestly
 
