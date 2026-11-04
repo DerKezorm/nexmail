@@ -124,5 +124,25 @@
       "localhost bekommt beim Webhook einen eigenen Hinweis: Im Container ist das nexmail selbst, gemeint ist die Adresse des Rechners im Netz.",
       "Hakst du eine Webhook-Aufgabe in nexmail ab, erfährt es das Programm sofort."
     ]
+  },
+  "0.28.0": {
+    "lead": "Ein Programm, das Aufgaben über den Webhook bekommt, kann jetzt auch Schlagworte an die Mail hängen.",
+    "sections": [
+      {
+        "title": "Schlagworte über die Schnittstelle",
+        "where": "Einstellungen, Reiter „API-Schlüssel“",
+        "body": "Ein API-Schlüssel kann jetzt „Darf Schlagworte setzen“. Damit hängt ein anderes Programm ein Schlagwort an die Mail einer Aufgabe und nimmt es wieder ab, etwa „Erledigt“, wenn die Aufgabe dort abgehakt wird. Das Schlagwort landet auf dem Mailserver, wie wenn du es selbst setzt, und steht damit auch in Thunderbird und am Telefon. Das Recht ist getrennt vom Abhaken."
+      },
+      {
+        "title": "Schlagworte im Webhook",
+        "where": "Was der Webhook bekommt",
+        "body": "Jedes Ereignis zu einer Aufgabe nennt jetzt die Schlagworte, die an der Mail stehen, mit Kennung und Namen. So weiß das andere Programm gleich, wie die Mail hier markiert ist."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Liegt dieselbe Mail in mehreren Ordnern eines Postfachs, bekommt jede Kopie das Schlagwort.",
+      "Ändert ein Programm ein Schlagwort über die Schnittstelle, geht keine Meldung an den Webhook zurück."
+    ]
   }
 }

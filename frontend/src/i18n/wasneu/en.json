@@ -124,5 +124,25 @@
       "For a webhook, localhost gets its own hint: inside the container it is nexmail itself, what you want is the host's address on your network.",
       "Tick a webhook task in nexmail and the tool hears about it right away."
     ]
+  },
+  "0.28.0": {
+    "lead": "A tool that gets tasks through the webhook can now also tag the message.",
+    "sections": [
+      {
+        "title": "Tags through the API",
+        "where": "Settings, the “API keys” tab",
+        "body": "An API key can now have “May tag messages”. With it, another tool adds a tag to the message of a task and removes it again, for example “Done” when the task is ticked off there. The tag goes to the mail server, just as when you set it yourself, so it also shows up in Thunderbird and on your phone. The option is separate from ticking off tasks."
+      },
+      {
+        "title": "Tags in the webhook",
+        "where": "What the webhook receives",
+        "body": "Every task event now lists the tags on the message, with their ID and name. The other tool knows right away how the message is tagged here."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "If the same message sits in several folders of a mailbox, every copy gets the tag.",
+      "When a tool changes a tag through the API, nothing is sent back to the webhook."
+    ]
   }
 }
