@@ -2086,6 +2086,11 @@ class ApiSchluessel(Base):
     #: Webhooks. Nur Aufgaben aus den Postfaechern am Schluessel; Mails liest
     #: der Schluessel damit nicht mehr als vorher.
     aufgaben: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    #: Schlagworte an der Mail einer Aufgabe setzen und nehmen
+    #: (``POST /api/v1/tasks/{id}/tags/{tag}``), und die Liste der Schlagworte
+    #: lesen. Ein eigenes Haekchen neben ``aufgaben`` (Issue #17): Wer nur
+    #: abhaken soll, schreibt damit nicht auch auf den Mailserver.
+    schlagworte: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     #: ⚠️ Nicht bei jeder Abfrage geschrieben, sondern hoechstens einmal je

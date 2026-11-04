@@ -1324,7 +1324,10 @@
     "zuletzt": "zuletzt benutzt {{wann}}",
     "aufgaben": "Darf Aufgaben abhaken",
     "aufgaben_hinweis": "Für den Empfänger eines Webhooks: Aufgaben aus diesen Postfächern über /api/v1/tasks abhaken und wieder öffnen.",
-    "aufgaben_kurz": "Aufgaben"
+    "aufgaben_kurz": "Aufgaben",
+    "schlagworte": "Darf Schlagworte setzen",
+    "schlagworte_hinweis": "Für den Empfänger eines Webhooks: Schlagworte an die Mail einer Aufgabe hängen und wieder abnehmen, über /api/v1/tasks/…/tags. Das schreibt auf den Mailserver.",
+    "schlagworte_kurz": "Schlagworte"
   },
   "iphone": {
     "code_abtippen": "Oder in der App von Hand eintragen:",
@@ -1421,6 +1424,8 @@
     "webhook_mailtext_fehlt": "Der Text der Mail ließ sich nicht holen. Versuch es noch einmal.",
     "webhook_zugang_kaputt": "Diese Verbindung ist beschädigt. Trenne sie und verbinde neu.",
     "api_schluessel_ohne_aufgaben": "Dieser Schlüssel darf keine Aufgaben abhaken.",
+    "api_schluessel_ohne_schlagworte": "Dieser Schlüssel darf keine Schlagworte setzen.",
+    "aufgabe_ohne_mail": "Die Mail zu dieser Aufgabe ist nicht mehr da.",
     "bedingung_ohne_wert": "Eine Bedingung ohne Wert trifft auf nichts zu.",
     "benutzername_inzwischen_vergeben": "Dieser Benutzername ist inzwischen vergeben. Der Betreiber muss neu einladen.",
     "benutzername_ungueltig": "Der Benutzername darf 3 bis 64 Zeichen haben: Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich.",

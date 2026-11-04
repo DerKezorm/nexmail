@@ -14,6 +14,15 @@ Und zwei schreiben, fuer den Empfaenger eines Webhooks (Issue #17):
   oder wieder oeffnen. Nur mit einem Schluessel, an dem ``aufgaben`` steht,
   und nur Aufgaben aus den Postfaechern am Schluessel.
 
+Und Schlagworte, fuer denselben Empfaenger (Issue #17, zweite Runde):
+
+* ``GET /api/v1/tags`` - die Schlagworte des Besitzers, mit Kennung.
+* ``GET /api/v1/tasks/{id}/tags`` - die Schlagworte an der Mail der Aufgabe.
+* ``POST`` und ``DELETE /api/v1/tasks/{id}/tags/{tag_id}`` - eines setzen
+  oder nehmen. Nur mit einem Schluessel, an dem ``schlagworte`` steht.
+  ⚠️ **Geschrieben wird auf den Mailserver**, als IMAP-Keyword, auf dem Weg
+  der Oberflaeche (``schlagworte.zuweisen``): erst der Server, dann lokal.
+
 ⚠️ **Die Feldnamen sind englisch**, anders als der Rest der Schnittstelle.
 Diese Adressen gehoeren nicht der eigenen Oberflaeche, sondern fremden
 Programmen, und nach aussen ist nexmail englisch.
@@ -41,7 +50,9 @@ from ..deps import ApiZugriff, DbSession
 from ..meldung import MeldungHttp
 from ..models import Aufgabe, Benutzer, Nachricht, Ordner
 from ..services import apischluessel as dienst
+from ..services import aufgaben as aufgabendienst
 from ..services import aufgabenziele, todoist
+from ..services import schlagworte as schlagwortdienst
 
 router = APIRouter(prefix="/api/v1", tags=["api-v1"])
 
@@ -68,6 +79,8 @@ class Key(BaseModel):
     scope: str
     #: May complete and reopen tasks.
     tasks: bool = False
+    #: May list tags and set them on the message of a task.
+    tags: bool = False
 
 
 class Me(BaseModel):
@@ -120,6 +133,7 @@ def me(schluessel: ApiZugriff, db: DbSession) -> Me:
             name=schluessel.name,
             scope=SCOPE.get(schluessel.stufe, "count"),
             tasks=schluessel.aufgaben,
+            tags=schluessel.schlagworte,
         ),
         mailboxes=[_mailbox(k) for k in dienst.freigegebene_konten(db, schluessel)],
     )
@@ -221,15 +235,20 @@ class Task(BaseModel):
     completed_at: datetime | None
 
 
-def _haken(schluessel, db, task_id: str, erledigt: bool) -> Task:
+def _aufgabe(schluessel, db, task_id: str) -> Aufgabe:
     """⚠️ **Eine fremde Aufgabe sieht aus wie eine, die es nicht gibt**, und
     ebenso eine aus einem Postfach, das nicht am Schluessel steht."""
-    if not schluessel.aufgaben:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="api_schluessel_ohne_aufgaben")
     aufgabe = db.get(Aufgabe, int(task_id)) if task_id.isdigit() and len(task_id) < 18 else None
     konten = {k.id for k in dienst.freigegebene_konten(db, schluessel)}
     if aufgabe is None or aufgabe.benutzer_id != schluessel.benutzer_id or aufgabe.konto_id not in konten:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="aufgabe_unbekannt")
+    return aufgabe
+
+
+def _haken(schluessel, db, task_id: str, erledigt: bool) -> Task:
+    if not schluessel.aufgaben:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="api_schluessel_ohne_aufgaben")
+    aufgabe = _aufgabe(schluessel, db, task_id)
     person = db.get(Benutzer, schluessel.benutzer_id)
     try:
         aufgabe = aufgabenziele.von_aussen_abhaken(db, person, aufgabe, erledigt)
@@ -254,3 +273,97 @@ def complete(task_id: str, schluessel: ApiZugriff, db: DbSession) -> Task:
 @router.post("/tasks/{task_id}/reopen", response_model=Task)
 def reopen(task_id: str, schluessel: ApiZugriff, db: DbSession) -> Task:
     return _haken(schluessel, db, task_id, False)
+
+# --- Schlagworte -------------------------------------------------------------- #
+
+
+class Tag(BaseModel):
+    id: int
+    name: str
+    #: The IMAP keyword on the mail server. Fixed, also when the tag is renamed.
+    keyword: str
+
+
+class Tags(BaseModel):
+    tags: list[Tag]
+
+
+class TaskTags(BaseModel):
+    task_id: str
+    #: The tags on the message of the task, now.
+    tags: list[Tag]
+
+
+def _schlagworte_erlaubt(schluessel) -> None:
+    if not schluessel.schlagworte:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="api_schluessel_ohne_schlagworte")
+
+
+def _mails(schluessel, db, task_id: str):
+    """Die Aufgabe, ihr Besitzer und jede Fassung ihrer Mail.
+
+    ⚠️ **Ohne Mail 409, nicht 404.** Die Aufgabe gibt es, nur ihre Mail nicht
+    mehr (geloescht, oder in ein Postfach gewandert, das nexmail nicht
+    abgleicht). Ein 404 hiesse fuer den Empfaenger: falsche Kennung.
+    """
+    aufgabe = _aufgabe(schluessel, db, task_id)
+    person = db.get(Benutzer, schluessel.benutzer_id)
+    mails = aufgabendienst.mails_der_aufgabe(db, person, aufgabe)
+    if not mails:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="aufgabe_ohne_mail")
+    return aufgabe, person, mails
+
+
+def _task_tags(db, aufgabe: Aufgabe, mails) -> TaskTags:
+    return TaskTags(
+        task_id=str(aufgabe.id),
+        tags=[Tag(**t) for t in schlagwortdienst.fuer_aussen(db, aufgabe.benutzer_id, mails)],
+    )
+
+
+@router.get("/tags", response_model=Tags)
+def tags(schluessel: ApiZugriff, db: DbSession) -> Tags:
+    """Die Schlagworte des Besitzers, in der Reihenfolge der Einstellungen."""
+    _schlagworte_erlaubt(schluessel)
+    return Tags(
+        tags=[
+            Tag(id=z.id, name=z.name, keyword=z.atom)
+            for z in schlagwortdienst.meine(db, schluessel.benutzer_id)
+        ]
+    )
+
+
+@router.get("/tasks/{task_id}/tags", response_model=TaskTags)
+def task_tags(task_id: str, schluessel: ApiZugriff, db: DbSession) -> TaskTags:
+    _schlagworte_erlaubt(schluessel)
+    aufgabe, _, mails = _mails(schluessel, db, task_id)
+    return _task_tags(db, aufgabe, mails)
+
+
+def _zuweisen(schluessel, db, task_id: str, tag_id: str, setzen: bool) -> TaskTags:
+    """⚠️ **Erst der Server, dann lokal**, wie in der Oberflaeche. Kein Echo an
+    den Webhook: Schlagworte loesen dort kein Ereignis aus."""
+    _schlagworte_erlaubt(schluessel)
+    aufgabe, person, mails = _mails(schluessel, db, task_id)
+    try:
+        if not (tag_id.isdigit() and len(tag_id) < 18):
+            raise schlagwortdienst.SchlagwortFehler("schlagwort_unbekannt")
+        definition = schlagwortdienst.eines(db, person.id, int(tag_id))
+        schlagwortdienst.zuweisen(db, person, mails, definition.atom, setzen)
+    except schlagwortdienst.SchlagwortFehler as fehler:
+        kennung = str(fehler)
+        code = status.HTTP_404_NOT_FOUND if kennung == "schlagwort_unbekannt" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=kennung) from fehler
+    db.expire_all()
+    return _task_tags(db, aufgabe, aufgabendienst.mails_der_aufgabe(db, person, aufgabe))
+
+
+@router.post("/tasks/{task_id}/tags/{tag_id}", response_model=TaskTags)
+def tag_setzen(task_id: str, tag_id: str, schluessel: ApiZugriff, db: DbSession) -> TaskTags:
+    """Ein Schlagwort an die Mail der Aufgabe. Schon gesetzt bleibt gesetzt."""
+    return _zuweisen(schluessel, db, task_id, tag_id, True)
+
+
+@router.delete("/tasks/{task_id}/tags/{tag_id}", response_model=TaskTags)
+def tag_nehmen(task_id: str, tag_id: str, schluessel: ApiZugriff, db: DbSession) -> TaskTags:
+    return _zuweisen(schluessel, db, task_id, tag_id, False)

@@ -1324,7 +1324,10 @@
     "zuletzt": "last used {{wann}}",
     "aufgaben": "May tick off tasks",
     "aufgaben_hinweis": "For the receiver of a webhook: complete and reopen tasks from these mailboxes through /api/v1/tasks.",
-    "aufgaben_kurz": "Tasks"
+    "aufgaben_kurz": "Tasks",
+    "schlagworte": "May tag messages",
+    "schlagworte_hinweis": "For the receiver of a webhook: add tags to the message of a task and remove them, through /api/v1/tasks/…/tags. This writes to the mail server.",
+    "schlagworte_kurz": "Tags"
   },
   "iphone": {
     "code_abtippen": "Or enter this in the app by hand:",
@@ -1421,6 +1424,8 @@
     "webhook_mailtext_fehlt": "The text of the message could not be fetched. Please try again.",
     "webhook_zugang_kaputt": "This connection is damaged. Disconnect it and connect again.",
     "api_schluessel_ohne_aufgaben": "This key may not tick off tasks.",
+    "api_schluessel_ohne_schlagworte": "This key may not tag messages.",
+    "aufgabe_ohne_mail": "The message of this task is no longer there.",
     "bedingung_ohne_wert": "A condition without a value matches nothing.",
     "benutzername_inzwischen_vergeben": "That username has been taken in the meantime. The operator has to invite again.",
     "benutzername_ungueltig": "A username is 3 to 64 characters: letters, digits, dot, underscore and hyphen.",

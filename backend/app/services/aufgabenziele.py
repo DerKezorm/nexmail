@@ -40,7 +40,7 @@ from ..db import einstellung_lesen
 from ..meldung import Meldung
 from ..models import Aufgabe, Aufgabenverbindung, Benutzer, Konto, Nachricht, neue_id
 from . import adresse as adressdienst
-from . import aufgaben, bereinigen, todoist, webhook
+from . import aufgaben, bereinigen, schlagworte, todoist, webhook
 
 logger = logging.getLogger("nexmail.aufgabenziele")
 
@@ -524,6 +524,9 @@ def _mail_daten(db: Session, nachricht: Nachricht, link: str) -> dict:
         "mailbox": konto.anzeigename if konto else "",
         "mailbox_address": konto.adresse if konto else "",
         "link": link or None,
+        # Was am Anlegen schon an der Mail steht (Issue #17). Geaendert wird
+        # ueber ``/api/v1/tasks/{id}/tags``; ein eigenes Ereignis gibt es dafuer nicht.
+        "tags": schlagworte.fuer_aussen(db, nachricht.benutzer_id, [nachricht]),
     }
 
 
@@ -663,6 +666,8 @@ def _haken_senden(db: Session, v: Aufgabenverbindung, aufgabe: Aufgabe, erledigt
     beim Empfaenger sonst leer, gerade wenn er es braucht."""
     daten = _aufgabe_daten(aufgabe)
     daten["completed_at"] = _iso(datetime.now(timezone.utc)) if erledigt else None
+    person = db.get(Benutzer, aufgabe.benutzer_id)
+    mails = aufgaben.mails_der_aufgabe(db, person, aufgabe) if person else []
     webhook.senden(
         webhook.zugang_lesen(_zugang(v)),
         "task.completed" if erledigt else "task.reopened",
@@ -671,6 +676,9 @@ def _haken_senden(db: Session, v: Aufgabenverbindung, aufgabe: Aufgabe, erledigt
             "message": {
                 "message_id": aufgabe.message_id or None,
                 "link": mail_link(db, aufgabe.message_id) or None,
+                # ⚠️ ``null``, wenn die Mail nicht mehr da ist: Eine leere
+                # Liste hiesse „keine Schlagworte", und das weiss hier keiner.
+                "tags": schlagworte.fuer_aussen(db, aufgabe.benutzer_id, mails) if mails else None,
             },
         },
     )

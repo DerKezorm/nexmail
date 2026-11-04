@@ -63,6 +63,11 @@ test('Schlüssel anlegen, damit lesen, widerrufen', async ({ page }, info) => {
     // auf seine Beschriftung.
     await fenster.getByText(TESTPOSTFACH, { exact: true }).click()
     await expect(haken).toBeChecked()
+    // Das Recht für Schlagworte steht eigens da, neben dem für Aufgaben (#17).
+    const marken = fenster.getByRole('checkbox', { name: /^Darf Schlagworte setzen/ })
+    await expect(marken).not.toBeChecked()
+    await fenster.getByText('Darf Schlagworte setzen', { exact: true }).click()
+    await expect(marken).toBeChecked()
     await fenster.getByRole('button', { name: 'Schlüssel anlegen' }).click()
 
     const feld = fenster.getByRole('textbox', { name: 'API-Schlüssel' })
@@ -83,6 +88,9 @@ test('Schlüssel anlegen, damit lesen, widerrufen', async ({ page }, info) => {
       TESTPOSTFACH,
     ])
     expect((await page.request.get('/api/v1/messages/latest', { headers: mit })).status()).toBe(200)
+    const ich = await (await page.request.get('/api/v1/me', { headers: mit })).json()
+    expect(ich.key, 'Das Häkchen kam nicht beim Schlüssel an.').toMatchObject({ tags: true, tasks: false })
+    expect((await page.request.get('/api/v1/tags', { headers: mit })).status()).toBe(200)
 
     await fenster.getByRole('button', { name: /Schließen|Close/ }).click()
     await expect(fenster).toHaveCount(0)
@@ -92,6 +100,7 @@ test('Schlüssel anlegen, damit lesen, widerrufen', async ({ page }, info) => {
     await expect(zeile.getByText('Absender und Betreff')).toBeVisible()
     await expect(zeile.getByText(TESTPOSTFACH)).toBeVisible()
     await expect(zeile.getByText(/zuletzt benutzt/)).toBeVisible()
+    await expect(zeile.getByText('Schlagworte', { exact: true })).toBeVisible()
     await keinSeitlichesScrollen(page)
     await page.screenshot({ path: `test-results/apischluessel-liste-${info.project.name}.png` })
 

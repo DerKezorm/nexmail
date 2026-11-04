@@ -30,6 +30,8 @@ interface Eintrag {
   konten: string[]
   /** Darf Aufgaben abhaken und wieder öffnen (`/api/v1/tasks`). */
   aufgaben: boolean
+  /** Darf Schlagworte an der Mail einer Aufgabe setzen (`/api/v1/tags`). */
+  schlagworte: boolean
   angelegt: string
   zuletzt_benutzt: string | null
 }
@@ -45,6 +47,7 @@ interface Entwurf {
   stufe: Stufe
   konten: string[]
   aufgaben: boolean
+  schlagworte: boolean
 }
 
 export function ApiSchluessel({ istBetreiber }: { istBetreiber: boolean }) {
@@ -98,6 +101,7 @@ export function ApiSchluessel({ istBetreiber }: { istBetreiber: boolean }) {
         stufe: entwurf.stufe,
         konten: entwurf.konten,
         aufgaben: entwurf.aufgaben,
+        schlagworte: entwurf.schlagworte,
       }
       if (entwurf.id) {
         await api.aendern(`/api/apischluessel/${entwurf.id}`, koerper)
@@ -222,6 +226,9 @@ export function ApiSchluessel({ istBetreiber }: { istBetreiber: boolean }) {
                           : t('apischluessel.stufe_kurz_anzahl')}
                       </Badge>
                       {e.aufgaben && <Badge tone="neutral">{t('apischluessel.aufgaben_kurz')}</Badge>}
+                      {e.schlagworte && (
+                        <Badge tone="neutral">{t('apischluessel.schlagworte_kurz')}</Badge>
+                      )}
                     </span>
                     <span className="block truncate text-[12px] text-fg-3">
                       {e.konten.length
@@ -249,6 +256,7 @@ export function ApiSchluessel({ istBetreiber }: { istBetreiber: boolean }) {
                         stufe: e.stufe,
                         konten: e.konten,
                         aufgaben: e.aufgaben,
+                        schlagworte: e.schlagworte,
                       })
                     }}
                   />
@@ -278,6 +286,7 @@ export function ApiSchluessel({ istBetreiber }: { istBetreiber: boolean }) {
                   stufe: 'anzahl',
                   konten: konten.length === 1 ? [konten[0].id] : [],
                   aufgaben: false,
+                  schlagworte: false,
                 })
               }}
             >
@@ -394,6 +403,12 @@ function Formular({
         description={t('apischluessel.aufgaben_hinweis')}
         checked={entwurf.aufgaben}
         onCheckedChange={(an) => aendern({ ...entwurf, aufgaben: an })}
+      />
+      <Checkbox
+        label={t('apischluessel.schlagworte')}
+        description={t('apischluessel.schlagworte_hinweis')}
+        checked={entwurf.schlagworte}
+        onCheckedChange={(an) => aendern({ ...entwurf, schlagworte: an })}
       />
       {fehler && (
         <p role="alert" className="mb-0 text-[13px] text-danger">

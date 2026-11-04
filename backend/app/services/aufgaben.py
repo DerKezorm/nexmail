@@ -71,6 +71,35 @@ def _wiederfinden(db: Session, benutzer: Benutzer, aufgabe: Aufgabe) -> Nachrich
     return zeile if zeile is not None and zeile.benutzer_id == benutzer.id else None
 
 
+def mails_der_aufgabe(db: Session, benutzer: Benutzer, aufgabe: Aufgabe) -> list[Nachricht]:
+    """Jede Fassung der Mail zur Aufgabe in ihrem Postfach, fuer Schlagworte
+    ueber ``/api/v1`` (Issue #17).
+
+    ⚠️ **Alle Fassungen, nicht die erste.** Liegt dieselbe Mail als Kopie in
+    zwei Ordnern, traegt sonst nur eine davon das Schlagwort, und welche,
+    haengt an der Reihenfolge der Datenbank. Wer „traité" setzt, meint die
+    Mail, nicht eine ihrer Zeilen.
+
+    ⚠️ **Nur im Postfach der Aufgabe.** Dieselbe Message-ID kann in einem
+    zweiten Postfach liegen (eine Mail an beide Adressen); das steht vielleicht
+    gar nicht am Schluessel, der fragt.
+    """
+    if aufgabe.message_id:
+        abfrage = select(Nachricht).where(
+            Nachricht.benutzer_id == benutzer.id,
+            Nachricht.message_id == aufgabe.message_id,
+        )
+        if aufgabe.konto_id:
+            abfrage = abfrage.where(Nachricht.konto_id == aufgabe.konto_id)
+        treffer = list(db.execute(abfrage.order_by(Nachricht.id)).scalars().all())
+        if treffer:
+            return treffer
+    mail = _wiederfinden(db, benutzer, aufgabe)
+    if mail is None or (aufgabe.konto_id and mail.konto_id != aufgabe.konto_id):
+        return []
+    return [mail]
+
+
 def alle(db: Session, benutzer: Benutzer, *, mit_gesendeten: bool = False) -> list[Sicht]:
     """Offene zuerst, in der gezogenen Reihenfolge; Erledigte darunter.
 

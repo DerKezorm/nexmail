@@ -364,7 +364,7 @@ def test_me_nennt_nur_die_freigegebenen_postfaecher(klient, ohne_netz):
     klartext = _schluessel(klient, [privat], stufe="anzahl", name="Flur")["schluessel"]
 
     ich = klient.get("/api/v1/me", headers=_mit(klartext)).json()
-    assert ich["key"] == {"name": "Flur", "scope": "count", "tasks": False}
+    assert ich["key"] == {"name": "Flur", "scope": "count", "tasks": False, "tags": False}
     assert ich["user"]["username"] == "betreiber"
     assert [m["address"] for m in ich["mailboxes"]] == ["privat@example.com"]
 

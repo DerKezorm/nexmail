@@ -27,6 +27,8 @@ class Eintrag(BaseModel):
     konten: list[str]
     #: Darf Aufgaben abhaken und wieder oeffnen (``/api/v1/tasks``).
     aufgaben: bool
+    #: Darf Schlagworte an der Mail einer Aufgabe setzen (``/api/v1/tags``).
+    schlagworte: bool
     angelegt: datetime
     zuletzt_benutzt: datetime | None
 
@@ -41,6 +43,7 @@ class Eingabe(BaseModel):
     stufe: str = "anzahl"
     konten: list[str] = Field(default_factory=list, max_length=200)
     aufgaben: bool = False
+    schlagworte: bool = False
 
 
 class Neu(Eintrag):
@@ -61,6 +64,7 @@ def _eintrag(zeile: ApiSchluessel, eigene: set[str]) -> Eintrag:
         # Entfernte Postfaecher fallen hier heraus, wie beim Lesen.
         konten=[k for k in dienst.konten_lesen(zeile) if k in eigene],
         aufgaben=zeile.aufgaben,
+        schlagworte=zeile.schlagworte,
         angelegt=zeile.angelegt,
         zuletzt_benutzt=zeile.zuletzt_benutzt,
     )
@@ -102,7 +106,13 @@ def anlegen(eingabe: Eingabe, person: AngemeldeterBenutzer, db: DbSession) -> Ne
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="api_schluessel_abgeschaltet")
     try:
         zeile, klartext = dienst.anlegen(
-            db, person, eingabe.name, eingabe.stufe, eingabe.konten, eingabe.aufgaben
+            db,
+            person,
+            eingabe.name,
+            eingabe.stufe,
+            eingabe.konten,
+            eingabe.aufgaben,
+            eingabe.schlagworte,
         )
     except dienst.SchluesselFehler as fehler:
         raise _abgewiesen(fehler) from fehler
@@ -116,7 +126,14 @@ def aendern(
 ) -> Eintrag:
     try:
         zeile = dienst.aendern(
-            db, person, schluessel_id, eingabe.name, eingabe.stufe, eingabe.konten, eingabe.aufgaben
+            db,
+            person,
+            schluessel_id,
+            eingabe.name,
+            eingabe.stufe,
+            eingabe.konten,
+            eingabe.aufgaben,
+            eingabe.schlagworte,
         )
     except dienst.SchluesselFehler as fehler:
         raise _abgewiesen(fehler) from fehler

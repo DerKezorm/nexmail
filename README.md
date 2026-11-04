@@ -520,21 +520,29 @@ next request.
 
 All addresses answer JSON and expect the key as
 `Authorization: Bearer nxm_…`. A browser session does not open them, and a key
-opens nothing else. Only the two task addresses write, and only with a key that
-has *May tick off tasks* set; that is meant for the receiver of a webhook.
+opens nothing else. Only the task addresses write, each only with its own option
+on the key: *May tick off tasks* for complete and reopen, *May tag messages* for
+tags. Both are meant for the receiver of a webhook.
 
 | Address | Returns |
 |---|---|
-| `GET /api/v1/me` | owner, key name, scope (`count` or `headers`), `tasks` (whether the key may tick off tasks), the mailboxes the key may see |
+| `GET /api/v1/me` | owner, key name, scope (`count` or `headers`), `tasks` (whether the key may tick off tasks), `tags` (whether it may tag messages), the mailboxes the key may see |
 | `GET /api/v1/summary` | unread messages in the inbox, in total and per mailbox, with `status` `ok` or `sign_in_failed` |
 | `GET /api/v1/messages/latest` | sender, subject, date and read state of the newest inbox messages; needs scope `headers`. Optional: `mailbox=<id>` (repeatable), `limit=1..20` (default 5), `unread_only=true` |
 | `POST /api/v1/tasks/{id}/complete` | ticks off a task from one of the key's mailboxes; returns `id`, `external_id`, `title`, `done`, `completed_at` |
 | `POST /api/v1/tasks/{id}/reopen` | reopens it; same answer |
+| `GET /api/v1/tags` | the owner's tags with `id`, `name` and `keyword`; needs *May tag messages* |
+| `GET /api/v1/tasks/{id}/tags` | the tags on the message of a task, as `task_id` and `tags` |
+| `POST /api/v1/tasks/{id}/tags/{tag_id}` | adds a tag to the message of a task on the mail server; returns the tags afterwards |
+| `DELETE /api/v1/tasks/{id}/tags/{tag_id}` | removes it; same answer |
 
 Errors come as `{"detail": "<code>"}`: `api_schluessel_fehlt` and
 `api_schluessel_ungueltig` (401), `api_schluessel_abgeschaltet`,
-`api_schluessel_nur_anzahl` and `api_schluessel_ohne_aufgaben` (403),
-`postfach_unbekannt` and `aufgabe_unbekannt` (404). Counts are as fresh as
+`api_schluessel_nur_anzahl`, `api_schluessel_ohne_aufgaben` and
+`api_schluessel_ohne_schlagworte` (403), `postfach_unbekannt`,
+`aufgabe_unbekannt` and `schlagwort_unbekannt` (404), `aufgabe_ohne_mail` (409),
+`schlagworte_nicht_unterstuetzt` (400, the mail server takes no keywords in that
+folder) and `502` when the mail server cannot be reached. Counts are as fresh as
 nexmail's last sync with the mail server.
 
 ## Webhooks for tasks
@@ -567,13 +575,15 @@ and `task.reopened` when it is ticked or unticked in nexmail, and `ping`.
     "date": "2026-11-03T08:12:00Z",
     "mailbox": "Work",
     "mailbox_address": "me@example.com",
-    "link": "https://nexmail.example.org/?mail=%3Cabc123%40example.org%3E"
+    "link": "https://nexmail.example.org/?mail=%3Cabc123%40example.org%3E",
+    "tags": [{ "id": 3, "name": "Work", "keyword": "Work" }]
   }
 }
 ```
 
 `task.completed` and `task.reopened` carry the same `task` and only
-`message_id` and `link` under `message`. If your endpoint answers `task.created`
+`message_id`, `link` and `tags` under `message`; `tags` is `null` there if the
+message is no longer in nexmail. If your endpoint answers `task.created`
 with JSON such as `{"id": "T-17", "url": "https://…"}`, nexmail keeps both: the
 `id` comes back as `external_id` in later events, and the `url` becomes the link
 to the task in nexmail.
@@ -616,6 +626,22 @@ change that:
 - Report back: create an API key with *May tick off tasks* for the same
   mailboxes and call `POST /api/v1/tasks/{id}/complete` or `/reopen` with the
   `task.id` from the payload. Such a change is not sent back to the webhook.
+
+**Tags.** An API key with *May tag messages* can list the user's tags and add
+or remove them on the message of a task, for example a *Done* tag when the task
+is ticked off in your tool. Tags are IMAP keywords, so this writes to the mail
+server, the same way as tagging in nexmail does, and every copy of the message
+in that mailbox gets it.
+
+- `GET /api/v1/tags` returns `{"tags": [{"id": 3, "name": "Done", "keyword": "Done"}]}`.
+  Use the `id`: it stays when a tag is renamed, and a name with accents does not
+  have to go into the URL.
+- `GET /api/v1/tasks/{id}/tags` returns the tags on the message now.
+- `POST /api/v1/tasks/{id}/tags/{tag_id}` adds one, `DELETE` removes it. Both
+  answer with the tags afterwards, as `{"task_id": "42", "tags": [...]}`.
+
+A task whose message is gone answers `409` with `aufgabe_ohne_mail`; a key
+without the option gets `403`. Tag changes send no event to the webhook.
 
 **Addresses.** Only `http` and `https`, no credentials in the URL, and
 redirects are not followed. Addresses on the local network work only after the

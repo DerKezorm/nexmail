@@ -210,6 +210,26 @@ def per_atom(db: Session, benutzer_id: str, atom: str) -> Schlagwort | None:
     return None
 
 
+def fuer_aussen(db: Session, benutzer_id: str, nachrichten: list[Nachricht]) -> list[dict]:
+    """Die Schlagworte an diesen Mails, wie ``/api/v1`` und der Webhook sie
+    zeigen: Kennung, Name, Keyword. In der Reihenfolge der Einstellungen.
+
+    ⚠️ **Nur mit Definition.** Technische Keywords haben keine
+    (``TECHNISCHE_KEYWORDS``); ein fremdes Atom bekommt seine beim Abgleich.
+    Was keine hat, ist kein Schlagwort, das ein Mensch sieht.
+
+    ⚠️ **Die Kennung, nicht nur der Name.** Aus „traité" wird das Keyword
+    ``trait``; ein Empfaenger, der nach Namen sucht, scheitert an Akzenten und
+    am Umbenennen. Die Kennung bleibt.
+    """
+    traegt = {a.lower() for n in nachrichten for a in atome_lesen(n)}
+    return [
+        {"id": z.id, "name": z.name, "keyword": z.atom}
+        for z in meine(db, benutzer_id)
+        if z.atom.lower() in traegt
+    ]
+
+
 def definitionen_sicherstellen(db: Session, benutzer_id: str, atome) -> int:
     """Fuer fremde Atome selbst Definitionen anlegen.
 
