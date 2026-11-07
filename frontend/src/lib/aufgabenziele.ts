@@ -36,6 +36,7 @@ export interface ZielGruppe {
 /** Was in der Oberfläche als Name der App steht. */
 export const ARTNAME: Record<string, string> = {
   todoist: 'Todoist',
+  nextasks: 'nextasks',
   webhook: 'Webhook',
 }
 
@@ -45,6 +46,10 @@ export function gruppenname(g: { art: string; name: string }): string {
   const name = g.name.trim()
   return name && name.toLowerCase() !== art.toLowerCase() ? `${art} · ${name}` : art
 }
+
+/** Was an einer nextasks-Verbindung der Mensch selbst beheben muss.
+ * ⚠️ Nur Kennungen ohne Werte: An der Verbindung steht nur die Kennung. */
+export const NEXTASKS_ZU_BEHEBEN = ['nextasks_api_aus', 'nextasks_nur_lesen', 'nextasks_zu_alt']
 
 /** Der Name einer Liste mit ihrer App davor („Todoist › Arbeit"). */
 export function zielname(gruppen: ZielGruppe[], ziel: string): string {

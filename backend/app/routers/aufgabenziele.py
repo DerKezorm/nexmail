@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from ..deps import AngemeldeterBenutzer, DbSession
 from ..meldung import MeldungHttp
-from ..services import anmeldebremse, aufgabenziele, todoist, webhook
+from ..services import anmeldebremse, aufgabenziele, nextasks, todoist, webhook
 from .aufgaben import _status
 
 router = APIRouter(prefix="/api/aufgabenziele", tags=["aufgabenziele"])
@@ -237,3 +237,65 @@ def webhook_testen(
         aufgabenziele.webhook_testen(db, person, verbindung_id)
     except (aufgabenziele.ZielFehler, webhook.WebhookFehler) as fehler:
         raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
+
+# --- nextasks ----------------------------------------------------------------- #
+
+
+class NextasksNeu(BaseModel):
+    url: str = Field(min_length=1, max_length=nextasks.MAX_ADRESSE)
+    token: str = Field(min_length=1, max_length=nextasks.MAX_TOKEN)
+    name: str = Field(default="", max_length=80)
+
+
+class NextasksAenderung(BaseModel):
+    url: str = Field(min_length=1, max_length=nextasks.MAX_ADRESSE)
+    token: str = Field(min_length=1, max_length=nextasks.MAX_TOKEN)
+
+
+class NextasksEinstellung(BaseModel):
+    #: ⚠️ **Nur die Adresse**, nie der Token.
+    url: str
+
+
+def _nextasks_bremse(request: Request, person) -> None:
+    """⚠️ **Mit Bremse wie beim Webhook**: Die Adresse kommt aus der Anfrage,
+    und jeder Aufruf geht hinaus."""
+    anmeldebremse.torwaechter(request, "nextasks", person.benutzername).fehlgeschlagen()
+
+
+@router.post("/nextasks", response_model=Verbindung, status_code=status.HTTP_201_CREATED)
+def nextasks_verbinden(
+    eingabe: NextasksNeu, request: Request, person: AngemeldeterBenutzer, db: DbSession
+) -> Verbindung:
+    _nextasks_bremse(request, person)
+    try:
+        v = aufgabenziele.nextasks_verbinden(db, person, eingabe.url, eingabe.token, eingabe.name)
+    except (aufgabenziele.ZielFehler, nextasks.NextasksFehler) as fehler:
+        raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
+    return _verbindung(v)
+
+
+@router.get("/{verbindung_id}/nextasks", response_model=NextasksEinstellung)
+def nextasks_lesen(verbindung_id: str, person: AngemeldeterBenutzer, db: DbSession) -> NextasksEinstellung:
+    try:
+        return NextasksEinstellung(url=aufgabenziele.nextasks_adresse(db, person, verbindung_id))
+    except (aufgabenziele.ZielFehler, nextasks.NextasksFehler) as fehler:
+        raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
+
+
+@router.put("/{verbindung_id}/nextasks", response_model=Verbindung)
+def nextasks_aendern(
+    verbindung_id: str,
+    eingabe: NextasksAenderung,
+    request: Request,
+    person: AngemeldeterBenutzer,
+    db: DbSession,
+) -> Verbindung:
+    """Neuer Token (oder neue Adresse) an derselben Verbindung. Die Aufgaben
+    bleiben dran; gespeichert wird erst, wenn nextasks ihn annimmt."""
+    _nextasks_bremse(request, person)
+    try:
+        v = aufgabenziele.nextasks_aendern(db, person, verbindung_id, eingabe.url, eingabe.token)
+    except (aufgabenziele.ZielFehler, nextasks.NextasksFehler) as fehler:
+        raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
+    return _verbindung(v)

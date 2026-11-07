@@ -51,7 +51,7 @@ from ..meldung import MeldungHttp
 from ..models import Aufgabe, Benutzer, Nachricht, Ordner
 from ..services import apischluessel as dienst
 from ..services import aufgaben as aufgabendienst
-from ..services import aufgabenziele, todoist
+from ..services import aufgabenziele, nextasks, todoist
 from ..services import schlagworte as schlagwortdienst
 
 router = APIRouter(prefix="/api/v1", tags=["api-v1"])
@@ -252,8 +252,9 @@ def _haken(schluessel, db, task_id: str, erledigt: bool) -> Task:
     person = db.get(Benutzer, schluessel.benutzer_id)
     try:
         aufgabe = aufgabenziele.von_aussen_abhaken(db, person, aufgabe, erledigt)
-    except todoist.TodoistFehler as fehler:
-        # Eine Todoist-Aufgabe geht erst zu Todoist; lehnt es ab, bleibt der Haken.
+    except (todoist.TodoistFehler, nextasks.NextasksFehler) as fehler:
+        # Eine Aufgabe in Todoist oder nextasks geht erst dorthin; lehnt es ab,
+        # bleibt der Haken.
         raise MeldungHttp.aus(fehler, status.HTTP_502_BAD_GATEWAY) from fehler
     return Task(
         id=str(aufgabe.id),

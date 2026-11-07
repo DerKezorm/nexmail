@@ -11,7 +11,7 @@ from sqlalchemy import select
 from ..deps import AngemeldeterBenutzer, DbSession
 from ..models import Nachricht
 from ..services import aufgaben as dienst
-from ..services import aufgabenziele, todoist, webhook
+from ..services import aufgabenziele, nextasks, todoist, webhook
 from ..meldung import MeldungHttp
 from .nachrichten import _koerper_sicherstellen
 
@@ -120,20 +120,41 @@ def _voll(s: dienst.Sicht) -> ZeileVoll:
     )
 
 
+#: ⚠️ **Was der Mensch an der Verbindung beheben muss**, nie 401: Bei 401
+#: meldet die Oberflaeche aus nexmail ab. nextasks sagt zudem, wenn der
+#: Betreiber dort die Schnittstelle abgeschaltet hat, der Token nur lesen darf,
+#: es zu alt ist, die Liste fehlt oder die Aufgabe in einem Bereich liegt, den
+#: der Token nicht sieht.
+NEU_VERBINDEN = (
+    "todoist_zugang_ungueltig",
+    "nextasks_zugang_ungueltig",
+    "nextasks_api_aus",
+    "nextasks_nur_lesen",
+    "nextasks_zu_alt",
+    "nextasks_nicht_erlaubt",
+    "nextasks_liste_unbekannt",
+    "nextasks_konflikt",
+)
+
+
 def _status(fehler: Exception) -> int:
     """⚠️ **Ein abgelehnter Token ist kein 401.** Die Oberflaeche meldet bei
     401 aus nexmail ab; der Mensch soll die Todo-App neu verbinden, nicht sich
     selbst neu anmelden."""
     kennung = getattr(fehler, "kennung", "")
-    if kennung == "todoist_zugang_ungueltig":
+    if kennung in NEU_VERBINDEN:
         return status.HTTP_409_CONFLICT
-    if kennung == "todoist_zu_viele_anfragen":
+    if kennung in ("todoist_zu_viele_anfragen", "nextasks_zu_viele_anfragen"):
         return status.HTTP_429_TOO_MANY_REQUESTS
     if isinstance(fehler, todoist.TodoistFehler) and kennung != "todoist_zugang_fehlt":
         return status.HTTP_502_BAD_GATEWAY
     # ⚠️ Eine Adresse, die nexmail nicht ansprechen darf, ist eine Eingabe,
     # kein Ausfall des Empfaengers.
     if isinstance(fehler, webhook.WebhookFehler) and not kennung.startswith("webhook_adresse_"):
+        return status.HTTP_502_BAD_GATEWAY
+    if isinstance(fehler, nextasks.NextasksFehler) and not (
+        kennung.startswith("nextasks_adresse_") or kennung == "nextasks_zugang_fehlt"
+    ):
         return status.HTTP_502_BAD_GATEWAY
     if kennung in ("aufgabe_unbekannt", "nachricht_unbekannt", "aufgabenverbindung_unbekannt"):
         return status.HTTP_404_NOT_FOUND

@@ -16,6 +16,11 @@ Absender und ein Link zurueck zur Mail. Der Text der Mail bleibt hier — mit
 einer Ausnahme: ein Webhook, an dem der Benutzer es eingeschaltet und der
 Betreiber es erlaubt hat (``webhook.py``).
 
+⚠️ **nextasks ist eine Todo-App wie Todoist**, nur selbst gehostet: Adresse
+und Token, Listen samt Bereichen und Abschnitten, „eine Mail, eine Aufgabe"
+auch dort ueber ``external_ref``. Der Abgleich fragt alle Aufgaben einer
+Verbindung in einem Zug und sieht auch den Papierkorb (``nextasks.py``).
+
 ⚠️ **Ein Webhook ist die andere Richtung.** Er laesst sich nicht fragen, also
 gehoert der Haken dort nexmail: Abhaken hier geht als Ereignis hinaus, und der
 Abgleich laesst Webhooks aus. Zurueck kommt ein Haken nur ueber ``/api/v1``.
@@ -40,15 +45,15 @@ from ..db import einstellung_lesen
 from ..meldung import Meldung
 from ..models import Aufgabe, Aufgabenverbindung, Benutzer, Konto, Nachricht, neue_id
 from . import adresse as adressdienst
-from . import aufgaben, bereinigen, schlagworte, todoist, webhook
+from . import aufgaben, bereinigen, nextasks, schlagworte, todoist, webhook
 
 logger = logging.getLogger("nexmail.aufgabenziele")
 
 #: Die Arten, die es gibt. Weitere kommen als eigener Dienst dazu.
-ARTEN = ("todoist", "webhook")
+ARTEN = ("todoist", "nextasks", "webhook")
 
 #: Was ein Fehler einer Todo-App sein kann. Beide tragen eine Kennung.
-AppFehler = (todoist.TodoistFehler, webhook.WebhookFehler)
+AppFehler = (todoist.TodoistFehler, nextasks.NextasksFehler, webhook.WebhookFehler)
 
 #: ⚠️ **Ein Deckel fuer den Text der Mail**, je Feld. Ein Newsletter mit
 #: eingebetteten Bildern kommt sonst als mehrere Megabyte JSON beim Empfaenger
@@ -265,6 +270,63 @@ def webhook_testen(db: Session, person: Benutzer, verbindung_id: str) -> None:
     db.commit()
 
 
+# --- nextasks ----------------------------------------------------------------- #
+
+
+def _nextasks(db: Session, person: Benutzer, verbindung_id: str) -> Aufgabenverbindung:
+    v = eine_verbindung(db, person, verbindung_id)
+    if v.art != "nextasks":
+        raise ZielFehler("aufgabenverbindung_unbekannt")
+    return v
+
+
+def _nextasks_zugang(v: Aufgabenverbindung) -> nextasks.Zugang:
+    return nextasks.zugang_lesen(_zugang(v))
+
+
+def nextasks_verbinden(
+    db: Session, person: Benutzer, url: str, token: str, name: str = ""
+) -> Aufgabenverbindung:
+    """nextasks verbinden — erst ``/me``, dann speichern, wie beim Todoist-Token.
+
+    ⚠️ **Ein Lese-Token oder ein zu altes nextasks wird nie gespeichert**: Es
+    stuende sonst eine Verbindung da, die beim ersten Anlegen scheitert.
+    """
+    zugang = nextasks.Zugang(url=nextasks.adresse_bereinigen(url), token=token.strip())
+    nextasks.pruefen(zugang)
+    v = Aufgabenverbindung(id=neue_id(), benutzer_id=person.id, art="nextasks", name=name.strip()[:80])
+    v.zugang = crypto.verschluesseln(nextasks.zugang_schreiben(zugang), _kontext(v.id))
+    db.add(v)
+    db.commit()
+    logger.info("A to-do app was connected (nextasks).")
+    return v
+
+
+def nextasks_adresse(db: Session, person: Benutzer, verbindung_id: str) -> str:
+    """Die Adresse, zum Vorbelegen. ⚠️ **Nie der Token.**"""
+    return _nextasks_zugang(_nextasks(db, person, verbindung_id)).url
+
+
+def nextasks_aendern(
+    db: Session, person: Benutzer, verbindung_id: str, url: str, token: str
+) -> Aufgabenverbindung:
+    """Neuer Token oder neue Adresse, ohne die Verbindung zu loesen.
+
+    ⚠️ **Damit die Aufgaben dranbleiben.** Ein nextasks-Token laeuft ab Werk
+    nach 90 Tagen ab; Trennen und neu Verbinden nahme jeder Aufgabe hier den
+    Abgleich. Gespeichert wird erst, wenn ``/me`` den neuen Zugang annimmt;
+    sonst bleibt der alte.
+    """
+    v = _nextasks(db, person, verbindung_id)
+    zugang = nextasks.Zugang(url=nextasks.adresse_bereinigen(url), token=token.strip())
+    nextasks.pruefen(zugang)
+    v.zugang = crypto.verschluesseln(nextasks.zugang_schreiben(zugang), _kontext(v.id))
+    v.letzter_fehler = ""
+    db.commit()
+    logger.info("A nextasks connection got a new token.")
+    return v
+
+
 # --- Ziele ----------------------------------------------------------------- #
 
 
@@ -290,11 +352,13 @@ def ziele(db: Session, person: Benutzer) -> list[Gruppe]:
             heraus.append(gruppe)
             continue
         try:
-            gruppe.listen = [
-                Liste(ziel=f"{v.id}:{l.id}", name=l.name) for l in todoist.listen(_zugang(v))
-            ]
+            if v.art == "nextasks":
+                fern = nextasks.listen(_nextasks_zugang(v))
+            else:
+                fern = todoist.listen(_zugang(v))
+            gruppe.listen = [Liste(ziel=f"{v.id}:{l.id}", name=l.name) for l in fern]
             v.letzter_fehler = ""
-        except todoist.TodoistFehler as fehler:
+        except (todoist.TodoistFehler, nextasks.NextasksFehler) as fehler:
             gruppe.fehler = fehler.kennung
             _fehler_merken(v, fehler)
         heraus.append(gruppe)
@@ -437,6 +501,18 @@ def anlegen(
             link=mail_link(db, nachricht.message_id, vom_browser),
             koerper=koerper,
         )
+    if v.art == "nextasks":
+        return _per_nextasks(
+            db,
+            person,
+            nachricht,
+            v,
+            titel=titel,
+            liste_id=liste_id,
+            liste_name=liste_name,
+            faellig=faellig,
+            link=mail_link(db, nachricht.message_id, vom_browser),
+        )
     try:
         stand = todoist.anlegen(
             _zugang(v),
@@ -488,6 +564,96 @@ def anlegen(
             raise
         return schon, False
     logger.info("A message was turned into a task in a to-do app (%s).", v.art)
+    return aufgabe, True
+
+
+def _absender(nachricht: Nachricht) -> str:
+    if nachricht.von_name and nachricht.von_adresse:
+        return f"{nachricht.von_name} <{nachricht.von_adresse}>"
+    return nachricht.von_adresse or nachricht.von_name or ""
+
+
+def _per_nextasks(
+    db: Session,
+    person: Benutzer,
+    nachricht: Nachricht,
+    v: Aufgabenverbindung,
+    *,
+    titel: str,
+    liste_id: str,
+    liste_name: str,
+    faellig: date | None,
+    link: str,
+) -> tuple[Aufgabe, bool]:
+    """Eine Aufgabe in nextasks, und die Zeile hier.
+
+    ⚠️ **Der Link zurueck geht als ``url``**, die Notiz traegt nur den
+    Absender (ohne Worte in einer Sprache, wie bei Todoist). Ohne Link steht
+    die Message-ID in der Notiz, damit die Mail auffindbar bleibt.
+
+    ⚠️ **Antwortet nextasks mit „gab es schon"**, uebernimmt die Zeile hier den
+    Stand von dort: erledigt bleibt erledigt, Papierkorb bleibt Papierkorb.
+    Das passiert, wenn die Aufgabe hier entfernt und dieselbe Mail wieder zur
+    Aufgabe gemacht wurde.
+    """
+    zeilen = [_absender(nachricht)] if _absender(nachricht) else []
+    if not link and nachricht.message_id:
+        zeilen.append(f"Message-ID: {nachricht.message_id}")
+    try:
+        stand, neu = nextasks.anlegen(
+            _nextasks_zugang(v),
+            titel=titel or "(no subject)",
+            notizen="\n\n".join(zeilen),
+            link=link,
+            liste=liste_id,
+            faellig=faellig,
+            schluessel=nextasks.schluessel_fuer(nachricht.message_id) if nachricht.message_id else "",
+        )
+    except nextasks.NextasksFehler as fehler:
+        _fehler_merken(v, fehler)
+        db.commit()
+        raise
+
+    kleinste = db.scalar(
+        select(Aufgabe.reihenfolge)
+        .where(Aufgabe.benutzer_id == person.id)
+        .order_by(Aufgabe.reihenfolge)
+        .limit(1)
+    )
+    aufgabe = Aufgabe(
+        benutzer_id=person.id,
+        konto_id=nachricht.konto_id,
+        nachricht_id=nachricht.id,
+        message_id=nachricht.message_id,
+        betreff=titel,
+        von_name=nachricht.von_name,
+        von_adresse=nachricht.von_adresse,
+        mail_datum=nachricht.datum,
+        faellig=_als_zeitpunkt(stand.faellig),
+        erledigt=stand.erledigt,
+        reihenfolge=(kleinste if kleinste is not None else 0) - 1,
+        fern_art="nextasks",
+        verbindung_id=v.id,
+        fern_id=stand.id,
+        fern_url=stand.url,
+        fern_liste=liste_name.strip()[:200],
+        fern_geloescht=stand.papierkorb,
+    )
+    v.letzter_fehler = ""
+    db.add(aufgabe)
+    try:
+        db.commit()
+    except IntegrityError:
+        # ⚠️ Zwei Anfragen zugleich: Anders als bei Todoist entsteht dort kein
+        # Doppel, ``external_ref`` gab beiden dieselbe Aufgabe.
+        db.rollback()
+        schon = _vorhanden(db, person, nachricht)
+        if schon is None:
+            raise
+        return schon, False
+    logger.info(
+        "A message was turned into a task in nextasks%s.", "" if neu else " (it was there already)"
+    )
     return aufgabe, True
 
 
@@ -645,6 +811,8 @@ def abhaken(db: Session, person: Benutzer, aufgabe_id: int, erledigt: bool) -> A
     der Abgleich beim naechsten Mal still zuruecknaehme."""
     aufgabe = aufgaben.eine(db, person, aufgabe_id)
     v = _verwaltet(db, aufgabe)
+    if v is not None and v.art == "nextasks" and erledigt != (aufgabe.erledigt is not None):
+        return _nextasks_haken(db, v, aufgabe, erledigt)
     if v is not None and erledigt != (aufgabe.erledigt is not None):
         try:
             if v.art == "webhook":
@@ -659,6 +827,29 @@ def abhaken(db: Session, person: Benutzer, aufgabe_id: int, erledigt: bool) -> A
             raise
         v.letzter_fehler = ""
     return aufgaben.abhaken(db, person, aufgabe_id, erledigt)
+
+
+def _nextasks_haken(db: Session, v: Aufgabenverbindung, aufgabe: Aufgabe, erledigt: bool) -> Aufgabe:
+    """Erst nextasks, dann hier — und hier gilt, was nextasks danach sagt.
+
+    ⚠️ **Eine wiederholte Aufgabe bleibt offen**, mit dem naechsten Datum.
+    Bei Todoist saehe man das erst beim naechsten Abgleich (abgehakt, dann
+    wieder offen); nextasks sagt es in der Antwort, also steht es gleich da.
+    """
+    try:
+        stand = nextasks.haken(_nextasks_zugang(v), aufgabe.fern_id, erledigt)
+    except nextasks.NextasksFehler as fehler:
+        _fehler_merken(v, fehler)
+        db.commit()
+        raise
+    v.letzter_fehler = ""
+    if stand.erledigt is None:
+        aufgabe.erledigt = None
+    elif aufgabe.erledigt is None:
+        aufgabe.erledigt = stand.erledigt
+    aufgabe.faellig = _als_zeitpunkt(stand.faellig)
+    db.commit()
+    return aufgabe
 
 
 def _haken_senden(db: Session, v: Aufgabenverbindung, aufgabe: Aufgabe, erledigt: bool) -> None:
@@ -747,6 +938,51 @@ def _eine_abgleichen(db: Session, v: Aufgabenverbindung) -> None:
             a.faellig = _als_zeitpunkt(einzeln.faellig)
 
 
+def _nextasks_abgleichen(db: Session, v: Aufgabenverbindung) -> None:
+    """Alle Aufgaben einer nextasks-Verbindung in einem Zug.
+
+    ⚠️ **Der Papierkorb ist nicht das Ende.** Was dort liegt, steht hier als
+    geloescht, wird aber weiter gefragt: Holt es jemand zurueck, kommt es hier
+    zurueck. Erst ``gone`` (endgueltig weg, nach 30 Tagen Papierkorb oder fuer
+    den Token nicht mehr sichtbar) beendet das Fragen; dafuer faellt
+    ``fern_id`` weg, die Zeile behaelt Titel und Mail.
+
+    ⚠️ **Was in der Antwort fehlt, bleibt, wie es war.** Fehlen heisst bei
+    nextasks nicht „geloescht", das hiesse ``gone``.
+    """
+    grenze = _jetzt() - NACHSEHEN_ERLEDIGTE
+    zeilen = [
+        a
+        for a in db.scalars(
+            select(Aufgabe).where(Aufgabe.verbindung_id == v.id, Aufgabe.fern_id != "")
+        )
+        if a.erledigt is None or a.erledigt >= grenze
+    ]
+    if not zeilen:
+        return
+    staende = nextasks.staende(_nextasks_zugang(v), [a.fern_id for a in zeilen])
+    for a in zeilen:
+        stand = staende.get(a.fern_id)
+        if stand is None:
+            continue
+        if stand.weg:
+            a.fern_geloescht = True
+            a.fern_id = ""
+            continue
+        # ⚠️ Im Papierkorb gehoert der Haken hier (``_verwaltet`` sieht sie als
+        # geloescht); der Abgleich nimmt ihn deshalb nicht zurueck.
+        a.fern_geloescht = stand.papierkorb
+        if stand.papierkorb:
+            continue
+        if stand.erledigt is None:
+            a.erledigt = None
+        elif a.erledigt is None:
+            a.erledigt = stand.erledigt
+        a.faellig = _als_zeitpunkt(stand.faellig)
+        if stand.url:
+            a.fern_url = stand.url
+
+
 def abgleichen(db: Session, person: Benutzer, *, beim_oeffnen: bool = False) -> None:
     """Was die Apps zu den Aufgaben sagen, hier nachziehen.
 
@@ -766,10 +1002,13 @@ def abgleichen(db: Session, person: Benutzer, *, beim_oeffnen: bool = False) -> 
             # sagt, dass das letzte Senden scheiterte, bis eins gelingt.
             continue
         try:
-            _eine_abgleichen(db, v)
+            if v.art == "nextasks":
+                _nextasks_abgleichen(db, v)
+            else:
+                _eine_abgleichen(db, v)
             v.letzter_fehler = ""
             v.zuletzt_abgeglichen = _jetzt()
-        except (todoist.TodoistFehler, crypto.SchluesselFehler) as fehler:
+        except (todoist.TodoistFehler, nextasks.NextasksFehler, crypto.SchluesselFehler) as fehler:
             v.letzter_fehler = fehler.kennung[:80]
             logger.info("A to-do app could not be checked: %s", fehler.kennung)
         db.commit()

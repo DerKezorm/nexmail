@@ -97,6 +97,13 @@ async function vorspielen(
   return spiel
 }
 
+/** Ein Abschnitt des Reiters, an seiner Überschrift. ⚠️ Todoist, nextasks und
+ * Webhook haben gleich beschriftete Felder („API-Token“, „Adresse“) und je ein
+ * „Verbinden“; ohne Eingrenzung griffe ein Test das falsche. */
+function abschnitt(page: Page, titel: string) {
+  return page.locator('section').filter({ has: page.getByRole('heading', { name: titel, exact: true }) })
+}
+
 async function mailMenue(page: Page) {
   const baum = postfach(page)
   await expect.poll(() => baum.getByRole('button').count(), { timeout: 15000 }).toBeGreaterThan(0)
@@ -230,13 +237,13 @@ test('Der Reiter Aufgaben verbindet Todoist und nennt einen abgelehnten Token', 
   await zuEinstellungen(page)
   await page.getByRole('tab', { name: 'Aufgaben' }).click()
 
-  const token = page.getByLabel('API-Token')
+  const todoist = abschnitt(page, 'Todoist verbinden')
+  const token = todoist.getByLabel('API-Token')
   await expect(token).toHaveAttribute('type', 'password')
-  await token.fill('nur-ein-probetoken')
-  // Todoist steht über dem Webhook; beide Formulare haben „Verbinden“.
-  await page.getByRole('button', { name: 'Verbinden' }).first().click()
+  await token.fill('probe-tok-1')
+  await todoist.getByRole('button', { name: 'Verbinden' }).click()
   await expect(page.getByText('Todoist nimmt den Token nicht mehr an', { exact: false })).toBeVisible()
-  expect(gesendet[0]).toMatchObject({ art: 'todoist', zugang: 'nur-ein-probetoken' })
+  expect(gesendet[0]).toMatchObject({ art: 'todoist', zugang: 'probe-tok-1' })
   // Der Token steht nach dem Verbinden nirgends mehr auf der Seite.
   await expect(token).toHaveValue('')
   await expect(page.getByLabel('Standardliste')).toBeVisible()
@@ -276,10 +283,11 @@ test('Ein Webhook wird verbunden, sein Geheimnis steht genau einmal da', async (
   await page.getByRole('tab', { name: 'Aufgaben' }).click()
 
   // Die Beschriftung trägt den Hinweis mit, deshalb nach dem Anfang.
-  await page.getByRole('textbox', { name: /^Adresse/ }).fill('https://praxis.example.com/hook')
-  await page.getByRole('textbox', { name: /^Name \(optional\) Zum Wiedererkennen/ }).fill('Praxis')
-  await page.getByText('Nur senden', { exact: true }).click()
-  await page.getByRole('button', { name: 'Verbinden' }).last().click()
+  const formular = abschnitt(page, 'Webhook verbinden')
+  await formular.getByRole('textbox', { name: /^Adresse/ }).fill('https://praxis.example.com/hook')
+  await formular.getByRole('textbox', { name: /^Name \(optional\)/ }).fill('Praxis')
+  await formular.getByText('Nur senden', { exact: true }).click()
+  await formular.getByRole('button', { name: 'Verbinden' }).click()
 
   const fenster = page.getByRole('dialog')
   await expect(fenster.getByText('Webhook verbunden')).toBeVisible()
@@ -369,4 +377,110 @@ test('Der Link aus Todoist öffnet die Mail über ihre Message-ID', async ({ pag
   await expect(page.locator('article').getByText(mail.betreff, { exact: true }).first()).toBeVisible()
   await expect(postfach(page)).toHaveCount(0)
   await page.screenshot({ path: 'test-results/todoapps-link.png' })
+})
+
+const NEXTASKS = {
+  id: 'v3',
+  art: 'nextasks',
+  name: '',
+  fehler: '',
+  angelegt: '2026-11-07T10:00:00Z',
+  zuletzt_abgeglichen: null,
+}
+const NEXTASKS_LISTEN = [
+  {
+    verbindung_id: 'v3',
+    art: 'nextasks',
+    name: '',
+    fehler: '',
+    listen: [
+      { ziel: 'v3:l-einkauf', name: 'Familie › Einkauf' },
+      { ziel: 'v3:l-einkauf/s-markt', name: 'Familie › Einkauf › Markt' },
+    ],
+  },
+]
+
+test('nextasks wird mit Adresse und Token verbunden, ein Lese-Token sagt warum', async ({ page }) => {
+  const gesendet: Array<Record<string, unknown>> = []
+  let verbunden = false
+  await page.route('**/api/aufgabenziele', (route) =>
+    route.fulfill({ json: { standard: '', verbindungen: verbunden ? [NEXTASKS] : [] } }),
+  )
+  await page.route('**/api/aufgabenziele/listen', (route) =>
+    route.fulfill({ json: verbunden ? NEXTASKS_LISTEN : [] }),
+  )
+  await page.route('**/api/aufgabenziele/nextasks', async (route) => {
+    gesendet.push(route.request().postDataJSON())
+    if (gesendet.length === 1) {
+      await route.fulfill({ status: 409, json: { detail: 'nextasks_nur_lesen' } })
+      return
+    }
+    verbunden = true
+    await route.fulfill({ status: 201, json: NEXTASKS })
+  })
+  await anmelden(page)
+  await zuEinstellungen(page)
+  await page.getByRole('tab', { name: 'Aufgaben' }).click()
+
+  const formular = abschnitt(page, 'nextasks verbinden')
+  const token = formular.getByLabel('API-Token')
+  await expect(token).toHaveAttribute('type', 'password')
+  await formular.getByRole('textbox', { name: /^Adresse/ }).fill('https://tasks.example.com')
+  await token.fill('lese-tok')
+  await formular.getByRole('button', { name: 'Verbinden' }).click()
+  // ⚠️ 409 meldet nicht aus nexmail ab, der Grund steht am Formular.
+  await expect(formular.getByRole('alert')).toContainText('nur lesen')
+  await expect(token).toHaveValue('lese-tok')
+
+  await token.fill('probe-tok-1')
+  await formular.getByRole('button', { name: 'Verbinden' }).click()
+  await expect(token).toHaveValue('')
+  expect(gesendet[1]).toEqual({ url: 'https://tasks.example.com', token: 'probe-tok-1', name: '' })
+
+  const verbindung = abschnitt(page, 'Verbunden').locator('li').filter({ hasText: 'nextasks' })
+  // Das Logo bettet Vite als data:-Adresse ein; gezählt wird das Bild.
+  await expect(verbindung.locator('img')).toHaveCount(1)
+  await expect(page.getByLabel('Standardliste')).toContainText('nextasks › Familie › Einkauf › Markt')
+  await jederKnopfHatEinenNamen(page)
+  await keineRohenSchluessel(page)
+  await page.screenshot({ path: 'test-results/todoapps-nextasks.png', fullPage: true })
+})
+
+test('Token erneuern hält nextasks verbunden und zeigt das alte nie', async ({ page }) => {
+  const geaendert: Array<Record<string, unknown>> = []
+  await page.route('**/api/aufgabenziele', (route) =>
+    route.fulfill({
+      json: {
+        standard: '',
+        verbindungen: [{ ...NEXTASKS, fehler: geaendert.length ? '' : 'nextasks_zugang_ungueltig' }],
+      },
+    }),
+  )
+  await page.route('**/api/aufgabenziele/listen', (route) => route.fulfill({ json: NEXTASKS_LISTEN }))
+  await page.route('**/api/aufgabenziele/v3/nextasks', async (route) => {
+    if (route.request().method() === 'PUT') {
+      geaendert.push(route.request().postDataJSON())
+      await route.fulfill({ json: NEXTASKS })
+      return
+    }
+    await route.fulfill({ json: { url: 'https://tasks.example.com' } })
+  })
+  await anmelden(page)
+  await zuEinstellungen(page)
+  await page.getByRole('tab', { name: 'Aufgaben' }).click()
+
+  const verbindung = abschnitt(page, 'Verbunden').locator('li').filter({ hasText: 'nextasks' })
+  await expect(verbindung.getByText('nextasks nimmt das Token nicht mehr an', { exact: false })).toBeVisible()
+  await verbindung.getByRole('button', { name: 'Token erneuern' }).click()
+  await expect(verbindung.getByRole('textbox', { name: /^Adresse/ })).toHaveValue('https://tasks.example.com')
+  const token = verbindung.getByLabel('API-Token')
+  await expect(token).toHaveValue('')
+  await token.fill('probe-tok-2')
+  await verbindung.getByRole('button', { name: 'Speichern' }).click()
+
+  await expect.poll(() => geaendert.length).toBe(1)
+  expect(geaendert[0]).toEqual({ url: 'https://tasks.example.com', token: 'probe-tok-2' })
+  await expect(verbindung.getByText('Verbunden und erreichbar')).toBeVisible()
+  await expect(verbindung.getByLabel('API-Token')).toHaveCount(0)
+  await keineRohenSchluessel(page)
 })

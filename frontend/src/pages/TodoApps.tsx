@@ -12,10 +12,15 @@
  * ⚠️ **Ein Webhook hat Einstellungen, eine Todoist-Verbindung nicht.** Adresse,
  * „Nur senden" und der Text der Mail lassen sich ändern, ohne neu zu
  * verbinden; sonst bekäme der Empfänger jedes Mal ein neues Geheimnis.
+ *
+ * ⚠️ **nextasks bekommt „Token erneuern".** Ein nextasks-Token läuft ab Werk
+ * nach 90 Tagen ab; Trennen und neu Verbinden nähme jeder Aufgabe den
+ * Abgleich. Der Server prüft das neue Token, bevor es das alte ersetzt.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, ExternalLink, ListChecks, Send, Settings2, Unplug, Webhook } from 'lucide-react'
+import { AlertTriangle, ExternalLink, KeyRound, ListChecks, Send, Settings2, Unplug, Webhook } from 'lucide-react'
+import nextasksLogo from '../assets/nextasks.svg'
 import { api } from '../api/client'
 import { Button, Checkbox, Dialog, Input, Select } from '../ds'
 import { useNachfrage } from '../components/Nachfrage'
@@ -23,6 +28,7 @@ import { Klartext } from './ApiSchluessel'
 import { servermeldung } from '../lib/servermeldung'
 import {
   gruppenname,
+  NEXTASKS_ZU_BEHEBEN,
   type Verbindung,
   type ZielGruppe,
   type ZielStand,
@@ -124,7 +130,10 @@ export function TodoApps() {
             {stand.verbindungen.map((v) => (
               <li key={v.id} className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="text-[13px] font-semibold text-fg-1">{gruppenname(v)}</span>
+                  <span className="flex items-center gap-1.5 text-[13px] font-semibold text-fg-1">
+                    {v.art === 'nextasks' && <NextasksLogo />}
+                    {gruppenname(v)}
+                  </span>
                   {/* ⚠️ Ein abgelehnter Token muss hier stehen. Sonst sieht
                       eine App, die nichts mehr meldet, aus wie eine, in der
                       nichts passiert. */}
@@ -136,15 +145,29 @@ export function TodoApps() {
                           muss. Alles andere versucht der Takt weiter. */}
                       {v.fehler === 'todoist_zugang_ungueltig'
                         ? t('todoapps.token_abgelehnt')
-                        : v.art === 'webhook'
-                          ? t('todoapps.webhook_klemmt')
-                          : t('todoapps.klemmt')}
+                        : v.fehler === 'nextasks_zugang_ungueltig'
+                          ? t('todoapps.nextasks_token_abgelehnt')
+                          : NEXTASKS_ZU_BEHEBEN.includes(v.fehler)
+                            ? t(`serverfehler.${v.fehler}`)
+                            : v.art === 'webhook'
+                              ? t('todoapps.webhook_klemmt')
+                              : t('todoapps.klemmt')}
                     </span>
                   ) : (
                     <span className="text-[12px] text-fg-3">{t('todoapps.in_ordnung')}</span>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-1">
+                  {v.art === 'nextasks' && (
+                    <Button
+                      variant="ghost"
+                      iconLeft={<KeyRound className="size-4" />}
+                      aria-expanded={offen === v.id}
+                      onClick={() => setOffen(offen === v.id ? null : v.id)}
+                    >
+                      {t('todoapps.nextasks_token_neu')}
+                    </Button>
+                  )}
                   {v.art === 'webhook' && (
                     <Button
                       variant="ghost"
@@ -165,6 +188,15 @@ export function TodoApps() {
                 </div>
                 {v.art === 'webhook' && offen === v.id && (
                   <WebhookEinstellungen verbindung={v} aufGeaendert={() => void laden()} />
+                )}
+                {v.art === 'nextasks' && offen === v.id && (
+                  <NextasksErneuern
+                    verbindung={v}
+                    aufGespeichert={() => {
+                      setOffen(null)
+                      void laden()
+                    }}
+                  />
                 )}
               </li>
             ))}
@@ -244,6 +276,8 @@ export function TodoApps() {
           </div>
         </form>
       </section>
+
+      <NextasksVerbinden aufVerbunden={() => void laden()} />
 
       <WebhookVerbinden
         aufVerbunden={(g) => {
@@ -519,5 +553,169 @@ function WebhookEinstellungen({
         </p>
       )}
     </div>
+  )
+}
+
+/** Das Zeichen von nextasks: weißer Grund, Haken. Schmückt nur, liest sich nicht vor. */
+function NextasksLogo() {
+  return <img src={nextasksLogo} alt="" aria-hidden className="size-4 shrink-0 rounded-[4px]" />
+}
+
+/** nextasks verbinden: Adresse und Token. nexmail fragt vor dem Speichern
+ * `/api/v1/me`; ein Token, das nur lesen darf, oder ein zu altes nextasks
+ * steht hier mit Grund da, und nichts ist gespeichert. */
+function NextasksVerbinden({ aufVerbunden }: { aufVerbunden: () => void }) {
+  const { t } = useTranslation()
+  const [url, setUrl] = useState('')
+  const [token, setToken] = useState('')
+  const [name, setName] = useState('')
+  const [laeuft, setLaeuft] = useState(false)
+  const [fehler, setFehler] = useState('')
+
+  async function verbinden() {
+    setLaeuft(true)
+    setFehler('')
+    try {
+      await api.senden('/api/aufgabenziele/nextasks', { url, token, name })
+      setUrl('')
+      setToken('')
+      setName('')
+      aufVerbunden()
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    } finally {
+      setLaeuft(false)
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
+      <h2 className="mb-0 flex items-center gap-2 text-[13px] font-semibold text-fg-1">
+        <NextasksLogo />
+        {t('todoapps.nextasks_verbinden')}
+      </h2>
+      <p className="mb-0 text-[12px] text-fg-3">{t('todoapps.nextasks_hinweis')}</p>
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (url.trim() && token.trim() && !laeuft) void verbinden()
+        }}
+      >
+        <Input
+          label={t('todoapps.nextasks_adresse')}
+          hint={t('todoapps.nextasks_adresse_hinweis')}
+          placeholder="https://"
+          type="url"
+          mono
+          value={url}
+          maxLength={500}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+        <Input
+          label={t('todoapps.token')}
+          type="password"
+          autoComplete="off"
+          mono
+          value={token}
+          maxLength={500}
+          onChange={(e) => setToken(e.target.value)}
+        />
+        <Input
+          label={t('todoapps.name')}
+          hint={t('todoapps.nextasks_name_hinweis')}
+          value={name}
+          maxLength={80}
+          onChange={(e) => setName(e.target.value)}
+        />
+        {fehler && (
+          <p role="alert" className="mb-0 text-[13px] text-danger">
+            {fehler}
+          </p>
+        )}
+        <div>
+          <Button type="submit" variant="primary" disabled={!url.trim() || !token.trim() || laeuft}>
+            {laeuft ? t('todoapps.prueft') : t('todoapps.verbinden')}
+          </Button>
+        </div>
+      </form>
+    </section>
+  )
+}
+
+/** Neues Token für eine verbundene nextasks-Instanz, die Adresse vorbelegt.
+ * ⚠️ Das alte Token kommt nie zurück an die Oberfläche; das Feld ist leer. */
+function NextasksErneuern({
+  verbindung,
+  aufGespeichert,
+}: {
+  verbindung: Verbindung
+  aufGespeichert: () => void
+}) {
+  const { t } = useTranslation()
+  const [url, setUrl] = useState('')
+  const [token, setToken] = useState('')
+  const [laeuft, setLaeuft] = useState(false)
+  const [fehler, setFehler] = useState('')
+  const pfad = `/api/aufgabenziele/${verbindung.id}/nextasks`
+
+  useEffect(() => {
+    api
+      .holen<{ url: string }>(pfad)
+      .then((s) => setUrl(s.url))
+      .catch((f) => setFehler(servermeldung(f, t('anmeldung.fehler_allgemein'))))
+  }, [pfad, t])
+
+  async function speichern() {
+    setLaeuft(true)
+    setFehler('')
+    try {
+      await api.aendern(pfad, { url, token })
+      setToken('')
+      aufGespeichert()
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    } finally {
+      setLaeuft(false)
+    }
+  }
+
+  return (
+    <form
+      className="flex w-full flex-col gap-3 rounded-md border border-line bg-surface-1 p-3"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (url.trim() && token.trim() && !laeuft) void speichern()
+      }}
+    >
+      <p className="mb-0 text-[12px] text-fg-3">{t('todoapps.nextasks_token_neu_hinweis')}</p>
+      <Input
+        label={t('todoapps.nextasks_adresse')}
+        type="url"
+        mono
+        value={url}
+        maxLength={500}
+        onChange={(e) => setUrl(e.target.value)}
+      />
+      <Input
+        label={t('todoapps.token')}
+        type="password"
+        autoComplete="off"
+        mono
+        value={token}
+        maxLength={500}
+        onChange={(e) => setToken(e.target.value)}
+      />
+      {fehler && (
+        <p role="alert" className="mb-0 text-[13px] text-danger">
+          {fehler}
+        </p>
+      )}
+      <div>
+        <Button type="submit" disabled={!url.trim() || !token.trim() || laeuft}>
+          {laeuft ? t('todoapps.prueft') : t('aktion.speichern')}
+        </Button>
+      </div>
+    </form>
   )
 }

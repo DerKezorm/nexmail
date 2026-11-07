@@ -1346,7 +1346,7 @@ class Aufgabenverbindung(Base):
     benutzer_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
     )
-    #: ``todoist`` | ``webhook``
+    #: ``todoist`` | ``nextasks`` | ``webhook``
     art: Mapped[str] = mapped_column(String(20))
     #: Zum Wiedererkennen, wenn es zwei derselben Art gibt („Todoist Arbeit").
     name: Mapped[str] = mapped_column(String(80), default="")

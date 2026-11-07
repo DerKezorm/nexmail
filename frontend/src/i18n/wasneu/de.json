@@ -144,5 +144,25 @@
       "Liegt dieselbe Mail in mehreren Ordnern eines Postfachs, bekommt jede Kopie das Schlagwort.",
       "Ändert ein Programm ein Schlagwort über die Schnittstelle, geht keine Meldung an den Webhook zurück."
     ]
+  },
+  "0.29.0": {
+    "lead": "Aufgaben aus Mails können jetzt auch in nextasks landen, der selbst gehosteten Aufgaben-App aus derselben Familie.",
+    "sections": [
+      {
+        "title": "nextasks als Todo-App",
+        "where": "Einstellungen, Reiter „Aufgaben“",
+        "body": "Trag die Adresse deines nextasks und ein API-Token mit „Lesen und schreiben“ ein. Danach wählst du beim „Zu Aufgabe machen“ eine Liste samt Bereich und Abschnitt. Wie bei Todoist gilt: eine Mail, eine Aufgabe, auch wenn du sie zweimal umwandelst. Hinaus gehen Titel, Datum, Absender und ein Link zurück zur Mail, nie der Text der Mail."
+      },
+      {
+        "title": "Der Haken gehört nextasks",
+        "where": "Seite „Aufgaben“",
+        "body": "Was du in nexmail abhakst, wird in nextasks abgehakt. Was in nextasks erledigt, wieder geöffnet, verschoben oder in den Papierkorb gelegt wird, sieht nexmail ein paar Minuten später. Eine wiederkehrende Aufgabe bleibt nach dem Abhaken offen und steht gleich mit ihrem nächsten Datum da."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Läuft das Token ab, trägst du unter „Token erneuern“ ein neues ein; die Aufgaben bleiben verbunden.",
+      "Liegt nextasks im eigenen Netz, muss der Betreiber das unter Verwaltung → Server erlauben, wie bei Webhooks und Kalendern."
+    ]
   }
 }

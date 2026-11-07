@@ -144,5 +144,25 @@
       "If the same message sits in several folders of a mailbox, every copy gets the tag.",
       "When a tool changes a tag through the API, nothing is sent back to the webhook."
     ]
+  },
+  "0.29.0": {
+    "lead": "Tasks from messages can now go to nextasks, the self-hosted to-do app from the same family.",
+    "sections": [
+      {
+        "title": "nextasks as a to-do app",
+        "where": "Settings, the “Tasks” tab",
+        "body": "Enter the address of your nextasks and an API token that may “Read and write”. Then “Turn into task” lets you pick a list, with its space and section. As with Todoist: one message, one task, even if you turn it into a task twice. What goes out is the title, the date, the sender and a link back to the message, never the message text."
+      },
+      {
+        "title": "nextasks owns the tick",
+        "where": "The “Tasks” page",
+        "body": "What you tick off in nexmail is ticked off in nextasks. What is completed, reopened, rescheduled or put in the bin in nextasks shows up in nexmail a few minutes later. A repeating task stays open after you tick it off and shows its next date right away."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "When the token runs out, enter a new one under “Renew token”; your tasks stay connected.",
+      "If nextasks is on your local network, the operator has to allow that under Administration → Servers, as for webhooks and calendars."
+    ]
   }
 }

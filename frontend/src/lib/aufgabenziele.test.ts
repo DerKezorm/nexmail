@@ -46,4 +46,15 @@ describe('Namen', () => {
   it('kennt eine unbekannte Art nur mit ihrem Kürzel', () => {
     expect(gruppenname({ art: 'anders', name: '' })).toBe('anders')
   })
+
+  it('schreibt nextasks klein, wie es selbst', () => {
+    expect(gruppenname({ art: 'nextasks', name: '' })).toBe('nextasks')
+    expect(gruppenname({ art: 'nextasks', name: 'Familie' })).toBe('nextasks · Familie')
+    expect(
+      zielname(
+        [{ verbindung_id: 'n', art: 'nextasks', name: '', fehler: '', listen: [{ ziel: 'n:l', name: 'Familie › Einkauf' }] }],
+        'n:l',
+      ),
+    ).toBe('nextasks › Familie › Einkauf')
+  })
 })

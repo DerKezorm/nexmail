@@ -110,9 +110,17 @@ says so. Each user can connect their own Todoist account under *Settings → Tas
 and send tasks to a Todoist list instead. Only the title, the due date, the
 sender and a link back to the mail go there, never the text of the mail. Ticking
 a task in nexmail closes it in Todoist, and what you complete, reschedule or
-delete in Todoist comes back within a few minutes. For tools of your own there is
-a webhook target: nexmail posts each task as signed JSON to an address you
-choose (see [Webhooks for tasks](#webhooks-for-tasks)).
+delete in Todoist comes back within a few minutes. The same works with a
+self-hosted nextasks: enter its address
+and an API token that may read and write, then pick a list, with its space and
+section. nexmail checks the token against `/api/v1/me` before it saves anything,
+sends each message at most once (nextasks' `external_ref`), and sees completed,
+reopened, rescheduled and binned tasks within a few minutes; when the token runs
+out, *Renew token* keeps your tasks connected. A nextasks on your local network
+needs the operator's permission under *Administration → Servers*, as webhooks and
+calendars do. For tools of your own there is a webhook target: nexmail posts
+each task as signed JSON to an address you choose (see
+[Webhooks for tasks](#webhooks-for-tasks)).
 
 **Contacts, rules, signatures.** An address book with several numbers,
 addresses and postal addresses per contact, the card's photo, vCard import and
