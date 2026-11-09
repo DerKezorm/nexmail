@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import smtplib
 import threading
 from datetime import datetime, timedelta, timezone
@@ -319,6 +320,24 @@ def _umschlagabsender(konto: Konto, roh: bytes) -> str:
     return konto.adresse
 
 
+_ZEILENENDE = re.compile(rb"\r\n|\r(?!\n)|\n")
+
+
+def mit_crlf(roh: bytes) -> bytes:
+    """Jedes Zeilenende als CRLF, wie RFC 5321 und RFC 5322 es verlangen.
+
+    ⚠️ **Issue #20.** ``bauen`` liefert ``as_bytes()`` mit der Vorgabe
+    ``linesep`` = LF, und ``smtplib.sendmail`` korrigiert Zeilenenden nur bei
+    ``str``, Bytes gehen unverändert hinaus. Strenge Server (Strato) weisen
+    das mit ``554 5.6.0 … must be terminated by CRLF`` ab.
+
+    ⚠️ **Hier, nicht in ``bauen``.** Die Warteschlange übersteht einen
+    Neustart; Dateien, die vor dem Update eingereiht wurden, tragen noch LF und
+    müssen trotzdem hinausgehen. Dieselbe Regel wie ``smtplib._fix_eols``.
+    """
+    return _ZEILENENDE.sub(b"\r\n", roh)
+
+
 def _smtp_senden(
     konto: Konto, passwort: str, empfaenger: list[str], roh: bytes, token: str = ""
 ) -> None:
@@ -339,7 +358,7 @@ def _smtp_senden(
             verbindung.login(konto.smtp_benutzer, passwort)
         # ⚠️ Die Empfängerliste kommt hier her, nicht aus den Kopfzeilen -
         # sonst bekäme eine Blindkopie nie etwas.
-        verbindung.sendmail(_umschlagabsender(konto, roh), empfaenger, roh)
+        verbindung.sendmail(_umschlagabsender(konto, roh), empfaenger, mit_crlf(roh))
     finally:
         try:
             verbindung.quit()
