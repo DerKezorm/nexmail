@@ -103,6 +103,7 @@ class FalscherServer:
         schlagworte: list[str] | None = None,
         struktur=None,
         von: str = "Anja Kessler <anja@example.org>",
+        datum=None,
     ):
         self.ordner[pfad]["nachrichten"][uid] = {
             "betreff": betreff,
@@ -118,6 +119,9 @@ class FalscherServer:
             # Was BODYSTRUCTURE melden soll. Ohne Angabe: eine einfache
             # Textmail. Wer einen Kalenderteil braucht, gibt ihn hier mit.
             "struktur": struktur,
+            # Das Datum im ENVELOPE, so wie IMAPClient es liefert. Ohne
+            # Angabe ein festes, gewöhnliches.
+            "datum": datum,
         }
 
     # --- die Muschelschalen von IMAPClient ---------------------------- #
@@ -160,7 +164,7 @@ class FalscherServer:
                 zeile[b"ENVELOPE"] = Umschlag(
                     eintrag["betreff"],
                     eintrag.get("von", "Anja Kessler <anja@example.org>"),
-                    datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc),
+                    eintrag.get("datum") or datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc),
                 )
                 # ⚠️ **Trägt die Mail eine Message-ID, steht DIE im Umschlag**,
                 # wie bei einem echten Server. Der erfundene Wert aus dem
@@ -932,6 +936,110 @@ def test_das_umschlag_datum_behaelt_seine_zeitzone():
 
     # Ohne Datum: jetzt, damit die Mail oben auffaellt statt zu verschwinden.
     assert _datum_aus_umschlag(None).tzinfo is not None
+
+
+# --- Issue #21: ein Datum mit unmöglichem Versatz ------------------------- #
+
+
+def _spamdatum():
+    """Das Datum aus Issue #21, geparst von IMAPClient selbst.
+
+    ⚠️ **Nicht mit ``timezone(timedelta(hours=70))`` nachbauen** — das lehnt
+    Python schon beim Bauen ab. IMAPClient hat seine eigene Zeitzonenklasse,
+    die jeden Versatz annimmt; erst ``astimezone`` scheitert. Genau diesen
+    Weg geht der Abgleich mit ``normalise_times=False``.
+    """
+    from imapclient.datetime_util import parse_to_datetime
+
+    return parse_to_datetime(b"Sat,  12 Nov 2025 10:33:33 +7000", normalise=False)
+
+
+def test_ein_versatz_ueber_24_stunden_wirft_nicht():
+    from app.services.abgleich import _datum_aus_umschlag
+
+    wert = _datum_aus_umschlag(_spamdatum())
+    # Die Uhrzeit aus dem Kopf als UTC: am richtigen Tag, nicht „jetzt".
+    assert wert == datetime(2025, 11, 12, 10, 33, 33, tzinfo=timezone.utc), wert.isoformat()
+
+
+def test_ein_kaputtes_datum_haelt_den_ordner_nicht_auf(db, konto):
+    """Issue #21: Junk blieb bei null, weil EINE Mail ``+7000`` trug."""
+    server = FalscherServer()
+    server.anlegen("INBOX")
+    server.einwerfen("INBOX", 1, "Davor")
+    server.einwerfen("INBOX", 2, "Spam mit Unsinn", datum=_spamdatum())
+    server.einwerfen("INBOX", 3, "Danach")
+
+    runde = abgleich.ordner_abgleichen(server, db, konto, _posteingang(db, konto))
+
+    assert runde.neu == 3
+    zeilen = {z.uid: z for z in db.query(Nachricht).all()}
+    assert sorted(zeilen) == [1, 2, 3]
+    assert zeilen[2].datum.replace(tzinfo=None) == datetime(2025, 11, 12, 10, 33, 33)
+    assert _posteingang(db, konto).hoechste_uid == 3
+
+
+def test_eine_unlesbare_mail_wird_uebersprungen_und_spaeter_geholt(
+    db, konto, monkeypatch, caplog
+):
+    """Was ``_aus_fetch`` nicht lesen kann, fehlt — der Rest kommt an.
+
+    Und die Mail ist nicht verloren: Sie ist nicht bekannt, also fragt die
+    nächste Runde sie wieder an.
+    """
+    server = FalscherServer()
+    server.anlegen("INBOX")
+    for uid, betreff in ((1, "Eins"), (2, "Kaputt"), (3, "Drei")):
+        server.einwerfen("INBOX", uid, betreff)
+
+    echt = abgleich._aus_fetch
+    kaputt = {"an": True}
+
+    def wackelig(db_, konto_, ordner_, uid, felder):
+        if uid == 2 and kaputt["an"]:
+            raise ValueError("unlesbarer Kopf")
+        return echt(db_, konto_, ordner_, uid, felder)
+
+    monkeypatch.setattr(abgleich, "_aus_fetch", wackelig)
+    monkeypatch.setattr(abgleich, "_UNLESBAR_GEMELDET", set())
+    ordner = _posteingang(db, konto)
+
+    with caplog.at_level(logging.DEBUG, logger="nexmail.abgleich"):
+        abgleich.ordner_abgleichen(server, db, konto, ordner)
+        abgleich.ordner_abgleichen(server, db, konto, ordner)
+
+    assert sorted(u for (u,) in db.query(Nachricht.uid)) == [1, 3]
+    gemeldet = [r for r in caplog.records if "UID 2" in r.getMessage()]
+    # Einmal laut mit Rückverfolg, danach still: sonst stünde er jede Runde da.
+    assert [r.levelno for r in gemeldet] == [logging.ERROR, logging.DEBUG]
+    assert gemeldet[0].exc_info is not None
+
+    kaputt["an"] = False
+    runde = abgleich.ordner_abgleichen(server, db, konto, ordner)
+
+    assert sorted(u for (u,) in db.query(Nachricht.uid)) == [1, 2, 3]
+    # Unter der Marke nachgeholt, nicht neu: keine Regeln, kein Push.
+    assert (runde.neu, runde.nachgeholt) == (0, 1)
+
+
+def test_ein_datenbankfehler_beim_lesen_geht_weiter_hinaus(db, konto, monkeypatch):
+    """Nach einem gescheiterten ``flush`` ist die Sitzung gesperrt.
+
+    Überspringen hiesse, den echten Fehler gegen einen Folgefehler zu
+    tauschen.
+    """
+    from sqlalchemy.exc import OperationalError
+
+    server = FalscherServer()
+    server.anlegen("INBOX")
+    server.einwerfen("INBOX", 1, "Eins")
+
+    def kaputt(*_a, **_k):
+        raise OperationalError("SELECT 1", {}, Exception("database is locked"))
+
+    monkeypatch.setattr(abgleich, "_aus_fetch", kaputt)
+    with pytest.raises(OperationalError):
+        abgleich.ordner_abgleichen(server, db, konto, _posteingang(db, konto))
 
 
 def test_die_verbindung_laesst_die_zeitzone_am_datum(monkeypatch):

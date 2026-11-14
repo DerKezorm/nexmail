@@ -31,6 +31,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 
 from sqlalchemy import delete, select, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -477,7 +478,23 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
         frische = []
         atome: set[str] = set()
         for uid, felder in antwort.items():
-            zeile = _aus_fetch(db, konto, ordner, uid, felder)
+            # ⚠️ **Eine Mail, die sich nicht lesen lässt, hält den Ordner
+            # nicht auf** (Issue #21). Vorher riss ein einziger kaputter Kopf
+            # den ganzen Abgleich mit: Der Junk-Ordner des Melders blieb bei
+            # null, und jedes Verschieben dorthin endete mit 500. Die Mail
+            # fehlt dann hier, aber nicht für immer: Sie ist nicht bekannt,
+            # also fragt die nächste Runde sie wieder an.
+            #
+            # ⚠️ **Datenbankfehler gehen weiter hinaus.** Nach einem
+            # gescheiterten ``flush`` ist die Sitzung gesperrt; weiterzumachen
+            # hiesse, den echten Fehler gegen einen Folgefehler zu tauschen.
+            try:
+                zeile = _aus_fetch(db, konto, ordner, uid, felder)
+            except SQLAlchemyError:
+                raise
+            except Exception:  # noqa: BLE001
+                _unlesbar_melden(ordner, uid)
+                continue
             db.add(zeile)
             if uid > grenze:
                 frische.append(zeile)
@@ -551,6 +568,27 @@ def ordner_abgleichen(klient, db: Session, konto: Konto, ordner: Ordner) -> Rund
     return runde
 
 
+#: Welche unlesbaren Mails schon mit Rückverfolg gemeldet wurden, als
+#: ``(ordner_id, uid)``. Die Mail wird jede Runde neu angefragt; ohne das
+#: stünde alle zwei Minuten derselbe Rückverfolg im Protokoll.
+_UNLESBAR_GEMELDET: set[tuple[int, int]] = set()
+
+
+def _unlesbar_melden(ordner: Ordner, uid: int) -> None:
+    """Eine Mail, die ``_aus_fetch`` nicht lesen konnte, ins Protokoll."""
+    schluessel = (ordner.id, uid)
+    if schluessel in _UNLESBAR_GEMELDET:
+        logger.debug("%s: message UID %d still cannot be read, skipped.", ordner.pfad, uid)
+        return
+    _UNLESBAR_GEMELDET.add(schluessel)
+    logger.exception(
+        "%s: message UID %d could not be read and is skipped. "
+        "The rest of the folder syncs; the message is tried again next round.",
+        ordner.pfad,
+        uid,
+    )
+
+
 def _datum_aus_umschlag(wert) -> "datetime":
     """Das ENVELOPE-Datum nach UTC — ohne die Zeitzone zu verlieren.
 
@@ -562,6 +600,14 @@ def _datum_aus_umschlag(wert) -> "datetime":
     Raten hat den Fehler verursacht: Auf einem +02:00-Rechner stand an jeder
     Mail 09:52 statt 07:52, waehrend derselbe Code im UTC-Container zufaellig
     stimmte.
+
+    ⚠️ **Ein unmöglicher Versatz ist kein Absturz** (Issue #21). Spam trägt
+    Köpfe wie ``Date: … +7000`` (70 Stunden). IMAPClient nimmt das an, aber
+    Python erlaubt nur Versätze unter 24 Stunden, und ``astimezone`` warf
+    ``ValueError`` — der ganze Ordner kam nie mehr auf Stand. Dann gilt die
+    Uhrzeit aus dem Kopf als UTC, wie bei einem Datum ohne Zone: falsch um
+    Stunden, aber am richtigen Tag. „Jetzt" hiesse, der Spam steht als
+    neueste Mail ganz oben.
     """
     from datetime import datetime, timezone
 
@@ -569,7 +615,10 @@ def _datum_aus_umschlag(wert) -> "datetime":
         return utcnow()
     if wert.tzinfo is None:
         return wert.replace(tzinfo=timezone.utc)
-    return wert.astimezone(timezone.utc)
+    try:
+        return wert.astimezone(timezone.utc)
+    except (ValueError, OverflowError):
+        return wert.replace(tzinfo=timezone.utc)
 
 
 def _aus_fetch(db: Session, konto: Konto, ordner: Ordner, uid: int, felder: dict) -> Nachricht:
