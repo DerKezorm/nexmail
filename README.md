@@ -222,7 +222,11 @@ rather than letting you guess why nothing works.
 **Rephrasing with AI, if you want it.** Every user can connect their own AI
 service on the *AI* page: an address, a key and a model. nexmail knows no
 provider; anything that speaks the common chat completions interface works,
-from Claude, Gemini or OpenAI to Ollama on a machine in your own network. In
+from Claude, Gemini or OpenAI to Ollama on a machine in your own network. A
+service in your own network is asked not to think (`reasoning_effort: "none"`),
+so a thinking model such as Qwen3 or DeepSeek-R1 does not spend a short answer
+on its thoughts; a server that does not know the field is asked once more
+without it. In
 the editor it fixes spelling, translates, or rephrases in one of nine tones,
 and shows old and new side by side before anything is replaced. Quotes and
 your signature are never sent, and the AI page lists verbatim what went out.

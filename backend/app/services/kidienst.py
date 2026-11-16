@@ -24,9 +24,11 @@ Anbieterbedingungen ändern sich, und ein Text darüber altert lautlos.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import re
+import socket
 from datetime import timedelta
 from urllib.parse import urljoin, urlparse
 
@@ -41,6 +43,7 @@ from .. import crypto
 from ..db import einstellung_lesen as _anlage_lesen
 from ..db import einstellung_schreiben as _anlage_schreiben
 from . import bereinigen
+from .bildvermittler import _ist_erreichbar_von_aussen
 from ..meldung import Meldung
 from ..models import Benutzer, KiVorgang, utcnow
 
@@ -429,6 +432,51 @@ TEMPERATUREN = {
 #: Für einen Auftrag, den es hier noch nicht gibt: zurückhaltend, nicht kreativ.
 TEMPERATUR_VORGABE = 0.3
 
+#: ⚠️ **Was ein Dienst ablehnen darf, und die Wörter, an denen seine Absage es
+#: nennt.** Weist er eine Anfrage mit 400 ab und nennt dabei eines davon, geht
+#: sie genau einmal ohne dieses Feld hinaus; jedes Feld höchstens einmal.
+#: ``think`` steht dabei, weil Ollama ein Modell ohne Nachdenken mit
+#: „… does not support thinking" ablehnen kann, ohne „reasoning" zu sagen.
+WEGLASSBAR = (
+    ("temperature", ("temperature",)),
+    ("reasoning_effort", ("reasoning", "think")),
+)
+
+
+def im_eigenen_netz(url: str) -> bool:
+    """Steht der Dienst hinter dieser Adresse im eigenen Netz?
+
+    ⚠️ **Gefragt wird, wo er steht, nicht wer er ist.** nexmail kennt keinen
+    Anbieter (siehe oben); ein Modell im eigenen Netz ist aber fast immer
+    Ollama, LM Studio, llama.cpp oder vLLM. Nur dorthin geht
+    ``reasoning_effort: "none"``. Claude, Gemini und OpenAI bleiben, wie sie
+    waren: Dort ist das Feld je nach Modell unbekannt, abgelehnt oder ändert
+    die Antwort.
+
+    ⚠️ **Über die Namensauflösung, nicht über den Namen.** ``ollama`` (ein
+    Dienst im selben Docker-Netz), ``host.docker.internal`` und ein Name, den
+    das eigene DNS auf ``10.…`` zeigt, haben keine Form, an der man sie
+    erkennt. Im eigenen Netz heißt: Jede Adresse, auf die der Name zeigt, ist
+    aus dem Internet nicht erreichbar (LAN, VPN, der eigene Rechner). Lässt er
+    sich nicht auflösen, gilt er als fremd; die Anfrage scheitert dann ohnehin.
+    """
+    host = (urlparse(url).hostname or "").strip("[]")
+    if not host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        try:
+            gefunden = {eintrag[4][0] for eintrag in socket.getaddrinfo(host, None)}
+        except (OSError, UnicodeError):
+            return False
+    else:
+        gefunden = {host}
+    return bool(gefunden) and not any(
+        _ist_erreichbar_von_aussen(adresse.split("%")[0]) for adresse in gefunden
+    )
+
+
 #: ⚠️ **Diese Sätze sind der ganze Schutz vor der stillen Fälschung.** Ein
 #: umformulierter Absatz geht anschließend als Mail hinaus; macht das Modell
 #: aus „Donnerstag" ein „Freitag", merkt es niemand mehr. Sie stehen deshalb in
@@ -633,6 +681,14 @@ def _hinaus(
     ziel_adresse = urljoin(adresse_pruefen(person.ki_url), "chat/completions")
     schluessel = schluessel_lesen(person)
 
+    # ⚠️ **Ein Modell im eigenen Netz soll nicht nachdenken.** Qwen3 oder
+    # DeepSeek-R1 über Ollama verbrauchen sonst die Tokens der Antwort mit
+    # ihren Gedanken (eine Zusammenfassung hat nur 1.000) und geben nichts
+    # zurück. Ollamas OpenAI-Tür nimmt ``think: false`` nicht, dieses Feld aber
+    # schon. Lehnt ein Server es ab, fragt ``_schicken`` einmal ohne.
+    if im_eigenen_netz(ziel_adresse):
+        rumpf["reasoning_effort"] = "none"
+
     # ⚠️ **Ab hier ist der Text unterwegs.** Alles, was jetzt noch schiefgeht,
     # aendert daran nichts mehr — deshalb wird der Vorgang von hier an in
     # JEDEM Ausgang gemerkt, auch im Fehlerfall. Eine Liste, die nur die
@@ -694,8 +750,9 @@ def _schicken(
     """Den Rumpf hinausschicken und die gesäuberte Antwort zurückgeben.
 
     Jeder Fehlschlag ist eine ``KiFehler``; ``_hinaus`` merkt ihn.
-    ⚠️ **``rumpf`` kann sich dabei ändern** (``temperature`` fällt beim
-    zweiten Versuch), und gemerkt wird danach genau dieser Rumpf.
+    ⚠️ **``rumpf`` kann sich dabei ändern** (``temperature`` oder
+    ``reasoning_effort`` fällt beim nächsten Versuch), und gemerkt wird danach
+    genau dieser Rumpf.
     """
     try:
         with httpx.Client(
@@ -706,12 +763,25 @@ def _schicken(
             )
             # ⚠️ **Neuere Modelle wählen die Temperatur selbst** und weisen
             # eine Anfrage ab, die sie setzt („`temperature` is deprecated for
-            # this model", 400, am 29.09.2026 gemessen). Dann genau einmal
-            # ohne; ältere Modelle und andere Dienste nehmen sie weiter. Jede
-            # andere 400 geht nicht noch einmal hinaus. In der Liste steht
-            # danach der zweite Rumpf, denn der hat die Antwort gebracht.
-            if antwort.status_code == 400 and "temperature" in _gesagt(antwort).lower():
-                del rumpf["temperature"]
+            # this model", 400, am 29.09.2026 gemessen); ein lokaler Server
+            # kennt ``reasoning_effort`` vielleicht nicht. Dann ohne, jedes
+            # Feld aus ``WEGLASSBAR`` höchstens einmal; ältere Modelle und
+            # andere Dienste nehmen sie weiter. Jede andere 400 geht nicht noch
+            # einmal hinaus. In der Liste steht danach der letzte Rumpf, denn
+            # der hat die Antwort gebracht.
+            while antwort.status_code == 400:
+                gesagt = _gesagt(antwort).lower()
+                feld = next(
+                    (
+                        name
+                        for name, woerter in WEGLASSBAR
+                        if name in rumpf and any(wort in gesagt for wort in woerter)
+                    ),
+                    None,
+                )
+                if feld is None:
+                    break
+                del rumpf[feld]
                 antwort = klient.post(
                     ziel_adresse, headers=_kopfzeilen(schluessel), json=rumpf
                 )
@@ -744,6 +814,12 @@ def _schicken(
     if isinstance(roh, list):
         roh = "".join(teil.get("text", "") for teil in roh if isinstance(teil, dict))
     if not isinstance(roh, str) or not roh.strip():
+        # ⚠️ **Leer, weil die Grenze erreicht war, ist ein eigener Fall.** Ein
+        # Modell, das erst nachdenkt, verbraucht die Tokens mit seinen
+        # Gedanken; „nichts zurückgegeben" schickte den Menschen zum Dienst
+        # statt zum Modell.
+        if _abgeschnitten(daten):
+            raise KiFehler("ki_antwort_aufgebraucht")
         raise KiFehler("ki_antwort_leer")
 
     sauber = _zaun_abtragen(roh.strip())

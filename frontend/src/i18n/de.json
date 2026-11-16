@@ -1499,6 +1499,7 @@
     "ki_adresse_fehlt": "Es fehlt die Adresse des Dienstes.",
     "ki_adresse_nicht_gefunden": "Unter dieser Adresse antwortet nichts. Prüfe, ob der Pfad stimmt.",
     "ki_adresse_ungueltig": "Das ist keine brauchbare Adresse. Sie muss mit http:// oder https:// beginnen.",
+    "ki_antwort_aufgebraucht": "Das Modell hat seinen Platz für die Antwort aufgebraucht, bevor es eine geschrieben hat. Bei einem Modell, das erst nachdenkt, muss das Nachdenken aus sein.",
     "ki_antwort_leer": "Der Dienst hat nichts zurückgegeben.",
     "ki_antwort_unlesbar": "Die Antwort des Dienstes ließ sich nicht lesen.",
     "ki_auftrag_unbekannt": "Diesen Auftrag kennt der Server nicht.",

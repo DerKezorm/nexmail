@@ -1499,6 +1499,7 @@
     "ki_adresse_fehlt": "The address of the service is missing.",
     "ki_adresse_nicht_gefunden": "Nothing answers at that address. Check whether the path is right.",
     "ki_adresse_ungueltig": "That is not a usable address. It has to start with http:// or https://.",
+    "ki_antwort_aufgebraucht": "The model used up its room for an answer before it wrote one. A thinking model needs its thinking switched off.",
     "ki_antwort_leer": "The service returned nothing.",
     "ki_antwort_unlesbar": "The answer from the service could not be read.",
     "ki_auftrag_unbekannt": "The server does not know this task.",
