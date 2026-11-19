@@ -61,7 +61,7 @@ import { appPfad } from '../lib/basis'
 import { nachrichtDrucken } from '../lib/drucken'
 import { lesegrund } from '../lib/lesegrund'
 import type { Lesegrund } from '../lib/lesegrund'
-import { leseseite } from '../lib/leserahmen'
+import { leseseite, rahmenSchema } from '../lib/leserahmen'
 import { ankername, linkart, mailtoLesen } from '../lib/leselinks'
 import type { Vorbelegung } from '../lib/leselinks'
 import { useGemerkt } from '../lib/haken'
@@ -284,8 +284,8 @@ export function Lesebereich({
     eindunkeln,
   })
   const seite = useMemo(
-    () => (nachricht ? rahmenInhalt(inhalt, grund) : ''),
-    [nachricht, inhalt, grund],
+    () => (nachricht ? rahmenInhalt(inhalt, grund, dunkelmodus) : ''),
+    [nachricht, inhalt, grund, dunkelmodus],
   )
 
   /* Die Höhe des Rahmens folgt der Mail.
@@ -829,7 +829,9 @@ export function Lesebereich({
             hoeheNachziehen()
             linksVerdrahten()
           }}
-          style={{ height: hoehe ? `${hoehe}px` : undefined }}
+          /* ⚠️ Dasselbe Schema wie innen (Issue #22): Weichen beide ab, malt
+             der Browser einen deckenden Grund unter die Mail. */
+          style={{ height: hoehe ? `${hoehe}px` : undefined, colorScheme: rahmenSchema(grund, dunkelmodus) }}
           className="w-full border-0 bg-transparent px-2"
         />
 
@@ -880,9 +882,10 @@ export function Lesebereich({
  * werden. Getrennt ist es, damit die schnelle Prüfebene den Bau überhaupt
  * laden kann; siehe den Kopf jener Datei.
  */
-function rahmenInhalt(koerper: string, grund: Lesegrund): string {
+function rahmenInhalt(koerper: string, grund: Lesegrund, dunkel: boolean): string {
   const wurzel = getComputedStyle(document.documentElement)
   return leseseite(koerper, grund, {
+    dunkel,
     sans: wurzel.getPropertyValue('--font-sans'),
     mono: wurzel.getPropertyValue('--font-mono'),
     text: wurzel.getPropertyValue('--text-2'),

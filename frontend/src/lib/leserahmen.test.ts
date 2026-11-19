@@ -7,7 +7,7 @@
  * Tests der Entscheidung haben davon nichts gemerkt.
  */
 import { describe, expect, it } from 'vitest'
-import { leseseite } from './leserahmen'
+import { leseseite, rahmenSchema } from './leserahmen'
 import type { Rahmenfarben } from './leserahmen'
 
 /** Erfundene Werte — geprüft wird der Bau, nicht die Palette. */
@@ -17,6 +17,7 @@ const FARBEN: Rahmenfarben = {
   text: 'rgb(155, 166, 165)',
   stark: 'rgb(230, 240, 240)',
   akzent: 'rgb(0, 200, 140)',
+  dunkel: true,
 }
 
 const seite = (grund: 'hell' | 'anwendung' | 'umgekehrt') =>
@@ -50,8 +51,46 @@ describe('leseseite', () => {
        und deshalb steht der Wächter hier und nicht im Auge. */
     expect(seite('umgekehrt')).toContain('color-scheme: light;')
     expect(seite('hell')).toContain('color-scheme: light;')
-    expect(seite('anwendung')).toContain('color-scheme: light dark;')
+    expect(seite('anwendung')).toContain('color-scheme: dark;')
   })
+
+  it('folgt auf dem Anwendungsgrund dem Modus der Anwendung, nie dem System', () => {
+    /* ⚠️ Issue #22. Mit `light dark` wurde der Rahmen dunkel, sobald das
+       System dunkel stand, auch in der hellen Anwendung; der Browser malte
+       dann `rgb(18,18,18)` unter die dunkelgraue Schrift. Kein Grund und kein
+       Modus darf das System entscheiden lassen. */
+    const hellerAnwendung = leseseite('<p>x</p>', 'anwendung', { ...FARBEN, dunkel: false })
+    expect(hellerAnwendung).toContain('color-scheme: light;')
+    for (const dunkel of [true, false]) {
+      for (const grund of ['hell', 'anwendung', 'umgekehrt'] as const) {
+        expect(leseseite('<p>x</p>', grund, { ...FARBEN, dunkel })).not.toMatch(/color-scheme: light dark/)
+      }
+    }
+  })
+})
+
+describe('rahmenSchema', () => {
+  it('passt innen und aussen zum Modus der Anwendung', () => {
+    // Dasselbe Schema steht am <iframe>; weichen beide ab, deckt der Browser die Mail zu.
+    expect(rahmenSchema('anwendung', false)).toBe('light')
+    expect(rahmenSchema('anwendung', true)).toBe('dark')
+    // Das weisse Blatt und die Umkehr bauen immer auf hellem Canvas.
+    for (const dunkel of [true, false]) {
+      expect(rahmenSchema('hell', dunkel)).toBe('light')
+      expect(rahmenSchema('umgekehrt', dunkel)).toBe('light')
+    }
+  })
+
+  it('steht in der Seite so, wie es am Rahmen steht', () => {
+    for (const dunkel of [true, false]) {
+      for (const grund of ['hell', 'anwendung', 'umgekehrt'] as const) {
+        expect(leseseite('<p>x</p>', grund, { ...FARBEN, dunkel })).toContain(`color-scheme: ${rahmenSchema(grund, dunkel)};`)
+      }
+    }
+  })
+})
+
+describe('leseseite, weiter', () => {
 
   it('dreht Bilder wieder zurueck', () => {
     // Ohne das stünde jedes Logo als Negativ da.
@@ -69,7 +108,7 @@ describe('leseseite', () => {
   it('reicht die Variablen des Elternfensters hinein', () => {
     // Der Rahmen sieht sie nicht von selbst; ohne sie fiele die Schrift zurueck.
     const s = seite('hell')
-    for (const wert of Object.values(FARBEN)) expect(s).toContain(wert)
+    for (const wert of Object.values(FARBEN)) if (typeof wert === 'string') expect(s).toContain(wert)
   })
 
   it('setzt Abstaende wie Outlook', () => {

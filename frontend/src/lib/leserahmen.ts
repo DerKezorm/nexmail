@@ -28,6 +28,24 @@ export interface Rahmenfarben {
   stark: string
   /** Linkfarbe der Anwendung (`--text-accent`). */
   akzent: string
+  /** Steht die Anwendung dunkel? Ihr Modus, nicht der des Systems. */
+  dunkel: boolean
+}
+
+/** Das Farbschema des Rahmens, innen wie außen am `<iframe>`.
+ *
+ * ⚠️ **Der Modus der Anwendung, nie der des Systems** (Issue #22). Mit
+ * `light dark` richtete sich der Rahmen nach dem System: nexmail hell, Windows
+ * dunkel, und der Rahmen wurde dunkel. Weicht das Schema eines Rahmens von dem
+ * seines `<iframe>` ab, malt der Browser darunter einen deckenden `Canvas`
+ * statt durchzulassen — hier `rgb(18,18,18)` unter dunkelgrauer Schrift der
+ * hellen Anwendung. Stimmen beide überein, bleibt der Rahmen durchsichtig und
+ * der Lesebereich der Anwendung scheint durch, hell wie dunkel.
+ *
+ * Nur der Anwendungsgrund wird dunkel; das weiße Blatt und die Umkehr bauen
+ * auf `Canvas` unter `light` (siehe `leseseite`). */
+export function rahmenSchema(grund: Lesegrund, dunkel: boolean): 'light' | 'dark' {
+  return grund === 'anwendung' && dunkel ? 'dark' : 'light'
 }
 
 /* Die Umkehr für fremde Mails, die eigene Farben setzen.
@@ -105,7 +123,7 @@ export function leseseite(koerper: string, grund: Lesegrund, farben: Rahmenfarbe
      der Server weg, die Klassen lässt er stehen (`OUTLOOK_KLASSEN` in
      `bereinigen.py`); ohne diese Regeln stand nach jeder Zeile eine Lücke. */
   const stil = `
-    :root { color-scheme: ${aufHell ? 'light' : 'light dark'}; }
+    :root { color-scheme: ${rahmenSchema(grund, farben.dunkel)}; }
     body {
       margin: 0; padding: 16px 24px;
       font: 400 14px/normal var(--nm-sans);
