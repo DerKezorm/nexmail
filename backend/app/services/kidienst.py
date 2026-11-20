@@ -408,6 +408,12 @@ def fremde_post_fuer(db: Session, person: Benutzer) -> bool:
 #: wird länger als ihr englisches Original.
 MAX_TOKEN = 8_000
 
+#: Was ein Modell, das ``max_completion_tokens`` verlangt, obendrauf bekommt.
+#: ⚠️ **Seine Gedanken zählen gegen diese Grenze.** Mit den alten Werten (1.000
+#: beim Zusammenfassen) könnte es den ganzen Platz verdenken und nichts
+#: zurückgeben.
+NACHDENKEN_ZUSCHLAG = 4_000
+
 #: ⚠️ **Länger als beim Modellabruf.** Erzeugen dauert; zwanzig Sekunden
 #: reichen für eine Liste, nicht für einen umgeschriebenen Absatz. Ein Modell
 #: im eigenen Netz ohne Grafikkarte braucht dafür Minuten.
@@ -441,6 +447,23 @@ WEGLASSBAR = (
     ("temperature", ("temperature",)),
     ("reasoning_effort", ("reasoning", "think")),
 )
+
+
+def _grenze_umbenennen(rumpf: dict, weggelassen: set[str]) -> None:
+    """``max_tokens`` als ``max_completion_tokens`` schicken.
+
+    ⚠️ **Neuere OpenAI-Modelle (gpt-5, gpt-6) nehmen die Grenze nur unter
+    diesem Namen** und weisen ``max_tokens`` mit einer 400 ab, die den neuen
+    Namen nennt (nexdiary Issue #3). Sie denken vor der Antwort nach, und das
+    zählt gegen die Grenze: Platz dafür obendrauf, und die Bitte, sich kurz zu
+    fassen (``reasoning_effort: "low"``). Ein Dienst im eigenen Netz behält
+    sein ``"none"``; wer das Feld schon einmal abgelehnt hat, bekommt es nicht
+    wieder. Lehnt ein Modell ``"low"`` ab, geht die Anfrage über
+    ``WEGLASSBAR`` einmal ohne hinaus.
+    """
+    rumpf["max_completion_tokens"] = rumpf.pop("max_tokens") + NACHDENKEN_ZUSCHLAG
+    if "reasoning_effort" not in rumpf and "reasoning_effort" not in weggelassen:
+        rumpf["reasoning_effort"] = "low"
 
 
 def im_eigenen_netz(url: str) -> bool:
@@ -751,7 +774,8 @@ def _schicken(
 
     Jeder Fehlschlag ist eine ``KiFehler``; ``_hinaus`` merkt ihn.
     ⚠️ **``rumpf`` kann sich dabei ändern** (``temperature`` oder
-    ``reasoning_effort`` fällt beim nächsten Versuch), und gemerkt wird danach
+    ``reasoning_effort`` fällt beim nächsten Versuch, ``max_tokens`` heißt
+    ``max_completion_tokens``), und gemerkt wird danach
     genau dieser Rumpf.
     """
     try:
@@ -766,22 +790,30 @@ def _schicken(
             # this model", 400, am 29.09.2026 gemessen); ein lokaler Server
             # kennt ``reasoning_effort`` vielleicht nicht. Dann ohne, jedes
             # Feld aus ``WEGLASSBAR`` höchstens einmal; ältere Modelle und
-            # andere Dienste nehmen sie weiter. Jede andere 400 geht nicht noch
-            # einmal hinaus. In der Liste steht danach der letzte Rumpf, denn
-            # der hat die Antwort gebracht.
+            # andere Dienste nehmen sie weiter. Verlangt die Absage
+            # ``max_completion_tokens``, geht die Grenze einmal unter diesem
+            # Namen hinaus (``_grenze_umbenennen``); eine 400, die nur
+            # ``max_tokens`` nennt („zu hoch"), ist dafür kein Grund. Jede
+            # andere 400 geht nicht noch einmal hinaus. In der Liste steht
+            # danach der letzte Rumpf, denn der hat die Antwort gebracht.
+            weggelassen: set[str] = set()
             while antwort.status_code == 400:
                 gesagt = _gesagt(antwort).lower()
-                feld = next(
-                    (
-                        name
-                        for name, woerter in WEGLASSBAR
-                        if name in rumpf and any(wort in gesagt for wort in woerter)
-                    ),
-                    None,
-                )
-                if feld is None:
-                    break
-                del rumpf[feld]
+                if "max_tokens" in rumpf and "max_completion_tokens" in gesagt:
+                    _grenze_umbenennen(rumpf, weggelassen)
+                else:
+                    feld = next(
+                        (
+                            name
+                            for name, woerter in WEGLASSBAR
+                            if name in rumpf and any(wort in gesagt for wort in woerter)
+                        ),
+                        None,
+                    )
+                    if feld is None:
+                        break
+                    del rumpf[feld]
+                    weggelassen.add(feld)
                 antwort = klient.post(
                     ziel_adresse, headers=_kopfzeilen(schluessel), json=rumpf
                 )
