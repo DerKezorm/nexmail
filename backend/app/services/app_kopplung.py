@@ -18,7 +18,11 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import math
 import secrets
+import threading
+import time
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -42,9 +46,28 @@ CODE_LAENGE = 8
 
 SCHALTER = "app_geraete_erlaubt"
 
+#: So viele Geräte darf ein Konto je Stunde über ein schon gekoppeltes Gerät
+#: hereinholen (``weiteres_geraet``). Dieselbe Zahl wie ``OFFEN_HOECHSTENS``.
+WEITERE_JE_STUNDE = 5
+STUNDE = 3600.0
+
 
 class KopplungFehler(Meldung):
     """Etwas, das dem Menschen oder der App gezeigt wird."""
+
+
+class GrenzeFehler(KopplungFehler):
+    """Zu viele in zu kurzer Zeit; ``nochmal_in`` Sekunden geht es wieder.
+
+    ⚠️ **Die Wartezeit steht nicht in ``werte``**, sie gehört in ``Retry-After``.
+    Eine Stunde in Sekunden zu lesen hilft niemandem, und jeder Wert in ``werte``
+    braucht seinen Platzhalter im Satz (``test_meldungen``). Deshalb wird sie
+    ohne Namen übergeben: Jedes benannte Argument zählt dort als Wert.
+    """
+
+    def __init__(self, kennung: str, nochmal_in: int, /, **werte) -> None:
+        super().__init__(kennung, **werte)
+        self.nochmal_in = nochmal_in
 
 
 def erlaubt(db: Session) -> bool:
@@ -137,11 +160,16 @@ def zurueckziehen(db: Session, kennung: str, person: Benutzer) -> None:
         db.commit()
 
 
+def _geraetename(geraet: str) -> str:
+    """Was die App schickt, ohne Steuerzeichen und gekürzt; leer heißt „iPhone"."""
+    return "".join(z for z in geraet if z.isprintable()).strip()[:GERAET_HOECHSTENS] or "iPhone"
+
+
 def _einloesen(db: Session, zeile: AppKopplung, geraet: str, adresse: str) -> tuple[str, Benutzer]:
     """⚠️ **Ein bedingtes UPDATE, kein Nachsehen.** Zwei gleichzeitige Abholungen
     desselben Codes kämen sonst beide durch, und aus einem Gerät würden zwei.
     SQLite hat einen Schreiber; von zwei UPDATEs greift genau eines."""
-    name = "".join(z for z in geraet if z.isprintable()).strip()[:GERAET_HOECHSTENS] or "iPhone"
+    name = _geraetename(geraet)
     jetzt = utcnow()
     getroffen = db.execute(
         update(AppKopplung)
@@ -191,6 +219,60 @@ def mit_code(db: Session, code: str, geraet: str, adresse: str) -> tuple[str, Be
     return _einloesen(db, zeile, geraet, adresse)
 
 
+_weitere_schloss = threading.Lock()
+_weitere: dict[str, deque[float]] = defaultdict(deque)
+
+
+def weiteres_geraet(
+    db: Session, person: Benutzer, geraet: str, adresse: str, jetzt: float | None = None
+) -> str:
+    """Ein eigener Schlüssel für ein weiteres Gerät desselben Kontos, erbeten von
+    einem Gerät, das schon gekoppelt ist.
+
+    Die iPhone-App legt ihre Verbindung in den iCloud-Schlüsselbund; das iPad
+    desselben Besitzers findet sie dort und holt sich hiermit einmal einen
+    eigenen Schlüssel. So steht es unter eigenem Namen in der Geräteliste, lässt
+    sich allein trennen und hat sein eigenes Push-Ticket.
+
+    ⚠️ **Dieselben Rechte wie das bittende Gerät, nicht mehr.** Ein Gerät kann
+    unter ``/api/app/1`` ohnehin alles, was sein Konto kann; das neue ist eine
+    gewöhnliche Gerätesitzung wie nach einer Kopplung. Das bittende bleibt, wie
+    es ist.
+
+    ⚠️ **Höchstens ``WEITERE_JE_STUNDE`` je Konto**, sonst wäre ein Schlüssel
+    eine Fabrik für Schlüssel. Gezählt wird im Arbeitsspeicher wie bei der
+    Anmeldebremse: Ein Neustart vergisst die Zählung, liegt aber nicht in der
+    Hand dessen, der zählt. Nur Erfolge zählen.
+
+    ⚠️ **Der Riegel des Betreibers gilt auch hier**, doppelt: ``deps._sitzung``
+    sperrt die ganze Fläche, und diese Stelle fragt selbst noch einmal, wie
+    ``vorbereiten``.
+    """
+    if not erlaubt(db):
+        raise KopplungFehler("app_abgeschaltet")
+    jetzt = time.monotonic() if jetzt is None else jetzt
+    with _weitere_schloss:
+        gesehen = _weitere[person.id]
+        while gesehen and jetzt - gesehen[0] >= STUNDE:
+            gesehen.popleft()
+        if len(gesehen) >= WEITERE_JE_STUNDE:
+            raise GrenzeFehler(
+                "app_zu_viele_geraete",
+                max(1, math.ceil(STUNDE - (jetzt - gesehen[0]))),
+                max=WEITERE_JE_STUNDE,
+            )
+        gesehen.append(jetzt)
+    token = sitzungsdienst.geraet_anlegen(db, person, _geraetename(geraet), adresse)
+    logger.info("A paired device brought in another device of its account.")
+    return token
+
+
+def weitere_vergessen() -> None:
+    """Nur für Tests: Die Zählung ist prozessweit."""
+    with _weitere_schloss:
+        _weitere.clear()
+
+
 def aufraeumen(db: Session) -> int:
     """Abgelaufenes fällt nach einem Tag, damit die Seite „abgelaufen" sagen kann."""
     stichtag = utcnow() - timedelta(days=1)
@@ -206,6 +288,7 @@ __all__ = [
     "CODE_LAENGE",
     "GERAET_HOECHSTENS",
     "GILT_MINUTEN",
+    "GrenzeFehler",
     "KopplungFehler",
     "OFFEN_HOECHSTENS",
     "Vorbereitet",
@@ -216,5 +299,7 @@ __all__ = [
     "mit_code",
     "stand",
     "vorbereiten",
+    "weiteres_geraet",
+    "WEITERE_JE_STUNDE",
     "zurueckziehen",
 ]

@@ -1358,6 +1358,7 @@
     "app_adresse_fehlt": "The QR code needs the address nexmail is reachable at. Enter it under Administration, Server.",
     "app_kopplung_unbekannt": "This code is not valid, or no longer. Show a new one in the browser.",
     "app_von_vorn": "The stored state is too old and has to be read again.",
+    "app_zu_viele_geraete": "{{max}} more devices have already been added this hour. Try again later.",
     "app_zu_viele_kopplungen": "{{max}} codes are already open. Wait for them to expire, or withdraw one.",
     "nachricht_laedt": "The message is still coming from the mail server. Try again in {{sekunden}} seconds.",
     "postfach_beschaeftigt": "This mailbox is catching up on a lot of mail. Try again in {{sekunden}} seconds.",

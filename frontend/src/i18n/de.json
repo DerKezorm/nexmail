@@ -1358,6 +1358,7 @@
     "app_adresse_fehlt": "Für den QR-Code fehlt die Adresse, unter der nexmail erreichbar ist. Trag sie unter Verwaltung, Server ein.",
     "app_kopplung_unbekannt": "Dieser Code gilt nicht oder nicht mehr. Lass im Browser einen neuen anzeigen.",
     "app_von_vorn": "Der gespeicherte Stand ist zu alt und muss neu gelesen werden.",
+    "app_zu_viele_geraete": "In dieser Stunde sind schon {{max}} weitere Geräte dazugekommen. Versuch es später noch einmal.",
     "app_zu_viele_kopplungen": "Es sind schon {{max}} Codes offen. Warte, bis sie ablaufen, oder zieh einen zurück.",
     "nachricht_laedt": "Die Mail kommt noch vom Mailserver. Versuch es in {{sekunden}} Sekunden noch einmal.",
     "postfach_beschaeftigt": "Das Postfach holt gerade viel Post nach. Versuch es in {{sekunden}} Sekunden noch einmal.",

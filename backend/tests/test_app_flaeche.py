@@ -35,8 +35,10 @@ PFAD = "/api/app/1"
 @pytest.fixture(autouse=True)
 def bremse_frei():
     anmeldebremse.zuruecksetzen()
+    app_kopplung.weitere_vergessen()
     yield
     anmeldebremse.zuruecksetzen()
+    app_kopplung.weitere_vergessen()
 
 
 @pytest.fixture
@@ -531,6 +533,190 @@ def test_zuletzt_gesehen_wird_nachgezogen(kein_cookie, bearer, db):
     assert db.query(Sitzung).filter_by(art="geraet").one().zuletzt_gesehen > alt
 
 
+# --- Ein weiteres Gerät desselben Kontos ---------------------------------- #
+
+
+def weiteres(c, bearer, device: str | None = "iPad von Alex"):
+    if device is None:
+        return c.post(f"{PFAD}/devices", headers=bearer)
+    return c.post(f"{PFAD}/devices", headers=bearer, json={"device": device})
+
+
+def test_ein_geraet_holt_einem_weiteren_einen_eigenen_schluessel(
+    kein_cookie, bearer, token, db, person
+):
+    antwort = weiteres(kein_cookie, bearer)
+
+    assert antwort.status_code == 200
+    assert antwort.headers["cache-control"] == "no-store"
+    neu = antwort.json()
+    assert neu["key"].startswith("nxa_") and neu["key"] != token
+    assert neu["account"] == {"id": person.id, "name": person.benutzername}
+
+    ipad = {"Authorization": f"Bearer {neu['key']}"}
+    assert kein_cookie.get(f"{PFAD}/me", headers=ipad).json()["geraet"]["name"] == "iPad von Alex"
+    assert kein_cookie.get(f"{PFAD}/me", headers=bearer).json()["geraet"]["name"] == "iPhone von Alex"
+    zeilen = db.query(Sitzung).filter_by(art="geraet").all()
+    assert len(zeilen) == 2
+    assert {z.benutzer_id for z in zeilen} == {person.id}
+    assert all(z.bestaetigt for z in zeilen)
+
+
+def test_die_antwort_ist_die_einer_kopplung(klient, kein_cookie, bearer):
+    """⚠️ **Dieselbe Form**, damit die App beide Wege gleich liest."""
+    from app.routers import app_kopplung as kopplungsrouter
+
+    gekoppelt = abholen(kein_cookie, koppeln(klient, "Drittes")).json()
+    gebracht = weiteres(kein_cookie, bearer).json()
+
+    assert gebracht.keys() == gekoppelt.keys()
+    assert gebracht["account"] == gekoppelt["account"]
+    route = next(r for r in app.routes if getattr(r, "path", "") == f"{PFAD}/devices")
+    assert route.response_model is kopplungsrouter.AbgeholterSchluessel
+
+
+def test_das_bringende_geraet_bleibt_wie_es_ist(kein_cookie, bearer, db):
+    vorher = db.query(Sitzung).filter_by(art="geraet").one()
+    stand = (vorher.id, vorher.token_hash, vorher.geraet, vorher.gueltig_bis)
+
+    weiteres(kein_cookie, bearer)
+
+    db.expire_all()
+    alt = db.get(Sitzung, stand[0])
+    assert (alt.id, alt.token_hash, alt.geraet, alt.gueltig_bis) == stand
+
+
+def test_beide_lassen_sich_getrennt_trennen(klient, kein_cookie, bearer):
+    ipad = {"Authorization": f"Bearer {weiteres(kein_cookie, bearer).json()['key']}"}
+    zeilen = klient.get("/api/sitzungen").json()
+    eintrag = next(z for z in zeilen if z["geraet"] == "iPad von Alex")
+
+    assert klient.delete(f"/api/sitzungen/{eintrag['id']}").status_code == 204
+
+    assert kein_cookie.get(f"{PFAD}/me", headers=ipad).status_code == 401
+    assert kein_cookie.get(f"{PFAD}/me", headers=bearer).status_code == 200
+
+
+def test_das_erste_trennt_sich_und_das_weitere_bleibt(kein_cookie, bearer):
+    ipad = {"Authorization": f"Bearer {weiteres(kein_cookie, bearer).json()['key']}"}
+
+    assert kein_cookie.delete(f"{PFAD}/device", headers=bearer).status_code == 204
+
+    assert kein_cookie.get(f"{PFAD}/me", headers=bearer).status_code == 401
+    assert kein_cookie.get(f"{PFAD}/me", headers=ipad).status_code == 200
+
+
+@pytest.mark.parametrize("ohne", [None, ""])
+def test_ohne_namen_heisst_es_wie_nach_einer_kopplung(kein_cookie, bearer, ohne):
+    antwort = weiteres(kein_cookie, bearer, ohne)
+    ipad = {"Authorization": f"Bearer {antwort.json()['key']}"}
+
+    assert kein_cookie.get(f"{PFAD}/me", headers=ipad).json()["geraet"]["name"] == "iPhone"
+
+
+def test_der_name_wird_gereinigt_wie_beim_koppeln(kein_cookie, bearer, db):
+    weiteres(kein_cookie, bearer, "  iPad\x00\x1b von Alex  ")
+    namen = {z.geraet for z in db.query(Sitzung).filter_by(art="geraet")}
+    assert "iPad von Alex" in namen
+
+
+@pytest.mark.parametrize(
+    "kopf",
+    [
+        {},
+        {"Authorization": "Bearer nxa_gibt-es-nicht"},
+        {"Authorization": "Bearer"},
+        {"Authorization": "Basic abc"},
+    ],
+)
+def test_ohne_gueltigen_schluessel_kein_geraet(kein_cookie, token, db, kopf):
+    antwort = kein_cookie.post(f"{PFAD}/devices", headers=kopf, json={"device": "iPad"})
+
+    assert antwort.status_code == 401
+    assert antwort.json() == {"detail": "nicht_angemeldet"}
+    assert db.query(Sitzung).filter_by(art="geraet").count() == 1
+
+
+def test_ein_cookie_bringt_kein_geraet(klient, token, db):
+    assert klient.post(f"{PFAD}/devices", json={"device": "iPad"}).status_code == 401
+    assert db.query(Sitzung).filter_by(art="geraet").count() == 1
+
+
+def test_ein_getrenntes_geraet_bringt_keines_mehr(kein_cookie, bearer, db):
+    kein_cookie.delete(f"{PFAD}/device", headers=bearer)
+
+    assert weiteres(kein_cookie, bearer).status_code == 401
+    assert db.query(Sitzung).filter_by(art="geraet").count() == 0
+
+
+def test_hoechstens_fuenf_je_stunde_und_konto(kein_cookie, bearer, db, person):
+    from app.services import sitzung as sitzungsdienst
+
+    for i in range(app_kopplung.WEITERE_JE_STUNDE):
+        assert weiteres(kein_cookie, bearer, f"Gerät {i}").status_code == 200
+
+    zu_viel = weiteres(kein_cookie, bearer)
+
+    assert zu_viel.status_code == 429
+    warten = int(zu_viel.headers["retry-after"])
+    assert 3500 < warten <= 3600
+    assert zu_viel.json() == {
+        "detail": "app_zu_viele_geraete",
+        "werte": {"max": app_kopplung.WEITERE_JE_STUNDE},
+    }
+    assert db.query(Sitzung).filter_by(art="geraet").count() == 1 + app_kopplung.WEITERE_JE_STUNDE
+    assert kein_cookie.get(f"{PFAD}/me", headers=bearer).status_code == 200, "Das bittende bleibt."
+
+    # Gezählt wird je Konto: Ein anderes bringt weiter seine Geräte herein.
+    zweiter, _ = zweiten_benutzer_anlegen(db)
+    fremd = sitzungsdienst.geraet_anlegen(db, zweiter, "Fremdes iPhone", "")
+    assert weiteres(kein_cookie, {"Authorization": f"Bearer {fremd}"}).status_code == 200
+
+
+def test_nach_einer_stunde_geht_es_wieder(db, person):
+    for i in range(app_kopplung.WEITERE_JE_STUNDE):
+        app_kopplung.weiteres_geraet(db, person, f"Gerät {i}", "", jetzt=1000.0 + i)
+
+    with pytest.raises(app_kopplung.KopplungFehler) as fehler:
+        app_kopplung.weiteres_geraet(db, person, "zu viel", "", jetzt=1000.0 + 3599)
+    assert fehler.value.kennung == "app_zu_viele_geraete"
+    assert fehler.value.nochmal_in == 1
+
+    assert app_kopplung.weiteres_geraet(db, person, "wieder", "", jetzt=1000.0 + 3600).startswith("nxa_")
+
+
+def test_ein_abgewiesener_versuch_zaehlt_nicht(db, person):
+    app_kopplung.erlauben(db, False)
+    for _ in range(app_kopplung.WEITERE_JE_STUNDE + 2):
+        with pytest.raises(app_kopplung.KopplungFehler):
+            app_kopplung.weiteres_geraet(db, person, "zu", "", jetzt=1.0)
+    app_kopplung.erlauben(db, True)
+
+    assert app_kopplung.weiteres_geraet(db, person, "offen", "", jetzt=2.0).startswith("nxa_")
+
+
+def test_der_riegel_des_betreibers_gilt_auch_hier(klient, kein_cookie, bearer, db):
+    assert klient.put("/api/app-kopplung/erlaubt", json={"erlaubt": False}).status_code == 200
+
+    antwort = weiteres(kein_cookie, bearer)
+
+    assert antwort.status_code == 403
+    assert antwort.json()["detail"] == "app_abgeschaltet"
+    assert db.query(Sitzung).filter_by(art="geraet").count() == 1
+
+
+def test_der_dienst_fragt_den_riegel_selbst(db, person):
+    """⚠️ **Der zweite Riegel.** ``deps._sitzung`` sperrt die Fläche schon; der
+    Dienst fragt trotzdem, falls die Adresse je anders eingehängt wird."""
+    app_kopplung.erlauben(db, False)
+
+    with pytest.raises(app_kopplung.KopplungFehler) as fehler:
+        app_kopplung.weiteres_geraet(db, person, "iPad", "")
+
+    assert fehler.value.kennung == "app_abgeschaltet"
+    assert db.query(Sitzung).filter_by(art="geraet").count() == 0
+
+
 # --- /me ------------------------------------------------------------------- #
 
 
@@ -545,6 +731,7 @@ def test_me_nennt_postfaecher_fassung_und_faehigkeiten(kein_cookie, bearer, db, 
     assert antwort["postfaecher"][0]["id"] == konto.id
     assert antwort["geraet"]["name"] == "iPhone von Alex"
     assert "abbestellen" in antwort["faehigkeiten"]
+    assert "geraete" in antwort["faehigkeiten"], "POST /devices gibt es."
     assert "kurzfassung" not in antwort["faehigkeiten"], "Ab Werk zu."
     assert "umformulieren" not in antwort["faehigkeiten"]
 

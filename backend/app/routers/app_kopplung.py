@@ -43,6 +43,7 @@ def _status(fehler: KopplungFehler) -> int:
         "app_kopplung_unbekannt": status.HTTP_404_NOT_FOUND,
         "app_abgeschaltet": status.HTTP_403_FORBIDDEN,
         "app_zu_viele_kopplungen": status.HTTP_409_CONFLICT,
+        "app_zu_viele_geraete": status.HTTP_429_TOO_MANY_REQUESTS,
     }[fehler.kennung]
 
 
@@ -187,7 +188,9 @@ class AbgeholterSchluessel(BaseModel):
     account: AbgeholtesKonto
 
 
-def _antwort(token: str, person) -> JSONResponse:
+def antwort(token: str, person) -> JSONResponse:
+    """⚠️ **Eine Form für jeden neuen Geräteschlüssel**: QR-Code, kurzer Code und
+    ``POST /api/app/1/devices`` antworten gleich."""
     inhalt = AbgeholterSchluessel(
         key=token,
         account=AbgeholtesKonto(id=person.id, name=person.anzeigename or person.benutzername),
@@ -219,7 +222,7 @@ def mit_code(eingabe: CodeAbholen, request: Request, db: DbSession) -> JSONRespo
         wache.fehlgeschlagen()
         raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
     wache.geschafft()
-    return _antwort(token, person)
+    return antwort(token, person)
 
 
 @public_router.post(
@@ -251,4 +254,4 @@ def abholen(
         wache.fehlgeschlagen()
         raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
     wache.geschafft()
-    return _antwort(token, person)
+    return antwort(token, person)

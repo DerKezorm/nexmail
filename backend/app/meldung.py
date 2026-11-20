@@ -65,14 +65,25 @@ class MeldungHttp(HTTPException):
     umzubauen. Die Werte reisen deshalb in einem eigenen Feld daneben.
     """
 
-    def __init__(self, status_code: int, kennung: str, werte: dict[str, Any] | None = None):
-        super().__init__(status_code=status_code, detail=kennung)
+    def __init__(
+        self,
+        status_code: int,
+        kennung: str,
+        werte: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ):
+        super().__init__(status_code=status_code, detail=kennung, headers=headers)
         self.werte = werte or {}
 
     @classmethod
-    def aus(cls, fehler: Meldung, status_code: int | None = None) -> "MeldungHttp":
+    def aus(
+        cls,
+        fehler: Meldung,
+        status_code: int | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> "MeldungHttp":
         """Aus einer Dienst-Meldung eine Antwort machen."""
-        return cls(status_code or fehler.status, fehler.kennung, fehler.werte)
+        return cls(status_code or fehler.status, fehler.kennung, fehler.werte, headers)
 
 
 async def als_antwort(_request, fehler: HTTPException) -> JSONResponse:

@@ -382,6 +382,12 @@
     "senden_ab",
     "stand"
   ],
+  "POST /api/app/1/devices": [
+    "account",
+    "account.id",
+    "account.name",
+    "key"
+  ],
   "POST /api/app/1/drafts": [
     "uid"
   ],

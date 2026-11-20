@@ -25,7 +25,8 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -35,11 +36,13 @@ from ..deps import AktiveSitzung, AngemeldeterBenutzer, DbSession
 from ..meldung import MeldungHttp
 from ..models import Nachricht
 from ..services import abgleich, aenderungen, aliase as aliasdienst
-from ..services import kidienst
+from ..services import anmeldebremse, kidienst
+from ..services import app_kopplung as kopplungsdienst
 from ..services import konten as kontendienst
 from ..services import push as pushdienst
 from . import (
     absenderbild,
+    app_kopplung,
     aufgaben,
     aufgabenziele,
     ki,
@@ -122,11 +125,14 @@ def _faehigkeiten(db: DbSession, person) -> list[str]:
     # ``todoapps``: Die Adressen für Todo-Apps gibt es. Ob die Person eine
     # verbunden hat, sagt ``/task-apps``; verbunden wird nur im Browser.
     # ``aufgabenliste``: ``GET /tasks`` samt Abhaken, Entfernen und Abgleich.
+    # ``geraete``: ``POST /devices`` holt einem weiteren Gerät des Kontos einen
+    # eigenen Schlüssel.
     raus = [
         "abbestellen",
         "aenderungen",
         "aufgabenliste",
         "endgueltig_loeschen",
+        "geraete",
         "todoapps",
         "wiedervorlage",
     ]
@@ -176,6 +182,41 @@ def selbst_trennen(sitzung: AktiveSitzung, db: DbSession) -> None:
     """Die App trennt sich selbst; ihr Schlüssel gilt ab sofort nicht mehr."""
     db.delete(sitzung)
     db.commit()
+
+
+@router.post(
+    "/devices",
+    response_model=app_kopplung.AbgeholterSchluessel,
+    summary="A key of its own for another device of this account",
+    responses={
+        429: {"description": "`app_zu_viele_geraete`: too many in an hour, see `Retry-After`"}
+    },
+)
+def weiteres_geraet(
+    request: Request,
+    person: AngemeldeterBenutzer,
+    db: DbSession,
+    eingabe: app_kopplung.SchluesselAbholen | None = None,
+) -> JSONResponse:
+    """Ein gekoppeltes Gerät holt einem weiteren Gerät desselben Kontos einen
+    eigenen Schlüssel, etwa das iPad, das die Verbindung des iPhones im
+    iCloud-Schlüsselbund findet.
+
+    ⚠️ **Dieselbe Antwort wie eine Kopplung** (``app_kopplung.antwort``), damit
+    die App beide Wege gleich liest. Das neue Gerät steht danach unter eigenem
+    Namen in der Geräteliste; das bittende bleibt unverändert. Die Regeln stehen
+    in ``app_kopplung.weiteres_geraet``.
+    """
+    try:
+        token = kopplungsdienst.weiteres_geraet(
+            db, person, eingabe.device if eingabe else "", anmeldebremse.adresse_von(request)
+        )
+    except kopplungsdienst.KopplungFehler as fehler:
+        kopf = None
+        if isinstance(fehler, kopplungsdienst.GrenzeFehler):
+            kopf = {"Retry-After": str(fehler.nochmal_in)}
+        raise MeldungHttp.aus(fehler, app_kopplung._status(fehler), kopf) from fehler
+    return app_kopplung.antwort(token, person)
 
 
 # --- Lesen ----------------------------------------------------------------- #
@@ -547,6 +588,7 @@ ZUGESAGT = (
     "/api/app/1/compose/template/{nachricht_id}",
     "/api/app/1/contacts/suggest",
     "/api/app/1/device",
+    "/api/app/1/devices",
     "/api/app/1/drafts",
     "/api/app/1/drafts/{uid}",
     "/api/app/1/events",
