@@ -164,5 +164,20 @@
       "When the token runs out, enter a new one under “Renew token”; your tasks stay connected.",
       "If nextasks is on your local network, the operator has to allow that under Administration → Servers, as for webhooks and calendars."
     ]
+  },
+  "0.30.0": {
+    "lead": "nexmail has a new icon: an envelope.",
+    "sections": [
+      {
+        "title": "New icon",
+        "body": "The mark is now an envelope with a darker green frame. The logo follows light and dark mode, the browser tab follows your system and now shows the envelope instead of the nexapps mark. The icons for the home screen and the logo in system mails are new as well.",
+        "where": "Header, sign-in, browser tab, home screen and system mails"
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "The browser now asks before it uses icons, the manifest and the service worker again, so a new icon reaches an installed web app too.",
+      "The database does not change."
+    ]
   }
 }

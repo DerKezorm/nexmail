@@ -164,5 +164,20 @@
       "Läuft das Token ab, trägst du unter „Token erneuern“ ein neues ein; die Aufgaben bleiben verbunden.",
       "Liegt nextasks im eigenen Netz, muss der Betreiber das unter Verwaltung → Server erlauben, wie bei Webhooks und Kalendern."
     ]
+  },
+  "0.30.0": {
+    "lead": "nexmail hat ein neues Symbol: einen Umschlag.",
+    "sections": [
+      {
+        "title": "Neues Symbol",
+        "body": "Das Zeichen ist jetzt ein Umschlag mit dunklerem grünem Rahmen. Das Logo folgt dem hellen und dunklen Modus, der Browser-Tab folgt dem System und zeigt jetzt den Umschlag statt des nexapps-Zeichens. Auch die Symbole für den Home-Bildschirm und das Logo in den Systemmails sind neu.",
+        "where": "Kopfzeile, Anmeldung, Browser-Tab, Home-Bildschirm und Systemmails"
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Symbole, Manifest und Service Worker fragt der Browser jetzt vor dem Benutzen nach. So kommt ein neues Symbol auch in einer installierten Web-App an.",
+      "Die Datenbank ändert sich nicht."
+    ]
   }
 }
