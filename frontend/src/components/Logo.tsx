@@ -1,24 +1,12 @@
-/* Das nexmail-Zeichen.
+/* Das nexmail-Zeichen: ein Umschlag mit dunklerem gruenem Rahmen.
  *
- * Gebaut nach demselben Muster wie Nexviews Logo
- * (nexview/frontend/src/components/Logo.tsx): abgerundetes Quadrat, Kontur im
- * Farbverlauf, ein einziges gefuelltes Element darin, und daneben die
- * Wortmarke aus zwei Haelften - die erste neutral, die zweite im Akzent.
+ * Quelle aller Fassungen ist nexapps/icons-vergleich/neu.py (seit 21.11.2026,
+ * Vorbild nextasks). Dieselbe Form steht in public/favicon.svg,
+ * tools/symbole.mjs (Home-Bildschirm) und backend/app/vorlagen/logo-rastern.mjs
+ * (Systemmails). ⚠️ Wer sie hier aendert, aendert sie dort mit.
  *
- * Zwei Unterschiede, beide gewollt:
- *
- *   Rot wird Gruen. Nexview ist die Kino-App, nexmail gehoert zur
- *   Werkstatt - und nexmail bleibt beim nex-Gruen des nexapps-Systems,
- *   statt sich eine eigene Marke zu nehmen.
- *
- *   Aus der Blende mit Play-Dreieck wird ein Briefumschlag. Die gefuellte
- *   Klappe uebernimmt dabei die Rolle, die drueben das Dreieck hat: genau
- *   ein volles Element, damit das Zeichen auch bei 20 px noch etwas ist und
- *   nicht nur ein Gitter aus Strichen.
- *
- * Die Farbwerte stehen hier ausgeschrieben und nicht als Token. Ein Logo ist
- * eine Marke, kein Oberflaechenelement: Es sieht im hellen wie im dunklen
- * Modus gleich aus, sonst waere es zwei Logos.
+ * Die Farben kommen aus styles/index.css (``--nm-logo-…``) und folgen damit
+ * dem Modus der App: weisse Kachel im hellen, fast schwarze im dunklen.
  */
 
 type LogoProps = {
@@ -30,41 +18,32 @@ export function Logo({ className = 'h-8 w-8', withWordmark = false }: LogoProps)
   const zeichen = (
     <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
       <defs>
-        <linearGradient id="nexmail-mark" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#5fe4bb" />
-          <stop offset="55%" stopColor="#23d19e" />
-          <stop offset="100%" stopColor="#02543e" />
+        <linearGradient id="nexmail-mark" gradientUnits="userSpaceOnUse" x1="10" y1="10" x2="54" y2="54">
+          <stop offset="0" style={{ stopColor: 'var(--nm-logo-verlauf-1)' }} />
+          <stop offset=".5" style={{ stopColor: 'var(--nm-logo-verlauf-2)' }} />
+          <stop offset="1" style={{ stopColor: 'var(--nm-logo-verlauf-3)' }} />
         </linearGradient>
       </defs>
-
-      {/* Die Platte. Ein eigener, sehr dunkler Gruenton statt einer
-          Token-Flaeche: Das Zeichen muss auch auf hellem Grund stehen. */}
-      <rect x="2" y="2" width="60" height="60" rx="16" fill="#0d1614" />
+      <rect x="2" y="2" width="60" height="60" rx="16" style={{ fill: 'var(--nm-logo-grund)' }} />
       <rect
-        x="2"
-        y="2"
-        width="60"
-        height="60"
-        rx="16"
+        x="2.75"
+        y="2.75"
+        width="58.5"
+        height="58.5"
+        rx="15.3"
         fill="none"
-        stroke="url(#nexmail-mark)"
-        strokeWidth="2.5"
-        strokeOpacity=".55"
+        strokeWidth="1.5"
+        style={{ stroke: 'var(--nm-logo-rand)', strokeOpacity: 'var(--nm-logo-rand-deckung)' }}
       />
-
-      {/* Der Umschlag. */}
-      <rect
-        x="13"
-        y="20"
-        width="38"
-        height="24"
-        rx="4"
+      <rect x="12" y="18" width="40" height="28" rx="5" fill="none" stroke="url(#nexmail-mark)" strokeWidth="4.2" />
+      <path
+        d="M15 21.5 32 34.5 49 21.5"
         fill="none"
-        stroke="url(#nexmail-mark)"
-        strokeWidth="3.2"
+        strokeWidth="4.2"
+        strokeLinecap="round"
         strokeLinejoin="round"
+        style={{ stroke: 'var(--nm-logo-klappe)' }}
       />
-      <path d="M14.6 21.8 32 34.8 49.4 21.8Z" fill="url(#nexmail-mark)" />
     </svg>
   )
 

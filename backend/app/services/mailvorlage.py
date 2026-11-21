@@ -36,7 +36,7 @@ NEX_300 = "#5fe4bb"  # --accent-hover
 NEX_700 = "#007a58"
 NEX_900 = "#043226"
 GRAU_1000 = "#060909"  # --text-on-accent
-LOGO_PLATTE = "#0d1614"  # der Grund des Zeichens
+LOGO_PLATTE = "#ffffff"  # der Grund des Zeichens (helle Fassung)
 
 #: ⚠️ **Heller Grund, nicht dunkler.** Die Oberflaeche ist dunkel; eine Mail
 #: ist es nicht. Viele Clients hinterlegen fremdes HTML mit Weiss, und dann

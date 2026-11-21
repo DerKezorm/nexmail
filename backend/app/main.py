@@ -717,6 +717,24 @@ def _css_mit_vorbau(ordner: Path, basis: str | None = None) -> dict[str, str]:
 #: deshalb neu geholt.
 _INDEX_KOPF = {"Cache-Control": "no-cache"}
 
+#: Dateien aus ``frontend/public``: ohne Pruefsumme im Namen, und sie aendern
+#: sich mit einem Update (Manifest, Service Worker, Symbole, Favicon). Sie
+#: bekommen dasselbe ``no-cache``. ⚠️ Ohne das installierte Chrome nach einem
+#: neuen Symbol die Web-App mit dem alten aus dem eigenen Speicher (gesehen bei
+#: Nexview 1.11.2, auch nach Deinstallieren). ``test_oberflaeche_cache.py``
+#: prueft, dass jede Datei aus ``public`` hier steht.
+_STETS_NACHFRAGEN = frozenset(
+    {
+        "manifest.webmanifest",
+        "sw.js",
+        "favicon.svg",
+        "symbol-192.png",
+        "symbol-512.png",
+        "symbol-maskierbar-512.png",
+        "meldung-96.png",
+    }
+)
+
 _frontend = _statisches_verzeichnis()
 if _frontend is not None:
     # ⚠️ Einmal aufgeloest. ``_datei_im_haus`` vergleicht dagegen, und ein
@@ -750,6 +768,8 @@ if _frontend is not None:
         """
         datei = _datei_im_haus(_wurzel, pfad) if pfad else None
         if datei is not None:
+            if pfad in _STETS_NACHFRAGEN:
+                return FileResponse(datei, headers=_INDEX_KOPF)
             return FileResponse(datei)
         if _index is not None:
             return HTMLResponse(_index, headers=_INDEX_KOPF)

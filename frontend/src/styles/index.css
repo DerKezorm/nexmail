@@ -214,3 +214,26 @@ select optgroup {
   background-color: var(--surface-1);
   color: var(--text-1);
 }
+
+/* Die Farben des Zeichens (components/Logo.tsx), dunkle Fassung zuerst.
+   Dieselben Werte stehen in public/favicon.svg und tools/symbole.mjs. Bewusst
+   keine Tokens fuer Tailwind-Klassen. */
+:root {
+  --nm-logo-grund: #0a1512;
+  --nm-logo-rand: #23d19e;
+  --nm-logo-rand-deckung: 0.45;
+  --nm-logo-verlauf-1: #a7ecd3;
+  --nm-logo-verlauf-2: #1fbf8f;
+  --nm-logo-verlauf-3: #0d7f5e;
+  --nm-logo-klappe: #34d399;
+}
+
+[data-theme='light'] {
+  --nm-logo-grund: #ffffff;
+  --nm-logo-rand: #0e8f68;
+  --nm-logo-rand-deckung: 0.35;
+  --nm-logo-verlauf-1: #34c795;
+  --nm-logo-verlauf-2: #0e8f68;
+  --nm-logo-verlauf-3: #06513d;
+  --nm-logo-klappe: #12b886;
+}

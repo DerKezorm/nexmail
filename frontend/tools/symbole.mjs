@@ -23,42 +23,42 @@ import { mkdirSync } from 'node:fs'
    ⚠️ Wer es hier ändert, ändert es dort mit — sonst sieht die Systemmail
    anders aus als das Symbol auf dem Telefon. */
 const MARKE = `
-  <defs><linearGradient id="m" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0%" stop-color="#5fe4bb"/><stop offset="55%" stop-color="#23d19e"/>
-    <stop offset="100%" stop-color="#02543e"/></linearGradient></defs>
-  <rect x="13" y="20" width="38" height="24" rx="4" fill="none"
-        stroke="url(#m)" stroke-width="3.2" stroke-linejoin="round"/>
-  <path d="M14.6 21.8 32 34.8 49.4 21.8Z" fill="url(#m)"/>`
+  <defs><linearGradient id="m" gradientUnits="userSpaceOnUse" x1="10" y1="10" x2="54" y2="54">
+    <stop offset="0" stop-color="#34c795"/><stop offset=".5" stop-color="#0e8f68"/>
+    <stop offset="1" stop-color="#06513d"/></linearGradient></defs>
+  <rect x="12" y="18" width="40" height="28" rx="5" fill="none" stroke="url(#m)" stroke-width="4.2"/>
+  <path d="M15 21.5 32 34.5 49 21.5" fill="none" stroke="#12b886" stroke-width="4.2"
+        stroke-linecap="round" stroke-linejoin="round"/>`
 
-/** Das gewöhnliche Symbol: gerundete Kachel, Zeichen fast randlos. */
+/* Helle Fassung (weisse Kachel), wie das App-Symbol der iPhone-App. */
 function eckig(groesse) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"
     width="${groesse}" height="${groesse}">
-    <rect x="2" y="2" width="60" height="60" rx="16" fill="#0d1614"/>
-    <rect x="2" y="2" width="60" height="60" rx="16" fill="none"
-          stroke="url(#m)" stroke-width="2.5" stroke-opacity=".55"/>
+    <rect x="2" y="2" width="60" height="60" rx="16" fill="#fff"/>
+    <rect x="2.75" y="2.75" width="58.5" height="58.5" rx="15.3" fill="none"
+          stroke="#0e8f68" stroke-opacity=".35" stroke-width="1.5"/>
     ${MARKE}
   </svg>`
 }
 
-/** Das beschneidbare: volle Fläche, Zeichen in der sicheren Mitte. */
 function maskierbar(groesse) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"
     width="${groesse}" height="${groesse}">
-    <rect width="64" height="64" fill="#0d1614"/>
-    <g transform="translate(32 32) scale(0.72) translate(-32 -32)">${MARKE}</g>
+    <rect width="64" height="64" fill="#fff"/>
+    <g transform="translate(32 32) scale(0.78) translate(-32 -32)">${MARKE}</g>
   </svg>`
 }
 
-/* ⚠️ **Das Meldungssymbol ist einfarbig und wird eingefärbt.** Android legt
+/* ⚠️ **Das Abzeichen ist einfarbig und wird eingefärbt.** Android legt
    es als kleine Silhouette in die Statusleiste: Alles, was nicht durchsichtig
    ist, wird weiß. Ein farbiges Bild wird dort zu einem weißen Klotz. */
 function silhouette(groesse) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"
     width="${groesse}" height="${groesse}">
-    <rect x="13" y="20" width="38" height="24" rx="4" fill="none"
-          stroke="#ffffff" stroke-width="3.6" stroke-linejoin="round"/>
-    <path d="M14.6 21.8 32 34.8 49.4 21.8Z" fill="#ffffff"/>
+    <rect x="10" y="16" width="44" height="32" rx="6" fill="none"
+          stroke="#ffffff" stroke-width="5"/>
+    <path d="M14 20.5 32 34.5 50 20.5" fill="none" stroke="#ffffff" stroke-width="5"
+          stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`
 }
 

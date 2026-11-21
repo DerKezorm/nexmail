@@ -29,6 +29,7 @@ def mit_oberflaeche(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     (tmp_path / "assets" / "x.js").write_text("console.log(1)", encoding="utf-8")
+    (tmp_path / "symbol-192.png").write_bytes(b"erfunden")
 
     import app.config
     import app.main
@@ -66,3 +67,21 @@ def test_die_stuecke_bleiben_zwischenspeicherbar(mit_oberflaeche):
     antwort = mit_oberflaeche.get("/assets/x.js")
     assert antwort.status_code == 200
     assert antwort.headers.get("cache-control") != "no-cache"
+
+
+def test_ein_symbol_wird_jedes_mal_nachgefragt(mit_oberflaeche):
+    """Sonst installiert Chrome die Web-App nach einem neuen Symbol mit dem
+    alten aus dem eigenen Speicher."""
+    antwort = mit_oberflaeche.get("/symbol-192.png")
+    assert antwort.status_code == 200
+    assert antwort.headers.get("cache-control") == "no-cache"
+
+
+def test_jede_datei_aus_public_wird_nachgefragt():
+    from pathlib import Path
+
+    from app.main import _STETS_NACHFRAGEN
+
+    public = Path(__file__).resolve().parents[2] / "frontend" / "public"
+    dateien = {p.name for p in public.iterdir() if p.is_file()}
+    assert dateien and dateien <= _STETS_NACHFRAGEN, sorted(dateien - _STETS_NACHFRAGEN)
