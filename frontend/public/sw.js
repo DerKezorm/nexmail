@@ -39,8 +39,8 @@ self.addEventListener('push', (ereignis) => {
   ereignis.waitUntil(
     self.registration.showNotification(titel, {
       body: daten.text || '',
-      icon: 'symbol-192.png',
-      badge: 'meldung-96.png',
+      icon: 'symbol-192.png?v=2',
+      badge: 'meldung-96.png?v=2',
       /* Gleiche Marke ersetzt statt zu stapeln — sonst steht nach einer Nacht
          ein Turm gleichlautender Meldungen da. */
       tag: daten.marke || 'nexmail',

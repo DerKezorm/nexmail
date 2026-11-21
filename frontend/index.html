@@ -2,7 +2,13 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      ⚠️ ?v=2 seit dem neuen Symbol (0.30.0): Browser hatten das alte Favicon
+      ohne Cache-Angabe gespeichert und zeigten es weiter. Eine neue Adresse
+      umgeht diesen Eintrag. Bei einem neuen Symbol die Zahl erhöhen, hier, im
+      Manifest und in sw.js.
+    -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!--
       ⚠️ Absolut, nicht relativ: Der Server schreibt beim Start jedes
@@ -18,7 +24,7 @@
     -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="nexmail" />
-    <link rel="apple-touch-icon" href="/symbol-192.png" />
+    <link rel="apple-touch-icon" href="/symbol-192.png?v=2" />
     <meta name="theme-color" content="#0b0f0f" />
     <title>nexmail</title>
   </head>

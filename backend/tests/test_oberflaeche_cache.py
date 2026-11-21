@@ -85,3 +85,10 @@ def test_jede_datei_aus_public_wird_nachgefragt():
     public = Path(__file__).resolve().parents[2] / "frontend" / "public"
     dateien = {p.name for p in public.iterdir() if p.is_file()}
     assert dateien and dateien <= _STETS_NACHFRAGEN, sorted(dateien - _STETS_NACHFRAGEN)
+
+
+def test_ein_symbol_mit_kennung_wird_genauso_nachgefragt(mit_oberflaeche):
+    """``?v=2`` hängt an den Adressen, damit alte Einträge im Browser nicht greifen."""
+    antwort = mit_oberflaeche.get("/symbol-192.png?v=2")
+    assert antwort.status_code == 200
+    assert antwort.headers.get("cache-control") == "no-cache"
