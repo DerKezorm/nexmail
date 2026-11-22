@@ -215,5 +215,30 @@
       "The wordmark at the top left is the same as in the other nex apps.",
       "On start, two columns for the profile picture are added. Going back to 0.30 works as is."
     ]
+  },
+  "0.31.1": {
+    "lead": "Polish for 0.31.0: mailbox groups can be put in order, switches look like in the other nex apps, and unsaved changes no longer get lost silently.",
+    "sections": [
+      {
+        "title": "Order the tabs yourself",
+        "where": "Mailbox groups above the folder column and the list",
+        "body": "Drag a tab to where you want it. The order is stored with your account and applies on all your devices. “All” stays first."
+      },
+      {
+        "title": "Switches as ticks",
+        "where": "Settings, everywhere",
+        "body": "Ticks replace the sliding switches, as in nexnotes and nextasks: name and explanation on the left, the tick on the right. Where a card already says what it is about, only the tick stands on the right."
+      },
+      {
+        "title": "Asked before discarding",
+        "where": "Settings → Mailboxes → Edit",
+        "body": "If you changed something in the mailbox window and did not save it, nexmail asks before closing, whether by the cross, Escape or a click beside it."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "A subtle line separates the favourites from the mailboxes.",
+      "On start, a column for the order of the tabs is added."
+    ]
   }
 }

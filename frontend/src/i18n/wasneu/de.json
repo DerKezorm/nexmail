@@ -215,5 +215,30 @@
       "Der Schriftzug oben links ist derselbe wie in den anderen nex-Apps.",
       "Beim Start kommen zwei Spalten für das Profilbild dazu. Ein Rückweg auf 0.30 geht ohne Weiteres."
     ]
+  },
+  "0.31.1": {
+    "lead": "Feinschliff an 0.31.0: Die Postfachgruppen lassen sich sortieren, Schalter sehen aus wie in den anderen nex-Apps, und ungespeicherte Änderungen gehen nicht mehr still verloren.",
+    "sections": [
+      {
+        "title": "Reiter selbst sortieren",
+        "where": "Postfachgruppen über Ordnerspalte und Liste",
+        "body": "Zieh einen Reiter an die Stelle, an der du ihn haben willst. Die Reihenfolge wird an deinem Konto gespeichert und gilt auf allen Geräten. „Alle“ bleibt vorn."
+      },
+      {
+        "title": "Schalter als Haken",
+        "where": "Einstellungen, überall",
+        "body": "Statt Schiebeschaltern stehen jetzt Haken da, wie in nexnotes und nextasks: links Name und Erklärung, rechts der Haken. Wo eine Karte schon sagt, worum es geht, steht rechts nur noch der Haken."
+      },
+      {
+        "title": "Nachfrage vor dem Verwerfen",
+        "where": "Einstellungen → Postfächer → Bearbeiten",
+        "body": "Hast du im Postfach-Fenster etwas geändert und nicht gespeichert, fragt nexmail vor dem Schließen nach, egal ob per Kreuz, Escape oder Klick daneben."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Eine dezente Linie trennt die Favoriten von den Postfächern.",
+      "Beim Start kommt eine Spalte für die Reihenfolge der Reiter dazu."
+    ]
   }
 }
