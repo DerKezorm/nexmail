@@ -159,7 +159,10 @@ export function Postfachgruppen({
                 (an
                   ? 'z-10 border-accent bg-surface-1 text-accent-text'
                   : 'border-line bg-surface-2 text-fg-3 hover:bg-surface-3 hover:text-fg-1') +
-                (ziehbar ? ' cursor-grab active:cursor-grabbing' : '') +
+                /* ⚠️ **Die Hand erst beim Drücken.** Ein Reiter ist zuerst ein
+                   Klick; die Hand schon beim Drüberfahren sagte „nur ziehen"
+                   (gemeldet am 22.11.2026). */
+                (ziehbar ? ' active:cursor-grabbing' : '') +
                 (gezogen === w ? ' opacity-50' : '') +
                 (ueber === w ? ' ring-2 ring-accent/50' : '')
               }
