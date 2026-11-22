@@ -179,5 +179,41 @@
       "Symbole, Manifest und Service Worker fragt der Browser jetzt vor dem Benutzen nach. So kommt ein neues Symbol auch in einer installierten Web-App an.",
       "Die Datenbank ändert sich nicht."
     ]
+  },
+  "0.31.0": {
+    "lead": "Die Einstellungen sind neu geordnet, gelöschte Mails verschwinden sofort, und die Postfachgruppen stehen als Reiter über der Liste.",
+    "sections": [
+      {
+        "title": "Eine Einstellungsseite für alles",
+        "where": "Benutzermenü oben rechts → Einstellungen, oder das Zahnrad unten links",
+        "body": "Links steht dein Konto, darunter „Mein Konto“, „Mail“ und für den Betreiber „Server“, ganz unten „Über nexmail“. Die Verwaltung, die KI-Seite und die Über-Seite sind keine eigenen Punkte der Leiste mehr, sondern Bereiche darin. Was wo stand, steht jetzt hier: Verwaltung unter „Server“, Todo-Apps, iPhone-App und API-Schlüssel unter „Verbindungen“, die KI unter „Mail“. „Über nexmail“ sieht jetzt jeder."
+      },
+      {
+        "title": "Profil mit Bild und Name",
+        "where": "Einstellungen → Profil",
+        "body": "Du kannst ein Profilbild hochladen und deinen Namen ändern. Die Mailadresse für Kontosachen steht jetzt hier statt unter Sicherheit, dazu die Sprache und „Abmelden“. Hell und Dunkel stehen unter „Darstellung“; oben rechts sind die beiden Schalter weg."
+      },
+      {
+        "title": "Löschen ohne Warten",
+        "where": "Mailliste: Entf, E, Verschieben und Wischen",
+        "body": "Eine gelöschte, archivierte oder verschobene Mail verschwindet sofort, und „Rückgängig“ steht im selben Moment da. Der Server arbeitet dahinter weiter. Lehnt er ab, kommt die Mail zurück, und die Meldung sagt warum. Die Rückgängig-Leiste ist jetzt grün und auf heller Liste gut zu sehen."
+      },
+      {
+        "title": "Postfachgruppen als Reiter",
+        "where": "Über Ordnerspalte und Liste",
+        "body": "Die Schlagworte deiner Postfächer, etwa „privat“ und „arbeit“, stehen als Reiter direkt über dem, was sie filtern, mit der Zahl ungelesener Mails. Vorher waren es kleine Knöpfe oben in der Ordnerspalte."
+      },
+      {
+        "title": "Strg+A markiert alle",
+        "where": "Mailliste",
+        "body": "Strg+A, am Mac Cmd+A, markiert alle geladenen Mails der Liste. Danach wirken Entf, E und das Kontextmenü auf alle. Im Suchfeld und in einer geöffneten Mail markiert Strg+A wie gewohnt Text."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Reißt die Verbindung beim Lesen der Ordnerliste ab, läuft der Abgleich mit den bekannten Ordnern weiter, statt für dieses Postfach auszufallen. Im Log steht das nicht mehr als Fehler.",
+      "Der Schriftzug oben links ist derselbe wie in den anderen nex-Apps.",
+      "Beim Start kommen zwei Spalten für das Profilbild dazu. Ein Rückweg auf 0.30 geht ohne Weiteres."
+    ]
   }
 }

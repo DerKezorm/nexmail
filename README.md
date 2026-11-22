@@ -26,7 +26,7 @@ Roundcube is webmail bolted onto one mailbox. Thunderbird does not run in a
 browser. Commercial clients want to pull your mail onto their servers. nexmail
 is the third option — and if you can use Outlook, you should feel at home.
 
-> **Version 0.30.1.** It reads, writes, searches, sorts, labels, sends,
+> **Version 0.31.0.** It reads, writes, searches, sorts, labels, sends,
 > schedules, prints, answers for you while you are away, keeps a calendar and
 > your address books in sync with iCloud or Google, invites people to your own
 > appointments, rephrases a draft with an AI service of your choice, backs
@@ -106,7 +106,7 @@ reach lets you conclude a message does not exist.
 **Tasks.** Turn a message into a task, tick it off, drag it into order, give it
 a due date. The task survives its message: if the mail is moved from your phone,
 the task follows it by `Message-ID`; if the mail is deleted, the task stays and
-says so. Each user can connect their own Todoist account under *Settings → Tasks*
+says so. Each user can connect their own Todoist account under *Settings → Connections*
 and send tasks to a Todoist list instead. Only the title, the due date, the
 sender and a link back to the mail go there, never the text of the mail. Ticking
 a task in nexmail closes it in Todoist, and what you complete, reschedule or
@@ -117,7 +117,7 @@ section. nexmail checks the token against `/api/v1/me` before it saves anything,
 sends each message at most once (nextasks' `external_ref`), and sees completed,
 reopened, rescheduled and binned tasks within a few minutes; when the token runs
 out, *Renew token* keeps your tasks connected. A nextasks on your local network
-needs the operator's permission under *Administration → Servers*, as webhooks and
+needs the operator's permission under *Settings → Server → General*, as webhooks and
 calendars do. For tools of your own there is a webhook target: nexmail posts
 each task as signed JSON to an address you choose (see
 [Webhooks for tasks](#webhooks-for-tasks)).
@@ -182,7 +182,7 @@ would stay in their calendars and they would turn up.
 **Calendar.** Month, week and day, with your own calendars in nexmail or
 connected over CalDAV to iCloud, Nextcloud or anything else that speaks it.
 A server on your own network or VPN is refused until the operator allows it
-under *Administration → Server*; the same switch covers address books and
+under *Settings → Server → General*; the same switch covers address books and
 subscribed calendars.
 Google works too, through the same consent you gave for the mailbox. Recurring
 events are stored once and worked out for the window on screen, so a *every
@@ -216,11 +216,11 @@ password for IMAP and SMTP, so nexmail signs in with OAuth. Two levels, kept
 apart on purpose: the operator registers one app with the provider, every user
 gives consent for their own mailbox. No secret ships with nexmail — the
 repository is public, and both providers revoke a key they find in one, so
-each operator registers their own. The administration page says so plainly
+each operator registers their own. The Server section of the settings says so plainly
 rather than letting you guess why nothing works.
 
 **Rephrasing with AI, if you want it.** Every user can connect their own AI
-service on the *AI* page: an address, a key and a model. nexmail knows no
+service under *Settings → AI*: an address, a key and a model. nexmail knows no
 provider; anything that speaks the common chat completions interface works,
 from Claude, Gemini or OpenAI to Ollama on a machine in your own network. A
 service in your own network is asked not to think (`reasoning_effort: "none"`),
@@ -229,7 +229,7 @@ on its thoughts; a server that does not know the field is asked once more
 without it. In
 the editor it fixes spelling, translates, or rephrases in one of nine tones,
 and shows old and new side by side before anything is replaced. Quotes and
-your signature are never sent, and the AI page lists verbatim what went out.
+your signature are never sent, and that page lists verbatim what went out.
 Off by default, and the operator can block it for the whole installation or
 for single accounts.
 
@@ -362,7 +362,7 @@ Everything is under `/data`:
 
 ### Backup and restore
 
-Under *Administration → Backup*. Two things live there, and telling them apart
+Under *Settings → Server → Storage and backups*. Two things live there, and telling them apart
 matters when it counts:
 
 **Restore points** are complete copies next to the database, made automatically
@@ -422,7 +422,7 @@ offers no notifications.
 
 nexmail speaks OpenID Connect: authentik, Microsoft Entra ID, Keycloak,
 Authelia, Pocket ID and anything else that follows the spec. Everything lives
-under *Administration → Sign-in*, in three cards:
+under *Settings → Server → Sign-in*, in three cards:
 
 1. **Sign-in.** *Sign-in with a password* can be switched off once a provider is
    active; then the sign-in page shows only the provider buttons. You as the
@@ -492,8 +492,8 @@ nexmail does not need one.
 
 ## Several people
 
-Invite them under *Administration → Users*. nexmail sends the invitation itself,
-which needs an outgoing mail server of its own under *Administration → Server* —
+Invite them under *Settings → Server → Accounts*. nexmail sends the invitation itself,
+which needs an outgoing mail server of its own under *Settings → Server → Mail* —
 deliberately not the operator's mailbox, so that removing that mailbox does not
 take the invitations with it.
 
@@ -507,7 +507,7 @@ when it is used. The operator role can be handed on to another user, after
 confirming with your own password, so an installation never ends up without
 someone who can administer it.
 
-![Administration with users and open invitations](docs/screenshots/verwaltung-en.webp)
+![Server settings with users and open invitations](docs/screenshots/verwaltung-en.webp)
 
 Every user has their own mailboxes, contacts, rules and signatures. A guard test
 walks the entire route table and checks that no address answers without
@@ -518,7 +518,7 @@ authentication and none hands out another user's data.
 A dashboard such as nexdeck can show how many unread messages are waiting and,
 if you allow it, sender and subject of the latest ones. It reads them with an
 API key that each user creates for their own mailboxes under
-*Settings → API keys*.
+*Settings → Connections*.
 
 **Off by default.** API keys are a way out of nexmail, so the operator decides
 whether they exist on an installation at all, with a switch on the same page.
@@ -559,7 +559,7 @@ nexmail's last sync with the mail server.
 
 ## Webhooks for tasks
 
-Under *Settings → Tasks* each user can connect a webhook next to Todoist. It
+Under *Settings → Connections* each user can connect a webhook next to Todoist. It
 then shows up as a list in *Turn into task*, and nexmail sends the task as a
 `POST` with a JSON body to your address. Before it saves the webhook, nexmail
 sends a `ping` and keeps the address only if it answers with 2xx; *Send test*
@@ -602,7 +602,7 @@ to the task in nexmail.
 
 **The text of the message** (`text`, `html`, `text_truncated` under `message`)
 is only sent if the user turns it on for the webhook *and* the operator allows
-it under *Administration → Server*. It is off by default, because on a shared
+it under *Settings → Server → General*. It is off by default, because on a shared
 installation any user can enter any address. `html` is the cleaned HTML nexmail
 shows itself, without scripts; very long messages are cut, and `text_truncated`
 says so.
@@ -657,7 +657,7 @@ without the option gets `403`. Tag changes send no event to the webhook.
 
 **Addresses.** Only `http` and `https`, no credentials in the URL, and
 redirects are not followed. Addresses on the local network work only after the
-operator allows them under *Administration → Server* (the same switch as for
+operator allows them under *Settings → Server → General* (the same switch as for
 calendar servers). `localhost` never works: inside the container it is nexmail
 itself. If your tool runs on the same host as the nexmail container, use the
 host's address on your network, for example `http://10.0.0.20:8080/hook`.

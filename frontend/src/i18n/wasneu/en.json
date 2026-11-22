@@ -179,5 +179,41 @@
       "The browser now asks before it uses icons, the manifest and the service worker again, so a new icon reaches an installed web app too.",
       "The database does not change."
     ]
+  },
+  "0.31.0": {
+    "lead": "The settings are reorganised, deleted mail disappears at once, and mailbox groups sit as tabs above the list.",
+    "sections": [
+      {
+        "title": "One settings page for everything",
+        "where": "User menu at the top right → Settings, or the gear at the bottom left",
+        "body": "Your account is at the top left, then “My account”, “Mail” and, for the operator, “Server”, with “About nexmail” at the end. Administration, the AI page and the About page are no longer entries of their own in the rail but sections in there. Administration is now “Server”, to-do apps, the iPhone app and API keys are under “Connections”, and AI is under “Mail”. Everyone can see “About nexmail” now."
+      },
+      {
+        "title": "Profile with picture and name",
+        "where": "Settings → Profile",
+        "body": "You can upload a profile picture and change your name. The email address for account matters is here now instead of under Security, along with the language and “Sign out”. Light and dark are under “Appearance”; the two switches at the top right are gone."
+      },
+      {
+        "title": "Deleting without waiting",
+        "where": "Message list: Delete, E, Move and swipe",
+        "body": "A deleted, archived or moved message disappears at once, and “Undo” shows at the same moment. The server keeps working behind it. If it refuses, the message comes back and the notice says why. The undo bar is green now and easy to see on a light list."
+      },
+      {
+        "title": "Mailbox groups as tabs",
+        "where": "Above the folder column and the list",
+        "body": "The tags of your mailboxes, such as “private” and “work”, sit as tabs right above what they filter, with the number of unread messages. Before, they were small buttons at the top of the folder column."
+      },
+      {
+        "title": "Ctrl+A selects all",
+        "where": "Message list",
+        "body": "Ctrl+A, Cmd+A on a Mac, selects all loaded messages in the list. Delete, E and the context menu then act on all of them. In the search field and in an open message, Ctrl+A selects text as usual."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "If the connection drops while the folder list is read, the sync carries on with the folders it knows instead of skipping that mailbox. The log no longer reports this as an error.",
+      "The wordmark at the top left is the same as in the other nex apps.",
+      "On start, two columns for the profile picture are added. Going back to 0.30 works as is."
+    ]
   }
 }
