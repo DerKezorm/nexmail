@@ -19,13 +19,14 @@ holt, hängt beim Ziel an, sieht nach und löscht erst dann bei der Quelle.
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..models import Konto, Nachricht, Ordner, utcnow
-from . import abgleich, imap as imapdienst, konten as kontendienst
+from . import abgleich, ereignisse, imap as imapdienst, konten as kontendienst
 from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.handeln")
@@ -173,18 +174,6 @@ def _ein_ordner(
         try:
             klient.select_folder(quelle.pfad, readonly=False)
             _verschieben_auf_dem_server(klient, uids, ziel.pfad)
-
-            # ⚠️ **Den Zielordner gleich nachziehen.** Der Zug ist auf dem
-            # Server erledigt, aber nexmails Datenbank weiß nichts davon - und
-            # die Oberfläche liest nur von dort. Ohne diesen Abgleich
-            # verschwindet die Nachricht aus der Liste und taucht im
-            # Papierkorb erst auf, wenn jemand von Hand aktualisiert. Wer eine
-            # Mail löscht und sie nirgends wiederfindet, hält das für
-            # Datenverlust - zu Recht.
-            #
-            # Auf derselben Verbindung und unter demselben Schloss: Apple
-            # erlaubt nur eine IMAP-Verbindung je Postfach.
-            abgleich.ordner_abgleichen(klient, db, konto, ziel)
         finally:
             try:
                 klient.logout()
@@ -213,6 +202,19 @@ def _ein_ordner(
     db.commit()
 
     logger.info("%s message(s) moved from %s to %s.", len(uids), quelle.pfad, ziel.pfad)
+
+    # ⚠️ **Den Zielordner nachziehen, aber danach und ohne darauf zu warten.**
+    # Ohne Abgleich taucht die Mail im Papierkorb erst beim nächsten Takt auf,
+    # und wer eine gelöschte Mail nirgends wiederfindet, hält das für
+    # Datenverlust. Bis zum 22.11.2026 lief er hier mitten in der Anfrage: Von
+    # gemessenen 1,4 s für ein Löschen waren 0,8 s dieser Abgleich, bei einem
+    # vollen Papierkorb mehr (gemeldet: „Löschen dauert relativ lange"). Jetzt
+    # antwortet die Anfrage nach dem MOVE; der Abgleich holt sich das Schloss
+    # selbst (Apple erlaubt nur eine Verbindung je Postfach) und meldet der
+    # Oberfläche über `ereignisse`, wenn er fertig ist. „Rückgängig" hängt nicht
+    # daran: Es sucht im Ziel über die Message-ID beim Server.
+    ziel_nachziehen(konto.id, ziel.id, db=None if NACHZIEHEN_IM_FADEN else db)
+
     return Rueckweg(
         konto_id=konto.id,
         quelle_pfad=quelle.pfad,
@@ -220,6 +222,59 @@ def _ein_ordner(
         message_ids=message_ids,
         text=text,
     )
+
+
+#: Ob `ziel_nachziehen` im eigenen Faden läuft. Die Tests stellen es ab
+#: (`conftest.py`), damit der Zielordner danach feststeht.
+NACHZIEHEN_IM_FADEN = True
+
+
+def ziel_nachziehen(konto_id: str, ordner_id: int, db: Session | None = None) -> None:
+    """Einen Ordner nach einem Zug auf Stand bringen, ohne dass jemand wartet.
+
+    Scheitert es (Netz, Server), bleibt es dem nächsten Takt: Die Mail liegt
+    auf dem Server, sie fehlt nur ein paar Minuten in nexmails Ansicht des
+    Zielordners. Deshalb INFO, kein Fehler.
+    """
+
+    def lauf(sitzung: Session) -> None:
+        konto = sitzung.get(Konto, konto_id)
+        ordner = sitzung.get(Ordner, ordner_id)
+        if konto is None or ordner is None:
+            return
+        with abgleich.HALTER.schloss(konto.id):
+            klient = imapdienst.fuer_konto(sitzung, konto)
+            try:
+                abgleich.ordner_abgleichen(klient, sitzung, konto, ordner)
+            finally:
+                try:
+                    klient.logout()
+                except Exception:  # noqa: BLE001
+                    pass
+        sitzung.commit()
+        ereignisse.melden(konto.benutzer_id)
+
+    def im_faden() -> None:
+        from ..db import SessionLocal
+
+        # ⚠️ Zurücksetzen, nicht nur setzen: Läuft das nicht im eigenen Faden
+        # (Tests rufen `target` direkt), erbte sonst alles danach die Frist.
+        token = abgleich.SCHLOSS_FRIST.set(abgleich.HINTERGRUND_FRIST)
+        try:
+            with SessionLocal() as sitzung:
+                lauf(sitzung)
+        except Exception as fehler:  # noqa: BLE001 - niemand wartet darauf
+            logger.info(
+                "The target folder was not refreshed right away (%s); the next sync does it.",
+                type(fehler).__name__,
+            )
+        finally:
+            abgleich.SCHLOSS_FRIST.reset(token)
+
+    if db is not None:
+        lauf(db)
+        return
+    threading.Thread(target=im_faden, name="nexmail-ziel-nachziehen", daemon=True).start()
 
 
 def ueber_konten(

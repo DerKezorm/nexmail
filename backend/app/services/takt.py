@@ -374,7 +374,11 @@ def einmal() -> dict[str, int]:
                 # ``imap`` selbst als Verbindungsfehler meldet, ist erwartet.
                 # Alles andere ist unerwartet und bekommt seinen Rueckverfolg.
                 if isinstance(fehler, imapdienst.Verbindungsfehler):
-                    logger.info("Background sync skipped %s: %s", kurz(adresse), fehler)
+                    # ``roh`` dazu: Der Satz allein sagt bei jedem ``OSError`` „nimmt
+                    # keine Verbindung an", auch bei einem Reset mitten im Gespräch.
+                    logger.info(
+                        "Background sync skipped %s: %s (%s)", kurz(adresse), fehler, fehler.roh
+                    )
                 else:
                     logger.exception(
                         "Background sync hit an unexpected error on %s.", kurz(adresse)

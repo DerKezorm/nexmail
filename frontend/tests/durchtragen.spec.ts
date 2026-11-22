@@ -14,7 +14,7 @@
  * Und: Jeder Test räumt hinterher auf. Sie laufen gegen ein echtes Postfach.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { anmelden, rechtsklick, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, rechtsklick, zuEinstellungen } from './hilfen'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -74,7 +74,7 @@ test('Regel anlegen, wiederfinden, entfernen', async ({ page }) => {
   const roh = keineRohenMeldungen(page)
   const name = 'ZZ-Probe-Regel'
 
-  await page.getByRole('tab', { name: 'Regeln' }).click()
+  await bereich(page, 'Regeln')
   await page.getByRole('button', { name: 'Neue Regel' }).click()
 
   await page.getByRole('textbox', { name: 'Name' }).fill(name)
@@ -101,7 +101,7 @@ test('Signatur anlegen, wiederfinden, entfernen', async ({ page }) => {
   const roh = keineRohenMeldungen(page)
   const name = 'ZZ-Probe-Signatur'
 
-  await page.getByRole('tab', { name: 'Signaturen' }).click()
+  await bereich(page, 'Signaturen')
   await page.getByRole('button', { name: 'Neue Signatur' }).click()
 
   await page.getByRole('textbox', { name: 'Name' }).fill(name)
@@ -248,10 +248,11 @@ test('Schlagwort vergeben, umschalten, wieder wegnehmen', async ({ page }, info)
   // was der Server behalten hat — und ein gar nicht gespeichertes Schlagwort
   // bestünde ihn.
   await page.reload()
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
 
-  const umschalter = page.getByRole('group', { name: /Schlagwort|tag/i })
-  await expect(umschalter, 'Der Umschalter über der Ordnerspalte fehlt.').toBeVisible()
+  // Seit dem 22.11.2026 Reiter über der Mail-Ansicht, nicht mehr Pillen im Baum.
+  const umschalter = page.getByTestId('postfachgruppen')
+  await expect(umschalter, 'Die Reiter der Postfachgruppen fehlen.').toBeVisible()
 
   const postfaecher = page.locator('section').filter({ hasText: 'Posteingang' })
 
@@ -267,7 +268,7 @@ test('Schlagwort vergeben, umschalten, wieder wegnehmen', async ({ page }, info)
     .toBeGreaterThan(1)
   const vorher = await postfaecher.count()
 
-  await umschalter.getByRole('button', { name: wort, exact: true }).click()
+  await umschalter.getByRole('tab', { name: new RegExp(`^${wort}`) }).click()
   await expect
     .poll(() => postfaecher.count(), {
       message: `Nach dem Umschalten auf „${wort}" stehen unverändert ${vorher} Postfächer da — der Umschalter filtert nicht.`,
@@ -310,7 +311,7 @@ test('Schlagwort vergeben, umschalten, wieder wegnehmen', async ({ page }, info)
     .toBe(true)
 
   // Aufräumen: Schlagwort wieder weg, sonst findet der nächste Lauf es vor.
-  await umschalter.getByRole('button', { name: 'Alle', exact: true }).click()
+  await umschalter.getByRole('tab', { name: /^Alle/ }).click()
   await zuEinstellungen(page)
   await page.getByRole('button', { name: 'Bearbeiten' }).first().click()
   await page.getByRole('button', { name: `„${wort}" entfernen` }).click()
@@ -343,7 +344,7 @@ test('Ältere Nachrichten lassen sich nachladen', async ({ page }, info) => {
   await page.waitForTimeout(800)
   const vorher = await page.getByRole('checkbox').count()
 
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
   await page.getByRole('button', { name: /Alle Posteingänge|All inboxes/ }).click()
 
   const zeilen = page.locator('button[draggable="true"]')
@@ -424,7 +425,7 @@ test('Aus einer Mail wird eine Aufgabe, und sie lässt sich abhaken', async ({ p
   await expect(leiste, 'In der Leiste fehlt „Aufgaben".').toBeVisible()
   const vorher = 0
 
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
   await page.getByRole('button', { name: /Alle Posteingänge|All inboxes/ }).click()
 
   const zeilen = page.locator('button[draggable="true"]')
@@ -465,7 +466,7 @@ test('Aus einer Mail wird eine Aufgabe, und sie lässt sich abhaken', async ({ p
   await page.getByRole('button', { name: /Aufgabe entfernen|Remove task/ }).first().click()
   await expect(page.getByRole('checkbox')).toHaveCount(vorher, { timeout: 10_000 })
 
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
   await expect.poll(() => zeilen.count(), { timeout: 20_000 }).toBeGreaterThan(0)
 })
 
@@ -476,7 +477,7 @@ test('Gespräche fassen zusammen und lassen sich aufklappen', async ({ page }, i
      einem zugeklappten Strang, und man merkt es erst, wenn man sie sucht.
      Deshalb prüft der Test beide Richtungen: Der Umschalter fasst wirklich
      zusammen — **und** das Aufgeklappte bringt die Nachricht zurück. */
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
   await page.getByRole('button', { name: /Alle Posteingänge|All inboxes/ }).click()
 
   const zeilen = page.locator('button[draggable="true"]')
@@ -524,13 +525,13 @@ test('„Als gelesen" lässt sich auf „nur von Hand" stellen', async ({ page }
      gespeichert wird und nichts tut, ist schlimmer als keine — der Betreiber
      stellt etwas ein, nichts passiert, und er sucht den Fehler bei sich. */
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Darstellung' }).click()
+  await bereich(page, 'Darstellung')
 
   const wahl = page.getByLabel(/Als gelesen markieren|Mark as read/)
   await expect(wahl, 'Die Einstellung „Als gelesen" fehlt.').toBeVisible()
   await wahl.selectOption('-1')
 
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
   await page.getByRole('button', { name: /Alle Posteingänge|All inboxes/ }).click()
 
   /* ⚠️ **Eine wirklich ungelesene Nachricht nehmen.** Beim ersten Anlauf
@@ -585,7 +586,7 @@ test('„Als gelesen" lässt sich auf „nur von Hand" stellen', async ({ page }
   // Zurück auf die Vorgabe — und den Filter zurückstellen.
   await page.getByRole('button', { name: /^(Alle|All)$/ }).first().click()
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Darstellung' }).click()
+  await bereich(page, 'Darstellung')
   await page.getByLabel(/Als gelesen markieren|Mark as read/).selectOption('2')
 })
 
@@ -604,7 +605,7 @@ test('Eine Änderung an mir selbst steht sofort da, nicht erst nach F5', async (
      läuft durch dieselbe Stelle; genommen wird deshalb die, die es immer gibt:
      eine Sitzung beenden. Der Server wird dabei **nicht** wirklich verändert. */
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Sicherheit' }).click()
+  await bereich(page, 'Sicherheit')
 
   const beenden = page.getByRole('button', { name: /^(Sitzung beenden|Abmelden)$/ }).first()
   const alleBeenden = page.getByRole('button', { name: /Alle anderen Geräte abmelden|Sign out all other devices/ })

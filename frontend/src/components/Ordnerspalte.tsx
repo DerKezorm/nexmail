@@ -40,6 +40,7 @@ import {
 import type { ReactNode } from 'react'
 import type { Konto, Ordner, OrdnerRolle } from '../daten/typen'
 import { PUNKT_KLASSE } from '../lib/farben'
+import { gruppenVon } from './Postfachgruppen'
 import { elternVon, istWiedervorlage, ordnerName } from '../lib/ordnername'
 
 /* ⚠️ **„Markierte" ist ein Ziel, kein Ordner.**
@@ -104,7 +105,6 @@ interface Props {
      und die holt `App` beim Server. Ein Zustand nur in dieser Spalte hieße:
      Der Baum zeigt „privat", die Liste zeigt alles. */
   gruppe: string
-  aufGruppe: (wort: string) => void
   /** Wie viele Nachrichten im Postausgang warten — geplant oder liegen
    *  geblieben. 0 blendet die Zeile aus: Ein Ausgang, der fast immer leer
    *  ist, waere sonst eine Zeile, die fast immer nichts sagt. */
@@ -128,7 +128,6 @@ export function Ordnerspalte({
   aufEinklappen,
   aufAblegen,
   gruppe,
-  aufGruppe,
   ausgangZahl,
   wiedervorlageZahlen = {},
 }: Props) {
@@ -141,16 +140,7 @@ export function Ordnerspalte({
   // ⚠️ Die Zahl an „Alle Posteingänge" folgt demselben Schlagwort wie die
   // Liste dahinter. Eine Zahl, die mehr verspricht als der Klick zeigt, ist
   // schlimmer als keine.
-  /* Alle vergebenen Schlagworte, in der Reihenfolge der Postfächer.
-     ⚠️ **Verglichen wird klein geschrieben, angezeigt die erste Schreibweise.**
-     Sonst stünden „Arbeit" und „arbeit" als zwei Pillen nebeneinander, die
-     gleich aussehen und Verschiedenes filtern. Dieselbe Regel wie im Server. */
-  const schlagworte: string[] = []
-  for (const k of konten) {
-    for (const w of k.tags ?? []) {
-      if (!schlagworte.some((v) => v.toLowerCase() === w.toLowerCase())) schlagworte.push(w)
-    }
-  }
+  const schlagworte = gruppenVon(konten)
 
   // Ein Schlagwort, das an keinem Postfach mehr hängt, darf nicht alles
   // ausblenden — sonst steht die Spalte nach dem Löschen eines Postfachs leer
@@ -186,36 +176,9 @@ export function Ordnerspalte({
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface-1">
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-        {/* ⚠️ **Der Umschalter steht über dem, was er filtert.** In einem Menü
-            versteckt erzeugt ein Filter die Frage „wo sind meine Postfächer
-            hin?" — sichtbar beantwortet er sie, bevor sie entsteht. Erst ab
-            zwei Schlagworten: Bei einem gäbe es nichts umzuschalten. */}
-        {schlagworte.length > 1 && (
-          <div
-            role="group"
-            aria-label={t('ordner.gruppe_hinweis')}
-            className="mb-2 flex flex-wrap gap-1 px-0.5"
-          >
-            {['', ...schlagworte].map((w) => (
-              <button
-                key={w || '__alle__'}
-                type="button"
-                aria-pressed={gewaehlt === w}
-                onClick={() => aufGruppe(w)}
-                className={
-                  'rounded-pill px-2.5 py-0.5 text-[11px] font-medium transition-colors ' +
-                  'duration-[var(--dur-fast)] ' +
-                  (gewaehlt === w
-                    ? 'bg-accent text-on-accent'
-                    : 'border border-line text-fg-3 hover:bg-surface-3 hover:text-fg-1')
-                }
-              >
-                {w || t('ordner.gruppe_alle')}
-              </button>
-            ))}
-          </div>
-        )}
-
+        {/* Die Schlagworte der Postfächer stehen seit dem 22.11.2026 als
+            Reiter über der ganzen Mail-Ansicht (`Postfachgruppen.tsx`), nicht
+            mehr als Pillen hier. Gefiltert wird der Baum weiter hier. */}
         <Zeile
           symbol={<Inbox />}
           /* ⚠️ **„Alle Posteingänge" folgt dem Schlagwort.**

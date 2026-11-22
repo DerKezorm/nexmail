@@ -76,14 +76,23 @@ def test_die_seite_nennt_fassung_lizenz_und_herkunft(klient, ohne_netz):
     assert daten["projektseite"].startswith("https://")
 
 
-def test_nur_der_betreiber_sieht_sie(klient, db, ohne_netz):
+def test_jeder_sieht_sie_nur_der_betreiber_schaltet(klient, db, ohne_netz):
+    """Lesen wie in nexnotes für jedes Konto; Schalter und „Jetzt prüfen"
+    entscheiden über die ganze Installation und bleiben beim Betreiber."""
     einrichten(klient)
     _, geheimnis = zweiten_benutzer_anlegen(db)
     klient.post("/api/auth/abmelden")
     anmelden(klient, "zweiter", "auch-geheim-456", geheimnis)
 
-    assert klient.get("/api/ueber").status_code == 403
+    assert klient.get("/api/ueber").status_code == 200
     assert klient.put("/api/ueber/pruefen", json={"update_pruefen": False}).status_code == 403
+    assert klient.post("/api/ueber/pruefen").status_code == 403
+
+
+def test_ohne_anmeldung_nichts(klient, ohne_netz):
+    einrichten(klient)
+    klient.post("/api/auth/abmelden")
+    assert klient.get("/api/ueber").status_code == 401
 
 
 def test_die_nachfrage_ist_ab_werk_an(klient, ohne_netz):

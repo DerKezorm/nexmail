@@ -235,6 +235,15 @@ class Benutzer(Base):
     push_ruhezeit_von: Mapped[str] = mapped_column(String(5), default="22:00")
     push_ruhezeit_bis: Mapped[str] = mapped_column(String(5), default="07:00")
 
+    #: Das Profilbild (``services/profilbild.py``): ein quadratisches WebP,
+    #: neu gezeichnet, ein paar Kilobyte. ⚠️ **In der Datenbank, nicht als
+    #: Datei daneben:** So nimmt jede Sicherung es mit, und ein gelöschtes Konto
+    #: nimmt es mit fort. ``deferred``, damit nicht jede Anfrage es mitlädt.
+    profilbild: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
+    #: Wann es gesetzt wurde; steht in der Bildadresse (``?v=``), damit ein
+    #: neues Bild eine neue Adresse hat und das alte nicht aus dem Speicher kommt.
+    profilbild_am: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
     sitzungen: Mapped[list["Sitzung"]] = relationship(

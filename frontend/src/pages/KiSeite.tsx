@@ -120,10 +120,9 @@ export function KiSeite({
   }
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-5">
-      <h1 className="mb-1 text-[20px] font-semibold text-fg-1">{t('nav.ki')}</h1>
-      <p className="mb-5 max-w-[720px] text-[13px] text-fg-2">{t('ki.seite_lede')}</p>
-
+    <div>
+      {/* Überschrift und Satz darunter stehen seit dem 22.11.2026 im Kopf des
+          Bereichs der Einstellungen (`EinstellungenPage`). */}
       <div className="flex max-w-[720px] flex-col gap-6">
         {istBetreiber && (
           <>

@@ -57,6 +57,19 @@ export function alleUmschalten(sichtbare: readonly string[], auswahl: readonly s
   return sindAlleGewaehlt(sichtbare, auswahl) ? [] : [...sichtbare]
 }
 
+/** Ist das Strg+A (am Mac Cmd+A)? Nur ohne Alt und ohne Umschalt: Strg+Umschalt+A
+ *  belegen Browser und Erweiterungen, und AltGr meldet sich unter Windows als
+ *  Strg+Alt. Groß/klein egal, damit eine Feststelltaste nichts ändert. */
+export function istAllesWaehlen(e: {
+  key: string
+  ctrlKey: boolean
+  metaKey: boolean
+  altKey: boolean
+  shiftKey: boolean
+}): boolean {
+  return (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'a'
+}
+
 /** Was in der Leiste steht und deshalb im Blatt „Mehr" nicht noch einmal. */
 export const IN_DER_LEISTE: readonly string[] = ['loeschen', 'archivieren', 'verschieben', 'gelesen']
 

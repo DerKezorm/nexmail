@@ -10,7 +10,7 @@
  * verschwindet.
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, jederKnopfHatEinenNamen, keinTextLaeuftUeber, serverabsagen } from './hilfen'
+import { anmelden, jederKnopfHatEinenNamen, keinTextLaeuftUeber, serverabsagen, zuEinstellungen } from './hilfen'
 
 const NOTIZ = 'zz-probe-sicherung'
 
@@ -39,8 +39,7 @@ async function ruhigeZahl(zeilen: import('@playwright/test').Locator): Promise<n
 }
 
 async function zurSicherung(page: import('@playwright/test').Page) {
-  await page.getByRole('button', { name: /Verwaltung|Administration/ }).first().click()
-  await page.getByRole('tab', { name: /Sicherung|Backup/ }).click()
+  await zuEinstellungen(page, 'Speicher und Sicherung')
   await expect(page.getByRole('button', { name: /Jetzt anlegen|Create now/ })).toBeVisible({
     timeout: 10_000,
   })
@@ -123,7 +122,7 @@ test('Das Einspiel-Fenster fasst nichts an, bevor es geprüft hat', async ({ pag
 })
 
 test('Die Über-Seite nennt Fassung, Lizenz und was hinausgeht', async ({ page }) => {
-  await page.getByRole('button', { name: /Über nexmail|About nexmail/ }).click()
+  await zuEinstellungen(page, 'Über nexmail')
 
   await expect(page.getByText(/AGPL-3\.0/)).toBeVisible({ timeout: 10_000 })
   await expect(page.getByRole('link', { name: /github\.com\/DerKezorm\/nexmail/ })).toBeVisible()

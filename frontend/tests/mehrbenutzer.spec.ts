@@ -10,7 +10,7 @@
  * auf die falsche Stelle.
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, keineRohenSchluessel } from './hilfen'
+import { anmelden, bereich, keineRohenSchluessel, zuEinstellungen } from './hilfen'
 
 const NAME = 'zz-probebenutzer'
 
@@ -38,7 +38,7 @@ test.beforeEach(async ({ page }, info) => {
 
 test('Die Verwaltung zeigt Benutzer und offene Einladungen', async ({ page }) => {
   await zurVerwaltung(page)
-  await page.getByRole('tab', { name: 'Benutzer' }).click()
+  await bereich(page, 'Konten')
 
   await expect(
     page.getByText(BETREIBER, { exact: false }).first(),
@@ -52,7 +52,7 @@ test('Einladen, annehmen, entfernen', async ({ page, request }) => {
   await aufraeumen(page)
 
   await zurVerwaltung(page)
-  await page.getByRole('tab', { name: 'Benutzer' }).click()
+  await bereich(page, 'Konten')
 
   const einladen = page.getByRole('button', { name: 'Benutzer einladen' })
   await expect(einladen).toBeVisible({ timeout: 10_000 })
@@ -97,7 +97,7 @@ test('Eine abgelehnte Adresse sagt warum — und lässt keine Leiche zurück', a
         Oberfläche sieht alles richtig aus. */
   await aufraeumen(page)
   await zurVerwaltung(page)
-  await page.getByRole('tab', { name: 'Benutzer' }).click()
+  await bereich(page, 'Konten')
 
   const einladen = page.getByRole('button', { name: 'Benutzer einladen' })
   await expect(einladen).toBeVisible({ timeout: 10_000 })
@@ -137,7 +137,7 @@ test('Der Betreiber hat keinen Papierkorb an sich selbst', async ({ page }) => {
   /* ⚠️ Danach könnte niemand mehr die Verwaltung öffnen, und aus der
      Anwendung heraus führt kein Weg zurück. */
   await zurVerwaltung(page)
-  await page.getByRole('tab', { name: 'Benutzer' }).click()
+  await bereich(page, 'Konten')
   await expect(page.getByText(BETREIBER, { exact: false }).first()).toBeVisible({ timeout: 10_000 })
 
   const zeile = page.locator('li').filter({ hasText: BETREIBER }).first()
@@ -155,8 +155,8 @@ test('Der zweite Faktor lässt sich ein- und ausschalten', async ({ page }) => {
      TOTP-Rechner, und die hat das Backend schon. */
   const menue = page.getByRole('button', { name: /Benutzermenü|User menu/ }).first()
   await menue.click()
-  await page.getByRole('button', { name: 'Einstellungen' }).click()
-  await page.getByRole('tab', { name: 'Sicherheit' }).click()
+  await page.getByRole('button', { name: 'Einstellungen' }).first().click()
+  await bereich(page, 'Sicherheit')
 
   const knopf = page.getByRole('button', { name: /Zweiten Faktor (ein|aus)schalten/ })
   await expect(knopf, 'Zum zweiten Faktor gibt es keinen Knopf.').toBeVisible({ timeout: 10_000 })
@@ -180,8 +180,8 @@ test('Der zweite Faktor lässt sich ein- und ausschalten', async ({ page }) => {
 /* --- Hilfen ------------------------------------------------------------- */
 
 async function zurVerwaltung(page: import('@playwright/test').Page) {
-  await page.getByRole('button', { name: /Verwaltung|Administration/ }).first().click()
-  await expect(page.getByRole('tab', { name: 'Benutzer' })).toBeVisible({ timeout: 10_000 })
+  // Seit dem 22.11.2026 die Gruppe „Server" der Einstellungen.
+  await zuEinstellungen(page, 'Konten')
 }
 
 async function aufraeumen(page: import('@playwright/test').Page) {

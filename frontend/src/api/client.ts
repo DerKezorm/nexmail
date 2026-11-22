@@ -93,6 +93,13 @@ export const api = {
   /** PATCH — nur die mitgegebenen Felder ändern. */
   flicken: <T>(pfad: string, koerper: unknown) =>
     anfrage<T>(pfad, { method: 'PATCH', body: JSON.stringify(koerper) }),
+  /** PUT mit einer Datei als Rumpf (Profilbild), ohne Multipart. */
+  datei: <T>(pfad: string, datei: Blob) =>
+    anfrage<T>(pfad, {
+      method: 'PUT',
+      body: datei,
+      headers: { 'content-type': datei.type || 'application/octet-stream' },
+    }),
   formular: <T>(pfad: string, daten: FormData) =>
     anfrage<T>(pfad, { method: 'POST', body: daten }),
   /** DELETE — mit optionalem Rumpf: „Schlagwort von diesen Mails nehmen"
@@ -178,6 +185,9 @@ export interface Ich {
   version: string
   /** Bis zu welcher Version dieses Konto „Was ist neu“ gesehen hat. */
   wasneu_gesehen: string
+  /** Wann das Profilbild gesetzt wurde, der Stand in seiner Adresse;
+   *  `null` ohne Bild (dann stehen die Initialen da). */
+  profilbild?: string | null
 }
 
 export interface Schritt {

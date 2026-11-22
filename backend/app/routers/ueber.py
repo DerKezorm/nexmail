@@ -1,8 +1,11 @@
 """Die Ueber-Seite: Fassung, Herkunft, Lizenz, Update-Stand.
 
-⚠️ **Nur der Betreiber.** Die Seite traegt den
-Update-Schalter, und der ruft nach draussen — das ist eine Entscheidung ueber
-die ganze Installation, keine ueber ein Konto.
+⚠️ **Lesen darf jedes angemeldete Konto** (seit 22.11.2026, wie „Über
+nexnotes"): Fassung, Lizenz und Quelltext sind kein Geheimnis. **Schalten und
+von Hand nachsehen nur der Betreiber**: Der Update-Schalter ruft nach draussen,
+das ist eine Entscheidung ueber die ganze Installation, keine ueber ein Konto.
+Das Nachsehen beim Oeffnen folgt seinem Schalter und hoechstens einmal in 24
+Stunden, egal wer die Seite oeffnet.
 """
 
 from __future__ import annotations
@@ -14,7 +17,7 @@ from pydantic import BaseModel
 
 from .. import __version__
 from ..db import einstellung_lesen, einstellung_schreiben
-from ..deps import Betreiber, DbSession
+from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
 from ..services import aktualisierung
 
 router = APIRouter(prefix="/api/ueber", tags=["ueber"])
@@ -64,7 +67,7 @@ def _auskunft(pruefen: bool, stand: aktualisierung.Stand | None) -> Auskunft:
 
 
 @router.get("", response_model=Auskunft)
-async def ueber(_: Betreiber, db: DbSession) -> Auskunft:
+async def ueber(_: AngemeldeterBenutzer, db: DbSession) -> Auskunft:
     pruefen = _an(db)
     return _auskunft(pruefen, await aktualisierung.stand(an=pruefen))
 

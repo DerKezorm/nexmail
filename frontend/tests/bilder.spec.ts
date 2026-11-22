@@ -14,7 +14,7 @@
  * `backend/tests/test_bilder.py`.
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, zuEinstellungen, serverabsagen } from './hilfen'
+import { anmelden, bereich, serverabsagen, zuEinstellungen } from './hilfen'
 
 const MIT_BILD = '<p>Newsletter</p><img data-nexmail-src="https://absender.example/p.gif">'
 const VERMITTELT = '<p>Newsletter</p><img src="/api/bilder/eine-marke">'
@@ -92,7 +92,7 @@ test('„Immer von diesem Absender" sagt, was es getan hat — und nimmt es zur�
 test('Der globale Schalter liegt im Server und übersteht das Neuladen', async ({ page }) => {
   await anmelden(page)
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Darstellung' }).click()
+  await bereich(page, 'Darstellung')
 
   const schalter = page.getByRole('switch', { name: 'Bilder immer anzeigen' })
   await expect(schalter).toBeVisible()
@@ -106,7 +106,7 @@ test('Der globale Schalter liegt im Server und übersteht das Neuladen', async (
      wurde — und dieser Schalter soll ausdrücklich auf jedem Gerät gelten. */
   await page.reload()
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Darstellung' }).click()
+  await bereich(page, 'Darstellung')
   const wieder = page.getByRole('switch', { name: 'Bilder immer anzeigen' })
   await expect(wieder).toHaveAttribute('aria-checked', 'true')
 

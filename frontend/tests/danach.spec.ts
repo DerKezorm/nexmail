@@ -10,7 +10,7 @@
  * ankommt und die Mail wirklich aufgeht.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { anmelden, postfach, serverabsagen, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, postfach, serverabsagen, zuEinstellungen } from './hilfen'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -25,9 +25,9 @@ const lesebereich = (page: Page) => page.getByRole('button', { name: /^Leseberei
 
 async function einstellen(page: Page, text: string) {
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Darstellung' }).click()
+  await bereich(page, 'Darstellung')
   await page.getByRole('combobox', { name: 'Nach Löschen oder Verschieben' }).selectOption({ label: text })
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
 }
 
 /** Posteingang des Testpostfachs, und die Betreffe der ersten beiden Zeilen.

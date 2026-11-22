@@ -15,7 +15,7 @@
  */
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { anmelden, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, zuEinstellungen } from './hilfen'
 
 async function zumReiter(page: Page) {
   /* ⚠️ **Kopflos meldet Chromium „denied“, auch nach `grantPermissions`.**
@@ -27,7 +27,7 @@ async function zumReiter(page: Page) {
   })
   await anmelden(page)
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Benachrichtigungen' }).click()
+  await bereich(page, 'Benachrichtigungen')
 }
 
 function anmeldungenZaehlen(page: Page): { zahl: number } {

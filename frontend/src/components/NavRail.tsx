@@ -15,53 +15,26 @@
  * saessen Zeichen und Wortmarke sonst zweimal innerhalb von sechzig Pixeln.
  */
 import { useTranslation } from 'react-i18next'
-import { CalendarDays, HelpCircle, ListChecks, Mail, Settings, Sparkles, Users } from 'lucide-react'
+import { CalendarDays, ListChecks, Mail, Settings, Users } from 'lucide-react'
 
-export type Ansicht =
-  | 'mail'
-  | 'kalender'
-  | 'aufgaben'
-  | 'kontakte'
-  | 'ki'
-  | 'einstellungen'
-  | 'verwaltung'
-  | 'ueber'
+export type Ansicht = 'mail' | 'kalender' | 'aufgaben' | 'kontakte' | 'einstellungen'
 
 interface Props {
   ansicht: Ansicht
-  /** Nur der Betreiber sieht die Verwaltung. */
-  istBetreiber?: boolean
-  /** Ob der KI-Punkt dasteht. ⚠️ **Nicht an `ki_aktiv` gehaengt:** Der
-   *  Betreiber muss den Riegel finden, BEVOR irgendjemand etwas
-   *  eingeschaltet hat — sonst ist der Punkt genau dann unsichtbar,
-   *  wenn man ihn sucht. */
-  kiSichtbar?: boolean
   /** Wie viele Aufgaben offen sind. 0 blendet die Zahl aus. */
   offeneAufgaben?: number
   aufAnsicht: (a: Ansicht) => void
 }
 
-export function NavRail({
-  ansicht,
-  aufAnsicht,
-  istBetreiber = false,
-  kiSichtbar = false,
-  offeneAufgaben = 0,
-}: Props) {
+export function NavRail({ ansicht, aufAnsicht, offeneAufgaben = 0 }: Props) {
   const { t } = useTranslation()
 
-  const ziele: Array<{ id: Ansicht; symbol: React.ReactNode; text: string; zahl?: number }> = [
+  const ziele: ReadonlyArray<{ id: Ansicht; symbol: React.ReactNode; text: string; zahl?: number }> = [
     { id: 'mail', symbol: <Mail />, text: t('nav.mail') },
     { id: 'kalender', symbol: <CalendarDays />, text: t('nav.kalender') },
     { id: 'aufgaben', symbol: <ListChecks />, text: t('nav.aufgaben'), zahl: offeneAufgaben },
     { id: 'kontakte', symbol: <Users />, text: t('nav.kontakte') },
   ]
-
-  /* ⚠️ **Widerspricht dem Kopf dieser Datei**, und zwar mit Anlass: Der
-     Betreiber-Riegel lag am 04.09.2026 unten im Reiter Server und wurde
-     gesucht und nicht gefunden. Was entscheidet, ob Mailtext das Haus
-     verlaesst, gehoert dorthin, wo man es vermutet. */
-  if (kiSichtbar) ziele.push({ id: 'ki', symbol: <Sparkles />, text: t('nav.ki') })
 
   return (
     <nav className="flex w-[var(--rail-w)] shrink-0 flex-col items-center gap-1 border-r border-line-subtle bg-surface-1 py-3">
@@ -103,64 +76,36 @@ export function NavRail({
       </div>
 
 
-      {/* ⚠️ **Unten in der Ecke, getrennt von den Ansichten.** Das ist keine
-          Zierde: Was hier liegt, gilt für die ganze Anwendung und für alle
-          Benutzer — die Symbole darüber wechseln nur die eigene Ansicht.
-          Räumliche Trennung beantwortet die Frage „ändere ich das für mich
-          oder für alle?", bevor sie entsteht. */}
-      {istBetreiber && (
-        <div className="mt-auto flex flex-col gap-1">
-          {/* ⚠️ **Über dem Zahnrad, nicht darunter.** Beides gehoert der
-              Anwendung; das Zahnrad bleibt der unterste Punkt, weil es der
-              haeufiger gebrauchte ist und die Ecke der verlaesslichste Ort
-              fuer einen Zeigefinger. */}
-          <button
-            type="button"
-            title={t('nav.ueber')}
-            aria-label={t('nav.ueber')}
-            aria-current={ansicht === 'ueber' ? 'page' : undefined}
-            onClick={() => aufAnsicht('ueber')}
-            className={
-              'relative flex size-10 items-center justify-center rounded-md ' +
-              'transition-colors duration-[var(--dur-fast)] [&_svg]:size-5 ' +
-              (ansicht === 'ueber'
-                ? 'bg-accent-soft text-accent-text'
-                : 'text-fg-3 hover:bg-surface-3 hover:text-fg-1')
-            }
-          >
-            {ansicht === 'ueber' && (
-              <span
-                aria-hidden
-                className="absolute top-1/2 -left-3 h-5 w-0.5 -translate-y-1/2 rounded-pill bg-accent"
-              />
-            )}
-            <HelpCircle />
-          </button>
-
-          <button
-            type="button"
-            title={t('nav.verwaltung')}
-            aria-label={t('nav.verwaltung')}
-            aria-current={ansicht === 'verwaltung' ? 'page' : undefined}
-            onClick={() => aufAnsicht('verwaltung')}
-            className={
-              'relative flex size-10 items-center justify-center rounded-md ' +
-              'transition-colors duration-[var(--dur-fast)] [&_svg]:size-5 ' +
-              (ansicht === 'verwaltung'
-                ? 'bg-accent-soft text-accent-text'
-                : 'text-fg-3 hover:bg-surface-3 hover:text-fg-1')
-            }
-          >
-            {ansicht === 'verwaltung' && (
-              <span
-                aria-hidden
-                className="absolute top-1/2 -left-3 h-5 w-0.5 -translate-y-1/2 rounded-pill bg-accent"
-              />
-            )}
-            <Settings />
-          </button>
-        </div>
-      )}
+      {/* ⚠️ **Unten in der Ecke, getrennt von den Ansichten, und für alle.**
+          Bis 0.30 standen hier „Über" und das Zahnrad der Verwaltung, nur für
+          den Betreiber, und KI hatte einen eigenen Punkt oben. Seit dem
+          22.11.2026 liegt das alles in den Einstellungen, gegliedert wie in
+          nexnotes (Mein Konto, Mail, Server, Über); das Zahnrad führt dorthin,
+          wie „Name · Einstellungen" unten in der Seitenleiste von nexnotes. */}
+      <div className="mt-auto flex flex-col gap-1">
+        <button
+          type="button"
+          title={t('nav.einstellungen')}
+          aria-label={t('nav.einstellungen')}
+          aria-current={ansicht === 'einstellungen' ? 'page' : undefined}
+          onClick={() => aufAnsicht('einstellungen')}
+          className={
+            'relative flex size-10 items-center justify-center rounded-md ' +
+            'transition-colors duration-[var(--dur-fast)] [&_svg]:size-5 ' +
+            (ansicht === 'einstellungen'
+              ? 'bg-accent-soft text-accent-text'
+              : 'text-fg-3 hover:bg-surface-3 hover:text-fg-1')
+          }
+        >
+          {ansicht === 'einstellungen' && (
+            <span
+              aria-hidden
+              className="absolute top-1/2 -left-3 h-5 w-0.5 -translate-y-1/2 rounded-pill bg-accent"
+            />
+          )}
+          <Settings />
+        </button>
+      </div>
     </nav>
   )
 }

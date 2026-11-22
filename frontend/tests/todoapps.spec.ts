@@ -10,7 +10,7 @@
  */
 import { expect, test } from '@playwright/test'
 import type { Page, Request } from '@playwright/test'
-import { anmelden, jederKnopfHatEinenNamen, keineRohenSchluessel, postfach, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, jederKnopfHatEinenNamen, keineRohenSchluessel, postfach, zuEinstellungen } from './hilfen'
 
 test.beforeEach(({ page: _page }, info) => {
   test.skip(info.project.name === 'schmal', 'Die Todo-Apps werden breit geprüft.')
@@ -235,7 +235,7 @@ test('Der Reiter Aufgaben verbindet Todoist und nennt einen abgelehnten Token', 
   await page.route('**/api/aufgabenziele/listen', (route) => route.fulfill({ json: LISTEN }))
   await anmelden(page)
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Aufgaben' }).click()
+  await bereich(page, 'Verbindungen')
 
   const todoist = abschnitt(page, 'Todoist verbinden')
   const token = todoist.getByLabel('API-Token')
@@ -280,7 +280,7 @@ test('Ein Webhook wird verbunden, sein Geheimnis steht genau einmal da', async (
   })
   await anmelden(page)
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Aufgaben' }).click()
+  await bereich(page, 'Verbindungen')
 
   // Die Beschriftung trägt den Hinweis mit, deshalb nach dem Anfang.
   const formular = abschnitt(page, 'Webhook verbinden')
@@ -333,7 +333,7 @@ test('Die Einstellungen eines Webhooks: Test senden nennt den Status, gesperrter
   )
   await anmelden(page)
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Aufgaben' }).click()
+  await bereich(page, 'Verbindungen')
   await page.getByRole('button', { name: 'Einstellungen' }).last().click()
 
   await expect(page.getByText('nicht freigegeben', { exact: false })).toBeVisible()
@@ -420,7 +420,7 @@ test('nextasks wird mit Adresse und Token verbunden, ein Lese-Token sagt warum',
   })
   await anmelden(page)
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Aufgaben' }).click()
+  await bereich(page, 'Verbindungen')
 
   const formular = abschnitt(page, 'nextasks verbinden')
   const token = formular.getByLabel('API-Token')
@@ -467,7 +467,7 @@ test('Token erneuern hält nextasks verbunden und zeigt das alte nie', async ({ 
   })
   await anmelden(page)
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Aufgaben' }).click()
+  await bereich(page, 'Verbindungen')
 
   const verbindung = abschnitt(page, 'Verbunden').locator('li').filter({ hasText: 'nextasks' })
   await expect(verbindung.getByText('nextasks nimmt das Token nicht mehr an', { exact: false })).toBeVisible()

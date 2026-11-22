@@ -53,7 +53,7 @@ function Zeile({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-export function UeberPage() {
+export function UeberPage({ istBetreiber = true }: { istBetreiber?: boolean } = {}) {
   const { t, i18n } = useTranslation()
   const [daten, setDaten] = useState<Auskunft | null>(null)
   const [fehler, setFehler] = useState('')
@@ -119,12 +119,13 @@ export function UeberPage() {
   const schriften = [
     { name: 'IBM Plex Sans', url: 'https://github.com/IBM/plex' },
     { name: 'Space Grotesk', url: 'https://github.com/floriankarsten/space-grotesk' },
+    { name: 'Inter', url: 'https://github.com/rsms/inter' },
     { name: 'JetBrains Mono', url: 'https://github.com/JetBrains/JetBrainsMono' },
   ]
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-canvas">
-      <div className="mx-auto w-full max-w-[720px] px-6 py-8">
+    <div>
+      <div className="w-full max-w-[720px]">
         <div className="flex items-center gap-3">
           <Logo className="h-9 w-9" />
           <div>
@@ -169,6 +170,9 @@ export function UeberPage() {
             </dl>
 
             {/* --- Update-Nachfrage ------------------------------------- */}
+            {/* ⚠️ Schalter und „Jetzt prüfen" nur für den Betreiber: Beides
+                entscheidet über die ganze Installation (`routers/ueber.py`). */}
+            {istBetreiber && (
             <section className="mt-5 rounded-xl border border-line bg-surface-1 p-4">
               <Switch
                 checked={daten.update_pruefen}
@@ -207,6 +211,7 @@ export function UeberPage() {
                 ⚠️ {t('ueber.was_hinausgeht')}
               </p>
             </section>
+            )}
           </>
         )}
 

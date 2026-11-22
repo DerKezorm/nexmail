@@ -132,7 +132,7 @@ test('Der runde Knopf öffnet das Terminfenster für den gewählten Tag', async 
  *  ⚠️ Ein Klick auf „Kalender", während der Kalender schon offen ist, tut
  *  nichts; ein über die Adresse angelegter Termin bliebe dann unsichtbar. */
 async function zumKalender(page: Page) {
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
   await page.getByRole('button', { name: 'Kalender', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Monat', exact: true })).toBeVisible()
 }

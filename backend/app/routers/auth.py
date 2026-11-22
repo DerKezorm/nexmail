@@ -24,11 +24,13 @@ from .oidc import passwort_anmeldung_an
 from ..services import anmeldebremse
 from ..services import benutzer as benutzerdienst
 from ..services import kidienst
+from ..services import profilbild as profilbilddienst
 from ..services import ruecksetzung as ruecksetzdienst
 from ..services import sitzung as sitzungsdienst
 from ..services import zwei_faktor
 from ..db import einstellung_lesen
 from ..meldung import MeldungHttp
+from ..models import Benutzer, utcnow
 from .einstellungen import SCHLUESSEL_OEFFENTLICHE_ADRESSE
 
 logger = logging.getLogger("nexmail.auth")
@@ -96,6 +98,9 @@ class Ich(BaseModel):
     #: es einen gibt, und das ist richtig, denn genau die läuft dann.
     version: str = ""
     wasneu_gesehen: str = ""
+    #: Wann das Profilbild gesetzt wurde (ISO), der Stand in seiner Adresse;
+    #: ``None`` ohne Bild. Das Bild selbst holt ``GET /api/auth/profilbild/{id}``.
+    profilbild: str | None = None
 
 
 @router.post("/anmelden", response_model=Schritt)
@@ -447,6 +452,7 @@ def ich(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
         hat_kennwort=bool(person.passwort_hash),
         version=__version__,
         wasneu_gesehen=person.wasneu_gesehen,
+        profilbild=person.profilbild_am.isoformat() if person.profilbild_am else None,
     )
 
 
@@ -495,3 +501,75 @@ def kontaktadresse_setzen(
     db.commit()
     logger.info("A user set their contact address (empty=%s).", not adresse)
     return ich(person, db)
+
+
+class Profil(BaseModel):
+    #: Leer heisst: der Benutzername, wie beim Anlegen.
+    anzeigename: str = Field(default="", max_length=120)
+    #: Die Adresse fuer Kontosachen (siehe ``kontaktadresse_setzen``).
+    kontaktadresse: str = Field(default="", max_length=320)
+
+
+@router.put("/ich/profil", response_model=Ich)
+def profil_setzen(eingabe: Profil, person: AngemeldeterBenutzer, db: DbSession) -> Ich:
+    """Name und Mailadresse aus den Einstellungen → Profil, in einem Zug.
+
+    ⚠️ **Dieselben Regeln wie die beiden Wege einzeln:** Ein leerer Name wird
+    zum Benutzernamen (``benutzer.anlegen``), eine Adresse braucht ein ``@``
+    und darf leer sein (``kontaktadresse_setzen``). Erst wenn beides passt,
+    wird geschrieben, sonst bliebe der Name geaendert und die Adresse nicht.
+    """
+    adresse = eingabe.kontaktadresse.strip()
+    if adresse and "@" not in adresse:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="adresse_ungueltig")
+    person.anzeigename = eingabe.anzeigename.strip() or person.benutzername
+    person.kontaktadresse = adresse
+    db.commit()
+    logger.info("A user changed their profile.")
+    return ich(person, db)
+
+
+@router.put("/ich/profilbild", response_model=Ich)
+async def profilbild_setzen(request: Request, person: AngemeldeterBenutzer, db: DbSession) -> Ich:
+    """Das eigene Profilbild setzen; das Bild selbst ist der Rumpf.
+
+    ⚠️ **Kein Multipart.** Ein Bild ist eine Datei, und ``python-multipart``
+    ist die Stelle mit den Meldungen (siehe ``requirements.txt``).
+    """
+    daten = await request.body()
+    try:
+        bild = profilbilddienst.zeichnen(daten)
+    except profilbilddienst.ProfilbildFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_422_UNPROCESSABLE_CONTENT) from fehler
+    person.profilbild = bild
+    person.profilbild_am = utcnow()
+    db.commit()
+    logger.info("A user set their profile picture.")
+    return ich(person, db)
+
+
+@router.delete("/ich/profilbild", response_model=Ich)
+def profilbild_entfernen(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
+    person.profilbild = None
+    person.profilbild_am = None
+    db.commit()
+    return ich(person, db)
+
+
+@router.get("/profilbild/{benutzer_id}")
+def profilbild(benutzer_id: str, person: AngemeldeterBenutzer, db: DbSession) -> Response:
+    """Ein Profilbild, fuer die, die es sehen duerfen.
+
+    ⚠️ **Allen anderen antwortet es wie ein Bild, das es nicht gibt** (404):
+    Sonst liesse sich abfragen, welche Kennungen ein Konto sind.
+    """
+    zeile = db.get(Benutzer, benutzer_id) if profilbilddienst.darf_sehen(person, benutzer_id) else None
+    bild = zeile.profilbild if zeile is not None else None
+    if not bild:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="profilbild_fehlt")
+    # Die Adresse traegt den Stand (?v=), ein neues Bild ist eine neue Adresse.
+    return Response(
+        bild,
+        media_type="image/webp",
+        headers={"Cache-Control": "private, max-age=31536000, immutable"},
+    )

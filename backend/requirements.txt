@@ -152,3 +152,11 @@ http-ece==1.2.1
 # Reines Python, ohne eigene Abhaengigkeiten. Am 27.09.2026 gegen api.osv.dev
 # geprueft: null Meldungen.
 dnspython==2.8.0
+
+# Profilbilder (services/profilbild.py): jedes Bild wird neu gezeichnet, als
+# quadratisches WebP. Dieselben Fassungen wie nexnotes, damit sich beide Apps
+# gleich verhalten. pillow-heif liest HEIC-Fotos vom iPhone; seine Wheels
+# bringen libheif (LGPL-3.0) und x265 (GPL-2.0-or-later) mit, beides mit
+# nexmails AGPL-3.0 vereinbar (siehe THIRD-PARTY.md).
+pillow==12.3.0
+pillow-heif==1.8.0

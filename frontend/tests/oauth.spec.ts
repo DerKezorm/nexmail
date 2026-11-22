@@ -6,15 +6,14 @@
  * Teil, der schweigen könnte.
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, zuEinstellungen } from './hilfen'
 
 test.describe.configure({ mode: 'serial' })
 
 test.beforeEach(async ({ page }, info) => {
   test.skip(info.project.name === 'schmal', 'Die Verwaltung wird breit geprüft.')
   await anmelden(page)
-  await page.getByRole('button', { name: 'Verwaltung' }).click()
-  await page.getByRole('tab', { name: /Google und Microsoft/ }).click()
+  await zuEinstellungen(page, 'Mail')
 })
 
 test('Beide Anbieter stehen da, mit Rückkehr-Adresse zum Kopieren', async ({ page }) => {
@@ -48,7 +47,7 @@ test('Die Zustimmungen stehen bei den Konten, nicht beim Postfach', async ({ pag
   /* ⚠️ **Eine Zustimmung gilt für Postfach UND Kalender.** Sie an einem der
      beiden aufzuhängen hieße, sie beim anderen zu verstecken. */
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Sicherheit' }).click()
+  await bereich(page, 'Sicherheit')
 
   await expect(page.getByRole('heading', { name: /Google- und Microsoft-Konten/ })).toBeVisible()
 

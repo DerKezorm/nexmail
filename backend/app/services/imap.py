@@ -327,6 +327,19 @@ def ordner_lesen(klient: IMAPClient) -> list[Ordnerangabe]:
             "Die Ordnerliste ließ sich nicht lesen.",
             str(fehler),
         ) from fehler
+    except OSError as fehler:
+        # ⚠️ **Auch ein Abriss der Leitung ist ein Verbindungsfehler.** Bis
+        # 0.30.1 fing diese Stelle nur ``IMAPClientError``; ein Timeout oder
+        # „Connection reset" bei ``LIST`` stieg roh auf, riss die ganze Runde
+        # des Postfachs ab und stand im Live-Log als ERROR mit Rückverfolg
+        # („Background sync hit an unexpected error", 7 Mal vom 19. bis
+        # 22.11.2026, Gmail bei kurzen Netzaussetzern). ``TimeoutError`` und
+        # ``socket.timeout`` sind beide ``OSError``.
+        raise Verbindungsfehler(
+            Fehlerart.KEINE_ANTWORT,
+            "Die Ordnerliste ließ sich nicht lesen.",
+            f"{type(fehler).__name__}: {fehler}",
+        ) from fehler
 
     ergebnis: list[Ordnerangabe] = []
     for kennzeichen, trenner, pfad in roh:

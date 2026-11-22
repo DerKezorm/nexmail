@@ -9,11 +9,10 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, LogOut, Moon, Settings, ShieldCheck, Sparkles, Sun } from 'lucide-react'
+import { ChevronDown, LogOut, Settings, ShieldCheck, Sparkles } from 'lucide-react'
 import { Logo } from './Logo'
+import { Profilbild } from './Profilbild'
 import type { Ich } from '../api/client'
-import { SPRACHEN, spracheSetzen } from '../i18n'
-import type { Sprachcode } from '../i18n'
 
 interface Props {
   ich: Ich | null
@@ -28,8 +27,6 @@ interface Props {
    *  dazu keinen Text gibt: Ein Menüpunkt, der ins Leere führt, ist schlimmer
    *  als keiner. */
   aufWasNeu?: () => void
-  modus: 'dark' | 'light'
-  aufModus: (m: 'dark' | 'light') => void
 }
 
 export function Kopfbanner({
@@ -38,10 +35,8 @@ export function Kopfbanner({
   ohnePostfach,
   aufEinstellungen,
   aufWasNeu,
-  modus,
-  aufModus,
 }: Props) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const [offen, setOffen] = useState(false)
   const kasten = useRef<HTMLDivElement>(null)
 
@@ -73,61 +68,9 @@ export function Kopfbanner({
         </span>
       )}
 
-      {/* ⚠️ **Hell/Dunkel und Sprache gehören nach oben rechts, nicht in die
-          NavRail.** Dort standen sie unten links am Rand — an einer Stelle,
-          an der man sie erst sucht, wenn man weiß, dass es sie gibt. Oben
-          rechts ist die Ecke, in der jede Anwendung ihre Einstellungen hat,
-          und Nexview macht es genauso. */}
-      <div
-        role="group"
-        aria-label={t('nav.modus')}
-        className="flex items-center gap-0.5 rounded-pill border border-line bg-surface-2 p-0.5"
-      >
-        {(['dark', 'light'] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            title={m === 'dark' ? t('nav.dunkel') : t('nav.hell')}
-            aria-label={m === 'dark' ? t('nav.dunkel') : t('nav.hell')}
-            aria-pressed={modus === m}
-            onClick={() => aufModus(m)}
-            className={
-              'flex size-7 items-center justify-center rounded-pill transition-colors ' +
-              'duration-[var(--dur-fast)] [&_svg]:size-4 ' +
-              (modus === m
-                ? 'bg-accent text-on-accent'
-                : 'text-fg-3 hover:bg-surface-3 hover:text-fg-1')
-            }
-          >
-            {m === 'dark' ? <Moon /> : <Sun />}
-          </button>
-        ))}
-      </div>
-
-      <div
-        role="group"
-        aria-label={t('nav.sprache')}
-        className="flex items-center gap-0.5 rounded-pill border border-line bg-surface-2 p-0.5"
-      >
-        {SPRACHEN.map((sp) => (
-          <button
-            key={sp.code}
-            type="button"
-            title={sp.name}
-            aria-pressed={i18n.language === sp.code}
-            onClick={() => void spracheSetzen(sp.code as Sprachcode)}
-            className={
-              'rounded-pill px-2.5 py-1 text-[11px] font-semibold uppercase transition-colors ' +
-              'duration-[var(--dur-fast)] ' +
-              (i18n.language === sp.code
-                ? 'bg-accent text-on-accent'
-                : 'text-fg-3 hover:bg-surface-3 hover:text-fg-1')
-            }
-          >
-            {sp.code}
-          </button>
-        ))}
-      </div>
+      {/* Hell/Dunkel und Sprache standen hier bis zum 22.11.2026. Seitdem
+          stehen sie in den Einstellungen (Darstellung, Profil), wie in nexnotes;
+          zweimal dieselbe Einstellung wäre eine Stelle zu viel. */}
 
       {ich && (
         <div ref={kasten} className="relative">
@@ -143,12 +86,7 @@ export function Kopfbanner({
             aria-label={t('nav.benutzermenue', { name: ich.anzeigename })}
             className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors duration-[var(--dur-fast)] hover:bg-surface-3"
           >
-            <span
-              aria-hidden
-              className="flex size-7 items-center justify-center rounded-pill bg-accent-soft text-[11px] font-semibold text-accent-text"
-            >
-              {ich.anzeigename.slice(0, 2).toUpperCase()}
-            </span>
+            <Profilbild id={ich.id} name={ich.anzeigename} stand={ich.profilbild} groesse={28} />
             <span className="hidden text-[13px] text-fg-2 sm:inline">{ich.anzeigename}</span>
             <ChevronDown
               aria-hidden

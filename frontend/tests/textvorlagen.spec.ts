@@ -9,7 +9,7 @@
  *   npx playwright test tests/textvorlagen.spec.ts --reporter=line
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, serverabsagen, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, serverabsagen, zuEinstellungen } from './hilfen'
 
 test('Vorlage anlegen, im Verfassen-Fenster einfügen, wieder entfernen', async ({ page }, info) => {
   test.skip(info.project.name === 'schmal', 'Wird in der breiten Ansicht geprüft.')
@@ -20,7 +20,7 @@ test('Vorlage anlegen, im Verfassen-Fenster einfügen, wieder entfernen', async 
 
   await anmelden(page)
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Signaturen' }).click()
+  await bereich(page, 'Signaturen')
 
   // Der eigene Abschnitt unter den Signaturen.
   await expect(
@@ -55,7 +55,7 @@ test('Vorlage anlegen, im Verfassen-Fenster einfügen, wieder entfernen', async 
   ).toBeVisible({ timeout: 10_000 })
 
   // Ins Verfassen-Fenster — dort sitzt das Menü „Vorlage" neben „Anhang".
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
   await page.getByRole('button', { name: 'Neue Nachricht' }).click()
   const fenster = page.getByRole('dialog')
   await expect(fenster).toBeVisible()
@@ -79,7 +79,7 @@ test('Vorlage anlegen, im Verfassen-Fenster einfügen, wieder entfernen', async 
 
   // Aufräumen 2: Die Vorlage wieder weg — über die eigene Rückfrage.
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Signaturen' }).click()
+  await bereich(page, 'Signaturen')
   await page
     .locator('li', { hasText: name })
     .getByRole('button', { name: 'Vorlage entfernen' })
@@ -99,7 +99,7 @@ test('Ein gescheiterter Abruf sieht nicht wie Leere aus', async ({ page }, info)
 
   await anmelden(page)
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Signaturen' }).click()
+  await bereich(page, 'Signaturen')
 
   // ⚠️ Kein „Noch keine Textvorlagen" — das sähe wie Datenverlust aus.
   // Stattdessen: der Fehlerbalken mit dem Nachhol-Knopf.
@@ -116,7 +116,7 @@ test('Ein gescheiterter Abruf sieht nicht wie Leere aus', async ({ page }, info)
   // Dasselbe im Verfassen-Fenster: Das Menü „Vorlage" darf einen Fehler
   // nicht als „Noch keine Vorlagen" ausgeben.
   await page.route('**/api/textvorlagen', (route) => route.abort())
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
   await page.getByRole('button', { name: 'Neue Nachricht' }).click()
   const fenster = page.getByRole('dialog')
   await expect(fenster).toBeVisible()

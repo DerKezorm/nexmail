@@ -139,6 +139,29 @@ def test_ein_klemmendes_list_haelt_den_abgleich_nicht_auf(db, konto, server):  #
     assert "Trotzdem angekommen" in {n.betreff for n in db.query(Nachricht).all()}
 
 
+@pytest.mark.parametrize(
+    "abriss",
+    [TimeoutError("The read operation timed out"), ConnectionResetError(104, "Connection reset by peer")],
+)
+@pytest.mark.parametrize("wo", ["list_folders", "list_sub_folders"])
+def test_ein_abriss_bei_list_haelt_den_abgleich_nicht_auf(db, konto, server, abriss, wo):  # noqa: F811
+    """Live-Log 19. bis 22.11.2026: Ein Netzabriss bei ``LIST`` oder ``LSUB``
+    stieg roh auf und nahm dem Postfach die ganze Runde. Jetzt ist er ein
+    Verbindungsfehler wie ein klemmendes ``LIST``: Die Ordner bleiben, die
+    Post kommt trotzdem."""
+    _ablage_mit_post(db, konto, server)
+    server.einwerfen("INBOX", 2, "Trotz Abriss angekommen")
+
+    def reisst(*_a, **_k):
+        raise abriss
+
+    setattr(server, wo, reisst)
+    abgleich.konto_abgleichen(db, konto)
+
+    assert _pfade(db, konto) == {"INBOX", "Ablage"}
+    assert "Trotz Abriss angekommen" in {n.betreff for n in db.query(Nachricht).all()}
+
+
 def test_ein_abbestellter_ordner_bleibt_in_der_datenbank(db, konto, server):  # noqa: F811
     """Abbestellen ist nicht löschen: Die Zeile bleibt, die Oberfläche blendet
     sie aus, und abgeglichen wird sie nicht mehr."""

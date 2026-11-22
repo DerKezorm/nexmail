@@ -54,7 +54,13 @@ export function Logo({ className = 'h-8 w-8', withWordmark = false }: LogoProps)
       {zeichen}
       {/* Auf dem Telefon nur das Zeichen — der Schriftzug wuerde die Zeile
           mit Modus- und Sprachschalter ueberfuellen. */}
-      <span className="hidden font-display text-lg font-semibold tracking-tight text-fg-1 sm:inline">
+      {/* ⚠️ **Schrift wie der Schriftzug von nexnotes** (Inter, fett, eng;
+          nexnotes `components/Logo.tsx`, `Wordmark`), nicht die Space Grotesk
+          der Überschriften: Oben links sollen alle nex-Apps gleich aussehen. */}
+      <span
+        className="hidden text-lg font-bold tracking-tight text-fg-1 sm:inline"
+        style={{ fontFamily: "'Inter Variable', 'Segoe UI', system-ui, sans-serif" }}
+      >
         NEX<span className="text-accent-text">MAIL</span>
       </span>
     </span>

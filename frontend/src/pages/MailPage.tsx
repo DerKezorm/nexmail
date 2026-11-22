@@ -73,7 +73,6 @@ interface Props {
   bildQuelle?: (n: Nachricht) => string
   /** Gewähltes Schlagwort. Leer heißt: alle Postfächer. */
   gruppe: string
-  aufGruppe: (wort: string) => void
   aufMehr?: () => void
   mehrLaedt?: boolean
   amEnde?: boolean
@@ -263,7 +262,6 @@ export function MailPage(p: Props) {
   const ordnerspalte = (
     <Ordnerspalte
       gruppe={p.gruppe}
-      aufGruppe={p.aufGruppe}
       ausgangZahl={p.ausgaenge.length}
       wiedervorlageZahlen={p.wiedervorlageZahlen}
       konten={p.konten}

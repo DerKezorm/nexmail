@@ -1,4 +1,11 @@
-/* Die Verwaltung — was der Anwendung gehört, nicht dem Benutzer.
+/* Die Teile der Gruppe „Server" in den Einstellungen — was der Anwendung
+ * gehört, nicht dem Benutzer.
+ *
+ * ⚠️ **Seit dem 22.11.2026 keine eigene Seite mehr.** Bis dahin war das die
+ * „Verwaltung" mit Reitern hinter einem Zahnrad in der Leiste. Jetzt steht
+ * alles in den Einstellungen, gegliedert wie in nexnotes (`einstellungen/
+ * bereiche.ts`); die Unterscheidung unten gilt weiter, sie heißt nur
+ * „Mein Konto" gegen „Server".
  *
  * ⚠️ **Zwei Einstellungsseiten, und der Unterschied ist die Zuständigkeit.**
  *
@@ -16,91 +23,14 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { KeyRound, Network, ScrollText, Server, Webhook } from 'lucide-react'
+import { Network, ScrollText, Server, Webhook } from 'lucide-react'
 import { api } from '../api/client'
-import type { Ich } from '../api/client'
-import { Button, EmptyState, Input, Select, Switch, Tabs } from '../ds'
-import { Benutzerverwaltung } from './Benutzerverwaltung'
-import { OauthVerwaltung } from './OauthVerwaltung'
-import { OidcVerwaltung } from './OidcVerwaltung'
-import { Protokoll } from './Protokoll'
-import { Sicherungen } from './Sicherungen'
+import { Button, Input, Select, Switch } from '../ds'
 import { servermeldung } from '../lib/servermeldung'
 
-export type VerwaltungsReiter =
-  | 'protokoll'
-  | 'server'
-  | 'benutzer'
-  | 'oidc'
-  | 'oauth'
-  | 'sicherungen'
-
-interface Props {
-  reiter: VerwaltungsReiter
-  aufReiter: (r: VerwaltungsReiter) => void
-  ich: Ich | null
-  /** ⚠️ Nach einer Betreiber-Übergabe ist man selbst keiner mehr — ohne das
-   *  bliebe die Verwaltung offen stehen, obwohl sie einem nicht mehr gehört. */
-  ichNeuLaden?: () => void
-}
-
-export function Verwaltung({ reiter, aufReiter, ich, ichNeuLaden }: Props) {
-  const { t } = useTranslation()
-
-  if (ich && !ich.ist_betreiber) {
-    return (
-      <div className="flex min-h-0 flex-1 items-center justify-center bg-canvas">
-        <EmptyState
-          icon={<KeyRound />}
-          title={t('verwaltung.nur_betreiber')}
-          description={t('verwaltung.nur_betreiber_text')}
-        />
-      </div>
-    )
-  }
-
-  return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-canvas">
-      <div className="mx-auto max-w-[860px] px-6 py-6">
-        <h1 className="mb-1 font-display text-[22px] font-medium text-fg-1">
-          {t('verwaltung.titel')}
-        </h1>
-        <p className="mb-4 text-[13px] text-fg-3">{t('verwaltung.untertitel')}</p>
-
-        <Tabs
-          activeId={reiter}
-          onSelect={(id) => aufReiter(id as VerwaltungsReiter)}
-          tabs={[
-            { id: 'protokoll', label: t('verwaltung.protokoll') },
-            { id: 'server', label: t('verwaltung.server') },
-            { id: 'benutzer', label: t('verwaltung.benutzer') },
-            { id: 'oidc', label: t('oidc.admin.signInTitle') },
-            { id: 'oauth', label: t('verwaltung.oauth') },
-            { id: 'sicherungen', label: t('verwaltung.sicherungen') },
-          ]}
-        />
-
-        <div className="pt-5">
-          {reiter === 'protokoll' ? (
-            <Protokoll />
-          ) : reiter === 'server' ? (
-            <Serverdaten />
-          ) : reiter === 'benutzer' ? (
-            <Benutzerverwaltung ichNeuLaden={ichNeuLaden} />
-          ) : reiter === 'oidc' ? (
-            <OidcVerwaltung />
-          ) : reiter === 'oauth' ? (
-            <OauthVerwaltung />
-          ) : (
-            <Sicherungen />
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function Serverdaten() {
+/** Server → Allgemein: öffentliche Adresse, Zeitzone und die Riegel, die für
+ *  alle gelten. */
+export function ServerAllgemein() {
   const { t } = useTranslation()
   const [adresse, setAdresse] = useState('')
   const [zeitzone, setZeitzone] = useState('')
@@ -170,7 +100,6 @@ function Serverdaten() {
 
       <WebhookMailtext />
 
-      <Postausgang />
     </div>
   )
 }
@@ -297,7 +226,7 @@ function WebhookMailtext() {
  * privaten Adresse; und ein Homelab ohne eingerichtetes Postfach könnte
  * niemanden einladen.
  */
-function Postausgang() {
+export function Postausgang() {
   const { t } = useTranslation()
   const [f, setF] = useState({
     server: '',

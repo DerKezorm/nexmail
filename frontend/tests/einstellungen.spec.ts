@@ -1,50 +1,56 @@
-/* Die Reiterleiste der Einstellungen passt auf die Seite.
+/* Die Einstellungen, aufgebaut wie in nexnotes (22.11.2026).
  *
- * ⚠️ Gemessen wird die EINZEILIGE Breite. Bis zum 18.09.2026 brachen
- * „KI-Dienst" und „API-Schlüssel" zweizeilig um, und die Leiste lief trotzdem
- * über; ein Test, der nur scrollWidth gegen clientWidth hält, war dabei grün,
- * weil der Umbruch die Breite versteckte. Die Reiter tragen jetzt
- * `whitespace-nowrap`, also zeigt scrollWidth die Wahrheit.
+ * Navigation links mit dem eigenen Konto oben und den Gruppen „Mein Konto",
+ * „Mail", „Server" und „Über nexmail" am Ende; schmal eine Auswahl darüber.
+ * Verwaltung, KI und „Über" sind Bereiche darin, keine Punkte der Leiste mehr.
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, jederKnopfHatEinenNamen, keineRohenSchluessel, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, jederKnopfHatEinenNamen, keineRohenSchluessel, keinSeitlichesScrollen, zuEinstellungen } from './hilfen'
 
-test.beforeEach(({}, info) => {
-  test.skip(info.project.name === 'schmal', 'Schmal rollt die Leiste seitlich, das ist gewollt.')
+test('Die Einstellungen sind gegliedert wie in nexnotes', async ({ page }, info) => {
+  await anmelden(page)
+  await zuEinstellungen(page, 'Profil')
+
+  // Das Profil zuerst, mit Name, Mailadresse, Sprache und Abmelden.
+  await expect(page.getByLabel('Name', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('E-Mail', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Abmelden' })).toBeVisible()
+
+  if (info.project.name !== 'schmal') {
+    const navigation = page.getByTestId('einstellungen-navigation')
+    await expect(navigation.locator('[id^="einstellungen-gruppe-"]')).toHaveText(['Mein Konto', 'Mail', 'Server'])
+    // „Über nexmail" steht unter den Gruppen, als letzter Eintrag.
+    const knoepfe = await navigation.getByRole('button').allTextContents()
+    expect(knoepfe.at(-1)?.trim()).toBe('Über nexmail')
+  }
+  await keinSeitlichesScrollen(page)
+  await keineRohenSchluessel(page)
 })
 
-test('Alle Reiter passen einzeilig auf die Seite', async ({ page }) => {
+test('Verwaltung, KI und „Über" sind Bereiche, keine Punkte der Leiste', async ({ page }) => {
   await anmelden(page)
-  await zuEinstellungen(page)
-  const m = await page.evaluate(() => {
-    const leiste = document.querySelector('[role=tablist]') as HTMLElement
-    const reiter = [...leiste.querySelectorAll('[role=tab]')] as HTMLElement[]
-    return {
-      breite: leiste.clientWidth,
-      noetig: leiste.scrollWidth,
-      reiter: reiter.length,
-    }
-  })
-  expect(
-    m.noetig,
-    `Die Reiter brauchen ${m.noetig} px, die Leiste hat ${m.breite}.`,
-  ).toBeLessThanOrEqual(m.breite)
+  for (const weg of ['Verwaltung', 'KI', 'Über nexmail']) {
+    await expect(page.getByRole('button', { name: weg, exact: true })).toHaveCount(0)
+  }
+  // Das Zahnrad unten führt für jeden in die Einstellungen, beim Profil.
+  await page.getByRole('button', { name: 'Einstellungen', exact: true }).first().click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+  for (const titel of ['Allgemein', 'KI', 'Über nexmail']) await bereich(page, titel)
 })
 
-test('Die KI hat ihren eigenen Ort, keinen zweiten in den Einstellungen', async ({ page }) => {
-  /* ⚠️ Der Reiter daneben lud `ich` nicht nach: Dort geschaltet, standen die
-     Knöpfe in Mail und Editor erst nach dem Neuladen da. */
+test('Hell/Dunkel und Sprache stehen nicht mehr oben, sondern in den Einstellungen', async ({ page }) => {
   await anmelden(page)
-  await zuEinstellungen(page)
-
-  await expect(page.getByRole('tab', { name: 'Signaturen' })).toBeVisible()
-  await expect(page.getByRole('tab', { name: /KI/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Dunkler Modus|Heller Modus/ })).toHaveCount(0)
+  await expect(page.getByRole('group', { name: 'Sprache' })).toHaveCount(0)
+  await zuEinstellungen(page, 'Darstellung')
+  await expect(page.getByRole('tab', { name: 'Dunkler Modus' })).toBeVisible()
+  await bereich(page, 'Profil')
+  await expect(page.getByRole('combobox', { name: /^Sprache/ })).toBeVisible()
 })
 
 test('iPhone verbinden zeigt QR-Code, kurzen Code und Stand', async ({ page }) => {
   await anmelden(page)
-  await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'iPhone verbinden' }).click()
+  await zuEinstellungen(page, 'Verbindungen')
 
   await page.getByRole('button', { name: 'Code anzeigen' }).click()
 
@@ -73,4 +79,53 @@ test('iPhone verbinden zeigt QR-Code, kurzen Code und Stand', async ({ page }) =
 
   await page.getByRole('button', { name: 'Zurückziehen' }).click()
   await expect(page.getByRole('button', { name: 'Code anzeigen' })).toBeVisible()
+})
+
+test('Jeder Bereich geht auf, mit Inhalt und ohne Fehler', async ({ page }, info) => {
+  /* ⚠️ **Der Umbau vom 22.11.2026 hat Reiter, Verwaltung, KI und Über in eine
+     Seite gezogen.** Dieser Test öffnet jeden Bereich und verlangt, dass dort
+     das steht, was vorher im alten Reiter stand: ein Merkmal je Bereich. Fehlt
+     eines, ist beim Umbau etwas verloren gegangen. */
+  test.skip(info.project.name === 'schmal', 'Die Navigation wird breit geprüft.')
+  const fehler: string[] = []
+  page.on('pageerror', (e) => fehler.push(e.message))
+  await anmelden(page)
+  await zuEinstellungen(page, 'Profil')
+
+  // ⚠️ Je Bereich, was der INHALT zeigen muss (nicht Titel oder Satz im Kopf):
+  // die Teile, die vorher in den Reitern von Einstellungen und Verwaltung,
+  // auf der KI-Seite und der Über-Seite standen.
+  const merkmal: Array<[string, RegExp[]]> = [
+    ['Profil', [/Bild wählen|Anderes Bild/, /Gilt in diesem Browser/, /^Abmelden$/]],
+    ['Sicherheit', [/Angemeldete Geräte/, /Wiederherstellungscode/]],
+    ['Darstellung', [/Dichte der Nachrichtenliste/i, /Heller Modus/]],
+    ['Benachrichtigungen', [/Je Abgleich eine Meldung/]],
+    ['Verbindungen', [/Verbinde deine Todo-App/, /Code anzeigen/, /Adresse für das Dashboard/]],
+    ['Postfächer', [/Postfach hinzufügen/]],
+    ['Regeln', [/Neue Regel/]],
+    ['Signaturen', [/Neue Signatur/, /Neue Vorlage/]],
+    ['Abwesenheit', [/beantwortet Post nur, solange/]],
+    ['Schlagworte', [/Noch keine Schlagworte|Mails mit dieser Marke/]],
+    ['KI', [/KI-Dienste für alle Benutzer/, /Eingegangene Mails für alle Benutzer/]],
+    ['Allgemein', [/Öffentliche Adresse/, /Eigenes Netz erlauben/, /Text der Mail an Webhooks/]],
+    ['Anmeldung', [/authentik/i]],
+    ['Mail', [/Probemail schicken/, /Client-ID/]],
+    ['Speicher und Sicherung', [/Rücksetzpunkte/]],
+    ['Konten', [/Benutzer einladen/]],
+    ['Log', [/Ausführlichkeit/]],
+    ['Über nexmail', [/AGPL-3\.0/]],
+  ]
+  for (const [titel, texte] of merkmal) {
+    await bereich(page, titel)
+    const inhalt = page.getByTestId('einstellungen-inhalt')
+    for (const text of texte) {
+      await expect(inhalt.getByText(text).first(), `Im Bereich „${titel}" fehlt ${text}.`).toBeVisible({
+        timeout: 10_000,
+      })
+    }
+    // Die Über-Seite nennt die Projektseite „nexmail.nexapps.dev", und die
+    // sieht für den Wächter aus wie ein Schlüssel; sie ist keiner.
+    if (titel !== 'Über nexmail') await keineRohenSchluessel(page)
+  }
+  expect(fehler, 'Fehler beim Öffnen der Bereiche').toEqual([])
 })

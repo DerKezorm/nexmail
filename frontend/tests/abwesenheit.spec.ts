@@ -5,11 +5,11 @@
  * nur so aussieht, als sei sie gespeichert, ist die schlimmste Sorte.
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, zuEinstellungen, jederKnopfHatEinenNamen, keinTextLaeuftUeber } from './hilfen'
+import { anmelden, bereich, jederKnopfHatEinenNamen, keinTextLaeuftUeber, zuEinstellungen } from './hilfen'
 
 async function zurAbwesenheit(page) {
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Abwesenheit' }).click()
+  await bereich(page, 'Abwesenheit')
   await expect(page.getByText(/beantwortet Post nur, solange/)).toBeVisible()
 }
 

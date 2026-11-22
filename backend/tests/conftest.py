@@ -89,6 +89,16 @@ def pytest_sessionfinish(session, exitstatus) -> None:  # noqa: ARG001
 
 
 @pytest.fixture(autouse=True)
+def ziel_sofort_nachziehen(monkeypatch):
+    """Nach einem Zug zieht der Server den Zielordner im eigenen Faden nach
+    (``handeln.ziel_nachziehen``). In Tests sofort und in derselben Sitzung,
+    sonst hinge jede Zusicherung über den Zielordner am Zufall der Fäden."""
+    from app.services import handeln
+
+    monkeypatch.setattr(handeln, "NACHZIEHEN_IM_FADEN", False)
+
+
+@pytest.fixture(autouse=True)
 def frische_datenbank():
     """Jeder Test bekommt eine leere Datenbank, ein leeres Blob-Verzeichnis
     und eine leere Bremse.

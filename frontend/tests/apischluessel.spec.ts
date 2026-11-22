@@ -13,15 +13,7 @@
  *   npx playwright test tests/apischluessel.spec.ts --reporter=line
  */
 import { expect, test } from '@playwright/test'
-import {
-  TESTPOSTFACH,
-  anmelden,
-  jederKnopfHatEinenNamen,
-  keinSeitlichesScrollen,
-  keineRohenSchluessel,
-  serverabsagen,
-  zuEinstellungen,
-} from './hilfen'
+import { anmelden, bereich, jederKnopfHatEinenNamen, keineRohenSchluessel, keinSeitlichesScrollen, serverabsagen, TESTPOSTFACH, zuEinstellungen } from './hilfen'
 
 const NAME = 'ZZ-Probe-Schluessel'
 
@@ -43,7 +35,7 @@ test('Schlüssel anlegen, damit lesen, widerrufen', async ({ page }, info) => {
     }
 
     await zuEinstellungen(page)
-    await page.getByRole('tab', { name: 'API-Schlüssel' }).click()
+    await bereich(page, 'Verbindungen')
 
     // Der Riegel steht hier, nicht in der Verwaltung.
     const riegel = page.getByRole('switch', { name: 'API-Schlüssel erlauben' })

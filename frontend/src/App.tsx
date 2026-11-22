@@ -49,15 +49,15 @@ import { WasNeuBanner, WasNeuFenster, gesehenMelden } from './components/WasNeu'
 import { useWasNeu } from './lib/wasneu'
 import { NavRail } from './components/NavRail'
 import type { Ansicht } from './components/NavRail'
-import { UeberPage } from './pages/UeberPage'
 import { Kopfleiste } from './components/Kopfleiste'
+import { Postfachgruppen } from './components/Postfachgruppen'
 import type { Suchbereich } from './components/Kopfleiste'
 import { Kontextmenue } from './components/Kontextmenue'
 import { useNachfrage } from './components/Nachfrage'
 import type { MenueEintrag } from './components/Kontextmenue'
 import { Aktionsblatt } from './components/Aktionsblatt'
 import { Auswahlleiste } from './components/Auswahlleiste'
-import { alleUmschalten, fuersMehrBlatt, gelesenZiel, sindAlleGewaehlt } from './lib/auswahl'
+import { alleUmschalten, fuersMehrBlatt, gelesenZiel, istAllesWaehlen, sindAlleGewaehlt } from './lib/auswahl'
 /* ⚠️ **Editor und Kalenderseite kommen erst auf Klick.** Zusammen wiegen sie
    439 kB, also gut ein Drittel des JavaScript, und beide hingen fest am
    Einstieg — auch bei jemandem, der nur Post liest. Am 04.09.2026 nachgeholt,
@@ -81,7 +81,6 @@ import { AufgabenPage } from './pages/AufgabenPage'
 const KalenderPage = lazy(() =>
   import('./pages/KalenderPage').then((m) => ({ default: m.KalenderPage })),
 )
-import { KiSeite } from './pages/KiSeite'
 import { KontaktePage } from './pages/KontaktePage'
 /* ⚠️ **Die Einstellungsseite hält den Editor am Einstieg fest.** Signaturen
    und Textvorlagen benutzen denselben `Editor` wie das Verfassen-Fenster; so
@@ -91,11 +90,7 @@ import { KontaktePage } from './pages/KontaktePage'
 const EinstellungenPage = lazy(() =>
   import('./pages/EinstellungenPage').then((m) => ({ default: m.EinstellungenPage })),
 )
-const Verwaltung = lazy(() =>
-  import('./pages/Verwaltung').then((m) => ({ default: m.Verwaltung })),
-)
-import type { VerwaltungsReiter } from './pages/Verwaltung'
-import type { Reiter } from './pages/EinstellungenPage'
+import type { Bereich } from './pages/EinstellungenPage'
 import type { RegelVorlage } from './pages/Regeln'
 import type { Ich } from './api/client'
 import type { Suchbefund } from './api/laden'
@@ -225,7 +220,6 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const [ansicht, setAnsicht] = useState<Ansicht>(
     RUECKWEG.weiter === 'postfach' || KONTO_RUECKWEG.da ? 'einstellungen' : 'mail',
   )
-  const [verwaltungsReiter, setVerwaltungsReiter] = useState<VerwaltungsReiter>('protokoll')
   const [ziel, setZiel] = useState<Ziel>({ typ: 'alle' })
   const [paletteOffen, setPaletteOffen] = useState(false)
   const [gewaehlt, setGewaehlt] = useState<string | null>(null)
@@ -328,6 +322,11 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
      ⚠️ Nicht im `setNachrichten`-Rückruf nachsehen: React darf ihn zweimal
      ausführen, und ein Zähler, der dabei zweimal springt, ist falsch. */
   const nachrichtenRef = useRef<Nachricht[]>([])
+  /* Mails, die gerade gelöscht oder verschoben werden. Sie sind schon aus der
+     Liste genommen (siehe `handeln`); ein Nachladen, das vor dem Server fertig
+     ist, darf sie nicht wieder hineinholen. Sonst blinkt bei schnell
+     hintereinander gelöschten Mails die zweite noch einmal auf. */
+  const unterwegsRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     nachrichtenRef.current = nachrichten
   }, [nachrichten])
@@ -359,7 +358,17 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     return () => window.clearTimeout(stoerUhr.current)
   }, [stoerung])
 
-  const [rueckgaengig, setRueckgaengig] = useState<{ text: string; weg: Rueckweg } | null>(null)
+  /* Die Rückgängig-Leiste. ⚠️ **`weg` ist ein Versprechen, kein Wert**
+     (22.11.2026): Die Leiste steht da, sobald die Mail aus der Liste geht,
+     nicht erst, wenn der Server den Rückweg geliefert hat (das dauerte 1 bis 2 s
+     und länger; gemeldet: „dann dauert es, bis die Meldung für Rückgängig
+     kommt"). Wer früh klickt, wartet in `zurueck` auf den Rückweg. */
+  const [rueckgaengig, setRueckgaengig] = useState<{
+    text: string
+    weg: Promise<Rueckweg | null>
+    nr: number
+  } | null>(null)
+  const rueckNr = useRef(0)
   const rueckUhr = useRef<number | undefined>(undefined)
 
   /* „Senden rückholen": solange der Aufschub läuft, liegt die Nachricht im
@@ -489,7 +498,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   }, [])
 
   // Zurück vom Anmeldeanbieter nach dem Verknüpfen: gleich unter Sicherheit (lib/kontorueckweg.ts).
-  const [reiter, setReiter] = useState<Reiter>(KONTO_RUECKWEG.da ? 'sicherheit' : 'postfaecher')
+  const [reiter, setReiter] = useState<Bereich>(KONTO_RUECKWEG.da ? 'sicherheit' : 'postfaecher')
   const [formularOffen, setFormularOffen] = useState(false)
   /* Das Fenster hinter der (+)-Kachel — die Weiche zwischen IMAP, Google und
      Microsoft. ⚠️ **Beim Rückweg vom Anbieter steht es sofort offen:** Die
@@ -584,12 +593,13 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       gruppiert && ziel.typ !== 'markiert',
       ziel.typ === 'markiert' ? '' : wirksamesSchlagwort,
     )
-    setNachrichten(seite)
+    const sichtbar = seite.filter((n) => !unterwegsRef.current.has(n.id))
+    setNachrichten(sichtbar)
     // ⚠️ **Am Ende ist man, wenn die Seite nicht voll war** — nicht erst, wenn
     // eine leere zurückkommt. Sonst braucht jedes Ende eine überflüssige
     // Anfrage, und der Fuß behauptet so lange, es gebe noch etwas.
     setAmEnde(seite.length < grenze)
-    return seite
+    return sichtbar
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ziel, listenfilter, gruppiert, wirksamesSchlagwort, gefilterteKontoIds.join(',')])
 
@@ -627,7 +637,10 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       // wären ein React-Schlüsselkonflikt — und sichtbar doppelte Post.
       setNachrichten((bisher) => {
         const bekannt = new Set(bisher.map((n) => n.id))
-        return [...bisher, ...weiter.filter((n) => !bekannt.has(n.id))]
+        return [
+          ...bisher,
+          ...weiter.filter((n) => !bekannt.has(n.id) && !unterwegsRef.current.has(n.id)),
+        ]
       })
       if (weiter.length < SEITE) setAmEnde(true)
     } finally {
@@ -1171,7 +1184,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
 
   const merkeRueckweg = useCallback((text: string, weg: Rueckweg | null) => {
     if (!weg) return
-    setRueckgaengig({ text, weg })
+    setRueckgaengig({ text, weg: Promise.resolve(weg), nr: ++rueckNr.current })
   }, [])
 
   /* Die 8 Sekunden der Rückgängig-Leiste. ⚠️ **Die Uhr läuft nur, solange
@@ -1186,15 +1199,62 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     return () => window.clearTimeout(rueckUhr.current)
   }, [rueckgaengig, sendeRueck])
 
+  /** Eine Handlung an Mails: löschen, archivieren, Junk, verschieben.
+   *
+   * ⚠️ **Was aus der Liste geht (`weg`), geht sofort.** Bis zum 22.11.2026
+   * stand die Zeile da, bis der Server fertig war: neue Verbindung,
+   * Verschieben, den Zielordner abgleichen, Liste neu laden, gemessen 1,4 s
+   * am Testpostfach und mehr, wenn gerade ein Abgleich das Postfach hielt
+   * (gemeldet: „Löschen dauert relativ lange, und man sieht nicht, was er
+   * macht"). Jetzt verschwindet sie beim Klick, die nächste ist gewählt wie
+   * nach `lib/danach.ts`, und der Server arbeitet dahinter. Scheitert er,
+   * holt das Nachladen danach die Mails zurück, und die Meldung sagt warum.
+   */
   const handeln = useCallback(
     async (
       tun: () => Promise<{ bewegt: number; nicht_bewegt?: number; rueckweg: Rueckweg | null }>,
       text: string,
+      weg: readonly string[] = [],
     ) => {
       const vorher = vorDerHandlung()
+      const sofort = weg.length > 0
+      // Die Leiste gleich mit der Zeile, der Rückweg kommt nach (siehe oben).
+      let rueckwegDa: (w: Rueckweg | null) => void = () => {}
+      const nr = ++rueckNr.current
+      if (sofort && text) {
+        const versprochen = new Promise<Rueckweg | null>((fertig) => {
+          rueckwegDa = fertig
+        })
+        setRueckgaengig({ text, weg: versprochen, nr })
+      }
+      // Ohne Rückweg (Absage, Ordner leeren) verschwindet genau diese Leiste
+      // wieder; eine spätere Handlung hat ihre eigene.
+      const ohneRueckweg = () => setRueckgaengig((jetzt) => (jetzt?.nr === nr ? null : jetzt))
+      if (sofort) {
+        for (const id of weg) unterwegsRef.current.add(id)
+        const rest = nachrichtenRef.current.filter((n) => !weg.includes(n.id))
+        // ⚠️ Auch den Spiegel gleich: Ein zweites Entf vor dem nächsten
+        // Zeichnen soll schon die verkürzte Liste sehen.
+        nachrichtenRef.current = rest
+        setNachrichten(rest)
+        const naechste = danachWaehlen(danach, vorher.alt, rest.map((n) => n.id), vorher.offen)
+        setGewaehlt(naechste)
+        setMehrfach([])
+        if (naechste !== null && vorher.aufgemacht) setGeoeffnetId(naechste)
+      } else {
+        // ⚠️ **Erst leer, dann die nächste.** Stünde die alte Mail bis zum
+        // Neuladen da, träfe ein zweites Entf dieselbe noch einmal.
+        setGewaehlt(null)
+        setMehrfach([])
+      }
       try {
         const ergebnis = await tun()
-        merkeRueckweg(text, ergebnis.rueckweg)
+        if (sofort && text) {
+          rueckwegDa(ergebnis.rueckweg)
+          if (!ergebnis.rueckweg) ohneRueckweg()
+        } else {
+          merkeRueckweg(text, ergebnis.rueckweg)
+        }
         // ⚠️ Der Rest ist erledigt, also keine Absage. Aber was liegenblieb,
         // muss dastehen: Sonst steht „gelöscht" über Post, die noch da ist.
         if (ergebnis.nicht_bewegt) {
@@ -1210,15 +1270,22 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         setStoerung(
           servermeldung(f, t('anmeldung.fehler_allgemein')),
         )
+        rueckwegDa(null)
+        ohneRueckweg()
+      } finally {
+        if (sofort) for (const id of weg) unterwegsRef.current.delete(id)
       }
-      // ⚠️ **Erst leer, dann die nächste.** Stünde die alte Mail bis zum
-      // Neuladen da, träfe ein zweites Entf dieselbe noch einmal.
-      setGewaehlt(null)
-      setMehrfach([])
-      await nachDerHandlung(vorher)
+      if (sofort) {
+        // Mit dem Server abgleichen, aber die Auswahl lassen, wo der Mensch
+        // inzwischen ist: Er hat womöglich schon die nächste gelöscht.
+        // Was der Server nicht bewegen konnte, steht danach wieder da.
+        await listeLaden(Math.min(Math.max(SEITE, vorher.alt.length), 500))
+      } else {
+        await nachDerHandlung(vorher)
+      }
       await stammLaden()
     },
-    [vorDerHandlung, merkeRueckweg, nachDerHandlung, stammLaden, t],
+    [vorDerHandlung, merkeRueckweg, nachDerHandlung, stammLaden, listeLaden, danach, t],
   )
 
   /* Was ein Wisch tut — dieselben Wege wie die Tasten Entf und E bzw. das
@@ -1227,9 +1294,9 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const wischAusfuehren = useCallback(
     (n: Nachricht, aktion: WischAktion) => {
       if (aktion === 'loeschen') {
-        void handeln(() => zug('loeschen', [n.id]), t('rueck.geloescht'))
+        void handeln(() => zug('loeschen', [n.id]), t('rueck.geloescht'), [n.id])
       } else if (aktion === 'archivieren') {
-        void handeln(() => zug('archivieren', [n.id]), t('rueck.archiviert'))
+        void handeln(() => zug('archivieren', [n.id]), t('rueck.archiviert'), [n.id])
       } else if (aktion === 'gelesen') {
         void flagSetzen(n.id, { gelesen: !n.gelesen })
       }
@@ -1239,10 +1306,14 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
 
   async function zurueck() {
     if (!rueckgaengig) return
-    const weg = rueckgaengig.weg
+    const versprochen = rueckgaengig.weg
     setRueckgaengig(null)
     window.clearTimeout(rueckUhr.current)
     try {
+      // Kam der Klick vor dem Server, wartet er hier auf den Rückweg. Ohne
+      // Rückweg ist nichts verschoben worden (die Absage steht schon da).
+      const weg = await versprochen
+      if (!weg) return
       await zurueckholen(weg)
     } catch (f) {
       // Nicht schlucken, dieselbe Regel wie in `handeln`: Ein Rückgängig,
@@ -1347,16 +1418,37 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         return
       }
 
+      /* Strg+A (Cmd+A) markiert alle Mails der Liste, wie in jedem Programm
+         mit einer Liste (Notiz vom 22.11.2026). Danach wirken Entf, E und das
+         Kontextmenü auf die ganze Auswahl.
+         ⚠️ **Nur die geladenen Mails**, wie der Knopf „Alle" der schmalen
+         Ansicht (`lib/auswahl.ts`, `alleUmschalten`): Die Liste lädt ältere
+         Seiten beim Rollen nach, und „alle" meint, was man vor sich hat. Wer
+         mehr will, rollt weiter und drückt noch einmal; still Mails zu löschen,
+         die man nie gesehen hat, wäre schlimmer.
+         ⚠️ **In Feldern und in der offenen Mail bleibt es Text markieren:**
+         Felder fängt die Zeile oben ab, und eine Mail im Lesebereich steht in
+         einem eigenen Rahmen, dessen Tasten hier gar nicht ankommen. Über
+         einem Fenster tut es nichts. */
+      if (istAllesWaehlen(e)) {
+        if (ansicht !== 'mail' || document.querySelector('[aria-modal="true"]')) return
+        if (nachrichten.length === 0) return
+        e.preventDefault()
+        setMehrfach(nachrichten.map((n) => n.id))
+        if (schmal) setAuswahlmodus(true)
+        return
+      }
+
       const ids = betroffene()
       if (ids.length === 0) return
 
       if (e.key === 'Delete') {
         e.preventDefault()
-        void handeln(() => zug('loeschen', ids), t('rueck.geloescht'))
+        void handeln(() => zug('loeschen', ids), t('rueck.geloescht'), ids)
       }
       if (e.key.toLowerCase() === 'e' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault()
-        void handeln(() => zug('archivieren', ids), t('rueck.archiviert'))
+        void handeln(() => zug('archivieren', ids), t('rueck.archiviert'), ids)
       }
       if (e.key === 'Escape' && mehrfach.length > 0) {
         setMehrfach([])
@@ -1365,7 +1457,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     }
     document.addEventListener('keydown', beiTaste)
     return () => document.removeEventListener('keydown', beiTaste)
-  }, [betroffene, handeln, mehrfach.length, menue, t, verfassen.offen, mitLesebereich, lesemodus, geoeffnet])
+  }, [betroffene, handeln, mehrfach.length, menue, t, verfassen.offen, mitLesebereich, lesemodus, geoeffnet, ansicht, nachrichten, schmal])
 
   /* ⚠️ **Eigener Zuhörer, und auch in Eingabefeldern.** Strg+K ist kein Zeichen,
      und wer gerade im Suchfeld steht, will genauso weiter. Ein offenes Fenster
@@ -1582,7 +1674,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     const eintrag = (o: Ordner): MenueEintrag => ({
       id: o.id,
       text: ordnerName(o, t),
-      tun: () => void handeln(() => verschieben(ids, o.id), t('rueck.verschoben')),
+      tun: () => void handeln(() => verschieben(ids, o.id), t('rueck.verschoben'), ids),
     })
 
     const eigene = ordner.filter((o) => o.kontoId === n.kontoId && brauchbar(o))
@@ -1736,13 +1828,13 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           id: 'archivieren',
           text: t('aktion.archivieren'),
           symbol: <Archive />,
-          tun: () => void handeln(() => zug('archivieren', ids), t('rueck.archiviert')),
+          tun: () => void handeln(() => zug('archivieren', ids), t('rueck.archiviert'), ids),
         },
         {
           id: 'junk',
           text: t('aktion.junk'),
           symbol: <ShieldAlert />,
-          tun: () => void handeln(() => zug('junk', ids), t('rueck.verschoben')),
+          tun: () => void handeln(() => zug('junk', ids), t('rueck.verschoben'), ids),
         },
         {
           /* Wie Outlook: aus der Mail eine Regel. Das Formular geht auf der
@@ -1766,7 +1858,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           text: t('aktion.loeschen'),
           symbol: <Trash2 />,
           gefaehrlich: true,
-          tun: () => void handeln(() => zug('loeschen', ids), t('rueck.geloescht')),
+          tun: () => void handeln(() => zug('loeschen', ids), t('rueck.geloescht'), ids),
         },
       ]
   }
@@ -2145,15 +2237,15 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         {sendeRueck && (
           <div
             role="status"
-            className="fixed bottom-5 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line bg-surface-1 py-2 pr-2 pl-4 shadow-[var(--shadow-3)]"
+            className="fixed bottom-5 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-lg bg-accent-press py-2 pr-2 pl-4 text-on-accent shadow-[var(--shadow-3)]"
           >
-            <span className="text-[13px] tabular-nums text-fg-1">
+            <span className="text-[13px] font-medium tabular-nums">
               {t('rueck.wird_gesendet', { n: sendeRest })}
             </span>
             <button
               type="button"
               onClick={() => void sendenZurueckholen()}
-              className="rounded-md px-2.5 py-1 text-[13px] font-medium text-accent-text transition-colors duration-[var(--dur-fast)] hover:bg-accent-soft"
+              className="rounded-md bg-white/20 px-2.5 py-1 text-[13px] font-semibold text-on-accent transition-colors duration-[var(--dur-fast)] hover:bg-white/30"
             >
               {t('aktion.rueckgaengig')}
             </button>
@@ -2203,7 +2295,11 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
               id: 'nav-verwaltung',
               gruppe: 'bereiche',
               text: t('nav.verwaltung'),
-              tun: zu('verwaltung'),
+              // Seit dem 22.11.2026 die Gruppe „Server" der Einstellungen.
+              tun: () => {
+                setReiter('allgemein')
+                setAnsicht('einstellungen')
+              },
             },
           ]
         : []),
@@ -2253,10 +2349,11 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         /* ⚠️ Erst wenn wirklich geladen wurde. Vorher hieße „keine
             Postfächer" nur „noch nichts gehört". */
         ohnePostfach={stammGeladen && konten.length === 0}
-        aufEinstellungen={() => setAnsicht('einstellungen')}
+        aufEinstellungen={() => {
+          setReiter('profil')
+          setAnsicht('einstellungen')
+        }}
         aufWasNeu={wasNeu ? () => setWasNeuOffen(true) : undefined}
-        modus={modus}
-        aufModus={aufModus}
       />
 
       <WasNeuBanner
@@ -2309,12 +2406,12 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       <div className="flex min-h-0 flex-1">
         <NavRail
           ansicht={ansicht}
-          aufAnsicht={setAnsicht}
-          istBetreiber={Boolean(ich?.ist_betreiber)}
-          /* ⚠️ Der Betreiber sieht den Punkt immer — er muss den Riegel
-             finden, bevor irgendetwas eingeschaltet ist. Alle anderen nur,
-             wenn die Installation es erlaubt. */
-          kiSichtbar={Boolean(ich?.ist_betreiber) || Boolean(ich?.ki_erlaubt)}
+          aufAnsicht={(a) => {
+            // ⚠️ Das Zahnrad unten öffnet die Einstellungen beim Profil, wie
+            // „Name · Einstellungen" in nexnotes. Wer dort schon ist, bleibt.
+            if (a === 'einstellungen' && ansicht !== 'einstellungen') setReiter('profil')
+            setAnsicht(a)
+          }}
           offeneAufgaben={offeneAufgaben}
         />
 
@@ -2335,6 +2432,16 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 gleichtAb={gleichtAb}
                 lesemodus={lesemodus}
                 aufLesemodus={setLesemodus}
+              />
+
+              {/* Die Postfachgruppen als Reiter unter der Werkzeugleiste, direkt
+                  über Ordnerspalte und Liste, die sie filtern (bis 22.11.2026
+                  Pillen in der Ordnerspalte). */}
+              <Postfachgruppen
+                konten={konten}
+                ordner={ordnerMitZaehlern}
+                gruppe={gruppe}
+                aufGruppe={setGruppe}
               />
 
               <MailPage
@@ -2380,7 +2487,6 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 }
                 aufNeuesSchlagwort={(n) => void neuesSchlagwort([n.id])}
                 gruppe={gruppe}
-                aufGruppe={setGruppe}
                 aufMehr={mehrLaden}
                 mehrLaedt={mehrLaedt}
                 amEnde={amEnde}
@@ -2396,7 +2502,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 }
                 aufZiehen={(n) => betroffene(n.id)}
                 aufAblegen={(ordnerId, ids) => {
-                  void handeln(() => verschieben(ids, ordnerId), t('rueck.verschoben'))
+                  void handeln(() => verschieben(ids, ordnerId), t('rueck.verschoben'), ids)
                 }}
                 aufPostfachHinzufuegen={postfachHinzufuegen}
                 aufNachrichtKontext={nachrichtKontext}
@@ -2416,9 +2522,9 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                   if (aktion === 'markieren') {
                     void flagSetzen(n.id, { markiert: !n.markiert })
                   } else if (aktion === 'loeschen') {
-                    void handeln(() => zug('loeschen', [n.id]), t('rueck.geloescht'))
+                    void handeln(() => zug('loeschen', [n.id]), t('rueck.geloescht'), [n.id])
                   } else {
-                    void handeln(() => zug('archivieren', [n.id]), t('rueck.archiviert'))
+                    void handeln(() => zug('archivieren', [n.id]), t('rueck.archiviert'), [n.id])
                   }
                 }}
                 /* Der Auswahlmodus — nur schmal. Die Leiste wirkt über
@@ -2459,12 +2565,12 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                     aufLoeschen={() => {
                       const ids = mehrfach
                       setAuswahlmodus(false)
-                      void handeln(() => zug('loeschen', ids), t('rueck.geloescht'))
+                      void handeln(() => zug('loeschen', ids), t('rueck.geloescht'), ids)
                     }}
                     aufArchivieren={() => {
                       const ids = mehrfach
                       setAuswahlmodus(false)
-                      void handeln(() => zug('archivieren', ids), t('rueck.archiviert'))
+                      void handeln(() => zug('archivieren', ids), t('rueck.archiviert'), ids)
                     }}
                     aufVerschieben={() => blattOeffnen('verschieben')}
                     aufGelesen={() => {
@@ -2505,19 +2611,16 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           )}
 
           {ansicht === 'kontakte' && <KontaktePage />}
-          {ansicht === 'ki' && (
-            <KiSeite istBetreiber={ich?.ist_betreiber ?? false} ichNeuLaden={ichNeuLaden} />
-          )}
-
-          {ansicht === 'ueber' && <UeberPage />}
-
           {ansicht === 'einstellungen' && (
             <Suspense fallback={null}>
             <EinstellungenPage
               ich={ich}
               ichNeuLaden={ichNeuLaden}
-              reiter={reiter}
-              aufReiter={setReiter}
+              bereich={reiter}
+              aufBereich={setReiter}
+              aufAbmelden={abmelden}
+              modus={modus}
+              aufModus={aufModus}
               formularOffen={formularOffen}
               wahlOffen={wahlOffen}
               aufWahl={setWahlOffen}
@@ -2545,16 +2648,6 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
             </Suspense>
           )}
 
-          {ansicht === 'verwaltung' && (
-            <Suspense fallback={null}>
-            <Verwaltung
-              reiter={verwaltungsReiter}
-              aufReiter={setVerwaltungsReiter}
-              ich={ich}
-              ichNeuLaden={ichNeuLaden}
-            />
-            </Suspense>
-          )}
         </div>
       </div>
 
@@ -2653,21 +2746,26 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       {sendeRueck && (
         <div
           role="status"
-          className="fixed bottom-5 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line bg-surface-1 py-2 pr-2 pl-4 shadow-[var(--shadow-3)]"
+          className="fixed bottom-5 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-lg bg-accent-press py-2 pr-2 pl-4 text-on-accent shadow-[var(--shadow-3)]"
         >
-          <span className="text-[13px] tabular-nums text-fg-1">
+          <span className="text-[13px] font-medium tabular-nums">
             {t('rueck.wird_gesendet', { n: sendeRest })}
           </span>
           <button
             type="button"
             onClick={() => void sendenZurueckholen()}
-            className="rounded-md px-2.5 py-1 text-[13px] font-medium text-accent-text transition-colors duration-[var(--dur-fast)] hover:bg-accent-soft"
+            className="rounded-md bg-white/20 px-2.5 py-1 text-[13px] font-semibold text-on-accent transition-colors duration-[var(--dur-fast)] hover:bg-white/30"
           >
             {t('aktion.rueckgaengig')}
           </button>
         </div>
       )}
 
+      {/* ⚠️ **Grün, nicht weiß** (22.11.2026): Weiß auf der weißen Liste war die
+          Leiste kaum zu sehen, und wer sie nicht sieht, hat kein Rückgängig.
+          ⚠️ Das dunklere Grün (`accent-press`): Weiß auf dem Akzentgrün hat
+          gemessen nur 3,6 : 1, auf `accent-press` 5,4 : 1. Gilt für beide
+          Leisten (Senden rückholen und Rückweg). */}
       {/* Der Rückweg. Er ist der Grund, warum Löschen ohne Nachfrage
           auskommt: Nachfragen bei jeder Nachricht erzieht dazu, sie
           wegzuklicken - dann schützen sie nicht mehr. Steht gerade die
@@ -2675,13 +2773,13 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       {!sendeRueck && rueckgaengig && (
         <div
           role="status"
-          className="fixed bottom-5 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line bg-surface-1 py-2 pr-2 pl-4 shadow-[var(--shadow-3)]"
+          className="fixed bottom-5 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-lg bg-accent-press py-2 pr-2 pl-4 text-on-accent shadow-[var(--shadow-3)]"
         >
-          <span className="text-[13px] text-fg-1">{rueckgaengig.text}</span>
+          <span className="text-[13px] font-medium">{rueckgaengig.text}</span>
           <button
             type="button"
             onClick={() => void zurueck()}
-            className="rounded-md px-2.5 py-1 text-[13px] font-medium text-accent-text transition-colors duration-[var(--dur-fast)] hover:bg-accent-soft"
+            className="rounded-md bg-white/20 px-2.5 py-1 text-[13px] font-semibold text-on-accent transition-colors duration-[var(--dur-fast)] hover:bg-white/30"
           >
             {t('aktion.rueckgaengig')}
           </button>

@@ -12,7 +12,7 @@
  * Rollen unter dem Finger — das bleibt eine Frage an ein echtes Gerät.
  */
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { anmelden, rechtsklick, serverabsagen, TESTPOSTFACH, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, rechtsklick, serverabsagen, TESTPOSTFACH, zuEinstellungen } from './hilfen'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -171,9 +171,9 @@ test('Die Einstellung wirkt: steht die Richtung auf „Aus", wischt nichts', asy
      wird hier ihre **Wirkung** gemessen, nicht ihr Speichern: umstellen,
      wischen, nichts darf passieren. */
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Darstellung' }).click()
+  await bereich(page, 'Darstellung')
   await page.getByRole('combobox', { name: /Wischen nach rechts/ }).selectOption('aus')
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
 
   const zeilen = page.locator('button[draggable="true"]')
   await expect(zeilen.first()).toBeVisible()
@@ -198,7 +198,7 @@ test('Die Einstellung wirkt: steht die Richtung auf „Aus", wischt nichts', asy
   // Zurück auf die Vorgabe — `anmelden()` räumt zwar auch auf, aber nur in
   // Tests, die es aufrufen; ein Handgriff hier hält den Stand sauber.
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Darstellung' }).click()
+  await bereich(page, 'Darstellung')
   await page.getByRole('combobox', { name: /Wischen nach rechts/ }).selectOption('archivieren')
 })
 

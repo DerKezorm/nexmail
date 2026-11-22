@@ -1,6 +1,7 @@
 /* Die Regeln des Auswahlmodus der schmalen Ansicht. */
 import { describe, expect, it } from 'vitest'
 import {
+  istAllesWaehlen,
   alleUmschalten,
   fuersMehrBlatt,
   gelesenZiel,
@@ -97,5 +98,29 @@ describe('fuersMehrBlatt', () => {
       'wiedervorlage',
       'junk',
     ])
+  })
+})
+
+describe('Strg+A', () => {
+  const taste = (key: string, mehr: Partial<Record<'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey', boolean>> = {}) => ({
+    key,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...mehr,
+  })
+
+  it('Strg+A und Cmd+A, auch mit Feststelltaste', () => {
+    expect(istAllesWaehlen(taste('a', { ctrlKey: true }))).toBe(true)
+    expect(istAllesWaehlen(taste('a', { metaKey: true }))).toBe(true)
+    expect(istAllesWaehlen(taste('A', { ctrlKey: true }))).toBe(true)
+  })
+
+  it('nicht ohne Strg, nicht mit Alt (AltGr) und nicht mit Umschalt', () => {
+    expect(istAllesWaehlen(taste('a'))).toBe(false)
+    expect(istAllesWaehlen(taste('a', { ctrlKey: true, altKey: true }))).toBe(false)
+    expect(istAllesWaehlen(taste('a', { ctrlKey: true, shiftKey: true }))).toBe(false)
+    expect(istAllesWaehlen(taste('s', { ctrlKey: true }))).toBe(false)
   })
 })

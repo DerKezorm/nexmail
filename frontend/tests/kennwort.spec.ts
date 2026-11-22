@@ -9,13 +9,13 @@
  * Server trägt und dessen Absage benannt zeigt.
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, jederKnopfHatEinenNamen, keineRohenSchluessel, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, jederKnopfHatEinenNamen, keineRohenSchluessel, zuEinstellungen } from './hilfen'
 
 test.beforeEach(async ({ page }, info) => {
   test.skip(info.project.name === 'schmal', 'Die Einstellungen werden breit geprüft.')
   await anmelden(page)
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Sicherheit' }).click()
+  await bereich(page, 'Sicherheit')
 })
 
 test('Ein falsches bisheriges Kennwort wird benannt abgewiesen', async ({ page }) => {

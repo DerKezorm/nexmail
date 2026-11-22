@@ -67,23 +67,40 @@ export async function anmelden(seite: Page) {
   ).toBeVisible({ timeout: 15_000 })
 }
 
-/** Zu den eigenen Einstellungen — sie liegen im Benutzermenü oben rechts.
+/** Zu den Einstellungen über das Benutzermenü oben rechts, dann in einen
+ *  Bereich (ab Werk „Postfächer", wie bis 0.30 der erste Reiter).
  *
- * ⚠️ **Nicht mehr in der NavRail.** Dort steht seit dem 01.09.2026 nur noch
- * die Verwaltung: Was dem Benutzer gehört, hängt an seinem Namen; was der
- * Anwendung gehört, unten in der Ecke.
+ * ⚠️ **Seit dem 22.11.2026 eine Seite wie in nexnotes**: Navigation links,
+ * schmal eine Auswahl darüber; Verwaltung, KI und „Über" sind Bereiche darin.
  */
-export async function zuEinstellungen(seite: Page) {
+export async function zuEinstellungen(seite: Page, ziel: string = 'Postfächer') {
   /* ⚠️ **Nicht am Namen des Betreibers suchen.** „Anna" steht in keiner
      fremden Installation — und schmal stand er auch hier nicht da: Die
-     Beschriftung ist ausgeblendet, die beiden Symbole sind `aria-hidden`, und
-     damit hatte der Knopf **gar keinen Namen**. Der Test fand ihn nicht, eine
-     Vorlesehilfe hätte ihn auch nicht gefunden. Er trägt jetzt ein
-     `aria-label`; gesucht wird danach. */
+     Beschriftung ist ausgeblendet, das Bild ist `aria-hidden`, und damit
+     hatte der Knopf **gar keinen Namen**. Er trägt ein `aria-label`; gesucht
+     wird danach. */
   const menue = seite.getByRole('button', { name: /Benutzermenü|User menu/ }).first()
   await menue.click()
-  await seite.getByRole('button', { name: 'Einstellungen' }).click()
-  await expect(seite.getByRole('tab', { name: 'Postfächer' })).toBeVisible()
+  await seite.getByRole('button', { name: 'Einstellungen' }).first().click()
+  await expect(seite.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+  if (ziel !== 'Profil') await bereich(seite, ziel)
+}
+
+/** In einen Bereich der Einstellungen wechseln, breit über die Navigation,
+ *  schmal über die Auswahl darüber, und warten, bis sein Titel dasteht. */
+export async function bereich(seite: Page, titel: string) {
+  const navigation = seite.getByTestId('einstellungen-navigation')
+  // ⚠️ Erst warten, bis eins von beiden steht: Direkt nach dem Klick auf
+  // „Einstellungen" ist noch keins sichtbar, und dann ginge es schmal weiter.
+  await expect(
+    seite.locator('[data-testid="einstellungen-navigation"]:visible, [data-testid="einstellungen-sprung"]:visible').first(),
+  ).toBeVisible()
+  if (await navigation.isVisible()) {
+    await navigation.getByRole('button', { name: titel, exact: true }).click()
+  } else {
+    await seite.getByTestId('einstellungen-sprung').locator('select').selectOption({ label: titel })
+  }
+  await expect(seite.getByRole('heading', { level: 1, name: titel, exact: true })).toBeVisible()
 }
 
 /**

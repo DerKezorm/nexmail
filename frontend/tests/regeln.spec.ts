@@ -11,7 +11,7 @@
  * dem Fall über die Schnittstelle.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { anmelden, keineRohenSchluessel, postfach, serverabsagen, TESTPOSTFACH } from './hilfen'
+import { anmelden, bereich, keineRohenSchluessel, postfach, serverabsagen, TESTPOSTFACH } from './hilfen'
 
 const MARKE = 'nexmail-regelprobe-ohne-treffer'
 
@@ -48,7 +48,7 @@ test('„Regel erstellen" öffnet das Formular mit dem Absender', async ({ page 
   await eintrag.click()
 
   // Die Regelseite mit dem Formular; die Bedingung trägt eine Mailadresse.
-  await expect(page.getByRole('tab', { name: 'Regeln', selected: true })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Regeln' })).toBeVisible()
   const wert = page.getByLabel('Wert', { exact: true }).first()
   await expect(wert).toHaveValue(/.+@.+/)
   // ⚠️ Auswahllisten über die Rolle: Das Label umschließt die Liste, und
@@ -79,8 +79,8 @@ test('„Jetzt anwenden" läuft über den gewählten Ordner und sagt, was es tra
 
   const absagen = serverabsagen(page)
   await page.getByRole('button', { name: /Benutzermenü|User menu/ }).first().click()
-  await page.getByRole('button', { name: 'Einstellungen' }).click()
-  await page.getByRole('tab', { name: 'Regeln' }).click()
+  await page.getByRole('button', { name: 'Einstellungen' }).first().click()
+  await bereich(page, 'Regeln')
 
   await page.getByRole('button', { name: /Jetzt anwenden/ }).click()
   const fenster = page.getByRole('dialog')

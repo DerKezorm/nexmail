@@ -124,7 +124,7 @@
     "webhook_nur_senden": "Send only",
     "webhook_nur_senden_hinweis": "nexmail sends the task and does not keep it in its own list. For tools where the task gets done.",
     "webhook_mit_text": "Include the message text",
-    "webhook_mit_text_hinweis": "The text and HTML of the message are included. Only takes effect if the operator allowed it in Administration.",
+    "webhook_mit_text_hinweis": "The text and HTML of the message are included. Only takes effect if the operator allowed it under Settings → Server → General.",
     "webhook_mit_text_gesperrt": "The operator has not allowed message text for webhooks. Until then only the title, sender and link are sent.",
     "webhook_verbunden_titel": "Webhook connected",
     "webhook_geheimnis_einmal": "Your tool uses this secret to check the signature in X-Nexmail-Signature. nexmail only shows it now.",
@@ -290,7 +290,86 @@
     "schlagworte": "Tags",
     "sicherheit": "Security",
     "signaturen": "Signatures",
-    "titel": "Settings"
+    "titel": "Settings",
+    "gruppen": {
+      "konto": "My account",
+      "mail": "Mail",
+      "server": "Server"
+    },
+    "springen": "Choose a section",
+    "bereiche": {
+      "profil": {
+        "titel": "Profile",
+        "text": "Picture, name, email address and language of your account."
+      },
+      "sicherheit": {
+        "titel": "Security",
+        "text": "Password, second factor, sign-in with providers and signed-in devices."
+      },
+      "darstellung": {
+        "titel": "Appearance",
+        "text": "How the list and your mail look for you."
+      },
+      "benachrichtigungen": {
+        "titel": "Notifications",
+        "text": "Alerts, even when nexmail is not open."
+      },
+      "verbindungen": {
+        "titel": "Connections",
+        "text": "To-do apps, the iPhone app and API keys for other programs."
+      },
+      "postfaecher": {
+        "titel": "Mailboxes",
+        "text": "The mailboxes nexmail fetches for you."
+      },
+      "regeln": {
+        "titel": "Rules",
+        "text": "What happens to incoming mail on its own."
+      },
+      "signaturen": {
+        "titel": "Signatures",
+        "text": "Signatures and text templates for writing."
+      },
+      "abwesenheit": {
+        "titel": "Out of office",
+        "text": "An automatic reply while you are away."
+      },
+      "schlagworte": {
+        "titel": "Tags",
+        "text": "Tags for your mail, with colours."
+      },
+      "ki": {
+        "titel": "AI"
+      },
+      "allgemein": {
+        "titel": "General",
+        "text": "Address, time zone and what applies to all users."
+      },
+      "anmeldung": {
+        "titel": "Sign-in",
+        "text": "Sign-in with OpenID Connect, for example with authentik."
+      },
+      "mailversand": {
+        "titel": "Mail",
+        "text": "nexmail's own outgoing mail and the apps for Google and Microsoft."
+      },
+      "speicher": {
+        "titel": "Storage and backups",
+        "text": "Create, download and restore backups."
+      },
+      "konten": {
+        "titel": "Accounts",
+        "text": "Invite, change and remove users."
+      },
+      "log": {
+        "titel": "Log",
+        "text": "What nexmail did, and who."
+      },
+      "ueber": {
+        "titel": "About nexmail",
+        "text": "Version, origin, licence and updates."
+      }
+    }
   },
   "erinnerung": {
     "titel_one": "Reminder",
@@ -393,7 +472,7 @@
     "fehler_allgemein": "That did not work.",
     "fehler_caldav_abgewiesen": "User name or password is wrong.",
     "fehler_caldav_adresse_fehlt": "Please enter an address.",
-    "fehler_caldav_adresse_im_eigenen_netz": "Addresses on your own network are blocked. The operator can allow them under Administration, Server.",
+    "fehler_caldav_adresse_im_eigenen_netz": "Addresses on your own network are blocked. The operator can allow them under Settings → Server → General.",
     "fehler_caldav_adresse_ungueltig": "That is not a web address.",
     "fehler_caldav_antwort_unlesbar": "The server answered with something nexmail cannot read.",
     "fehler_caldav_google_api_aus": "Google refused the request: the CalDAV API is not enabled in the Cloud project. It is a separate API next to the Google Calendar API. The operator enables it under APIs & Services → Library.",
@@ -419,7 +498,7 @@
     "gefunden_hinweis": "nexmail only fetches the ticked ones. The others stay untouched.",
     "gesperrt": "This calendar is a subscription from {{wo}}. Change it where it is published.",
     "google_konto": "Google account",
-    "google_warum": "Google calendars go through a connected Google account. Connect it under Settings → Security. If there is no Google button there, the operator has to register an app first (Administration → Google and Microsoft).",
+    "google_warum": "Google calendars go through a connected Google account. Connect it under Settings → Security. If there is no Google button there, the operator has to register an app first (Settings → Server → Mail).",
     "heute": "Today",
     "hinzu_abo": "Subscribe to a calendar",
     "hinzu_abo_text": "An ICS link, the kind holiday and fixture lists offer. Always read only.",
@@ -815,7 +894,7 @@
     "buch_fehler_caldav_abgewiesen": "The server refuses that user name or password.",
     "buch_fehler_caldav_nicht_erreichbar": "The server did not answer.",
     "buch_fehler_caldav_adresse_ungueltig": "That is not a web address.",
-    "buch_fehler_caldav_adresse_im_eigenen_netz": "Addresses on your own network are blocked. The operator can allow them under Administration, Server.",
+    "buch_fehler_caldav_adresse_im_eigenen_netz": "Addresses on your own network are blocked. The operator can allow them under Settings → Server → General.",
     "buch_fehler_caldav_antwort_unlesbar": "The server answered with something nexmail cannot read.",
     "buch_fehler_carddav_kein_buchserver": "There is no address book server at that address.",
     "buch_fehler_carddav_nicht_lesbar": "The address book could not be read.",
@@ -999,7 +1078,7 @@
     "verbinden_google": "Connect a Google account",
     "verbinden_microsoft": "Connect a Microsoft account",
     "keine_zugaenge": "No consent given yet.",
-    "nicht_eingerichtet": "The operator has to register an app first (Administration → Google and Microsoft).",
+    "nicht_eingerichtet": "The operator has to register an app first (Settings → Server → Mail).",
     "trennen": "Disconnect",
     "trennen_frage": "Disconnect the consent for {{adresse}}?",
     "trennen_text": "nexmail forgets its tokens. The permission stays with the provider itself. Revoke it there in your own account.",
@@ -1355,7 +1434,7 @@
   },
   "serverfehler": {
     "app_abgeschaltet": "The operator has turned the iPhone app off for this installation.",
-    "app_adresse_fehlt": "The QR code needs the address nexmail is reachable at. Enter it under Administration, Server.",
+    "app_adresse_fehlt": "The QR code needs the address nexmail is reachable at. Enter it under Settings → Server → General.",
     "app_kopplung_unbekannt": "This code is not valid, or no longer. Show a new one in the browser.",
     "app_von_vorn": "The stored state is too old and has to be read again.",
     "app_zu_viele_geraete": "{{max}} more devices have already been added this hour. Try again later.",
@@ -1366,7 +1445,7 @@
     "abbestellen_adresse_unerlaubt": "This unsubscribe address is not allowed: it points into your own network or does not use HTTPS.",
     "abbestellen_nicht_erreichbar": "The sender's server could not be reached. Try again later.",
     "abbestellen_nicht_moeglich": "This message has no one-click unsubscribe.",
-    "api_schluessel_abgeschaltet": "API keys are turned off on this installation. The operator can turn them on under Settings → API keys.",
+    "api_schluessel_abgeschaltet": "API keys are turned off on this installation. The operator can turn them on under Settings → Connections.",
     "api_schluessel_fehlt": "This address needs an API key in the header Authorization: Bearer.",
     "api_schluessel_name_fehlt": "Give the key a name so you can recognise it later.",
     "api_schluessel_name_zu_lang": "The name is longer than {{max}} characters.",
@@ -1394,6 +1473,9 @@
     "adresse_schon_da": "“{{adresse}}” is already in the address book.",
     "adresse_schon_vergeben": "Another mailbox already uses that address.",
     "adresse_ungueltig": "That does not look like an email address.",
+    "profilbild_zu_gross": "The picture is too large (at most {{max_mb}} MB).",
+    "profilbild_kein_bild": "That is not a picture nexmail accepts (JPEG, PNG, WebP, GIF, HEIC or AVIF).",
+    "profilbild_fehlt": "There is no such profile picture.",
     "aktion_unbekannt": "There is no action “{{aktion}}”.",
     "alias_adresse_ungueltig": "“{{adresse}}” is not a valid email address.",
     "alias_unbekannt": "“{{adresse}}” does not belong to this mailbox. Add it under the sender addresses first.",
@@ -1424,7 +1506,7 @@
     "todoist_zugang_ungueltig": "Todoist does not accept the token. Connect Todoist again under Settings, Tasks.",
     "webhook_adresse_ungueltig": "The webhook address must start with http:// or https:// and must not contain credentials.",
     "webhook_adresse_localhost": "Inside the container, localhost is nexmail itself. Enter the host's address on your network, for example http://10.0.0.20:8080/…",
-    "webhook_adresse_im_eigenen_netz": "This address is on the local network. The operator can allow that under Administration → Servers on the local network.",
+    "webhook_adresse_im_eigenen_netz": "This address is on the local network. The operator can allow that under Settings → Server → General.",
     "webhook_nicht_erreichbar": "The webhook cannot be reached.",
     "webhook_zeitueberschreitung": "The webhook did not answer within {{sekunden}} seconds.",
     "webhook_weiterleitung": "The webhook redirects (HTTP {{status}}). nexmail does not follow redirects, enter the final address instead.",
@@ -1563,7 +1645,7 @@
     "oauth_zustimmung_abgelaufen": "The consent has expired. Please grant it again.",
     "oauth_zustimmung_fehlt": "This account has no consent yet.",
     "oauth_zweck": "That purpose is not allowed.",
-    "oeffentliche_adresse_fehlt": "Without a public address the link goes nowhere. It lives in the administration under “Server”.",
+    "oeffentliche_adresse_fehlt": "Without a public address the link goes nowhere. It is under Settings → Server → General.",
     "ordner_angelegt_aber_unsichtbar": "The folder was created but does not appear in the server’s folder list. A sync should bring it in.",
     "ordner_anlegen_abgewiesen": "The server did not create the folder: {{grund}}",
     "ordner_entfernen_abgewiesen": "The server did not remove the folder: {{grund}}",
@@ -1584,7 +1666,7 @@
     "port_ungueltig": "That port is out of range.",
     "postausgang_abgelehnt": "The outgoing server refused ({{code}}): {{grund}}",
     "postausgang_anmeldung_abgewiesen": "The outgoing server refused the username or password.",
-    "postausgang_fehlt": "nexmail has no outgoing server of its own set up. It lives in the administration under “Server”.",
+    "postausgang_fehlt": "nexmail has no outgoing server of its own set up. It is under Settings → Server → Mail.",
     "postausgang_nicht_erreichbar": "The outgoing server {{server}}:{{port}} is unreachable.",
     "postfach_schon_da": "That mailbox is already set up.",
     "postfach_unbekannt": "There is no such mailbox.",
@@ -1653,7 +1735,7 @@
     "kein_gueltiger_schluessel": "That is not a valid device key.",
     "nextasks_adresse_ungueltig": "The nextasks address has to start with http:// or https://, without credentials, ? or #.",
     "nextasks_adresse_localhost": "Inside the container, localhost is nexmail itself. Enter the address nextasks has on your network, for example https://tasks.example.com.",
-    "nextasks_adresse_im_eigenen_netz": "This address is on the local network. The operator can allow that under Administration → Servers on the local network.",
+    "nextasks_adresse_im_eigenen_netz": "This address is on the local network. The operator can allow that under Settings → Server → General.",
     "nextasks_nicht_erreichbar": "nextasks cannot be reached at this address right now.",
     "nextasks_zeitueberschreitung": "nextasks did not answer within {{sekunden}} seconds.",
     "nextasks_weiterleitung": "The address redirects (HTTP {{status}}). nexmail does not follow redirects, enter the address nextasks really runs at.",
@@ -1948,8 +2030,8 @@
     "einladung_zuruecknehmen_text": "The link for “{{name}}” will stop working. You can invite again at any time.",
     "gilt_bis": "Valid until {{wann}}",
     "gilt_fuer_alle": "These values apply to the whole application, not just to you.",
-    "kein_postausgang": "nexmail has no outgoing mail server of its own, so it cannot send the invitation. It is on the “Server” tab.",
-    "keine_adresse": "No public address is set. The link in the invitation would lead nowhere. It is on the “Server” tab.",
+    "kein_postausgang": "nexmail has no outgoing mail server of its own, so it cannot send the invitation. It is under Settings → Server → Mail.",
+    "keine_adresse": "No public address is set. The link in the invitation would lead nowhere. It is under Settings → Server → General.",
     "ki": "AI services for all users",
     "ki_erlauben": "Allow",
     "ki_fremde_post": "Received mail for all users",
@@ -2012,5 +2094,22 @@
     "wegklicken": "Dismiss",
     "wo": "Where:",
     "verstanden": "Got it"
+  },
+  "profil": {
+    "name": "Name",
+    "mail": "Email",
+    "bild_hinzufuegen": "Choose picture",
+    "bild_aendern": "Other picture",
+    "bild_entfernen": "Remove picture",
+    "bild_gespeichert": "The picture is saved.",
+    "bild_entfernt": "The picture is removed.",
+    "gespeichert": "Saved.",
+    "rolle": "Role: {{rolle}}",
+    "rolle_betreiber": "Operator",
+    "rolle_benutzer": "User",
+    "sprache": "Language",
+    "sprache_hinweis": "Applies in this browser.",
+    "abmelden_titel": "Sign out",
+    "abmelden_text": "Ends your session in this browser. Your mail stays as it is."
   }
 }

@@ -14,8 +14,8 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Info, Trash2 } from 'lucide-react'
-import { Button, IconButton, Select, Switch } from '../ds'
+import { Info, Moon, Sun, Trash2 } from 'lucide-react'
+import { Button, IconButton, Select, Switch, Tabs } from '../ds'
 import { api } from '../api/client'
 import { useGemerkt } from '../lib/haken'
 import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from '../lib/wischen'
@@ -55,9 +55,14 @@ interface Props {
   /** Nach dem Logo-Schalter: `ich` trägt seinen Stand, und die Liste baut
    *  daraus die Bildadresse. Ohne Auffrischen wirkte er erst nach F5. */
   ichNeuLaden?: () => void
+  /** Hell oder dunkel. ⚠️ Seit dem 22.11.2026 nur noch hier, nicht mehr
+   *  oben rechts in der Kopfleiste, wie in nexnotes unter
+   *  „Darstellung". Liegt im Browser, wie bisher. */
+  modus?: 'dark' | 'light'
+  aufModus?: (m: 'dark' | 'light') => void
 }
 
-export function Darstellung({ ichNeuLaden }: Props = {}) {
+export function Darstellung({ ichNeuLaden, modus, aufModus }: Props = {}) {
   const { t } = useTranslation()
   const [dichte, setDichte] = useGemerkt<Dichte>('nexmail.dichte', 'normal')
   const [anreisser, setAnreisser] = useGemerkt<boolean>('nexmail.anreisser', true)
@@ -191,6 +196,23 @@ export function Darstellung({ ichNeuLaden }: Props = {}) {
         <Info className="mt-0.5 size-3.5 shrink-0" />
         {t('darstellung.nur_dieses_geraet')}
       </p>
+
+      {modus && aufModus && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium text-fg-2">{t('nav.modus')}</span>
+          <div>
+            <Tabs
+              variant="segment"
+              activeId={modus}
+              onSelect={(m) => aufModus(m as 'dark' | 'light')}
+              tabs={[
+                { id: 'light', label: t('nav.hell'), icon: <Sun className="size-4" /> },
+                { id: 'dark', label: t('nav.dunkel'), icon: <Moon className="size-4" /> },
+              ]}
+            />
+          </div>
+        </div>
+      )}
 
       <Select
         label={t('darstellung.dichte')}

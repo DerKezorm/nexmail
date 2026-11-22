@@ -1,20 +1,28 @@
-/* Die Einstellungen als eigene Seite mit Reitern.
+/* Die Einstellungen, aufgebaut wie in nexnotes.
+ *
+ * ⚠️ **Wer eine nex-App kennt, findet sich in der anderen zurecht**
+ * (22.11.2026). Deshalb dieselbe Seite: links oben das eigene Konto mit Bild und
+ * Rolle, darunter die Gruppen „Mein Konto", „Mail" und (für den Betreiber)
+ * „Server", ganz unten „Über nexmail". Rechts Titel, ein Satz dazu und der
+ * Inhalt. Ist die Seite schmal (unter 700 px eigene Breite, nicht Fenster),
+ * steht statt der Navigation eine Auswahl über dem Inhalt. Die Bereiche
+ * stehen in `einstellungen/bereiche.ts`.
+ *
+ * Bis 0.30 waren das zwei Seiten mit Reitern (Einstellungen und Verwaltung)
+ * plus KI und „Über" als eigene Punkte der Leiste.
  *
  * Eigene Seite und kein Fenster: Das Konto-Formular trägt zwei Serverblöcke
  * und einen Verbindungstest — in einem Fenster über der Mail-Ansicht wäre das
  * ein Guckloch.
- *
- * Die Postfächer kommen ab Stufe 1 vom Server. Regeln, Signaturen, Sicherheit
- * und Darstellung stehen als Reiter schon da, damit die Gliederung beurteilbar
- * ist.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { RefreshCw } from 'lucide-react'
-import { Button, Dialog, Tabs } from '../ds'
+import { Building2, FileText, Info, KeyRound, ListChecks, Mail, RefreshCw, Smartphone } from 'lucide-react'
+import { Button, Dialog } from '../ds'
 import type { Ich } from '../api/client'
 import { Postfachkacheln } from '../components/Postfachkacheln'
 import { PostfachHinzufuegen } from '../components/PostfachHinzufuegen'
+import { Profilbild } from '../components/Profilbild'
 import { Benachrichtigungen } from './Benachrichtigungen'
 import { Darstellung } from './Darstellung'
 import { KontoFormular } from './KontoFormular'
@@ -27,37 +35,51 @@ import { Abwesenheit } from './Abwesenheit'
 import { Signaturen } from './Signaturen'
 import { Textvorlagen } from './Textvorlagen'
 import { TodoApps } from './TodoApps'
+import { KiSeite } from './KiSeite'
+import { UeberPage } from './UeberPage'
+import { Benutzerverwaltung } from './Benutzerverwaltung'
+import { OauthVerwaltung } from './OauthVerwaltung'
+import { OidcVerwaltung } from './OidcVerwaltung'
+import { Protokoll } from './Protokoll'
+import { Sicherungen } from './Sicherungen'
+import { Postausgang, ServerAllgemein } from './Verwaltung'
+import { Profil } from './einstellungen/Profil'
+import { Karte } from './einstellungen/Karte'
+import {
+  GRUPPEN,
+  UEBER,
+  bereichDef,
+  bereicheFuer,
+  erlaubterBereich,
+  ueberSichtbar,
+  type Bereich,
+} from './einstellungen/bereiche'
 import { api } from '../api/client'
 import type { KontoZeile } from '../api/client'
 
-export type Reiter =
-  | 'postfaecher'
-  | 'regeln'
-  | 'signaturen'
-  | 'abwesenheit'
-  | 'schlagworte'
-  | 'aufgaben'
-  | 'sicherheit'
-  | 'benachrichtigungen'
-  | 'api'
-  | 'iphone'
-  | 'darstellung'
+export type { Bereich } from './einstellungen/bereiche'
 
 interface Props {
-  reiter: Reiter
-  aufReiter: (r: Reiter) => void
+  bereich: Bereich
+  aufBereich: (b: Bereich) => void
   formularOffen: boolean
   aufFormular: (offen: boolean) => void
   /** Das Fenster hinter der (+)-Kachel. Es steht in `App`, weil auch die
    *  Ordnerspalte dorthin führt („Postfach hinzufügen"). */
   wahlOffen: boolean
   aufWahl: (offen: boolean) => void
-  /** Für den Reiter „Sicherheit": Zweiter Faktor und übrige Codes. */
   ich: Ich | null
+  /** ⚠️ Nach einer Betreiber-Übergabe ist man selbst keiner mehr; ohne
+   *  Nachladen blieben die Bereiche „Server" stehen. */
   ichNeuLaden?: () => void
+  /** „Abmelden" im Profil, derselbe Weg wie im Benutzermenü. */
+  aufAbmelden: () => void
+  /** Hell oder dunkel, unter Darstellung (seit 22.11.2026 nur dort). */
+  modus: 'dark' | 'light'
+  aufModus: (m: 'dark' | 'light') => void
   /** Nach Anlegen/AEndern/Entfernen: App-weite Kontenliste nachziehen (Banner!). */
   aufKontenGeaendert?: () => void
-  /** Nach jeder AEnderung im Reiter Schlagworte: Marken und Menues der
+  /** Nach jeder AEnderung bei den Schlagworten: Marken und Menues der
    *  Mail-Ansicht nachziehen — was ich aendere, muss ich auch sehen. */
   aufSchlagworteGeaendert?: () => void
   /** „Regel erstellen …" aus dem Rechtsklick auf eine Mail. */
@@ -65,15 +87,23 @@ interface Props {
   aufRegelvorlageGenommen?: () => void
 }
 
+const EINTRAG =
+  'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px] transition-colors duration-[var(--dur-fast)] '
+const LEISE = 'text-fg-2 hover:bg-surface-3 hover:text-fg-1'
+const GEWAEHLT = 'bg-accent-soft font-medium text-accent-text ring-1 ring-accent/40'
+
 export function EinstellungenPage({
-  reiter,
-  aufReiter,
+  bereich: gewuenscht,
+  aufBereich,
   formularOffen,
   aufFormular,
   wahlOffen,
   aufWahl,
   ich,
   ichNeuLaden,
+  aufAbmelden,
+  modus,
+  aufModus,
   aufKontenGeaendert,
   aufSchlagworteGeaendert,
   regelvorlage = null,
@@ -105,95 +135,130 @@ export function EinstellungenPage({
     }
   }
 
-  return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-canvas">
-      {/* ⚠️ 1280 statt 900: Elf Reiter passen sonst nicht einzeilig; zehn brauchten rund
-          1064 px (18.09.2026). Bei 900 brachen die langen Namen wie „API-Schlüssel"
-          zweizeilig um, und die Leiste lief trotzdem über den Rand. Wer einen
-          Reiter dazunimmt, misst neu; `einstellungen.spec.ts` schlägt an. */}
-      <div className="mx-auto w-full max-w-[1280px] px-6 py-6">
-        <h1 className="mb-4 font-display text-[24px] font-medium text-fg-1">
-          {t('einstellungen.titel')}
-        </h1>
+  // ⚠️ Solange `ich` fehlt, weiß niemand, ob „Server" erlaubt ist. Ohne diese
+  // Wartezeit sprang ein Betreiber beim Laden kurz aufs Profil.
+  const bereich = ich ? erlaubterBereich(gewuenscht, ich) : gewuenscht
+  const Symbol = bereichDef(bereich).symbol
+  const titel = t(`einstellungen.bereiche.${bereich}.titel`)
+  const text = bereich === 'ki' ? t('ki.seite_lede') : t(`einstellungen.bereiche.${bereich}.text`)
 
-        <Tabs
-          activeId={reiter}
-          onSelect={(id) => aufReiter(id as Reiter)}
-          tabs={[
-            {
-              id: 'postfaecher',
-              label: t('einstellungen.postfaecher'),
-              count: konten?.length ?? 0,
-            },
-            { id: 'regeln', label: t('einstellungen.regeln') },
-            { id: 'signaturen', label: t('einstellungen.signaturen') },
-            { id: 'abwesenheit', label: t('einstellungen.abwesenheit') },
-            { id: 'schlagworte', label: t('einstellungen.schlagworte') },
-            { id: 'aufgaben', label: t('einstellungen.aufgaben') },
-            { id: 'sicherheit', label: t('einstellungen.sicherheit') },
-            { id: 'benachrichtigungen', label: t('einstellungen.benachrichtigungen') },
-            { id: 'api', label: t('einstellungen.api') },
-            { id: 'iphone', label: t('einstellungen.iphone') },
-            { id: 'darstellung', label: t('einstellungen.darstellung') },
-          ]}
-        />
-
-        <div className="pt-5">
-          {reiter === 'postfaecher' ? (
-            /* ⚠️ **Die Kacheln bleiben stehen, auch wenn ein Formular offen
-               ist.** Vorher tauschte der Reiter seinen ganzen Inhalt aus; wer
-               ein Postfach anlegte, sah den Bestand nicht mehr und danach
-               eine Liste, von der er nicht wusste, ob sie neu geladen war. */
-            <Postfaecher
-              konten={konten}
-              aufHinzufuegen={() => {
-                setBearbeitet(null)
-                aufWahl(true)
-              }}
-              aufBearbeiten={(k) => {
-                setBearbeitet(k)
-                aufFormular(true)
-              }}
-              aufNeuLaden={() => {
-                laden()
-                aufKontenGeaendert?.()
-              }}
-            />
-          ) : reiter === 'regeln' ? (
-            <Regeln vorlage={regelvorlage} aufVorlageGenommen={aufRegelvorlageGenommen} />
-          ) : reiter === 'abwesenheit' ? (
-            <Abwesenheit />
-          ) : reiter === 'signaturen' ? (
-            /* Die Textvorlagen wohnen im selben Reiter, als eigener Abschnitt
-               darunter — beides sind Textbausteine für das Schreiben. */
-            <div className="flex flex-col gap-6">
+  function inhalt(): ReactNode {
+    switch (bereich) {
+      case 'profil':
+        return <Profil ich={ich} ichNeuLaden={ichNeuLaden} aufAbmelden={aufAbmelden} />
+      case 'sicherheit':
+        return <Sicherheit ich={ich} ichNeuLaden={ichNeuLaden} />
+      case 'darstellung':
+        return <Darstellung ichNeuLaden={ichNeuLaden} modus={modus} aufModus={aufModus} />
+      case 'benachrichtigungen':
+        return <Benachrichtigungen />
+      case 'verbindungen':
+        return (
+          <>
+            <Karte id="todoapps" symbol={ListChecks} titel={t('einstellungen.aufgaben')}>
+              <TodoApps />
+            </Karte>
+            <Karte id="iphone" symbol={Smartphone} titel={t('einstellungen.iphone')}>
+              <IphoneVerbinden istBetreiber={Boolean(ich?.ist_betreiber)} />
+            </Karte>
+            <Karte id="api" symbol={KeyRound} titel={t('einstellungen.api')}>
+              <ApiSchluessel istBetreiber={Boolean(ich?.ist_betreiber)} />
+            </Karte>
+          </>
+        )
+      case 'postfaecher':
+        /* ⚠️ **Die Kacheln bleiben stehen, auch wenn ein Formular offen
+           ist.** Vorher tauschte der Reiter seinen ganzen Inhalt aus; wer
+           ein Postfach anlegte, sah den Bestand nicht mehr und danach
+           eine Liste, von der er nicht wusste, ob sie neu geladen war. */
+        return (
+          <Postfaecher
+            konten={konten}
+            aufHinzufuegen={() => {
+              setBearbeitet(null)
+              aufWahl(true)
+            }}
+            aufBearbeiten={(k) => {
+              setBearbeitet(k)
+              aufFormular(true)
+            }}
+            aufNeuLaden={() => {
+              laden()
+              aufKontenGeaendert?.()
+            }}
+          />
+        )
+      case 'regeln':
+        return <Regeln vorlage={regelvorlage} aufVorlageGenommen={aufRegelvorlageGenommen} />
+      case 'signaturen':
+        /* Die Textvorlagen wohnen im selben Bereich, als eigene Karte —
+           beides sind Textbausteine für das Schreiben. */
+        return (
+          <>
+            <Karte id="signaturen" symbol={FileText} titel={t('einstellungen.signaturen')}>
               <Signaturen />
-              <section className="flex flex-col gap-4 border-t border-line-subtle pt-5">
-                <div>
-                  <h2 className="mb-1 text-[13px] font-semibold text-fg-1">
-                    {t('textvorlagen.titel')}
-                  </h2>
-                  <p className="mb-0 text-[12px] text-fg-3">{t('textvorlagen.hinweis')}</p>
-                </div>
-                <Textvorlagen />
-              </section>
+            </Karte>
+            <Karte
+              id="textvorlagen"
+              symbol={FileText}
+              titel={t('textvorlagen.titel')}
+              text={t('textvorlagen.hinweis')}
+            >
+              <Textvorlagen />
+            </Karte>
+          </>
+        )
+      case 'abwesenheit':
+        return <Abwesenheit />
+      case 'schlagworte':
+        return <Schlagworte aufGeaendert={aufSchlagworteGeaendert} />
+      case 'ki':
+        return <KiSeite istBetreiber={Boolean(ich?.ist_betreiber)} ichNeuLaden={ichNeuLaden} />
+      case 'allgemein':
+        return <ServerAllgemein />
+      case 'anmeldung':
+        return <OidcVerwaltung />
+      case 'mailversand':
+        return (
+          <>
+            <Karte id="postausgang" symbol={Mail} titel={t('verwaltung.postausgang')}>
+              <Postausgang />
+            </Karte>
+            <Karte id="oauth" symbol={Building2} titel={t('verwaltung.oauth')}>
+              <OauthVerwaltung />
+            </Karte>
+          </>
+        )
+      case 'speicher':
+        return <Sicherungen />
+      case 'konten':
+        return <Benutzerverwaltung ichNeuLaden={ichNeuLaden} />
+      case 'log':
+        return <Protokoll />
+      case 'ueber':
+        return <UeberPage istBetreiber={Boolean(ich?.ist_betreiber)} />
+    }
+  }
+
+  return (
+    <div className="@container min-h-0 flex-1 overflow-y-auto bg-canvas">
+      <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+        <div className="flex flex-col gap-5 @min-[700px]:flex-row @min-[700px]:items-start @min-[700px]:gap-8">
+          <Navigation ich={ich} bereich={bereich} aufBereich={aufBereich} />
+          <Sprungwahl ich={ich} bereich={bereich} aufBereich={aufBereich} />
+
+          <div className="flex min-w-0 flex-1 flex-col gap-5" data-testid={`einstellungen-${bereich}`}>
+            <div>
+              <h1 className="mb-0 flex items-center gap-2 font-display text-[24px] font-semibold tracking-tight text-fg-1">
+                <Symbol className="size-5 text-fg-4 @min-[700px]:hidden" aria-hidden />
+                {titel}
+              </h1>
+              {text && <p className="mt-1 mb-0 max-w-[720px] text-[14px] text-fg-3">{text}</p>}
             </div>
-          ) : reiter === 'schlagworte' ? (
-            <Schlagworte aufGeaendert={aufSchlagworteGeaendert} />
-          ) : reiter === 'aufgaben' ? (
-            <TodoApps />
-          ) : reiter === 'sicherheit' ? (
-            <Sicherheit ich={ich} ichNeuLaden={ichNeuLaden} />
-          ) : reiter === 'api' ? (
-            <ApiSchluessel istBetreiber={Boolean(ich?.ist_betreiber)} />
-          ) : reiter === 'iphone' ? (
-            <IphoneVerbinden istBetreiber={Boolean(ich?.ist_betreiber)} />
-          ) : reiter === 'benachrichtigungen' ? (
-            <Benachrichtigungen />
-          ) : (
-            // Alle Reiter sind gebaut — hier gibt es keinen Rest mehr.
-            <Darstellung ichNeuLaden={ichNeuLaden} />
-          )}
+            <div className="flex flex-col gap-6" data-testid="einstellungen-inhalt">
+              {inhalt()}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -247,6 +312,125 @@ export function EinstellungenPage({
         }}
       />
     </div>
+  )
+}
+
+/** Die Navigation links, wie in nexnotes (`settings/SettingsNav.tsx`). */
+function Navigation({
+  ich,
+  bereich,
+  aufBereich,
+}: {
+  ich: Ich | null
+  bereich: Bereich
+  aufBereich: (b: Bereich) => void
+}) {
+  const { t } = useTranslation()
+  const bereiche = bereicheFuer(ich)
+  const gruppen = GRUPPEN.filter((g) => bereiche.some((b) => b.gruppe === g))
+  return (
+    <nav
+      aria-label={t('einstellungen.titel')}
+      className="hidden w-60 shrink-0 @min-[700px]:sticky @min-[700px]:top-0 @min-[700px]:block"
+      data-testid="einstellungen-navigation"
+    >
+      {ich && (
+        <div className="mb-4 flex items-center gap-3 px-2.5">
+          <Profilbild id={ich.id} name={ich.anzeigename} stand={ich.profilbild} groesse={40} />
+          <div className="min-w-0">
+            <p className="mb-0 truncate font-semibold text-fg-1" title={ich.anzeigename}>
+              {ich.anzeigename}
+            </p>
+            <p className="mb-0 text-[12px] text-fg-4">
+              {ich.ist_betreiber ? t('profil.rolle_betreiber') : t('profil.rolle_benutzer')}
+            </p>
+          </div>
+        </div>
+      )}
+      {gruppen.map((g) => (
+        <div key={g} className="mb-4">
+          <p
+            id={`einstellungen-gruppe-${g}`}
+            className="mb-0 px-2.5 pb-1.5 text-[11px] font-semibold tracking-wider text-fg-4 uppercase"
+          >
+            {t(`einstellungen.gruppen.${g}`)}
+          </p>
+          <ul aria-labelledby={`einstellungen-gruppe-${g}`} className="m-0 flex list-none flex-col gap-0.5 p-0">
+            {bereiche
+              .filter((b) => b.gruppe === g)
+              .map(({ id, symbol: Symbol }) => {
+                const hier = id === bereich
+                return (
+                  <li key={id}>
+                    <button
+                      type="button"
+                      aria-current={hier ? 'page' : undefined}
+                      onClick={() => aufBereich(id)}
+                      className={EINTRAG + (hier ? GEWAEHLT : LEISE)}
+                      data-testid={`einstellungen-nav-${id}`}
+                    >
+                      <Symbol className="size-4 shrink-0" strokeWidth={1.8} aria-hidden />
+                      <span className="min-w-0 truncate">{t(`einstellungen.bereiche.${id}.titel`)}</span>
+                    </button>
+                  </li>
+                )
+              })}
+          </ul>
+        </div>
+      ))}
+      {ueberSichtbar(ich) && (
+        <div className="border-t border-line-subtle pt-2">
+          <button
+            type="button"
+            aria-current={bereich === UEBER.id ? 'page' : undefined}
+            onClick={() => aufBereich(UEBER.id)}
+            className={EINTRAG + (bereich === UEBER.id ? GEWAEHLT : LEISE)}
+            data-testid="einstellungen-nav-ueber"
+          >
+            <Info className="size-4 shrink-0" strokeWidth={1.8} aria-hidden />
+            <span className="min-w-0 truncate">{t('einstellungen.bereiche.ueber.titel')}</span>
+          </button>
+        </div>
+      )}
+    </nav>
+  )
+}
+
+/** Die schmale Seite: eine Auswahl mit den Gruppen, wie in nexnotes. */
+function Sprungwahl({
+  ich,
+  bereich,
+  aufBereich,
+}: {
+  ich: Ich | null
+  bereich: Bereich
+  aufBereich: (b: Bereich) => void
+}) {
+  const { t } = useTranslation()
+  const bereiche = bereicheFuer(ich)
+  const gruppen = GRUPPEN.filter((g) => bereiche.some((b) => b.gruppe === g))
+  return (
+    <label className="block @min-[700px]:hidden" data-testid="einstellungen-sprung">
+      <span className="sr-only">{t('einstellungen.springen')}</span>
+      <select
+        value={bereich}
+        onChange={(e) => aufBereich(e.target.value as Bereich)}
+        className="h-10 w-full rounded-md border border-line bg-surface-2 px-3 text-[14px] text-fg-1"
+      >
+        {gruppen.map((g) => (
+          <optgroup key={g} label={t(`einstellungen.gruppen.${g}`)}>
+            {bereiche
+              .filter((b) => b.gruppe === g)
+              .map((b) => (
+                <option key={b.id} value={b.id}>
+                  {t(`einstellungen.bereiche.${b.id}.titel`)}
+                </option>
+              ))}
+          </optgroup>
+        ))}
+        {ueberSichtbar(ich) && <option value={UEBER.id}>{t('einstellungen.bereiche.ueber.titel')}</option>}
+      </select>
+    </label>
   )
 }
 

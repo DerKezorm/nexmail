@@ -18,6 +18,7 @@ requires that this notice accompany the fonts.
 |---|---|---|
 | IBM Plex Sans | © 2017 IBM Corp. | [OFL-1.1](https://github.com/IBM/plex/blob/master/LICENSE.txt) |
 | Space Grotesk | © 2020 The Space Grotesk Project Authors | [OFL-1.1](https://github.com/floriankarsten/space-grotesk/blob/master/OFL.txt) |
+| Inter (only the wordmark) | © 2016 The Inter Project Authors | [OFL-1.1](https://github.com/rsms/inter/blob/master/LICENSE.txt) |
 | JetBrains Mono | © 2020 The JetBrains Mono Project Authors | [OFL-1.1](https://github.com/JetBrains/JetBrainsMono/blob/master/OFL.txt) |
 
 Packaged via [Fontsource](https://fontsource.org/); the npm wrappers are MIT.
@@ -32,6 +33,15 @@ Packaged via [Fontsource](https://fontsource.org/); the npm wrappers are MIT.
 | cryptography, python-dateutil | Apache-2.0 **or** BSD-3-Clause |
 | dnspython | ISC |
 | py-vapid | MPL-2.0 (used unmodified, as a separate package; its source is at [github.com/mozilla-services/vapid](https://github.com/mozilla-services/vapid)) |
+| Pillow | MIT-CMU |
+| pillow-heif | BSD-3-Clause for its own code; the binary wheels are **GPLv2** as a whole, see below |
+
+### HEIC photos: pillow-heif and the libraries it brings
+
+Used only to read a profile picture taken on an iPhone. Its binary wheels, and so the container image, contain libheif
+(LGPL-3.0), libde265 (LGPL-3.0) and x265 (GPL-2.0-or-later). The wheel ships these notices in
+`pillow_heif-*.dist-info/licenses/`. GPL-2.0-or-later and LGPL-3.0 may be combined with an AGPL-3.0 work, and the
+source of every part is public.
 
 ## Frontend
 

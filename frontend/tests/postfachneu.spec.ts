@@ -5,12 +5,12 @@
  * hört kein Test hier an der Kachel auf, sondern erst im Formular.
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, jederKnopfHatEinenNamen, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, jederKnopfHatEinenNamen, zuEinstellungen } from './hilfen'
 
 test.beforeEach(async ({ page }) => {
   await anmelden(page)
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Postfächer' }).click()
+  await bereich(page, 'Postfächer')
 })
 
 test('Die (+)-Kachel steht neben den Postfächern', async ({ page }) => {

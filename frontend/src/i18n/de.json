@@ -124,7 +124,7 @@
     "webhook_nur_senden": "Nur senden",
     "webhook_nur_senden_hinweis": "nexmail schickt die Aufgabe und führt sie nicht in der eigenen Liste. Für Programme, in denen die Aufgabe erledigt wird.",
     "webhook_mit_text": "Text der Mail mitschicken",
-    "webhook_mit_text_hinweis": "Text und HTML der Mail gehen mit. Wirkt nur, wenn der Betreiber es in der Verwaltung erlaubt hat.",
+    "webhook_mit_text_hinweis": "Text und HTML der Mail gehen mit. Wirkt nur, wenn der Betreiber es unter Einstellungen → Server → Allgemein erlaubt hat.",
     "webhook_mit_text_gesperrt": "Der Betreiber hat den Text der Mail für Webhooks nicht freigegeben. Bis dahin gehen nur Titel, Absender und Link hinaus.",
     "webhook_verbunden_titel": "Webhook verbunden",
     "webhook_geheimnis_einmal": "Mit diesem Geheimnis prüft dein Programm die Unterschrift in X-Nexmail-Signature. nexmail zeigt es nur jetzt.",
@@ -290,7 +290,86 @@
     "schlagworte": "Schlagworte",
     "sicherheit": "Sicherheit",
     "signaturen": "Signaturen",
-    "titel": "Einstellungen"
+    "titel": "Einstellungen",
+    "gruppen": {
+      "konto": "Mein Konto",
+      "mail": "Mail",
+      "server": "Server"
+    },
+    "springen": "Bereich wählen",
+    "bereiche": {
+      "profil": {
+        "titel": "Profil",
+        "text": "Bild, Name, Mailadresse und Sprache deines Kontos."
+      },
+      "sicherheit": {
+        "titel": "Sicherheit",
+        "text": "Kennwort, zweiter Faktor, Anmeldung über Anbieter und angemeldete Geräte."
+      },
+      "darstellung": {
+        "titel": "Darstellung",
+        "text": "Wie Liste und Mails bei dir aussehen."
+      },
+      "benachrichtigungen": {
+        "titel": "Benachrichtigungen",
+        "text": "Meldungen, auch wenn nexmail gerade nicht offen ist."
+      },
+      "verbindungen": {
+        "titel": "Verbindungen",
+        "text": "Todo-Apps, die iPhone-App und API-Schlüssel für andere Programme."
+      },
+      "postfaecher": {
+        "titel": "Postfächer",
+        "text": "Die Postfächer, die nexmail für dich abholt."
+      },
+      "regeln": {
+        "titel": "Regeln",
+        "text": "Was mit eingehender Post von selbst passiert."
+      },
+      "signaturen": {
+        "titel": "Signaturen",
+        "text": "Signaturen und Textvorlagen für das Schreiben."
+      },
+      "abwesenheit": {
+        "titel": "Abwesenheit",
+        "text": "Automatische Antwort, solange du nicht da bist."
+      },
+      "schlagworte": {
+        "titel": "Schlagworte",
+        "text": "Schlagworte für deine Mails, mit Farbe."
+      },
+      "ki": {
+        "titel": "KI"
+      },
+      "allgemein": {
+        "titel": "Allgemein",
+        "text": "Adresse, Zeitzone und was für alle Benutzer gilt."
+      },
+      "anmeldung": {
+        "titel": "Anmeldung",
+        "text": "Anmeldung über OpenID Connect, etwa mit authentik."
+      },
+      "mailversand": {
+        "titel": "Mail",
+        "text": "Der Postausgang von nexmail und die Apps für Google und Microsoft."
+      },
+      "speicher": {
+        "titel": "Speicher und Sicherung",
+        "text": "Sicherungen anlegen, herunterladen und einspielen."
+      },
+      "konten": {
+        "titel": "Konten",
+        "text": "Benutzer einladen, ändern und entfernen."
+      },
+      "log": {
+        "titel": "Log",
+        "text": "Was nexmail getan hat, und wer."
+      },
+      "ueber": {
+        "titel": "Über nexmail",
+        "text": "Version, Herkunft, Lizenz und Updates."
+      }
+    }
   },
   "erinnerung": {
     "titel_one": "Erinnerung",
@@ -393,7 +472,7 @@
     "fehler_allgemein": "Das hat nicht geklappt.",
     "fehler_caldav_abgewiesen": "Benutzername oder Passwort stimmen nicht.",
     "fehler_caldav_adresse_fehlt": "Bitte eine Adresse eintragen.",
-    "fehler_caldav_adresse_im_eigenen_netz": "Adressen im eigenen Netz sind gesperrt. Der Betreiber kann sie unter Verwaltung, Server freigeben.",
+    "fehler_caldav_adresse_im_eigenen_netz": "Adressen im eigenen Netz sind gesperrt. Der Betreiber kann sie unter Einstellungen → Server → Allgemein freigeben.",
     "fehler_caldav_adresse_ungueltig": "Diese Adresse ist keine Web-Adresse.",
     "fehler_caldav_antwort_unlesbar": "Der Server hat etwas geantwortet, das nexmail nicht versteht.",
     "fehler_caldav_google_api_aus": "Google hat die Anfrage abgewiesen: Im Cloud-Projekt ist die CalDAV API nicht eingeschaltet. Sie ist eine eigene Schnittstelle neben der Google Calendar API. Der Betreiber schaltet sie unter APIs & Dienste → Bibliothek ein.",
@@ -419,7 +498,7 @@
     "gefunden_hinweis": "Nur die abgehakten holt nexmail. Die anderen bleiben unberührt.",
     "gesperrt": "Dieser Kalender ist ein Abo von {{wo}}. Ändern geht dort, wo er veröffentlicht wird.",
     "google_konto": "Google-Konto",
-    "google_warum": "Google-Kalender gehen über ein verbundenes Google-Konto. Verbinde es unter Einstellungen → Sicherheit. Gibt es dort keinen Google-Knopf, muss der Betreiber erst eine App eintragen (Verwaltung → Google und Microsoft).",
+    "google_warum": "Google-Kalender gehen über ein verbundenes Google-Konto. Verbinde es unter Einstellungen → Sicherheit. Gibt es dort keinen Google-Knopf, muss der Betreiber erst eine App eintragen (Einstellungen → Server → Mail).",
     "heute": "Heute",
     "hinzu_abo": "Kalender abonnieren",
     "hinzu_abo_text": "Ein ICS-Link, wie ihn Feiertags- und Spielpläne anbieten. Immer nur lesen.",
@@ -815,7 +894,7 @@
     "buch_fehler_caldav_abgewiesen": "Benutzername oder Passwort weist der Server ab.",
     "buch_fehler_caldav_nicht_erreichbar": "Der Server hat nicht geantwortet.",
     "buch_fehler_caldav_adresse_ungueltig": "Das ist keine Web-Adresse.",
-    "buch_fehler_caldav_adresse_im_eigenen_netz": "Adressen im eigenen Netz sind gesperrt. Der Betreiber kann sie unter Verwaltung, Server freigeben.",
+    "buch_fehler_caldav_adresse_im_eigenen_netz": "Adressen im eigenen Netz sind gesperrt. Der Betreiber kann sie unter Einstellungen → Server → Allgemein freigeben.",
     "buch_fehler_caldav_antwort_unlesbar": "Der Server hat etwas geschickt, das nexmail nicht lesen kann.",
     "buch_fehler_carddav_kein_buchserver": "Unter dieser Adresse liegt kein Adressbuch-Server.",
     "buch_fehler_carddav_nicht_lesbar": "Das Adressbuch ließ sich nicht lesen.",
@@ -999,7 +1078,7 @@
     "verbinden_google": "Google-Konto verbinden",
     "verbinden_microsoft": "Microsoft-Konto verbinden",
     "keine_zugaenge": "Noch keine Zustimmung erteilt.",
-    "nicht_eingerichtet": "Dafür muss der Betreiber erst eine App eintragen (Verwaltung → Google und Microsoft).",
+    "nicht_eingerichtet": "Dafür muss der Betreiber erst eine App eintragen (Einstellungen → Server → Mail).",
     "trennen": "Trennen",
     "trennen_frage": "Zustimmung für {{adresse}} trennen?",
     "trennen_text": "nexmail vergisst seine Token. Beim Anbieter selbst bleibt die Erlaubnis bestehen, dort widerrufst du sie im eigenen Konto.",
@@ -1355,7 +1434,7 @@
   },
   "serverfehler": {
     "app_abgeschaltet": "Der Betreiber hat die iPhone-App für diese Installation abgeschaltet.",
-    "app_adresse_fehlt": "Für den QR-Code fehlt die Adresse, unter der nexmail erreichbar ist. Trag sie unter Verwaltung, Server ein.",
+    "app_adresse_fehlt": "Für den QR-Code fehlt die Adresse, unter der nexmail erreichbar ist. Trag sie unter Einstellungen → Server → Allgemein ein.",
     "app_kopplung_unbekannt": "Dieser Code gilt nicht oder nicht mehr. Lass im Browser einen neuen anzeigen.",
     "app_von_vorn": "Der gespeicherte Stand ist zu alt und muss neu gelesen werden.",
     "app_zu_viele_geraete": "In dieser Stunde sind schon {{max}} weitere Geräte dazugekommen. Versuch es später noch einmal.",
@@ -1366,7 +1445,7 @@
     "abbestellen_adresse_unerlaubt": "Diese Abmeldeadresse ist nicht erlaubt: Sie zeigt ins eigene Netz oder nutzt kein HTTPS.",
     "abbestellen_nicht_erreichbar": "Der Server des Absenders war nicht erreichbar. Versuch es später noch einmal.",
     "abbestellen_nicht_moeglich": "Für diese Mail gibt es keine Abmeldung mit einem Klick.",
-    "api_schluessel_abgeschaltet": "API-Schlüssel sind in dieser Installation abgeschaltet. Einschalten kann sie der Betreiber unter Einstellungen → API-Schlüssel.",
+    "api_schluessel_abgeschaltet": "API-Schlüssel sind in dieser Installation abgeschaltet. Einschalten kann sie der Betreiber unter Einstellungen → Verbindungen.",
     "api_schluessel_fehlt": "Diese Adresse braucht einen API-Schlüssel in der Kopfzeile Authorization: Bearer.",
     "api_schluessel_name_fehlt": "Gib dem Schlüssel einen Namen, damit du ihn später wiedererkennst.",
     "api_schluessel_name_zu_lang": "Der Name ist länger als {{max}} Zeichen.",
@@ -1394,6 +1473,9 @@
     "adresse_schon_da": "„{{adresse}}“ steht schon im Adressbuch.",
     "adresse_schon_vergeben": "Ein anderes Postfach hat diese Adresse schon.",
     "adresse_ungueltig": "Das sieht nicht nach einer E-Mail-Adresse aus.",
+    "profilbild_zu_gross": "Das Bild ist zu groß (höchstens {{max_mb}} MB).",
+    "profilbild_kein_bild": "Das ist kein Bild, das nexmail annimmt (JPEG, PNG, WebP, GIF, HEIC oder AVIF).",
+    "profilbild_fehlt": "Dieses Profilbild gibt es nicht.",
     "aktion_unbekannt": "Die Aktion „{{aktion}}“ gibt es nicht.",
     "alias_adresse_ungueltig": "„{{adresse}}“ ist keine gültige E-Mail-Adresse.",
     "alias_unbekannt": "„{{adresse}}“ gehört nicht zu diesem Postfach. Trage die Adresse erst unter den Absenderadressen ein.",
@@ -1424,7 +1506,7 @@
     "todoist_zugang_ungueltig": "Todoist nimmt den Token nicht an. Verbinde Todoist in den Einstellungen unter Aufgaben neu.",
     "webhook_adresse_ungueltig": "Die Adresse des Webhooks muss mit http:// oder https:// beginnen und darf keine Zugangsdaten enthalten.",
     "webhook_adresse_localhost": "localhost ist im Container nexmail selbst. Trag die Adresse des Rechners im Netz ein, etwa http://10.0.0.20:8080/…",
-    "webhook_adresse_im_eigenen_netz": "Diese Adresse liegt im eigenen Netz. Der Betreiber kann das unter Verwaltung → Server im eigenen Netz erlauben.",
+    "webhook_adresse_im_eigenen_netz": "Diese Adresse liegt im eigenen Netz. Der Betreiber kann das unter Einstellungen → Server → Allgemein im eigenen Netz erlauben.",
     "webhook_nicht_erreichbar": "Der Webhook ist nicht erreichbar.",
     "webhook_zeitueberschreitung": "Der Webhook hat länger als {{sekunden}} Sekunden nicht geantwortet.",
     "webhook_weiterleitung": "Der Webhook leitet weiter (HTTP {{status}}). nexmail folgt keiner Weiterleitung, trag die Zieladresse direkt ein.",
@@ -1563,7 +1645,7 @@
     "oauth_zustimmung_abgelaufen": "Die Zustimmung gilt nicht mehr. Bitte neu erteilen.",
     "oauth_zustimmung_fehlt": "Für dieses Konto fehlt die Zustimmung.",
     "oauth_zweck": "Dieser Zweck ist nicht vorgesehen.",
-    "oeffentliche_adresse_fehlt": "Ohne öffentliche Adresse führt der Link ins Leere. Sie steht in der Verwaltung unter „Server“.",
+    "oeffentliche_adresse_fehlt": "Ohne öffentliche Adresse führt der Link ins Leere. Sie steht unter Einstellungen → Server → Allgemein.",
     "ordner_angelegt_aber_unsichtbar": "Der Ordner wurde angelegt, taucht aber nicht in der Ordnerliste des Servers auf. Ein Abgleich sollte ihn nachliefern.",
     "ordner_anlegen_abgewiesen": "Der Server hat den Ordner nicht angelegt: {{grund}}",
     "ordner_entfernen_abgewiesen": "Der Server hat den Ordner nicht entfernt: {{grund}}",
@@ -1584,7 +1666,7 @@
     "port_ungueltig": "Der Port liegt außerhalb des Möglichen.",
     "postausgang_abgelehnt": "Der Postausgang hat abgelehnt ({{code}}): {{grund}}",
     "postausgang_anmeldung_abgewiesen": "Der Postausgang hat Benutzername oder Passwort abgewiesen.",
-    "postausgang_fehlt": "Es ist kein Postausgang für nexmail selbst eingerichtet. Er steht in der Verwaltung unter „Server“.",
+    "postausgang_fehlt": "Es ist kein Postausgang für nexmail selbst eingerichtet. Er steht unter Einstellungen → Server → Mail.",
     "postausgang_nicht_erreichbar": "Der Postausgang {{server}}:{{port}} ist nicht erreichbar.",
     "postfach_schon_da": "Dieses Postfach ist schon eingerichtet.",
     "postfach_unbekannt": "Dieses Postfach gibt es nicht.",
@@ -1653,7 +1735,7 @@
     "kein_gueltiger_schluessel": "Das ist kein gültiger Geräteschlüssel.",
     "nextasks_adresse_ungueltig": "Die Adresse von nextasks muss mit http:// oder https:// beginnen, ohne Zugangsdaten, ? oder #.",
     "nextasks_adresse_localhost": "localhost ist im Container nexmail selbst. Trag die Adresse ein, unter der nextasks im Netz erreichbar ist, etwa https://tasks.example.com.",
-    "nextasks_adresse_im_eigenen_netz": "Diese Adresse liegt im eigenen Netz. Der Betreiber kann das unter Verwaltung → Server im eigenen Netz erlauben.",
+    "nextasks_adresse_im_eigenen_netz": "Diese Adresse liegt im eigenen Netz. Der Betreiber kann das unter Einstellungen → Server → Allgemein im eigenen Netz erlauben.",
     "nextasks_nicht_erreichbar": "nextasks ist unter dieser Adresse gerade nicht erreichbar.",
     "nextasks_zeitueberschreitung": "nextasks hat länger als {{sekunden}} Sekunden nicht geantwortet.",
     "nextasks_weiterleitung": "Die Adresse leitet weiter (HTTP {{status}}). nexmail folgt keiner Weiterleitung, trag die Adresse ein, unter der nextasks wirklich läuft.",
@@ -1948,8 +2030,8 @@
     "einladung_zuruecknehmen_text": "Der Link für „{{name}}“ öffnet danach nichts mehr. Eine neue Einladung ist jederzeit möglich.",
     "gilt_bis": "Gilt bis {{wann}}",
     "gilt_fuer_alle": "Diese Werte gelten für die ganze Anwendung, nicht nur für dich.",
-    "kein_postausgang": "nexmail hat keinen eigenen Postausgang. Ohne ihn kann es die Einladung nicht verschicken. Er steht im Reiter „Server“.",
-    "keine_adresse": "Es ist keine öffentliche Adresse hinterlegt. Der Link in der Einladung führte sonst ins Leere. Sie steht im Reiter „Server“.",
+    "kein_postausgang": "nexmail hat keinen eigenen Postausgang. Ohne ihn kann es die Einladung nicht verschicken. Er steht unter Einstellungen → Server → Mail.",
+    "keine_adresse": "Es ist keine öffentliche Adresse hinterlegt. Der Link in der Einladung führte sonst ins Leere. Sie steht unter Einstellungen → Server → Allgemein.",
     "ki": "KI-Dienste für alle Benutzer",
     "ki_erlauben": "Erlauben",
     "ki_fremde_post": "Eingegangene Mails für alle Benutzer",
@@ -2012,5 +2094,22 @@
     "wegklicken": "Wegklicken",
     "wo": "Wo:",
     "verstanden": "Verstanden"
+  },
+  "profil": {
+    "name": "Name",
+    "mail": "E-Mail",
+    "bild_hinzufuegen": "Bild wählen",
+    "bild_aendern": "Anderes Bild",
+    "bild_entfernen": "Bild entfernen",
+    "bild_gespeichert": "Das Bild ist gespeichert.",
+    "bild_entfernt": "Das Bild ist entfernt.",
+    "gespeichert": "Gespeichert.",
+    "rolle": "Rolle: {{rolle}}",
+    "rolle_betreiber": "Betreiber",
+    "rolle_benutzer": "Benutzer",
+    "sprache": "Sprache",
+    "sprache_hinweis": "Gilt in diesem Browser.",
+    "abmelden_titel": "Abmelden",
+    "abmelden_text": "Beendet deine Sitzung in diesem Browser. Deine Mails bleiben, wie sie sind."
   }
 }

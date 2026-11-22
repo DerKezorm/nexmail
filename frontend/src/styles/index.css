@@ -19,6 +19,9 @@
 @import '@fontsource/ibm-plex-sans/400-italic.css';
 @import '@fontsource/jetbrains-mono/400.css';
 @import '@fontsource/jetbrains-mono/500.css';
+/* Nur für den Schriftzug NEXMAIL: dieselbe Schrift wie in nexnotes (Inter,
+   fett, eng), damit die Familie oben links gleich aussieht (22.11.2026). */
+@import '@fontsource-variable/inter/wght.css';
 
 /* Die nexapps-Tokens, wortwoertlich uebernommen. */
 @import './tokens/fonts.css';

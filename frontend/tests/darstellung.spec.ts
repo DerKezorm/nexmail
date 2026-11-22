@@ -5,21 +5,7 @@
  * kaputtes Bildsymbol, persönlicher Name im Platzhalter.
  */
 import { expect, test } from '@playwright/test'
-import {
-  TESTPOSTFACH,
-  anmelden,
-  jederKnopfHatEinenNamen,
-  keineRohenSchluessel,
-  tabuWoerter,
-  rechtsklick,
-  postfach,
-  zuEinstellungen,
-  auswahllistenSindGefaerbt,
-  keinSeitlichesScrollen,
-  keinTextLaeuftUeber,
-  keineKaputtenBilder,
-  serverabsagen,
-} from './hilfen'
+import { anmelden, auswahllistenSindGefaerbt, bereich, jederKnopfHatEinenNamen, keineKaputtenBilder, keineRohenSchluessel, keinSeitlichesScrollen, keinTextLaeuftUeber, postfach, rechtsklick, serverabsagen, tabuWoerter, TESTPOSTFACH, zuEinstellungen } from './hilfen'
 
 test.beforeEach(async ({ page }) => {
   await anmelden(page)
@@ -110,7 +96,7 @@ test('Regeln und Signaturen: Auswahllisten sind gefärbt, nichts läuft über', 
     ['Regeln', 'Neue Regel'],
     ['Signaturen', 'Neue Signatur'],
   ] as const) {
-    await page.getByRole('tab', { name: reiter }).click()
+    await bereich(page, reiter)
     await expect(page.getByRole('button', { name: knopf })).toBeVisible()
     await page.getByRole('button', { name: knopf }).click()
 
@@ -135,12 +121,12 @@ test('Keine Browser-Popups: Rückfragen laufen im eigenen Fenster', async ({ pag
   })
 
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Signaturen' }).click()
+  await bereich(page, 'Signaturen')
   await page.getByRole('button', { name: 'Neue Signatur' }).click()
   await page.getByRole('button', { name: 'Abbrechen' }).click()
 
   // Ordner anlegen — der frühere `window.prompt`.
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
   const ordner = page.getByRole('button', { name: 'Posteingang' }).first()
   await rechtsklick(page, ordner)
   await page.getByRole('menuitem', { name: /Neuer Ordner/ }).click()
@@ -305,9 +291,9 @@ test('Ein Postfach lässt sich bearbeiten, ohne das Passwort neu zu tippen', asy
 
 test('Reiter Sicherheit zeigt Geräte und Wiederherstellungscodes', async ({ page }) => {
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Sicherheit' }).click()
+  await bereich(page, 'Sicherheit')
 
-  await expect(page.getByText('Angemeldete Geräte')).toBeVisible()
+  await expect(page.getByText('Angemeldete Geräte', { exact: true })).toBeVisible()
   await expect(page.getByText(/Wiederherstellungscode/)).toBeVisible()
   // Die eigene Sitzung ist als solche gekennzeichnet und nicht kündbar —
   // sonst meldet man sich hier versehentlich selbst ab.
@@ -321,7 +307,7 @@ test('Reiter Darstellung wirkt wirklich auf die Liste', async ({ page }, info) =
 
   /* ⚠️ Eine Einstellung, die nichts tut, ist schlimmer als keine — der
      Betreiber stellt sie und sucht danach den Fehler bei sich. */
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
   for (const name of ['Papierkorb', 'Archiv', 'Posteingang']) {
     const knopf = page.getByRole('button', { name }).first()
     if (await knopf.count()) {
@@ -337,9 +323,9 @@ test('Reiter Darstellung wirkt wirklich auf die Liste', async ({ page }, info) =
   const normal = await hoehe()
 
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Darstellung' }).click()
+  await bereich(page, 'Darstellung')
   await page.getByRole('combobox', { name: /Dichte/ }).selectOption('kompakt')
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
   await page.waitForTimeout(600)
 
   const kompakt = await hoehe()
@@ -349,7 +335,7 @@ test('Reiter Darstellung wirkt wirklich auf die Liste', async ({ page }, info) =
 
   // Zurückstellen, damit der nächste Lauf denselben Stand vorfindet.
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Darstellung' }).click()
+  await bereich(page, 'Darstellung')
   await page.getByRole('combobox', { name: /Dichte/ }).selectOption('normal')
 })
 
@@ -371,7 +357,7 @@ test('Nirgends steht ein roher Übersetzungsschlüssel', async ({ page }) => {
 
   await zuEinstellungen(page)
   for (const reiter of ['Postfächer', 'Regeln', 'Signaturen', 'Sicherheit', 'Darstellung']) {
-    await page.getByRole('tab', { name: reiter }).click()
+    await bereich(page, reiter)
     await page.waitForTimeout(300)
     await keineRohenSchluessel(page)
   }
@@ -384,7 +370,7 @@ test('Der Pfeil einer Auswahl gehört zum Klickziel', async ({ page }) => {
      Aufgefallen am 02.09.2026 an der Protokoll-Ausführlichkeit. */
   await anmelden(page)
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Darstellung' }).click()
+  await bereich(page, 'Darstellung')
 
   const treffer = await page.evaluate(() => {
     const schlecht: string[] = []

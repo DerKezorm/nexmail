@@ -9,7 +9,7 @@
  * dass der Preis danebensteht. Am Ende steht er wieder, wie er stand.
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, jederKnopfHatEinenNamen, keineRohenSchluessel, serverabsagen } from './hilfen'
+import { anmelden, jederKnopfHatEinenNamen, keineRohenSchluessel, serverabsagen, zuEinstellungen } from './hilfen'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -32,8 +32,7 @@ async function standBeimServer(page: import('@playwright/test').Page): Promise<b
 }
 
 async function zumServer(page: import('@playwright/test').Page) {
-  await page.getByRole('button', { name: /Verwaltung|Administration/ }).first().click()
-  await page.getByRole('tab', { name: 'Server' }).click()
+  await zuEinstellungen(page, 'Allgemein')
   const schalter = page.getByRole('switch', { name: 'Eigenes Netz erlauben' })
   await expect(schalter).toBeEnabled({ timeout: 10_000 })
   return schalter

@@ -501,3 +501,86 @@ def test_ein_unerreichbares_postfach_gibt_keinen_500(klient, db, monkeypatch):
 
     assert antwort.status_code == 502, f"Erwartet 502, bekommen {antwort.status_code}."
     assert "abgewiesen" in antwort.json()["detail"], "Die Meldung sagt nicht, was los ist."
+
+
+# --- Zielordner im Hintergrund (22.11.2026) ------------------------------- #
+#
+# Gemessen: Von 1,4 s für ein Löschen waren 0,8 s der Abgleich des
+# Papierkorbs, mitten in der Anfrage. Er läuft jetzt danach, im eigenen Faden.
+
+
+class _Faden:
+    """Fängt den Faden ab, statt ihn zu starten: So lässt sich prüfen, was die
+    Anfrage selbst tut und was erst danach geschieht."""
+
+    gestartet: list["_Faden"] = []
+
+    def __init__(self, target, name="", daemon=None):
+        self.target = target
+        self.name = name
+
+    def start(self):
+        _Faden.gestartet.append(self)
+
+
+@pytest.fixture
+def im_faden(monkeypatch):
+    _Faden.gestartet = []
+    monkeypatch.setattr(handeln, "NACHZIEHEN_IM_FADEN", True)
+    monkeypatch.setattr(handeln.threading, "Thread", _Faden)
+    return _Faden.gestartet
+
+
+def test_loeschen_wartet_nicht_auf_den_papierkorb(db, welt, im_faden):
+    server, konto, _ = welt
+    papierkorb = next(o for o in konto.ordner if o.rolle == "papierkorb")
+
+    handeln.in_rolle(db, [_mail(db, "Erste")], "papierkorb")
+
+    # Auf dem Server liegt sie schon im Papierkorb ...
+    assert len(server.ordner["Deleted Messages"]["nachrichten"]) == 1
+    # ... aber die Anfrage hat den Papierkorb nicht abgeglichen: Das tut der
+    # Faden, der erst danach läuft.
+    assert db.query(Nachricht).filter_by(ordner_id=papierkorb.id).count() == 0
+    assert [f.name for f in im_faden] == ["nexmail-ziel-nachziehen"]
+
+
+def test_der_faden_zieht_den_papierkorb_nach_und_meldet_es(db, welt, im_faden, monkeypatch):
+    server, konto, _ = welt
+    papierkorb = next(o for o in konto.ordner if o.rolle == "papierkorb")
+    gemeldet: list[str] = []
+    monkeypatch.setattr(handeln.ereignisse, "melden", gemeldet.append)
+
+    handeln.in_rolle(db, [_mail(db, "Erste")], "papierkorb")
+    im_faden[0].target()
+
+    db.expire_all()
+    im_korb = [n.betreff for n in db.query(Nachricht).filter_by(ordner_id=papierkorb.id)]
+    assert im_korb == ["Erste"]
+    # Die Oberfläche erfährt es über die Ereignisse und lädt nach.
+    assert gemeldet == [konto.benutzer_id]
+
+
+def test_rueckgaengig_geht_auch_bevor_der_faden_lief(db, welt, im_faden):
+    """Rückgängig sucht beim Server über die Message-ID, nicht in der Datenbank."""
+    server, konto, posteingang = welt
+    weg = handeln.in_rolle(db, [_mail(db, "Erste")], "papierkorb")
+
+    assert handeln.zurueck(db, weg) == 1
+    assert len(server.ordner["Deleted Messages"]["nachrichten"]) == 0
+    im_posteingang = [n.betreff for n in db.query(Nachricht).filter_by(ordner_id=posteingang.id)]
+    assert "Erste" in im_posteingang
+
+
+def test_ein_scheiternder_faden_ist_kein_fehler(db, welt, im_faden, monkeypatch, caplog):
+    """Die Mail liegt auf dem Server; den Ordner holt dann der nächste Takt."""
+    handeln.in_rolle(db, [_mail(db, "Erste")], "papierkorb")
+
+    def kaputt(*_a, **_k):
+        raise OSError("Leitung weg")
+
+    monkeypatch.setattr(handeln.imapdienst, "fuer_konto", kaputt)
+    with caplog.at_level("INFO", logger="nexmail.handeln"):
+        im_faden[0].target()
+    assert "not refreshed right away" in caplog.text
+    assert not [r for r in caplog.records if r.levelname in ("WARNING", "ERROR")]

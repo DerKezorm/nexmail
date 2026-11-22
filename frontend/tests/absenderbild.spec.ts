@@ -7,7 +7,7 @@
  * und der Browser selbst nirgends hingreift.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { anmelden, postfach, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, postfach, zuEinstellungen } from './hilfen'
 
 test.beforeEach(async ({ page }, info) => {
   test.skip(info.project.name === 'schmal', 'Die Liste wird breit geprüft.')
@@ -55,9 +55,9 @@ test('Unter Darstellung lässt sich der Kreis abschalten, ohne F5', async ({ pag
   await expect(kreise(page).first()).toBeVisible()
 
   await zuEinstellungen(page)
-  await page.getByRole('tab', { name: 'Darstellung' }).click()
+  await bereich(page, 'Darstellung')
   await page.getByRole('switch', { name: 'Bilder vor den Absendern' }).click()
-  await page.getByRole('button', { name: 'Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
 
   await expect(zeilen(page).first()).toBeVisible()
   await expect(kreise(page)).toHaveCount(0)
@@ -74,7 +74,7 @@ test('Der Logo-Schalter kommt beim Server an, und eine ungeprüfte Mail fragt tr
     await page.request.put('/api/einstellungen/bilder', { data: { logos: false } })
     await page.reload()
     await zuEinstellungen(page)
-    await page.getByRole('tab', { name: 'Darstellung' }).click()
+    await bereich(page, 'Darstellung')
     const schalter = page.getByRole('switch', { name: 'Firmenlogos laden' })
     await expect(schalter).toHaveAttribute('aria-checked', 'false')
     const antwort = page.waitForResponse(
@@ -89,7 +89,7 @@ test('Der Logo-Schalter kommt beim Server an, und eine ungeprüfte Mail fragt tr
 
     // ⚠️ **Der Kern:** Die Mails im Testpostfach tragen keine bestandene
     // Absenderprüfung, also fragt keine Zeile nach einem Logo, auch jetzt nicht.
-    await page.getByRole('button', { name: 'Mail', exact: true }).click()
+    await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
     await posteingang(page)
     const quellen = await kreise(page).evaluateAll((k) => k.map((e) => e.getAttribute('data-quelle') ?? ''))
     expect(quellen.length).toBeGreaterThan(0)
