@@ -203,18 +203,16 @@ export function KiDienst({ ichNeuLaden }: { ichNeuLaden?: () => void }) {
   return (
     <div className="flex max-w-[720px] flex-col gap-6">
       {/* --- Der Schalter ------------------------------------------------ */}
-      <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <p className="mb-0 text-[13px] text-fg-2">{t('ki.schalter_hinweis')}</p>
-          <Switch
-            label={t('ki.schalter')}
-            checked={stand?.aktiv ?? false}
-            disabled={speichert || (!stand?.aktiv && !steht)}
-            onCheckedChange={(an) => void sichern({ aktiv: an })}
-          />
-        </div>
+      <div className="flex flex-col gap-2">
+        <Switch
+          label={t('ki.schalter')}
+          description={t('ki.schalter_hinweis')}
+          checked={stand?.aktiv ?? false}
+          disabled={speichert || (!stand?.aktiv && !steht)}
+          onCheckedChange={(an) => void sichern({ aktiv: an })}
+        />
         {!steht && <p className="mb-0 text-[12px] text-fg-4">{t('ki.erst_einrichten')}</p>}
-      </section>
+      </div>
 
       {/* --- Eingegangene Post ------------------------------------------- */}
       {/* ⚠️ **Ein eigener Schalter unter dem ersten.** Der erste gilt dem
@@ -230,6 +228,7 @@ export function KiDienst({ ichNeuLaden }: { ichNeuLaden?: () => void }) {
               </div>
               <Switch
                 label={t('ki.fremde_post_schalter')}
+                labelVersteckt
                 checked={stand.fremde_post}
                 disabled={speichert}
                 onCheckedChange={(an) => void sichern({ fremde_post: an })}

@@ -243,6 +243,10 @@ export function Ordnerspalte({
                 aufAblegen={(ids) => aufAblegen?.(o.id, ids)}
               />
             ))}
+            {/* Eine dezente Linie trennt die Favoriten von den Postfächern
+                darunter (22.11.2026): Sonst lasen sich die Postfächer wie
+                weitere Favoriten. */}
+            <hr aria-hidden className="mx-2 mt-3 mb-0 border-0 border-t border-line-subtle" />
           </section>
         )}
 

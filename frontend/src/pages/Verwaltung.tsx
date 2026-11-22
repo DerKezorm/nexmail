@@ -152,6 +152,7 @@ function EigenesNetz() {
         <div className="shrink-0">
           <Switch
             label={t('verwaltung.eigenes_netz_erlauben')}
+            labelVersteckt
             checked={erlaubt ?? false}
             disabled={erlaubt === null}
             onCheckedChange={(an) => void umlegen(an)}
@@ -207,6 +208,7 @@ function WebhookMailtext() {
         <div className="shrink-0">
           <Switch
             label={t('verwaltung.webhook_mailtext_erlauben')}
+            labelVersteckt
             checked={erlaubt ?? false}
             disabled={erlaubt === null}
             onCheckedChange={(an) => void umlegen(an)}

@@ -87,6 +87,7 @@ function KiRiegel({
         </div>
         <Switch
           label={schalter}
+          labelVersteckt
           checked={erlaubt ?? false}
           disabled={erlaubt === null}
           onCheckedChange={(an) => void umlegen(an)}

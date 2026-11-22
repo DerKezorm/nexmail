@@ -148,6 +148,7 @@ export function Abwesenheit() {
               <Switch
                 checked={e.aktiv}
                 label={t('abwesenheit.einschalten')}
+                kompakt
                 onCheckedChange={(an) => setzen({ aktiv: an })}
               />
             </div>

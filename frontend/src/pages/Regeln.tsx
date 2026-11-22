@@ -300,6 +300,7 @@ export function Regeln({ vorlage = null, aufVorlageGenommen }: Props = {}) {
               <Switch
                 checked={r.aktiv}
                 label={t('regeln.aktiv')}
+                kompakt
                 onCheckedChange={(an) =>
                   void mit(() => api.aendern(`/api/regeln/${r.id}`, { ...r, aktiv: an }))
                 }

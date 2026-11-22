@@ -133,57 +133,81 @@ export interface SwitchProps {
   checked?: boolean
   disabled?: boolean
   onCheckedChange?: (checked: boolean) => void
-  /** Die Beschriftung nur für Vorleseprogramme, wenn sie daneben schon als
-   *  Überschrift steht. Sonst stand sie zweimal da, und neben dem Schalter
-   *  brach sie Wort für Wort um (Postfach-Fenster, „Neue Post sofort sehen"). */
+  /** Nur der Haken, die Beschriftung nur für Vorleseprogramme: wenn Titel und
+   *  Erklärung schon daneben in der Karte stehen. Sonst stand derselbe Satz
+   *  zweimal da (Postfach-Fenster, „Neue Post sofort sehen"). */
   labelVersteckt?: boolean
+  /** Schlank in einer Zeile (Text, dann Haken), ohne eigenen Rahmen: für
+   *  Listenzeilen wie „Regel aktiv". */
+  kompakt?: boolean
 }
 
-export function Switch({ label, description, checked = false, onCheckedChange, disabled, labelVersteckt = false }: SwitchProps) {
+/** Ein Schalter, gebaut wie in nexnotes und nextasks (`Toggle`): eine
+ *  umrandete Zeile, links Name und Erklärung, rechts ein Haken in
+ *  Akzentfarbe; die ganze Zeile ist die Beschriftung (22.11.2026, vorher ein
+ *  Schiebeschalter mit dem Text rechts daneben). Die Rolle bleibt `switch`
+ *  samt `aria-checked`, damit Vorleseprogramme und Tests dasselbe sehen. */
+export function Switch({
+  label,
+  description,
+  checked = false,
+  onCheckedChange,
+  disabled,
+  labelVersteckt = false,
+  kompakt = false,
+}: SwitchProps) {
   const id = useId()
   const beschriftung = `${id}-text`
+  const haken = (
+    <input
+      type="checkbox"
+      id={id}
+      role="switch"
+      aria-checked={checked}
+      checked={checked}
+      aria-labelledby={label ? beschriftung : undefined}
+      aria-label={label ? undefined : description}
+      disabled={disabled}
+      onChange={(e) => onCheckedChange?.(e.target.checked)}
+      className="size-5 shrink-0 cursor-pointer accent-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-45"
+    />
+  )
+
+  if (labelVersteckt) {
+    return (
+      <span className="inline-flex shrink-0 items-center">
+        {haken}
+        {label && (
+          <span id={beschriftung} className="sr-only">
+            {label}
+          </span>
+        )}
+      </span>
+    )
+  }
+
   return (
-    <div className="flex items-start gap-3">
-      <button
-        type="button"
-        id={id}
-        role="switch"
-        aria-checked={checked}
-        /* ⚠️ **`<label for>` benennt keinen Knopf.** Es wirkt nur auf
-           Formularfelder (input, select, textarea) — ein `<button>` bleibt
-           damit fuer Vorleseprogramme stumm. Der Schalter sah richtig
-           ausgezeichnet aus und war es nicht, und zwar an **jeder** Stelle,
-           an der er benutzt wird: Darstellung, OIDC, Regeln, Signaturen,
-           Ueber. Gefunden am 01.09.2026 von `jederKnopfHatEinenNamen`. */
-        aria-labelledby={label ? beschriftung : undefined}
-        aria-label={label ? undefined : description}
-        disabled={disabled}
-        onClick={() => onCheckedChange?.(!checked)}
-        className={
-          'relative mt-0.5 h-5 w-9 shrink-0 rounded-pill border transition-colors duration-[var(--dur-fast)] ' +
-          'disabled:cursor-not-allowed disabled:opacity-45 ' +
-          (checked ? 'border-accent bg-accent' : 'border-line bg-surface-3')
-        }
-      >
-        <span
-          aria-hidden
-          className={
-            'absolute top-1/2 size-3.5 -translate-y-1/2 rounded-full transition-[left] duration-[var(--dur-fast)] ' +
-            (checked ? 'left-[18px] bg-[var(--text-on-accent)]' : 'left-[3px] bg-fg-3')
-          }
-        />
-      </button>
+    <label
+      className={
+        'cursor-pointer select-none ' +
+        (kompakt
+          ? 'inline-flex shrink-0 items-center gap-2'
+          : 'flex items-center justify-between gap-4 rounded-xl border border-line bg-surface-2 px-4 py-3') +
+        (disabled ? ' cursor-not-allowed opacity-70' : '')
+      }
+    >
       {(label || description) && (
-        <label htmlFor={id} className={'min-w-0 cursor-pointer select-none' + (labelVersteckt ? ' sr-only' : '')}>
+        <span className="min-w-0">
           {label && (
-            <span id={beschriftung} className="block text-sm text-fg-1">
+            <span id={beschriftung} className={'block text-fg-1 ' + (kompakt ? 'text-[13px]' : 'text-sm font-medium')}>
               {label}
             </span>
           )}
-          {description && <span className="block text-[12px] text-fg-4">{description}</span>}
-        </label>
+          {description && <span className="block text-[12px] text-fg-3">{description}</span>}
+        </span>
       )}
-    </div>
+      {haken}
+    </label>
   )
 }
 

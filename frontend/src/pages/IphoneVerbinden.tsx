@@ -98,15 +98,13 @@ export function IphoneVerbinden({ istBetreiber }: { istBetreiber: boolean }) {
   return (
     <div className="flex max-w-[720px] flex-col gap-4">
       {istBetreiber && (
-        <section className="flex items-start justify-between gap-3 rounded-lg border border-line bg-surface-2 p-4">
-          <p className="mb-0 text-[13px] text-fg-2">{t('iphone.riegel_hinweis')}</p>
-          <Switch
-            label={t('iphone.riegel')}
-            checked={erlaubt ?? false}
-            disabled={erlaubt === null}
-            onCheckedChange={(an) => void umlegen(an)}
-          />
-        </section>
+        <Switch
+          label={t('iphone.riegel')}
+          description={t('iphone.riegel_hinweis')}
+          checked={erlaubt ?? false}
+          disabled={erlaubt === null}
+          onCheckedChange={(an) => void umlegen(an)}
+        />
       )}
 
       {erlaubt === false && !istBetreiber && (

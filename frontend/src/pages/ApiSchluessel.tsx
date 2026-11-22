@@ -169,6 +169,7 @@ export function ApiSchluessel({ istBetreiber }: { istBetreiber: boolean }) {
             <div className="shrink-0">
               <Switch
                 label={t('apischluessel.riegel_erlauben')}
+                labelVersteckt
                 checked={erlaubt}
                 onCheckedChange={(an) => void riegel(an)}
               />
