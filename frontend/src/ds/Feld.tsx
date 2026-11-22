@@ -133,9 +133,13 @@ export interface SwitchProps {
   checked?: boolean
   disabled?: boolean
   onCheckedChange?: (checked: boolean) => void
+  /** Die Beschriftung nur für Vorleseprogramme, wenn sie daneben schon als
+   *  Überschrift steht. Sonst stand sie zweimal da, und neben dem Schalter
+   *  brach sie Wort für Wort um (Postfach-Fenster, „Neue Post sofort sehen"). */
+  labelVersteckt?: boolean
 }
 
-export function Switch({ label, description, checked = false, onCheckedChange, disabled }: SwitchProps) {
+export function Switch({ label, description, checked = false, onCheckedChange, disabled, labelVersteckt = false }: SwitchProps) {
   const id = useId()
   const beschriftung = `${id}-text`
   return (
@@ -170,7 +174,7 @@ export function Switch({ label, description, checked = false, onCheckedChange, d
         />
       </button>
       {(label || description) && (
-        <label htmlFor={id} className="min-w-0 cursor-pointer select-none">
+        <label htmlFor={id} className={'min-w-0 cursor-pointer select-none' + (labelVersteckt ? ' sr-only' : '')}>
           {label && (
             <span id={beschriftung} className="block text-sm text-fg-1">
               {label}

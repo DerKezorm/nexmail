@@ -72,6 +72,7 @@ const NUR_BREIT = [
   'sicherungen.spec.ts',
   'sofortweg.spec.ts',
   'todoapps.spec.ts',
+  'ungespeichert.spec.ts',
   'umzug.spec.ts',
   'verfassen_ablegen.spec.ts',
 ]

@@ -982,7 +982,10 @@
     "testen": "Test connection",
     "ungeprueft": "These values are unverified. If the test fails, check your provider’s instructions.",
     "wird_hinzugefuegt": "Adding …",
-    "zuerst_testen": "Test first, then add."
+    "zuerst_testen": "Test first, then add.",
+    "ungespeichert_titel": "Discard changes?",
+    "ungespeichert_text": "You changed something here and have not saved it. If you close the window, it is lost.",
+    "ungespeichert_verwerfen": "Discard"
   },
   "lesen": {
     "an": "To",

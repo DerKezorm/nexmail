@@ -153,3 +153,28 @@ def test_bild_nur_angemeldet(klient):
     klient.post("/api/auth/abmelden")
     assert klient.get(f"/api/auth/profilbild/{benutzer_id}").status_code == 401
     assert klient.put("/api/auth/ich/profilbild", content=_bild()).status_code == 401
+
+
+# --- Reihenfolge der Postfachgruppen ------------------------------------- #
+
+
+def test_gruppen_reihenfolge_wird_am_konto_gemerkt(klient, zweiter_klient, db):
+    einrichten(klient)
+    assert klient.get("/api/auth/ich").json()["gruppen_reihenfolge"] == []
+
+    antwort = klient.put(
+        "/api/auth/ich/gruppen", json={"reihenfolge": ["privat", " hello ", "", "Privat", "nexapps"]}
+    )
+    assert antwort.status_code == 200, antwort.text
+    # Leere und doppelte (ohne Groß/klein) fallen weg, Leerraum auch.
+    assert antwort.json()["gruppen_reihenfolge"] == ["privat", "hello", "nexapps"]
+    assert klient.get("/api/auth/ich").json()["gruppen_reihenfolge"] == ["privat", "hello", "nexapps"]
+
+    # Jedes Konto hat seine eigene.
+    _, geheimnis = zweiten_benutzer_anlegen(db)
+    anmelden(zweiter_klient, "zweiter", "auch-geheim-456", geheimnis)
+    assert zweiter_klient.get("/api/auth/ich").json()["gruppen_reihenfolge"] == []
+
+
+def test_gruppen_reihenfolge_nur_angemeldet(klient):
+    assert klient.put("/api/auth/ich/gruppen", json={"reihenfolge": ["a"]}).status_code == 401

@@ -38,6 +38,9 @@ interface Props {
    *  Ausgang, und zwei Wege hinaus, die dasselbe tun, sind einer zu viel —
    *  dieselbe Regel, die `Dialog` selbst durchsetzt. */
   imFenster?: boolean
+  /** Ob gerade etwas eingetragen ist, das noch nicht gespeichert wurde. Daran
+   *  hängt die Rückfrage beim Schließen des Fensters (`EinstellungenPage`). */
+  aufUngespeichert?: (ungespeichert: boolean) => void
 }
 
 interface Felder {
@@ -88,6 +91,7 @@ export function KontoFormular({
   imFenster = false,
   bestehend = null,
   bekannteTags = [],
+  aufUngespeichert,
 }: Props) {
   const { t } = useTranslation()
 
@@ -151,6 +155,17 @@ export function KontoFormular({
      Passwort lief. Wer von einer Zustimmung zurück aufs Passwort wechselt,
      muss eines eintragen: Die alten hat der Wechsel zur Zustimmung gelöscht. */
   const passwortGespeichert = Boolean(bestehend) && !bestehend?.oauth_zugang_id
+
+  /* ⚠️ **Ungespeichert heißt: anders als beim Öffnen.** Verglichen wird der
+     ganze Stand der Felder samt Anmeldeart mit dem ersten; wer etwas ändert
+     und wieder zurückändert, wird nicht gefragt. Gemeldet am 22.11.2026:
+     Das Fenster ging per Kreuz, Escape oder Klick daneben einfach zu, und
+     die Änderungen waren weg. */
+  const anfang = useRef(JSON.stringify({ felder, zugangId }))
+  const ungespeichert = JSON.stringify({ felder, zugangId }) !== anfang.current
+  useEffect(() => {
+    aufUngespeichert?.(ungespeichert)
+  }, [ungespeichert, aufUngespeichert])
   useEffect(() => {
     void api
       .holen<Array<{ id: string; art: string; adresse: string }>>('/api/mailoauth/zugaenge')
@@ -389,6 +404,7 @@ export function KontoFormular({
         </div>
         <Switch
           label={t('konto.sofort')}
+          labelVersteckt
           checked={felder.idle_aktiv}
           onCheckedChange={(an) => setzen({ idle_aktiv: an })}
         />

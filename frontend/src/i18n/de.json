@@ -982,7 +982,10 @@
     "testen": "Verbindung testen",
     "ungeprueft": "Diese Werte sind nicht belegt. Wenn der Test scheitert, sieh in der Anleitung deines Anbieters nach.",
     "wird_hinzugefuegt": "Wird angelegt …",
-    "zuerst_testen": "Erst testen, dann hinzufügen."
+    "zuerst_testen": "Erst testen, dann hinzufügen.",
+    "ungespeichert_titel": "Änderungen verwerfen?",
+    "ungespeichert_text": "Du hast hier etwas geändert und noch nicht gespeichert. Schließt du das Fenster, geht es verloren.",
+    "ungespeichert_verwerfen": "Verwerfen"
   },
   "lesen": {
     "an": "An",

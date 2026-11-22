@@ -101,6 +101,8 @@ class Ich(BaseModel):
     #: Wann das Profilbild gesetzt wurde (ISO), der Stand in seiner Adresse;
     #: ``None`` ohne Bild. Das Bild selbst holt ``GET /api/auth/profilbild/{id}``.
     profilbild: str | None = None
+    #: Die eigene Reihenfolge der Postfachgruppen-Reiter (siehe ``models``).
+    gruppen_reihenfolge: list[str] = []
 
 
 @router.post("/anmelden", response_model=Schritt)
@@ -453,7 +455,19 @@ def ich(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
         version=__version__,
         wasneu_gesehen=person.wasneu_gesehen,
         profilbild=person.profilbild_am.isoformat() if person.profilbild_am else None,
+        gruppen_reihenfolge=_reihenfolge_lesen(person.gruppen_reihenfolge),
     )
+
+
+def _reihenfolge_lesen(roh: str) -> list[str]:
+    """Was gespeichert ist; Kaputtes zählt als „keine eigene Reihenfolge"."""
+    import json
+
+    try:
+        wert = json.loads(roh) if roh else []
+    except ValueError:
+        return []
+    return [w for w in wert if isinstance(w, str)] if isinstance(wert, list) else []
 
 
 @router.post("/ich/wasneu-gesehen", response_model=Ich)
@@ -573,3 +587,30 @@ def profilbild(benutzer_id: str, person: AngemeldeterBenutzer, db: DbSession) ->
         media_type="image/webp",
         headers={"Cache-Control": "private, max-age=31536000, immutable"},
     )
+
+
+class GruppenReihenfolge(BaseModel):
+    #: Die Schlagworte in der gewünschten Reihenfolge. Mehr als 100 Gruppen
+    #: hat niemand; die Grenze hält nur Unsinn aus der Datenbank.
+    reihenfolge: list[str] = Field(default_factory=list, max_length=100)
+
+
+@router.put("/ich/gruppen", response_model=Ich)
+def gruppen_ordnen(eingabe: GruppenReihenfolge, person: AngemeldeterBenutzer, db: DbSession) -> Ich:
+    """Die Reihenfolge der Postfachgruppen-Reiter merken (Ziehen in der Leiste).
+
+    Doppelte fallen weg (klein geschrieben verglichen), leere auch, jedes Wort
+    höchstens 64 Zeichen wie ein Schlagwort am Postfach.
+    """
+    import json
+
+    gesehen: set[str] = set()
+    sauber: list[str] = []
+    for wort in eingabe.reihenfolge:
+        wort = wort.strip()[:64]
+        if wort and wort.lower() not in gesehen:
+            gesehen.add(wort.lower())
+            sauber.append(wort)
+    person.gruppen_reihenfolge = json.dumps(sauber, ensure_ascii=False)
+    db.commit()
+    return ich(person, db)

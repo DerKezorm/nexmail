@@ -232,6 +232,27 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
      Gemerkt: Wer morgens auf „arbeit" stellt, will nicht nach jedem Neuladen
      wieder umschalten. */
   const [gruppe, setGruppe] = useGemerkt('nexmail.gruppe', '')
+  /* Die Reihenfolge der Gruppen-Reiter, am Konto gespeichert. ⚠️ Gleich hier
+     gesetzt, nicht erst nach der Antwort: Sonst spränge der gezogene Reiter
+     kurz an seinen alten Platz zurück. Scheitert das Speichern, gilt wieder,
+     was der Server kennt. */
+  const [gruppenReihe, setGruppenReihe] = useState<string[]>([])
+  useEffect(() => {
+    setGruppenReihe(ich?.gruppen_reihenfolge ?? [])
+  }, [ich?.gruppen_reihenfolge])
+  const gruppenOrdnen = useCallback(
+    (reihe: string[]) => {
+      setGruppenReihe(reihe)
+      api
+        .aendern('/api/auth/ich/gruppen', { reihenfolge: reihe })
+        .then(() => ichNeuLaden?.())
+        .catch((f) => {
+          setGruppenReihe(ich?.gruppen_reihenfolge ?? [])
+          setStoerung(servermeldung(f, t('anmeldung.fehler_allgemein')))
+        })
+    },
+    [ich?.gruppen_reihenfolge, ichNeuLaden, t],
+  )
   /* Wann eine offene Nachricht als gelesen gilt, in Sekunden.
      0 = sofort, −1 = nur von Hand. Eingestellt unter Darstellung. */
   const [gelesenNach] = useGemerkt<number>('nexmail.gelesen_nach', GELESEN_NACH_VORGABE)
@@ -2442,6 +2463,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 ordner={ordnerMitZaehlern}
                 gruppe={gruppe}
                 aufGruppe={setGruppe}
+                reihenfolge={gruppenReihe}
+                aufReihenfolge={gruppenOrdnen}
               />
 
               <MailPage

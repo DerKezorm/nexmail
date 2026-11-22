@@ -124,6 +124,8 @@ export async function keinTextLaeuftUeber(seite: Page, bereich = 'body') {
       // Was absichtlich abgeschnitten wird, ist kein Fehler.
       if (stil.textOverflow === 'ellipsis' || stil.overflow === 'hidden') continue
       if (stil.display === 'none' || stil.visibility === 'hidden') continue
+      // Nur für Vorleseprogramme (`sr-only`): Der Kasten ist mit Absicht 1 px.
+      if (el.closest('.sr-only')) continue
       if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0) {
         treffer.push({ text: text.slice(0, 60), sichtbar: el.clientWidth, noetig: el.scrollWidth })
       }

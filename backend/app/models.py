@@ -244,6 +244,12 @@ class Benutzer(Base):
     #: neues Bild eine neue Adresse hat und das alte nicht aus dem Speicher kommt.
     profilbild_am: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
 
+    #: Die Reihenfolge der Postfachgruppen-Reiter, als JSON-Liste der
+    #: Schlagworte (klein geschrieben verglichen). Leer heißt: wie die
+    #: Postfächer stehen. ⚠️ **Am Konto, nicht im Browser**, damit sie auf jedem
+    #: Gerät gleich ist (22.11.2026).
+    gruppen_reihenfolge: Mapped[str] = mapped_column(Text, default="")
+
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
     sitzungen: Mapped[list["Sitzung"]] = relationship(

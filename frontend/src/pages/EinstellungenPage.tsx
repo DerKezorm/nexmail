@@ -15,13 +15,14 @@
  * und einen Verbindungstest — in einem Fenster über der Mail-Ansicht wäre das
  * ein Guckloch.
  */
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Building2, FileText, Info, KeyRound, ListChecks, Mail, RefreshCw, Smartphone } from 'lucide-react'
 import { Button, Dialog } from '../ds'
 import type { Ich } from '../api/client'
 import { Postfachkacheln } from '../components/Postfachkacheln'
 import { PostfachHinzufuegen } from '../components/PostfachHinzufuegen'
+import { useNachfrage } from '../components/Nachfrage'
 import { Profilbild } from '../components/Profilbild'
 import { Benachrichtigungen } from './Benachrichtigungen'
 import { Darstellung } from './Darstellung'
@@ -113,6 +114,32 @@ export function EinstellungenPage({
   // pflegen hieße zwei Stellen, an denen ein Feld fehlen kann.
   const [bearbeitet, setBearbeitet] = useState<KontoZeile | null>(null)
   const { t } = useTranslation()
+  /* Ob im Postfach-Fenster etwas Ungespeichertes steht. ⚠️ Kreuz, Escape und
+     Klick daneben gehen alle über `fensterZu`: Wer etwas eingetragen hat,
+     wird gefragt, bevor es verloren geht. */
+  const [ungespeichert, setUngespeichert] = useState(false)
+  const { fragen, fenster: rueckfrage } = useNachfrage()
+  /* ⚠️ Escape trifft beide Fenster: die Rückfrage UND das Postfach-Fenster
+     darunter. Ohne diese Sperre fragte das untere gleich noch einmal. */
+  const fragtGerade = useRef(false)
+  async function fensterZu() {
+    if (fragtGerade.current) return
+    if (ungespeichert) {
+      fragtGerade.current = true
+      const ja = await fragen({
+        titel: t('konto.ungespeichert_titel'),
+        text: t('konto.ungespeichert_text'),
+        knopf: t('konto.ungespeichert_verwerfen'),
+        gefaehrlich: true,
+      })
+      // Erst nach dem Ereignis freigeben, das die Rückfrage schloss.
+      window.setTimeout(() => (fragtGerade.current = false), 0)
+      if (ja !== true) return
+    }
+    setUngespeichert(false)
+    aufFormular(false)
+    setBearbeitet(null)
+  }
   const [konten, setKonten] = useState<KontoZeile[] | null>(null)
 
   const laden = useCallback(() => {
@@ -269,10 +296,7 @@ export function EinstellungenPage({
         open={formularOffen}
         width={720}
         title={bearbeitet ? t('konto.bearbeiten_titel') : t('konto.hinzufuegen')}
-        onClose={() => {
-          aufFormular(false)
-          setBearbeitet(null)
-        }}
+        onClose={() => void fensterZu()}
       >
         <KontoFormular
           key={bearbeitet?.id ?? 'neu'}
@@ -282,11 +306,10 @@ export function EinstellungenPage({
           /* Was schon vergeben ist, wird angeboten — sonst entstehen
              „Arbeit" und „arbeit" nebeneinander. */
           bekannteTags={[...new Set((konten ?? []).flatMap((k) => k.tags ?? []))]}
-          aufAbbrechen={() => {
-            aufFormular(false)
-            setBearbeitet(null)
-          }}
+          aufAbbrechen={() => void fensterZu()}
+          aufUngespeichert={setUngespeichert}
           aufAngelegt={() => {
+            setUngespeichert(false)
             aufFormular(false)
             setBearbeitet(null)
             laden()
@@ -294,6 +317,8 @@ export function EinstellungenPage({
           }}
         />
       </Dialog>
+
+      {rueckfrage}
 
       {/* ⚠️ **Über der Seite, nicht im Reiter.** Der Rückweg von Google landet
           auf der Startseite; das Fenster muss auch dann aufgehen, wenn gerade

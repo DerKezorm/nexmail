@@ -188,6 +188,8 @@ export interface Ich {
   /** Wann das Profilbild gesetzt wurde, der Stand in seiner Adresse;
    *  `null` ohne Bild (dann stehen die Initialen da). */
   profilbild?: string | null
+  /** Die eigene Reihenfolge der Postfachgruppen-Reiter; leer = wie die Postfächer. */
+  gruppen_reihenfolge?: string[]
 }
 
 export interface Schritt {
