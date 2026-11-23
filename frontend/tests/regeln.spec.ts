@@ -11,7 +11,7 @@
  * dem Fall über die Schnittstelle.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { anmelden, bereich, keineRohenSchluessel, postfach, serverabsagen, TESTPOSTFACH } from './hilfen'
+import { anmelden, keineRohenSchluessel, postfach, serverabsagen, TESTPOSTFACH, zuEinstellungen } from './hilfen'
 
 const MARKE = 'nexmail-regelprobe-ohne-treffer'
 
@@ -78,9 +78,7 @@ test('„Jetzt anwenden" läuft über den gewählten Ordner und sagt, was es tra
   expect(angelegt.status()).toBe(201)
 
   const absagen = serverabsagen(page)
-  await page.getByRole('button', { name: /Benutzermenü|User menu/ }).first().click()
-  await page.getByRole('button', { name: 'Einstellungen' }).first().click()
-  await bereich(page, 'Regeln')
+  await zuEinstellungen(page, 'Regeln')
 
   await page.getByRole('button', { name: /Jetzt anwenden/ }).click()
   const fenster = page.getByRole('dialog')

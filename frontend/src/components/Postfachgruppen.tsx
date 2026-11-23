@@ -93,10 +93,13 @@ export function Postfachgruppen({
   const eintraege = ['', ...gruppen]
 
   return (
-    /* ⚠️ **Sieht aus wie Reiter, nicht wie Pillen** (Skizze vom 22.11.2026): Rahmen oben, links und rechts, unten sitzt der Reiter auf der
-       Linie über Ordnerspalte und Liste. Der gewählte grün und ohne Linie
-       darunter, die anderen grau. Steht UNTER der Werkzeugleiste, direkt über
-       dem, was er filtert.
+    /* ⚠️ **Dieselben Reiter wie in nexnotes** (gemeldet am 23.11.2026, Vorbild
+       nexnotes `tabs/TabBar.tsx`): 38 px hoch, oben gerundet, der gewählte
+       mit Rahmen, hellem Grund, fett und einer Akzentkante oben (3 px, als
+       Schatten nach innen); er geht ohne Linie in die Fläche darunter über.
+       Die anderen ohne Rahmen und leiser, beim Drüberfahren hinterlegt. Die
+       Akzentkante trägt die Farbe, Form und Gewicht sagen es auch ohne sie.
+       Steht UNTER der Werkzeugleiste, direkt über dem, was er filtert.
        ⚠️ **Die Linie unten ist ein Schatten nach innen, kein Rahmen.** Mit
        Rahmen musste der gewählte Reiter 1 px darüber hinausragen, um ihn zu
        verdecken, und `overflow-x-auto` machte daraus eine winzige senkrechte
@@ -104,10 +107,10 @@ export function Postfachgruppen({
        liegt unter dem Inhalt, der Reiter deckt ihn mit seinem Grund ab. */
     <nav
       aria-label={t('ordner.gruppe_hinweis')}
-      className="shrink-0 overflow-x-auto overflow-y-hidden bg-surface-2 px-3 pt-1.5 shadow-[inset_0_-1px_0_var(--color-line)]"
+      className="shrink-0 overflow-x-auto overflow-y-hidden bg-surface-2 px-3 pt-2 shadow-[inset_0_-1px_0_var(--color-line)]"
       data-testid="postfachgruppen"
     >
-      <div role="tablist" className="flex items-end gap-1">
+      <div role="tablist" className="flex items-end gap-0.5">
         {eintraege.map((w) => {
           const an = (gewaehlt || ALLE) === (w || ALLE)
           const zahl = ungelesen(w)
@@ -154,11 +157,11 @@ export function Postfachgruppen({
               aria-selected={an}
               onClick={() => aufGruppe(w)}
               className={
-                'relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-t-md border border-b-0 ' +
-                'px-3 py-1 text-[12px] font-medium transition-colors duration-[var(--dur-fast)] ' +
+                'relative inline-flex h-[38px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-t-[9px] border border-b-0 ' +
+                'px-3 text-[13px] transition-colors duration-[var(--dur-fast)] ' +
                 (an
-                  ? 'z-10 border-accent bg-surface-1 text-accent-text'
-                  : 'border-line bg-surface-2 text-fg-3 hover:bg-surface-3 hover:text-fg-1') +
+                  ? 'z-10 border-line bg-surface-1 font-semibold text-fg-1 shadow-[inset_0_3px_0_var(--color-accent)]'
+                  : 'border-transparent text-fg-3 hover:bg-surface-3 hover:text-fg-1') +
                 /* ⚠️ **Die Hand erst beim Drücken.** Ein Reiter ist zuerst ein
                    Klick; die Hand schon beim Drüberfahren sagte „nur ziehen"
                    (gemeldet am 22.11.2026). */

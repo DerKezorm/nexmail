@@ -62,26 +62,62 @@ export async function anmelden(seite: Page) {
   })
   await seite.goto('/')
   await expect(
-    seite.getByRole('button', { name: 'Mail', exact: true }),
+    mailKnopf(seite),
     'Die Mail-Ansicht steht nicht da. Läuft das Backend auf 8010 mit data-dev?',
   ).toBeVisible({ timeout: 15_000 })
 }
 
-/** Zu den Einstellungen über das Benutzermenü oben rechts, dann in einen
- *  Bereich (ab Werk „Postfächer", wie bis 0.30 der erste Reiter).
+/** Der Knopf der Mail-Ansicht: breit „Mail" in der Werkzeugleiste, schmal der
+ *  eine Knopf „Ansicht: Mail", hinter dem das Menü der Ansichten liegt. */
+export function mailKnopf(seite: Page) {
+  return seite.getByRole('button', { name: /^(Ansicht: )?Mail$|^(View: )?Mail$/ }).first()
+}
+
+/** Zu einer Ansicht (Mail, Kalender, Aufgaben, Kontakte).
+ *
+ * ⚠️ **Seit dem 23.11.2026 stehen sie in der Werkzeugleiste**, nicht mehr in
+ * einer Leiste links: breit als Knopfgruppe, schmal als ein Knopf mit Menü.
+ */
+export async function zurAnsicht(seite: Page, name: string) {
+  const gruppe = seite.getByRole('navigation', { name: /^(Ansichten|Views)$/ })
+  /* ⚠️ Erst warten, bis eine der beiden Formen dasteht. Direkt nach einem
+     Neuladen ist noch keine sichtbar, und dann ginge es den schmalen Weg. */
+  await expect(
+    seite
+      .locator('nav[aria-label="Ansichten"], nav[aria-label="Views"], button[aria-label^="Ansicht: "], button[aria-label^="View: "]')
+      .first(),
+  ).toBeVisible({ timeout: 15_000 })
+  if (await gruppe.isVisible()) {
+    await gruppe.getByRole('button', { name, exact: true }).click()
+    return
+  }
+  await seite.getByRole('button', { name: /^(Ansicht|View): / }).first().click()
+  await seite.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click()
+}
+
+/** Zu den Einstellungen über die Profilzeile unten in der Ordnerspalte, dann
+ *  in einen Bereich (ab Werk „Postfächer", wie bis 0.30 der erste Reiter).
  *
  * ⚠️ **Seit dem 22.11.2026 eine Seite wie in nexnotes**: Navigation links,
  * schmal eine Auswahl darüber; Verwaltung, KI und „Über" sind Bereiche darin.
+ * ⚠️ **Seit dem 23.11.2026 ohne Benutzermenü oben rechts**: Der Weg ist die
+ * Zeile „Name · Einstellungen" wie in nexnotes. Sie steht in der Ordnerspalte,
+ * also in der Mail-Ansicht, und schmal in der Schublade.
  */
 export async function zuEinstellungen(seite: Page, ziel: string = 'Postfächer') {
   /* ⚠️ **Nicht am Namen des Betreibers suchen.** „Anna" steht in keiner
-     fremden Installation — und schmal stand er auch hier nicht da: Die
-     Beschriftung ist ausgeblendet, das Bild ist `aria-hidden`, und damit
-     hatte der Knopf **gar keinen Namen**. Er trägt ein `aria-label`; gesucht
-     wird danach. */
-  const menue = seite.getByRole('button', { name: /Benutzermenü|User menu/ }).first()
-  await menue.click()
-  await seite.getByRole('button', { name: 'Einstellungen' }).first().click()
+     fremden Installation; gesucht wird nach dem Teil „· Einstellungen". Über
+     die Rolle, nicht die Kennung: Die geschlossene Schublade ist
+     `aria-hidden`, ihre Zeile zählt dann nicht. */
+  const zeile = seite.getByRole('button', { name: /· (Einstellungen|Settings)$/ })
+  if (!(await seite.getByTestId('profilzeile').count())) {
+    await zurAnsicht(seite, 'Mail')
+    await expect(seite.getByTestId('profilzeile').first()).toBeAttached()
+  }
+  if (!(await zeile.count())) {
+    await seite.getByRole('button', { name: /Ordner ausklappen|Expand folders/ }).first().click()
+  }
+  await zeile.first().click()
   await expect(seite.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
   if (ziel !== 'Profil') await bereich(seite, ziel)
 }

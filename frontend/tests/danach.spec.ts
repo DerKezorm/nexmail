@@ -10,7 +10,7 @@
  * ankommt und die Mail wirklich aufgeht.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { anmelden, bereich, postfach, serverabsagen, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, postfach, serverabsagen, zuEinstellungen, zurAnsicht } from './hilfen'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -27,7 +27,7 @@ async function einstellen(page: Page, text: string) {
   await zuEinstellungen(page)
   await bereich(page, 'Darstellung')
   await page.getByRole('combobox', { name: 'Nach Löschen oder Verschieben' }).selectOption({ label: text })
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
 }
 
 /** Posteingang des Testpostfachs, und die Betreffe der ersten beiden Zeilen.

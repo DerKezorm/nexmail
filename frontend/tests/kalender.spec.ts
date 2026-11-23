@@ -6,7 +6,7 @@
  * die `ZZ-Anhangprobe`-Mails im Papierkorb.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { anmelden } from './hilfen'
+import { anmelden, zurAnsicht } from './hilfen'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -16,7 +16,7 @@ const PROBE = 'ZZ-Kalenderprobe'
 test.beforeEach(async ({ page }, info) => {
   test.skip(info.project.name === 'schmal', 'Der Kalender wird breit geprüft.')
   await anmelden(page)
-  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await zurAnsicht(page, 'Kalender')
   await expect(page.getByRole('button', { name: /Neuer Termin/ })).toBeVisible()
   await aufraeumen(page)
 })
@@ -158,7 +158,7 @@ test('Ein Termin lässt sich anlegen und wiederfinden', async ({ page }) => {
 test('Ein wiederholter Termin fragt, was gemeint ist', async ({ page }) => {
   await anlegen(page, `${PROBE} Reihe`, 'FREQ=WEEKLY')
   await page.reload()
-  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await zurAnsicht(page, 'Kalender')
 
   const treffer = page.getByText(`${PROBE} Reihe`)
   await expect(treffer.first()).toBeVisible()
@@ -181,7 +181,7 @@ test('Ein wiederholter Termin fragt, was gemeint ist', async ({ page }) => {
 test('„Nur dieser" nimmt genau einen heraus', async ({ page }) => {
   await anlegen(page, `${PROBE} Reihe`, 'FREQ=WEEKLY')
   await page.reload()
-  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await zurAnsicht(page, 'Kalender')
 
   const treffer = page.getByText(`${PROBE} Reihe`)
   await expect(treffer.first()).toBeVisible()
@@ -198,7 +198,7 @@ test('„Nur dieser" nimmt genau einen heraus', async ({ page }) => {
 test('Ein einzelner Termin wird ohne Rückfrage gelöscht', async ({ page }) => {
   await anlegen(page, `${PROBE} Einmalig`)
   await page.reload()
-  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await zurAnsicht(page, 'Kalender')
 
   const treffer = page.getByText(`${PROBE} Einmalig`)
   await expect(treffer.first()).toBeVisible()
@@ -215,7 +215,7 @@ test('Ein einzelner Termin wird ohne Rückfrage gelöscht', async ({ page }) => 
 test('Ein ausgeblendeter Kalender versteckt seine Termine', async ({ page }) => {
   await anlegen(page, `${PROBE} Sichtbar`)
   await page.reload()
-  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await zurAnsicht(page, 'Kalender')
   await expect(page.getByText(`${PROBE} Sichtbar`).first()).toBeVisible()
 
   /* ⚠️ **Geklickt wird die Beschriftung, nicht das `<input>`.** Der Haken des
@@ -328,7 +328,7 @@ test('Eine fremde Regel wird benannt, nicht zerlegt', async ({ page }) => {
   // ⚠️ Nach dem Neuladen steht die Mail-Ansicht da, nicht der Kalender —
   // der Reiter steckt nicht in der Adresse.
   await page.reload()
-  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await zurAnsicht(page, 'Kalender')
   await expect(page.getByRole('button', { name: /Neuer Termin/ })).toBeVisible()
 
   await page.getByText(`${PROBE} Fremd`).first().click()
@@ -404,7 +404,7 @@ test('Teilnehmer stehen am Termin — mit ihrem Zusagestand', async ({ page }) =
 
   await anlegen(page, `${PROBE} Traeger`)
   await page.reload()
-  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await zurAnsicht(page, 'Kalender')
   await expect(page.getByRole('button', { name: /Neuer Termin/ })).toBeVisible()
 
   await page.getByText(`${PROBE} Runde`).first().click()
@@ -461,7 +461,7 @@ async function ziehen(page: Page, block: ReturnType<Page['locator']>, dx: number
 test('Ein gezogener Termin steht danach eine Stunde später', async ({ page }) => {
   const termin = await anlegen(page, `${PROBE} Zug`)
   await page.reload()
-  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await zurAnsicht(page, 'Kalender')
   await expect(page.getByRole('button', { name: /Neuer Termin/ })).toBeVisible()
   await inDieWoche(page)
 
@@ -495,7 +495,7 @@ test('Ein gezogener Termin steht danach eine Stunde später', async ({ page }) =
 test('Die Unterkante ändert das Ende und lässt den Beginn stehen', async ({ page }) => {
   const termin = await anlegen(page, `${PROBE} Kante`)
   await page.reload()
-  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await zurAnsicht(page, 'Kalender')
   await expect(page.getByRole('button', { name: /Neuer Termin/ })).toBeVisible()
   await inDieWoche(page)
 
@@ -529,7 +529,7 @@ test('Ein Zug an einer Reihe fragt, was gemeint ist', async ({ page }) => {
      bleiben.** Ohne sie verschiebt eine Handbewegung fünfzig Termine. */
   await anlegen(page, `${PROBE} Reihe`, 'FREQ=WEEKLY')
   await page.reload()
-  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await zurAnsicht(page, 'Kalender')
   await expect(page.getByRole('button', { name: /Neuer Termin/ })).toBeVisible()
   await inDieWoche(page)
 
@@ -556,7 +556,7 @@ test('Ein Wackeln beim Klicken oeffnet weiterhin den Termin', async ({ page }) =
      Bewegung muss von Hand kommen, sonst prueft der Test die Schwelle nicht. */
   await anlegen(page, `${PROBE} Wackeln`)
   await page.reload()
-  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await zurAnsicht(page, 'Kalender')
   await expect(page.getByRole('button', { name: /Neuer Termin/ })).toBeVisible()
   await inDieWoche(page)
 
@@ -587,7 +587,7 @@ test('Zwei gleichzeitige Termine verdecken einander nicht', async ({ page }) => 
   await anlegenUm(page, `${PROBE} Links`, 9, 11)
   await anlegenUm(page, `${PROBE} Rechts`, 10, 12)
   await page.reload()
-  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await zurAnsicht(page, 'Kalender')
   await expect(page.getByRole('button', { name: /Neuer Termin/ })).toBeVisible()
   await page.getByRole('button', { name: 'Tag', exact: true }).click()
 

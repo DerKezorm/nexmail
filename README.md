@@ -46,7 +46,7 @@ Every address in them is under `example.com`, `example.org` or
 **Mail.** Several mailboxes side by side, plus a merged *All inboxes* view.
 Read, reply, reply-all, forward, move, archive, delete, mark, flag, undo. Drag
 and drop between folders. Keyboard: `Del` to trash, `E` to archive, and
-`Ctrl+K` opens a command palette that finds every action and folder. Which
+`Ctrl+K` jumps to the search field, and `Ctrl+Shift+P` opens a command palette that finds every action and folder. Which
 folder is the trash or the archive nexmail reads from the server's SPECIAL-USE
 flags and from the usual names; where a server has neither, right-click the
 folder and pick *Use as* (on a phone: the *…* next to the folder). Folders

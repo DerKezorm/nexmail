@@ -54,16 +54,16 @@ test('Der Balken zeigt beide Wege, und „Bilder anzeigen" setzt sie ein', async
   })
   await ersteMailOeffnen(page)
 
-  await expect(page.getByRole('button', { name: 'Bilder anzeigen' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Immer von diesem Absender' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Bilder laden' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Immer laden' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Bilder anzeigen' }).click()
+  await page.getByRole('button', { name: 'Bilder laden' }).click()
 
   /* ⚠️ **Der Punkt der ganzen Übung:** Im Rahmen steht danach eine Adresse
      dieser Anwendung, keine fremde. Eine fremde verwirft der Browser stumm. */
   const rahmen = page.frameLocator('iframe').first()
   await expect(rahmen.locator('img')).toHaveAttribute('src', /^\/api\/bilder\//)
-  await expect(page.getByRole('button', { name: 'Bilder anzeigen' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Bilder laden' })).toHaveCount(0)
 
   await expect.poll(() => abgerufen.length).toBeGreaterThan(0)
   await absagen.pruefen()
@@ -77,7 +77,7 @@ test('„Immer von diesem Absender" sagt, was es getan hat — und nimmt es zur�
   await mitGeblocktemBild(page, gemerkt)
   await ersteMailOeffnen(page)
 
-  await page.getByRole('button', { name: 'Immer von diesem Absender' }).click()
+  await page.getByRole('button', { name: 'Immer laden' }).click()
 
   expect(gemerkt.wert).toBe(true)
   /* Eine Handlung, die man nicht sieht, gibt es nicht — und ein Fehlklick ist

@@ -9,7 +9,9 @@
  * Import steht in ../index.css. Hier bleiben nur die Namen.
  */
 :root{
-  --font-display:"Space Grotesk","Helvetica Neue",Helvetica,sans-serif;
-  --font-sans:"IBM Plex Sans","Helvetica Neue",Helvetica,sans-serif;
-  --font-mono:"JetBrains Mono","SFMono-Regular",Consolas,monospace;
+  /* Seit 23.11.2026 Inter wie in nexnotes, nextasks und nextime;
+     Überschriften in derselben Schrift, nur fetter. */
+  --font-sans:'Inter Variable','Segoe UI',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif;
+  --font-display:var(--font-sans);
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;
 }

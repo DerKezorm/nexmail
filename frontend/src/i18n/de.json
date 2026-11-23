@@ -164,7 +164,17 @@
     "faellig": "Fällig am",
     "mail_weg": "Mail nicht mehr da",
     "laden_ging_nicht": "Die Aufgaben ließen sich nicht laden. Sie sind nicht weg, der Server antwortet nur gerade nicht.",
-    "machen": "Zu Aufgabe machen"
+    "machen": "Zu Aufgabe machen",
+    "filter_titel": "Aufgaben filtern",
+    "filter_offen": "Offen",
+    "filter_heute": "Heute und überfällig",
+    "filter_datum": "Mit Datum",
+    "filter_erledigt": "Erledigt",
+    "filter_leer": "Hier ist nichts",
+    "orte": "Wo sie liegen",
+    "ort_alle": "Überall",
+    "ort_nexmail": "In nexmail",
+    "erledigt_zahl": "{{count}} erledigt"
   },
   "ausgang": {
     "leer_titel": "Nichts wartet",
@@ -318,6 +328,10 @@
         "titel": "Verbindungen",
         "text": "Todo-Apps, die iPhone-App und API-Schlüssel für andere Programme."
       },
+      "kalender": {
+        "titel": "Kalender und Adressbücher",
+        "text": "Eigene und verbundene Kalender und Adressbücher: anlegen, umbenennen, trennen."
+      },
       "postfaecher": {
         "titel": "Postfächer",
         "text": "Die Postfächer, die nexmail für dich abholt."
@@ -369,7 +383,15 @@
         "titel": "Über nexmail",
         "text": "Version, Herkunft, Lizenz und Updates."
       }
-    }
+    },
+    "kalender_titel": "Kalender",
+    "kalender_text": "Erscheinen links in der Kalender-Ansicht. Ein verbundener Kalender bleibt beim Anbieter, wenn du ihn hier trennst.",
+    "kalender_weg_text": "Seine Termine gehen mit. Das lässt sich nicht zurücknehmen.",
+    "buecher_titel": "Adressbücher",
+    "buecher_text": "„Meine Kontakte“ lebt nur in nexmail; verbundene Bücher kommen von iCloud, Google oder einer anderen CardDAV-Adresse.",
+    "nur_hier": "Nur in nexmail",
+    "kontakte_zahl_one": "{{count}} Kontakt",
+    "kontakte_zahl_other": "{{count}} Kontakte"
   },
   "erinnerung": {
     "titel_one": "Erinnerung",
@@ -414,7 +436,8 @@
   },
   "griff": {
     "ordner": "Breite der Ordnerspalte",
-    "liste": "Breite der Nachrichtenliste"
+    "liste": "Breite der Nachrichtenliste",
+    "spalte": "Breite der Seitenleiste"
   },
   "kalender": {
     "abgleich_fertig": "{{neu}} neu · {{geaendert}} geändert · {{entfernt}} entfernt",
@@ -630,7 +653,8 @@
     "weitere_one": "1 weiterer",
     "weitere_other": "{{count}} weitere",
     "wiederholung": "Wiederholung",
-    "zurueck": "Zurück"
+    "zurueck": "Zurück",
+    "hinzufuegen_kurz": "Kalender hinzufügen"
   },
   "kennwort": {
     "link_anfordern": "Link anfordern",
@@ -993,8 +1017,9 @@
     "anhaenge_eine": "1 Anhang",
     "anhaenge_viele": "{{count}} Anhänge",
     "bilder_geblockt": "Bilder in dieser Nachricht wurden nicht geladen. Sie würden dem Absender verraten, wann du sie geöffnet hast.",
-    "bilder_anzeigen": "Bilder anzeigen",
-    "bilder_immer": "Immer von diesem Absender",
+    "bilder_anzeigen": "Bilder laden",
+    "bilder_immer": "Immer laden",
+    "bilder_immer_titel": "Bilder von diesem Absender ab jetzt immer laden",
     "bilder_immer_gemerkt": "Bilder von {{adresse}} werden ab jetzt immer geladen.",
     "bilder_ging_nicht": "Die Bilder ließen sich nicht laden. Der Server des Absenders hat nicht geantwortet.",
     "wichtig_hoch": "Hohe Wichtigkeit",
@@ -1037,7 +1062,6 @@
   },
   "nav": {
     "aufgaben": "Aufgaben",
-    "benutzermenue": "Benutzermenü von {{name}}",
     "dunkel": "Dunkler Modus",
     "einstellungen": "Einstellungen",
     "hell": "Heller Modus",
@@ -1049,11 +1073,11 @@
     "sprache": "Sprache",
     "ueber": "Über nexmail",
     "verwaltung": "Verwaltung",
-    "faktor_an": "Zweiter Faktor an",
-    "faktor_aus": "Zweiter Faktor aus",
-    "codes_one": "{{count}} Code übrig",
-    "codes_other": "{{count}} Codes übrig",
-    "wasneu": "Was ist neu"
+    "wasneu": "Was ist neu",
+    "ansichten": "Ansichten",
+    "ansicht": "Ansicht: {{name}}",
+    "seitenleiste_zu": "Seitenleiste einklappen",
+    "seitenleiste_auf": "Seitenleiste ausklappen"
   },
   "oauth": {
     "titel": "Google und Microsoft",
@@ -1139,7 +1163,6 @@
     "papierkorb": "Papierkorb",
     "einklappen": "Ordner einklappen",
     "ausklappen": "Ordner ausklappen",
-    "postfach_hinzufuegen": "Postfach hinzufügen",
     "alle_gelesen": "Alle als gelesen markieren",
     "leeren": "Ordner leeren",
     "umbenennen": "Ordner umbenennen",
@@ -1883,7 +1906,9 @@
     "treffer_other": "{{count}} Treffer",
     "nur_zwischenspeicher": "Betreff und Absender vollständig durchsucht, im Text nur, was schon geholt wurde.",
     "beim_anbieter": "Auch beim Anbieter suchen",
-    "laeuft": "Wird gesucht …"
+    "laeuft": "Wird gesucht …",
+    "kuerzel": "Strg K",
+    "bereich_label": "Wo gesucht wird"
   },
   "termin": {
     "ohne_titel": "Termin ohne Titel",

@@ -38,7 +38,7 @@ describe('Sichtbarkeit der Bereiche', () => {
     const sieht = ids(ich({}))
     for (const s of SERVER) expect(sieht).not.toContain(s)
     // Alles, was vorher in seinen eigenen Einstellungen stand, bleibt.
-    for (const b of ['profil', 'sicherheit', 'darstellung', 'benachrichtigungen', 'verbindungen',
+    for (const b of ['profil', 'sicherheit', 'darstellung', 'benachrichtigungen', 'verbindungen', 'kalender',
       'postfaecher', 'regeln', 'signaturen', 'abwesenheit', 'schlagworte'] as const) {
       expect(sieht).toContain(b)
     }

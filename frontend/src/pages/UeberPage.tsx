@@ -53,7 +53,16 @@ function Zeile({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-export function UeberPage({ istBetreiber = true }: { istBetreiber?: boolean } = {}) {
+export function UeberPage({
+  istBetreiber = true,
+  aufWasNeu,
+}: {
+  istBetreiber?: boolean
+  /** „Was ist neu" zur laufenden Version noch einmal öffnen. Fehlt, wenn es
+   *  dazu keinen Text gibt. ⚠️ Seit dem 23.11.2026 hier statt im
+   *  Benutzermenü oben rechts, das es nicht mehr gibt; „Über" sehen alle. */
+  aufWasNeu?: () => void
+} = {}) {
   const { t, i18n } = useTranslation()
   const [daten, setDaten] = useState<Auskunft | null>(null)
   const [fehler, setFehler] = useState('')
@@ -117,10 +126,7 @@ export function UeberPage({ istBetreiber = true }: { istBetreiber?: boolean } = 
   ]
 
   const schriften = [
-    { name: 'IBM Plex Sans', url: 'https://github.com/IBM/plex' },
-    { name: 'Space Grotesk', url: 'https://github.com/floriankarsten/space-grotesk' },
     { name: 'Inter', url: 'https://github.com/rsms/inter' },
-    { name: 'JetBrains Mono', url: 'https://github.com/JetBrains/JetBrainsMono' },
   ]
 
   return (
@@ -144,10 +150,15 @@ export function UeberPage({ istBetreiber = true }: { istBetreiber?: boolean } = 
           <>
             <dl className="mt-6 rounded-xl border border-line bg-surface-1 px-4 py-2">
               <Zeile label={t('ueber.fassung')}>
-                <span className="flex items-center gap-2">
+                <span className="flex flex-wrap items-center gap-2">
                   {daten.version}
                   {daten.neuer_da && (
                     <Badge tone="accent">{t('ueber.neu_da', { version: daten.neueste })}</Badge>
+                  )}
+                  {aufWasNeu && (
+                    <Button size="sm" variant="ghost" onClick={aufWasNeu}>
+                      {t('nav.wasneu')}
+                    </Button>
                   )}
                 </span>
               </Zeile>

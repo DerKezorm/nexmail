@@ -14,7 +14,7 @@
  * Und: Jeder Test räumt hinterher auf. Sie laufen gegen ein echtes Postfach.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { anmelden, bereich, rechtsklick, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, rechtsklick, zuEinstellungen, zurAnsicht } from './hilfen'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -127,7 +127,7 @@ test('Kontakt anlegen, wiederfinden, entfernen', async ({ page }) => {
   const roh = keineRohenMeldungen(page)
   const adresse = 'zz-probe@example.org'
 
-  await page.getByRole('button', { name: 'Kontakte', exact: true }).click()
+  await zurAnsicht(page, 'Kontakte')
   await page.getByRole('button', { name: 'Neuer Kontakt' }).click()
 
   await page.getByRole('textbox', { name: 'E-Mail-Adresse' }).fill(adresse)
@@ -153,7 +153,7 @@ test('Kontaktgruppe anlegen, Mitglied ankreuzen, wieder entfernen', async ({ pag
   const adresse = 'zz-gruppen-probe@example.org'
   const gruppenname = 'ZZ-Probe-Gruppe'
 
-  await page.getByRole('button', { name: 'Kontakte', exact: true }).click()
+  await zurAnsicht(page, 'Kontakte')
 
   // Erst ein Kontakt — ohne Adressbuch gibt es nichts anzukreuzen.
   await page.getByRole('button', { name: 'Neuer Kontakt' }).click()
@@ -248,7 +248,7 @@ test('Schlagwort vergeben, umschalten, wieder wegnehmen', async ({ page }, info)
   // was der Server behalten hat — und ein gar nicht gespeichertes Schlagwort
   // bestünde ihn.
   await page.reload()
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
 
   // Seit dem 22.11.2026 Reiter über der Mail-Ansicht, nicht mehr Pillen im Baum.
   const umschalter = page.getByTestId('postfachgruppen')
@@ -344,7 +344,7 @@ test('Ältere Nachrichten lassen sich nachladen', async ({ page }, info) => {
   await page.waitForTimeout(800)
   const vorher = await page.getByRole('checkbox').count()
 
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
   await page.getByRole('button', { name: /Alle Posteingänge|All inboxes/ }).click()
 
   const zeilen = page.locator('button[draggable="true"]')
@@ -425,7 +425,7 @@ test('Aus einer Mail wird eine Aufgabe, und sie lässt sich abhaken', async ({ p
   await expect(leiste, 'In der Leiste fehlt „Aufgaben".').toBeVisible()
   const vorher = 0
 
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
   await page.getByRole('button', { name: /Alle Posteingänge|All inboxes/ }).click()
 
   const zeilen = page.locator('button[draggable="true"]')
@@ -466,7 +466,7 @@ test('Aus einer Mail wird eine Aufgabe, und sie lässt sich abhaken', async ({ p
   await page.getByRole('button', { name: /Aufgabe entfernen|Remove task/ }).first().click()
   await expect(page.getByRole('checkbox')).toHaveCount(vorher, { timeout: 10_000 })
 
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
   await expect.poll(() => zeilen.count(), { timeout: 20_000 }).toBeGreaterThan(0)
 })
 
@@ -477,7 +477,7 @@ test('Gespräche fassen zusammen und lassen sich aufklappen', async ({ page }, i
      einem zugeklappten Strang, und man merkt es erst, wenn man sie sucht.
      Deshalb prüft der Test beide Richtungen: Der Umschalter fasst wirklich
      zusammen — **und** das Aufgeklappte bringt die Nachricht zurück. */
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
   await page.getByRole('button', { name: /Alle Posteingänge|All inboxes/ }).click()
 
   const zeilen = page.locator('button[draggable="true"]')
@@ -531,7 +531,7 @@ test('„Als gelesen" lässt sich auf „nur von Hand" stellen', async ({ page }
   await expect(wahl, 'Die Einstellung „Als gelesen" fehlt.').toBeVisible()
   await wahl.selectOption('-1')
 
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
   await page.getByRole('button', { name: /Alle Posteingänge|All inboxes/ }).click()
 
   /* ⚠️ **Eine wirklich ungelesene Nachricht nehmen.** Beim ersten Anlauf

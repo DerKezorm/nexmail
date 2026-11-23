@@ -12,7 +12,7 @@
  * Rollen unter dem Finger — das bleibt eine Frage an ein echtes Gerät.
  */
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { anmelden, bereich, rechtsklick, serverabsagen, TESTPOSTFACH, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, rechtsklick, serverabsagen, TESTPOSTFACH, zuEinstellungen, zurAnsicht } from './hilfen'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -173,7 +173,7 @@ test('Die Einstellung wirkt: steht die Richtung auf „Aus", wischt nichts', asy
   await zuEinstellungen(page)
   await bereich(page, 'Darstellung')
   await page.getByRole('combobox', { name: /Wischen nach rechts/ }).selectOption('aus')
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
 
   const zeilen = page.locator('button[draggable="true"]')
   await expect(zeilen.first()).toBeVisible()

@@ -164,7 +164,17 @@
     "faellig": "Due",
     "mail_weg": "Message is gone",
     "laden_ging_nicht": "Tasks could not be loaded. They are not gone. The server is just not answering right now.",
-    "machen": "Turn into task"
+    "machen": "Turn into task",
+    "filter_titel": "Filter tasks",
+    "filter_offen": "Open",
+    "filter_heute": "Today and overdue",
+    "filter_datum": "With date",
+    "filter_erledigt": "Done",
+    "filter_leer": "Nothing here",
+    "orte": "Where they are",
+    "ort_alle": "Everywhere",
+    "ort_nexmail": "In nexmail",
+    "erledigt_zahl": "{{count}} done"
   },
   "ausgang": {
     "leer_titel": "Nothing waiting",
@@ -318,6 +328,10 @@
         "titel": "Connections",
         "text": "To-do apps, the iPhone app and API keys for other programs."
       },
+      "kalender": {
+        "titel": "Calendars and address books",
+        "text": "Your own and connected calendars and address books: add, rename, disconnect."
+      },
       "postfaecher": {
         "titel": "Mailboxes",
         "text": "The mailboxes nexmail fetches for you."
@@ -369,7 +383,15 @@
         "titel": "About nexmail",
         "text": "Version, origin, licence and updates."
       }
-    }
+    },
+    "kalender_titel": "Calendars",
+    "kalender_text": "They appear on the left in the calendar view. A connected calendar stays with its provider when you disconnect it here.",
+    "kalender_weg_text": "Its events go with it. This cannot be undone.",
+    "buecher_titel": "Address books",
+    "buecher_text": "“My contacts” lives only in nexmail; connected books come from iCloud, Google or another CardDAV address.",
+    "nur_hier": "Only in nexmail",
+    "kontakte_zahl_one": "{{count}} contact",
+    "kontakte_zahl_other": "{{count}} contacts"
   },
   "erinnerung": {
     "titel_one": "Reminder",
@@ -414,7 +436,8 @@
   },
   "griff": {
     "ordner": "Folder column width",
-    "liste": "Message list width"
+    "liste": "Message list width",
+    "spalte": "Sidebar width"
   },
   "kalender": {
     "abgleich_fertig": "{{neu}} new · {{geaendert}} changed · {{entfernt}} removed",
@@ -630,7 +653,8 @@
     "weitere_one": "1 more",
     "weitere_other": "{{count}} more",
     "wiederholung": "Repeat",
-    "zurueck": "Back"
+    "zurueck": "Back",
+    "hinzufuegen_kurz": "Add calendar"
   },
   "kennwort": {
     "link_anfordern": "Request a link",
@@ -993,8 +1017,9 @@
     "anhaenge_eine": "1 attachment",
     "anhaenge_viele": "{{count}} attachments",
     "bilder_geblockt": "Images in this message were not loaded. They would tell the sender when you opened it.",
-    "bilder_anzeigen": "Show images",
-    "bilder_immer": "Always from this sender",
+    "bilder_anzeigen": "Load images",
+    "bilder_immer": "Always load",
+    "bilder_immer_titel": "Always load images from this sender",
     "bilder_immer_gemerkt": "Images from {{adresse}} will always be loaded from now on.",
     "bilder_ging_nicht": "The images could not be loaded. The sender's server did not answer.",
     "wichtig_hoch": "High importance",
@@ -1037,7 +1062,6 @@
   },
   "nav": {
     "aufgaben": "Tasks",
-    "benutzermenue": "User menu for {{name}}",
     "dunkel": "Dark mode",
     "einstellungen": "Settings",
     "hell": "Light mode",
@@ -1049,11 +1073,11 @@
     "sprache": "Language",
     "ueber": "About nexmail",
     "verwaltung": "Administration",
-    "faktor_an": "Second factor on",
-    "faktor_aus": "Second factor off",
-    "codes_one": "{{count}} code left",
-    "codes_other": "{{count}} codes left",
-    "wasneu": "What's new"
+    "wasneu": "What's new",
+    "ansichten": "Views",
+    "ansicht": "View: {{name}}",
+    "seitenleiste_zu": "Collapse sidebar",
+    "seitenleiste_auf": "Expand sidebar"
   },
   "oauth": {
     "titel": "Google and Microsoft",
@@ -1139,7 +1163,6 @@
     "papierkorb": "Trash",
     "einklappen": "Collapse folders",
     "ausklappen": "Expand folders",
-    "postfach_hinzufuegen": "Add mailbox",
     "alle_gelesen": "Mark all as read",
     "leeren": "Empty folder",
     "umbenennen": "Rename folder",
@@ -1883,7 +1906,9 @@
     "treffer_other": "{{count}} results",
     "nur_zwischenspeicher": "Subject and sender searched in full, message text only where it was already fetched.",
     "beim_anbieter": "Search on the server too",
-    "laeuft": "Searching …"
+    "laeuft": "Searching …",
+    "kuerzel": "Ctrl K",
+    "bereich_label": "Where to search"
   },
   "termin": {
     "ohne_titel": "Untitled event",

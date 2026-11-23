@@ -34,7 +34,7 @@ setup('anmelden', async ({ page }) => {
   await weiter.click()
 
   await expect(
-    page.getByRole('button', { name: 'Mail', exact: true }),
+    page.getByRole('button', { name: /^(Ansicht: )?Mail$/ }).first(),
     'Nach der Anmeldung steht die Mail-Ansicht nicht da. Läuft das Backend auf 8010 mit data-dev?',
   ).toBeVisible({ timeout: 15_000 })
 

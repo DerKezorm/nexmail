@@ -5,7 +5,7 @@
  * kaputtes Bildsymbol, persönlicher Name im Platzhalter.
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, auswahllistenSindGefaerbt, bereich, jederKnopfHatEinenNamen, keineKaputtenBilder, keineRohenSchluessel, keinSeitlichesScrollen, keinTextLaeuftUeber, postfach, rechtsklick, serverabsagen, tabuWoerter, TESTPOSTFACH, zuEinstellungen } from './hilfen'
+import { anmelden, auswahllistenSindGefaerbt, bereich, jederKnopfHatEinenNamen, keineKaputtenBilder, keineRohenSchluessel, keinSeitlichesScrollen, keinTextLaeuftUeber, postfach, rechtsklick, serverabsagen, tabuWoerter, TESTPOSTFACH, zuEinstellungen, zurAnsicht } from './hilfen'
 
 test.beforeEach(async ({ page }) => {
   await anmelden(page)
@@ -126,7 +126,7 @@ test('Keine Browser-Popups: Rückfragen laufen im eigenen Fenster', async ({ pag
   await page.getByRole('button', { name: 'Abbrechen' }).click()
 
   // Ordner anlegen — der frühere `window.prompt`.
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
   const ordner = page.getByRole('button', { name: 'Posteingang' }).first()
   await rechtsklick(page, ordner)
   await page.getByRole('menuitem', { name: /Neuer Ordner/ }).click()
@@ -307,7 +307,7 @@ test('Reiter Darstellung wirkt wirklich auf die Liste', async ({ page }, info) =
 
   /* ⚠️ Eine Einstellung, die nichts tut, ist schlimmer als keine — der
      Betreiber stellt sie und sucht danach den Fehler bei sich. */
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
   for (const name of ['Papierkorb', 'Archiv', 'Posteingang']) {
     const knopf = page.getByRole('button', { name }).first()
     if (await knopf.count()) {
@@ -325,7 +325,7 @@ test('Reiter Darstellung wirkt wirklich auf die Liste', async ({ page }, info) =
   await zuEinstellungen(page)
   await bereich(page, 'Darstellung')
   await page.getByRole('combobox', { name: /Dichte/ }).selectOption('kompakt')
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
   await page.waitForTimeout(600)
 
   const kompakt = await hoehe()
@@ -674,7 +674,7 @@ test('Im Rahmen steht immer die Mail, die oben im Kopf steht', async ({ page }, 
 
     // Zwischendurch die Bilder anfordern und sofort weiterklicken — der Weg,
     // auf dem eine spaete Antwort frueher einen fremden Rumpf gesetzt hat.
-    const knopf = page.getByRole('button', { name: 'Bilder anzeigen' })
+    const knopf = page.getByRole('button', { name: 'Bilder laden' })
     if (await knopf.count()) await knopf.click()
 
     const naechste = i + 1

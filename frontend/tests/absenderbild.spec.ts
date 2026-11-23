@@ -7,7 +7,7 @@
  * und der Browser selbst nirgends hingreift.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { anmelden, bereich, postfach, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, postfach, zuEinstellungen, zurAnsicht } from './hilfen'
 
 test.beforeEach(async ({ page }, info) => {
   test.skip(info.project.name === 'schmal', 'Die Liste wird breit geprüft.')
@@ -57,7 +57,7 @@ test('Unter Darstellung lässt sich der Kreis abschalten, ohne F5', async ({ pag
   await zuEinstellungen(page)
   await bereich(page, 'Darstellung')
   await page.getByRole('switch', { name: 'Bilder vor den Absendern' }).click()
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
 
   await expect(zeilen(page).first()).toBeVisible()
   await expect(kreise(page)).toHaveCount(0)
@@ -89,7 +89,7 @@ test('Der Logo-Schalter kommt beim Server an, und eine ungeprüfte Mail fragt tr
 
     // ⚠️ **Der Kern:** Die Mails im Testpostfach tragen keine bestandene
     // Absenderprüfung, also fragt keine Zeile nach einem Logo, auch jetzt nicht.
-    await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+    await zurAnsicht(page, 'Mail')
     await posteingang(page)
     const quellen = await kreise(page).evaluateAll((k) => k.map((e) => e.getAttribute('data-quelle') ?? ''))
     expect(quellen.length).toBeGreaterThan(0)

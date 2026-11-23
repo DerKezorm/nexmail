@@ -42,7 +42,7 @@ test('Ungespeicherte Änderungen im Postfach-Fenster: erst fragen, dann schließ
 
 test('Gruppen-Reiter lassen sich ziehen, und die Reihenfolge bleibt', async ({ page }) => {
   await anmelden(page)
-  await expect(page.getByRole('button', { name: /Postfach hinzufügen/ }).first()).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('profilzeile').first()).toBeVisible({ timeout: 15_000 })
   const leiste = page.getByTestId('postfachgruppen')
   test.skip((await leiste.count()) === 0, 'Diese Daten haben keine zwei Postfachgruppen.')
   const reiter = leiste.locator('[data-gruppe]')

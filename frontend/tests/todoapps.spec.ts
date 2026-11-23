@@ -10,7 +10,7 @@
  */
 import { expect, test } from '@playwright/test'
 import type { Page, Request } from '@playwright/test'
-import { anmelden, bereich, jederKnopfHatEinenNamen, keineRohenSchluessel, postfach, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, jederKnopfHatEinenNamen, keineRohenSchluessel, postfach, zuEinstellungen, zurAnsicht } from './hilfen'
 
 test.beforeEach(({ page: _page }, info) => {
   test.skip(info.project.name === 'schmal', 'Die Todo-Apps werden breit geprüft.')
@@ -196,7 +196,7 @@ test('Die Liste zeigt Todoist-Aufgaben mit Link und ohne Datumsfeld', async ({ p
   )
   await page.route('**/api/aufgaben/abgleichen', (route) => route.fulfill({ status: 204 }))
   await anmelden(page)
-  await page.getByRole('button', { name: 'Aufgaben' }).first().click()
+  await zurAnsicht(page, 'Aufgaben')
 
   const app = page.locator('li').filter({ hasText: 'Angebot schicken' })
   await expect(app.getByText('Todoist › Arbeit')).toBeVisible()

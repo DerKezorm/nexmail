@@ -9,7 +9,7 @@
  *   npx playwright test tests/textvorlagen.spec.ts --reporter=line
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, bereich, serverabsagen, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, serverabsagen, zuEinstellungen, zurAnsicht } from './hilfen'
 
 test('Vorlage anlegen, im Verfassen-Fenster einfügen, wieder entfernen', async ({ page }, info) => {
   test.skip(info.project.name === 'schmal', 'Wird in der breiten Ansicht geprüft.')
@@ -55,7 +55,7 @@ test('Vorlage anlegen, im Verfassen-Fenster einfügen, wieder entfernen', async 
   ).toBeVisible({ timeout: 10_000 })
 
   // Ins Verfassen-Fenster — dort sitzt das Menü „Vorlage" neben „Anhang".
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
   await page.getByRole('button', { name: 'Neue Nachricht' }).click()
   const fenster = page.getByRole('dialog')
   await expect(fenster).toBeVisible()
@@ -116,7 +116,7 @@ test('Ein gescheiterter Abruf sieht nicht wie Leere aus', async ({ page }, info)
   // Dasselbe im Verfassen-Fenster: Das Menü „Vorlage" darf einen Fehler
   // nicht als „Noch keine Vorlagen" ausgeben.
   await page.route('**/api/textvorlagen', (route) => route.abort())
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
   await page.getByRole('button', { name: 'Neue Nachricht' }).click()
   const fenster = page.getByRole('dialog')
   await expect(fenster).toBeVisible()

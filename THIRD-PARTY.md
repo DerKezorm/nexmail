@@ -10,16 +10,13 @@ does not load them from Google Fonts or any other host: a mail client that
 phones home the moment you open it would be absurd, given that it blocks
 tracking pixels in other people's mail.
 
-Shipping them means their licence travels with them. All three are under the
+Shipping it means its licence travels with it. Inter is under the
 **SIL Open Font License 1.1**, which permits bundling and redistribution and
-requires that this notice accompany the fonts.
+requires that this notice accompany the font.
 
 | Font | Copyright | Licence |
 |---|---|---|
-| IBM Plex Sans | © 2017 IBM Corp. | [OFL-1.1](https://github.com/IBM/plex/blob/master/LICENSE.txt) |
-| Space Grotesk | © 2020 The Space Grotesk Project Authors | [OFL-1.1](https://github.com/floriankarsten/space-grotesk/blob/master/OFL.txt) |
-| Inter (only the wordmark) | © 2016 The Inter Project Authors | [OFL-1.1](https://github.com/rsms/inter/blob/master/LICENSE.txt) |
-| JetBrains Mono | © 2020 The JetBrains Mono Project Authors | [OFL-1.1](https://github.com/JetBrains/JetBrainsMono/blob/master/OFL.txt) |
+| Inter | © 2016 The Inter Project Authors | [OFL-1.1](https://github.com/rsms/inter/blob/master/LICENSE.txt) |
 
 Packaged via [Fontsource](https://fontsource.org/); the npm wrappers are MIT.
 

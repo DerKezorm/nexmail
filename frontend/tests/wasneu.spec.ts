@@ -12,7 +12,7 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { anmelden, jederKnopfHatEinenNamen } from './hilfen'
+import { anmelden, jederKnopfHatEinenNamen, mailKnopf, zuEinstellungen } from './hilfen'
 
 /* Gelesen statt importiert: Playwrights Lader will bei JSON ein
    Import-Attribut, das Vite und tsc nicht kennen. */
@@ -35,14 +35,25 @@ async function vorspielen(page: Page, gesehen: string | null) {
       json: { ...ich, version: VERSION, wasneu_gesehen: gesehen ?? VERSION },
     })
   })
+  /* ⚠️ Gezählt wird erst nach der Antwort. Zählte der Abfang vorher, war der
+     Test schon zu Ende, während er noch las („Response has been disposed“),
+     gesehen am 23.11.2026 in beiden Breiten, nicht in jedem Lauf. */
   await page.route('**/api/auth/ich/wasneu-gesehen', async (route) => {
-    meldungen.zahl += 1
     const ich = await (await page.request.get('/api/auth/ich')).json()
     await route.fulfill({ json: ich })
+    meldungen.zahl += 1
   })
   await anmelden(page)
   return meldungen
 }
+
+/* ⚠️ Nach dem Wegklicken lädt die Oberfläche `ich` nach; endet der Test, während
+   der Abfang darauf noch liest, wirft Playwright „Response has been disposed“.
+   Die Abfänge gehen deshalb am Ende jedes Falls weg, laufende Lesevorgänge
+   werden dabei verworfen. */
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
+})
 
 test('nach dem Update: Banner, Fenster, und weg ist er', async ({ page }) => {
   const meldungen = await vorspielen(page, '0.23.4')
@@ -60,7 +71,7 @@ test('nach dem Update: Banner, Fenster, und weg ist er', async ({ page }) => {
 
   await expect(fenster).toHaveCount(0)
   await expect(banner).toHaveCount(0)
-  expect(meldungen.zahl).toBe(1)
+  await expect.poll(() => meldungen.zahl).toBe(1)
 })
 
 test('das Kreuz räumt den Banner weg, ohne das Fenster', async ({ page }) => {
@@ -73,12 +84,14 @@ test('das Kreuz räumt den Banner weg, ohne das Fenster', async ({ page }) => {
   await expect.poll(() => meldungen.zahl).toBe(1)
 })
 
-test('schon gesehen: kein Banner, aber im Benutzermenü wieder zu öffnen', async ({ page }) => {
+/* ⚠️ **Seit dem 23.11.2026 unter „Über nexmail"**, nicht mehr im Benutzermenü
+   oben rechts (das gibt es nicht mehr). „Über" sehen alle Konten. */
+test('schon gesehen: kein Banner, aber unter „Über nexmail" wieder zu öffnen', async ({ page }) => {
   const meldungen = await vorspielen(page, null)
 
-  await expect(page.getByRole('button', { name: 'Mail', exact: true })).toBeVisible()
+  await expect(mailKnopf(page)).toBeVisible()
   await expect(page.getByTestId('wasneu-banner')).toHaveCount(0)
-  await page.getByRole('button', { name: /Benutzermenü|User menu/ }).first().click()
+  await zuEinstellungen(page, 'Über nexmail')
   await page.getByRole('button', { name: 'Was ist neu' }).click()
 
   await expect(page.getByTestId('wasneu-fenster')).toContainText(de[VERSION].lead)
@@ -96,9 +109,10 @@ test('eine Version ohne Text: kein Banner, kein Menüpunkt', async ({ page }) =>
   })
   await anmelden(page)
 
-  await expect(page.getByRole('button', { name: 'Mail', exact: true })).toBeVisible()
+  await expect(mailKnopf(page)).toBeVisible()
   await expect(page.getByTestId('wasneu-banner')).toHaveCount(0)
-  await page.getByRole('button', { name: /Benutzermenü|User menu/ }).first().click()
-  await expect(page.getByRole('button', { name: 'Einstellungen' })).toBeVisible()
+  await zuEinstellungen(page, 'Über nexmail')
+  // Erst warten, bis die Auskunft steht: Vorher fehlt der Knopf ohnehin.
+  await expect(page.getByText('github.com/DerKezorm/nexmail')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Was ist neu' })).toHaveCount(0)
 })

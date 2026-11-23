@@ -18,6 +18,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   Bell,
+  CalendarDays,
   HardDrive,
   Inbox,
   Info,
@@ -44,6 +45,7 @@ export type Bereich =
   | 'darstellung'
   | 'benachrichtigungen'
   | 'verbindungen'
+  | 'kalender'
   | 'postfaecher'
   | 'regeln'
   | 'signaturen'
@@ -74,6 +76,8 @@ export const BEREICHE: BereichDef[] = [
   { id: 'darstellung', gruppe: 'konto', symbol: Palette },
   { id: 'benachrichtigungen', gruppe: 'konto', symbol: Bell },
   { id: 'verbindungen', gruppe: 'konto', symbol: Plug },
+  /* Seit 23.11.2026: Kalender und Adressbücher anlegen, umbenennen, trennen. */
+  { id: 'kalender', gruppe: 'konto', symbol: CalendarDays },
   { id: 'postfaecher', gruppe: 'mail', symbol: Inbox },
   { id: 'regeln', gruppe: 'mail', symbol: ListFilter },
   { id: 'signaturen', gruppe: 'mail', symbol: PenLine },

@@ -31,7 +31,6 @@ import {
   Folder,
   Inbox,
   MoreHorizontal,
-  Plus,
   Send,
   ShieldAlert,
   Star,
@@ -87,7 +86,9 @@ interface Props {
   ordner: Ordner[]
   ziel: Ziel
   aufZiel: (z: Ziel) => void
-  aufPostfachHinzufuegen: () => void
+  /** Was unten steht: die Profilzeile mit dem Weg in die Einstellungen (bis
+   *  23.11.2026 stand hier „Postfach hinzufügen"). */
+  fuss?: ReactNode
   aufKontext: (e: React.MouseEvent, o: Ordner) => void
   /** Kennungen der Ordner, die oben unter "Favoriten" stehen. */
   favoriten: string[]
@@ -120,7 +121,7 @@ export function Ordnerspalte({
   ordner,
   ziel,
   aufZiel,
-  aufPostfachHinzufuegen,
+  fuss,
   aufKontext,
   aufMenue,
   favoriten,
@@ -309,16 +310,7 @@ export function Ordnerspalte({
         })}
       </div>
 
-      <div className="shrink-0 border-t border-line-subtle p-2">
-        <button
-          type="button"
-          onClick={aufPostfachHinzufuegen}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-fg-3 transition-colors duration-[var(--dur-fast)] hover:bg-surface-3 hover:text-fg-1"
-        >
-          <Plus className="size-4 shrink-0" />
-          {t('ordner.postfach_hinzufuegen')}
-        </button>
-      </div>
+      {fuss}
     </div>
   )
 }

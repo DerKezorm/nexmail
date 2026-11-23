@@ -16,7 +16,21 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, ExternalLink, GripVertical, ListChecks, MailWarning, Trash2 } from 'lucide-react'
+import {
+  CalendarClock,
+  CalendarDays,
+  Check,
+  CircleCheck,
+  ExternalLink,
+  GripVertical,
+  Inbox,
+  Layers,
+  ListChecks,
+  ListTodo,
+  MailWarning,
+  Trash2,
+} from 'lucide-react'
+import type { Ansichtsrahmen } from '../components/Ansichtsleiste'
 import { api } from '../api/client'
 import type { Konto } from '../daten/typen'
 import { PUNKT_KLASSE } from '../lib/farben'
@@ -45,7 +59,35 @@ export interface AufgabenZeile {
   fern_verbunden: boolean
 }
 
+/** Was die Liste zeigt (Seitenleiste, oben). */
+type Filter = 'offen' | 'heute' | 'datum' | 'erledigt'
+
+/** Wo eine Aufgabe liegt: leer heißt nexmails eigene Liste, sonst der Name
+ *  der App samt Liste, wie ihn der Server schickt („Todoist › Arbeit“). */
+export function ortVon(z: AufgabenZeile): string {
+  if (!z.fern_art) return ''
+  return z.fern_liste || ARTNAME[z.fern_art] || z.fern_art
+}
+
+/** Der heutige Tag als `JJJJ-MM-TT` in der Zeit des Browsers. Fristen tragen
+ *  Mitternacht UTC, also zählt nur ihr Datumsteil. */
+function heuteText(jetzt = new Date()): string {
+  const m = String(jetzt.getMonth() + 1).padStart(2, '0')
+  const d = String(jetzt.getDate()).padStart(2, '0')
+  return `${jetzt.getFullYear()}-${m}-${d}`
+}
+
+export function passt(z: AufgabenZeile, filter: Filter, heute = heuteText()): boolean {
+  if (filter === 'erledigt') return Boolean(z.erledigt)
+  if (z.erledigt) return false
+  if (filter === 'heute') return Boolean(z.faellig && z.faellig.slice(0, 10) <= heute)
+  if (filter === 'datum') return Boolean(z.faellig)
+  return true
+}
+
 interface Props {
+  /** Werkzeugleiste und Seitenspalte, von `App` gebaut wie in der Mail. */
+  rahmen: Ansichtsrahmen
   konten: Konto[]
   /** Die Mail zu einer Aufgabe öffnen. */
   aufMail: (nachrichtId: number) => void
@@ -53,12 +95,15 @@ interface Props {
   aufAenderung?: () => void
 }
 
-export function AufgabenPage({ konten, aufMail, aufAenderung }: Props) {
+export function AufgabenPage({ rahmen, konten, aufMail, aufAenderung }: Props) {
   const { t } = useTranslation()
   const [zeilen, setZeilen] = useState<AufgabenZeile[] | null>(null)
   const [fehler, setFehler] = useState('')
   const [gezogen, setGezogen] = useState<number | null>(null)
   const [ueber, setUeber] = useState<number | null>(null)
+  const [filter, setFilter] = useState<Filter>('offen')
+  /** `null` heißt: überall; leer heißt: nexmails eigene Liste. */
+  const [ort, setOrt] = useState<string | null>(null)
 
   const laden = useCallback(async () => {
     try {
@@ -112,19 +157,131 @@ export function AufgabenPage({ konten, aufMail, aufAenderung }: Props) {
     await mit(() => api.aendern('/api/aufgaben/reihenfolge', { ids: neu.map((z) => z.id) }))
   }
 
-  if (zeilen === null && !fehler) return <div className="h-24" />
+  const alle = zeilen ?? []
+  const heute = heuteText()
+  const amOrt = (z: AufgabenZeile, o: string | null) => o === null || ortVon(z) === o
+  const sichtbar = alle.filter((z) => passt(z, filter, heute) && amOrt(z, ort))
+  /* Die Orte in der Reihenfolge, in der sie zuerst vorkommen; nexmails eigene
+     Liste immer vorn. Ohne verbundene App bleibt der Block weg. */
+  const orte = [...new Set(alle.map(ortVon))].sort((a, b) => (a === '' ? -1 : b === '' ? 1 : 0))
+  const zahlAm = (o: string | null) => alle.filter((z) => passt(z, filter, heute) && amOrt(z, o)).length
 
-  const offen = (zeilen ?? []).filter((z) => !z.erledigt)
+  const FILTER: ReadonlyArray<{ id: Filter; symbol: React.ReactNode; text: string }> = [
+    { id: 'offen', symbol: <ListTodo />, text: t('aufgaben.filter_offen') },
+    { id: 'heute', symbol: <CalendarClock />, text: t('aufgaben.filter_heute') },
+    { id: 'datum', symbol: <CalendarDays />, text: t('aufgaben.filter_datum') },
+    { id: 'erledigt', symbol: <CircleCheck />, text: t('aufgaben.filter_erledigt') },
+  ]
+
+  const zeilenKlasse = (an: boolean) =>
+    'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] ' +
+    'transition-colors duration-[var(--dur-fast)] [&_svg]:size-4 [&_svg]:shrink-0 ' +
+    (an ? 'bg-accent-soft text-accent-text' : 'text-fg-2 hover:bg-surface-3 hover:text-fg-1')
+
+  /* ⚠️ **Die Seitenleiste der Aufgaben** (gemeldet am 23.11.2026, wie die
+     Seitenleiste von nextasks): oben, was gezeigt wird (je mit Zahl), darunter,
+     wo die Aufgaben liegen. Ohne verbundene Todo-App gibt es nur einen Ort,
+     dann fällt der zweite Block weg. Die Zahl am Ort folgt dem Filter. */
+  const seitenleiste = (
+    <nav aria-label={t('aufgaben.filter_titel')} className="flex flex-col gap-0.5 p-2">
+      {FILTER.map((f) => {
+        const zahl = alle.filter((z) => passt(z, f.id, heute) && amOrt(z, ort)).length
+        return (
+          <button
+            key={f.id}
+            type="button"
+            aria-current={filter === f.id ? 'page' : undefined}
+            onClick={() => {
+              setFilter(f.id)
+              rahmen.zeigen()
+            }}
+            className={zeilenKlasse(filter === f.id)}
+          >
+            {f.symbol}
+            <span className="min-w-0 flex-1 truncate">{f.text}</span>
+            {zahl > 0 && <span className="text-[11px] tabular-nums text-fg-4">{zahl}</span>}
+          </button>
+        )
+      })}
+
+      {orte.length > 1 && (
+        <>
+          <h2 className="mt-4 mb-1 px-2.5 text-[11px] font-semibold tracking-wide text-fg-4 uppercase">
+            {t('aufgaben.orte')}
+          </h2>
+          <button
+            type="button"
+            aria-current={ort === null ? 'page' : undefined}
+            onClick={() => {
+              setOrt(null)
+              rahmen.zeigen()
+            }}
+            className={zeilenKlasse(ort === null)}
+          >
+            <Layers />
+            <span className="min-w-0 flex-1 truncate">{t('aufgaben.ort_alle')}</span>
+            <span className="text-[11px] tabular-nums text-fg-4">{zahlAm(null)}</span>
+          </button>
+          {orte.map((o) => (
+            <button
+              key={o || '__nexmail__'}
+              type="button"
+              aria-current={ort === o ? 'page' : undefined}
+              onClick={() => {
+                setOrt(o)
+                rahmen.zeigen()
+              }}
+              className={zeilenKlasse(ort === o)}
+            >
+              {o ? <ExternalLink /> : <Inbox />}
+              <span className="min-w-0 flex-1 truncate">{o || t('aufgaben.ort_nexmail')}</span>
+              <span className="text-[11px] tabular-nums text-fg-4">{zahlAm(o)}</span>
+            </button>
+          ))}
+        </>
+      )}
+    </nav>
+  )
+
+  const titel = FILTER.find((f) => f.id === filter)?.text ?? t('nav.aufgaben')
 
   return (
-    <div className="h-full overflow-y-auto bg-canvas">
+    <div className="flex min-h-0 flex-1 flex-col bg-canvas">
+      {rahmen.kopf({})}
+    <div className="flex min-h-0 flex-1">
+      {rahmen.spalte(seitenleiste)}
+    {rahmen.ersatz ? (
+      <div className="flex min-w-0 flex-1 flex-col">{rahmen.ersatz}</div>
+    ) : (
+    <div className="min-w-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-[720px] flex-col gap-4 px-6 py-6">
+        {/* Schmal gibt es keine Seitenspalte; die Filter stehen dann hier. */}
+        {rahmen.schmal && (
+          <div className="flex flex-wrap gap-1.5">
+            {FILTER.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                aria-pressed={filter === f.id}
+                onClick={() => setFilter(f.id)}
+                className={
+                  'rounded-pill border px-3 py-1 text-[12px] ' +
+                  (filter === f.id ? 'border-accent bg-accent-soft text-accent-text' : 'border-line text-fg-3')
+                }
+              >
+                {f.text}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-baseline gap-3">
           <h1 className="mb-0 font-display text-[20px] font-medium text-fg-1">
-            {t('nav.aufgaben')}
+            {titel}
           </h1>
           <span className="text-[12px] text-fg-4">
-            {t('aufgaben.offen', { count: offen.length })}
+            {filter === 'erledigt'
+              ? t('aufgaben.erledigt_zahl', { count: sichtbar.length })
+              : t('aufgaben.offen', { count: sichtbar.length })}
           </span>
         </div>
 
@@ -134,16 +291,16 @@ export function AufgabenPage({ konten, aufMail, aufAenderung }: Props) {
           </p>
         )}
 
-        {zeilen !== null && zeilen.length === 0 && !fehler && (
+        {zeilen !== null && sichtbar.length === 0 && !fehler && (
           <EmptyState
             icon={<ListChecks />}
-            title={t('aufgaben.leer_titel')}
-            description={t('aufgaben.leer_text')}
+            title={alle.length === 0 ? t('aufgaben.leer_titel') : t('aufgaben.filter_leer')}
+            description={alle.length === 0 ? t('aufgaben.leer_text') : undefined}
           />
         )}
 
         <ul className="flex list-none flex-col gap-1.5 p-0">
-          {(zeilen ?? []).map((z) => {
+          {sichtbar.map((z) => {
             const farbe = konten.find((k) => k.id === z.konto_id)?.farbe
             const faellig = z.faellig ? new Date(z.faellig) : null
             const ueberfaellig = Boolean(faellig && !z.erledigt && faellig < new Date())
@@ -329,6 +486,9 @@ export function AufgabenPage({ konten, aufMail, aufAenderung }: Props) {
           })}
         </ul>
       </div>
+    </div>
+    )}
+    </div>
     </div>
   )
 }

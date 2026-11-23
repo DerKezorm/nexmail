@@ -28,6 +28,8 @@ import {
 import { ApiFehler, api } from '../api/client'
 import { Badge, Button, Checkbox, EmptyState, IconButton, Input, Select } from '../ds'
 import { Buchfenster } from '../components/Buchfenster'
+import type { Ansichtsrahmen } from '../components/Ansichtsleiste'
+import { Suchfeld } from '../components/Suchfeld'
 import { Kontaktkonflikt } from '../components/Kontaktkonflikt'
 import type { Kontaktfassung } from '../components/Kontaktkonflikt'
 import { useNachfrage } from '../components/Nachfrage'
@@ -153,7 +155,12 @@ export interface Gruppe {
   adressen: string[]
 }
 
-export function KontaktePage() {
+interface SeitenProps {
+  /** Werkzeugleiste und Seitenspalte, von `App` gebaut wie in der Mail. */
+  rahmen: Ansichtsrahmen
+}
+
+export function KontaktePage({ rahmen }: SeitenProps) {
   const { t, i18n } = useTranslation()
 
   const [liste, setListe] = useState<Kontakt[]>([])
@@ -514,51 +521,49 @@ export function KontaktePage() {
     return stand.abgebrochen ? `${zahlen} ${t('kontakte.einlesen_abgebrochen')}` : zahlen
   }
 
-  return (
-    <div className="flex min-h-0 flex-1 bg-canvas">
-      {/* --- Liste --------------------------------------------------- */}
-      <div className="flex w-[320px] shrink-0 flex-col border-r border-line">
-        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line-subtle px-2">
-          <IconButton
-            icon={<Plus />}
-            label={t('kontakte.neu')}
-            size="sm"
-            onClick={() => {
-              setGewaehlt(null)
-              setGruppeGewaehlt(null)
-              setGruppeNeu(false)
-              setEntwurf(neuerEntwurf())
-            }}
-          />
-          <IconButton
-            icon={<UserRoundPlus />}
-            label={t('kontakte.einsammeln')}
-            size="sm"
-            onClick={() =>
-              void mit(
-                () => api.senden<{ neu: number }>('/api/kontakte/einsammeln', {}),
-                t('kontakte.eingesammelt'),
-              )
-            }
-          />
-          <span aria-hidden className="mx-1 h-5 w-px bg-line" />
-          <IconButton
-            icon={<Upload />}
-            label={t('kontakte.einlesen')}
-            size="sm"
-            onClick={() => dateifeld.current?.click()}
-          />
-          <IconButton
-            icon={<Download />}
-            label={t('kontakte.ausfuehren')}
-            size="sm"
-            onClick={() => {
-              window.location.href = appPfad('/api/kontakte/vcard')
-            }}
-          />
-          <span className="flex-1" />
-          <span className="pr-1 text-[11px] text-fg-4">{sichtbar.length}</span>
-        </div>
+  /* Ein neuer, leerer Kontakt rechts im Formular. */
+  function kontaktNeu() {
+    setGewaehlt(null)
+    setGruppeGewaehlt(null)
+    setGruppeNeu(false)
+    setEntwurf(neuerEntwurf())
+  }
+
+  /* ⚠️ **Seit dem 23.11.2026 gebaut wie die Mail**: „Neuer Kontakt" und die
+     Suche oben in der Werkzeugleiste, links die Seitenleiste (Werkzeuge,
+     Adressbücher, Gruppen, Profilzeile; einklappbar und in der Breite zu
+     ziehen), daneben die Liste, rechts der Eintrag. Vorher war das eine
+     Spalte mit „+" und Suchfeld oben und „Aufgeschnappte entfernen" ganz unten. */
+  const seitenleiste = (
+    <>
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line-subtle px-2">
+        <IconButton
+          icon={<UserRoundPlus />}
+          label={t('kontakte.einsammeln')}
+          size="sm"
+          onClick={() =>
+            void mit(
+              () => api.senden<{ neu: number }>('/api/kontakte/einsammeln', {}),
+              t('kontakte.eingesammelt'),
+            )
+          }
+        />
+        <span aria-hidden className="mx-1 h-5 w-px bg-line" />
+        <IconButton
+          icon={<Upload />}
+          label={t('kontakte.einlesen')}
+          size="sm"
+          onClick={() => dateifeld.current?.click()}
+        />
+        <IconButton
+          icon={<Download />}
+          label={t('kontakte.ausfuehren')}
+          size="sm"
+          onClick={() => {
+            window.location.href = appPfad('/api/kontakte/vcard')
+          }}
+        />
+      </div>
 
         <input
           ref={dateifeld}
@@ -572,12 +577,25 @@ export function KontaktePage() {
           }}
         />
 
+
+        {/* „Aufgeschnappte entfernen" steht oben, unter den Werkzeugen
+            (gemeldet am 23.11.2026), nicht mehr ganz unten in der Spalte. */}
         <div className="shrink-0 border-b border-line-subtle p-2">
-          <Input
-            placeholder={t('kontakte.suchen')}
-            value={suche}
-            onChange={(e) => setSuche(e.target.value)}
-          />
+          <Button
+            size="sm"
+            variant="ghost"
+            fullWidth
+            iconLeft={<Trash2 className="size-4" />}
+            disabled={laeuft || !liste.some((k) => k.quelle === 'gesammelt')}
+            onClick={() =>
+              void mit(
+                () => api.loeschen<{ entfernt: number }>('/api/kontakte/gesammelte'),
+                t('kontakte.aufgeraeumt'),
+              )
+            }
+          >
+            {t('kontakte.gesammelte_weg')}
+          </Button>
         </div>
 
         {/* --- Bücher: wo ein Kontakt liegt ------------------------------ */}
@@ -719,6 +737,49 @@ export function KontaktePage() {
           )}
         </div>
 
+    </>
+  )
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-canvas">
+      {rahmen.kopf({
+        haupt: rahmen.schmal ? (
+          <IconButton icon={<Plus />} label={t('kontakte.neu')} variant="outline" onClick={kontaktNeu} />
+        ) : (
+          <Button variant="primary" iconLeft={<Plus className="size-4" />} onClick={kontaktNeu}>
+            {t('kontakte.neu')}
+          </Button>
+        ),
+        suche: (
+          <Suchfeld
+            wert={suche}
+            aufWert={setSuche}
+            platzhalter={t('kontakte.suchen')}
+            tasten
+            ohneKuerzel={rahmen.schmal}
+            className="w-full"
+          />
+        ),
+      })}
+    <div className="flex min-h-0 flex-1">
+      {rahmen.spalte(seitenleiste)}
+
+      {rahmen.ersatz ? (
+        <div className="flex min-w-0 flex-1 flex-col">{rahmen.ersatz}</div>
+      ) : (
+      <>
+      {/* --- Liste --------------------------------------------------- */}
+      <div className="flex w-[320px] shrink-0 flex-col border-r border-line">
+        {/* Schmal gibt es keine Seitenspalte; ihr Inhalt steht dann über der Liste. */}
+        {rahmen.schmal && <div className="max-h-[50%] shrink-0 overflow-y-auto">{seitenleiste}</div>}
+        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle px-3">
+          <span className="text-[11px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
+            {t('nav.kontakte')}
+          </span>
+          <span className="flex-1" />
+          <span className="text-[11px] text-fg-4">{sichtbar.length}</span>
+        </div>
+
         <div className="min-h-0 flex-1 overflow-y-auto">
           {sichtbar.length === 0 ? (
             <p className="px-3 py-6 text-center text-[13px] text-fg-4">{t('kontakte.leer')}</p>
@@ -757,24 +818,6 @@ export function KontaktePage() {
               </button>
             ))
           )}
-        </div>
-
-        <div className="shrink-0 border-t border-line-subtle p-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            fullWidth
-            iconLeft={<Trash2 className="size-4" />}
-            disabled={laeuft || !liste.some((k) => k.quelle === 'gesammelt')}
-            onClick={() =>
-              void mit(
-                () => api.loeschen<{ entfernt: number }>('/api/kontakte/gesammelte'),
-                t('kontakte.aufgeraeumt'),
-              )
-            }
-          >
-            {t('kontakte.gesammelte_weg')}
-          </Button>
         </div>
       </div>
 
@@ -817,6 +860,9 @@ export function KontaktePage() {
           </div>
         )}
       </div>
+      </>
+      )}
+    </div>
 
       {buchNeu && (
         <Buchfenster

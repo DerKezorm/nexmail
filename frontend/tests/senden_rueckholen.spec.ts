@@ -11,7 +11,7 @@
  * echten — siehe `postfach()` in den Hilfen.
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, bereich, postfach, serverabsagen, TESTPOSTFACH, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, postfach, serverabsagen, TESTPOSTFACH, zuEinstellungen, zurAnsicht } from './hilfen'
 
 test('Rückgängig holt die Nachricht zurück ins Fenster, der Ausgang ist leer', async ({
   page,
@@ -30,7 +30,7 @@ test('Rückgängig holt die Nachricht zurück ins Fenster, der Ausgang ist leer'
   await zuEinstellungen(page)
   await bereich(page, 'Darstellung')
   await page.getByRole('combobox', { name: /Senden rückholen/ }).selectOption('30')
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
+  await zurAnsicht(page, 'Mail')
 
   /* 2. Verfassen — mit einem Betreff, den kein liegen gebliebener Rest eines
      früheren Laufs tragen kann. */

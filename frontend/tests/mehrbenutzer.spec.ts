@@ -153,10 +153,7 @@ test('Der zweite Faktor lässt sich ein- und ausschalten', async ({ page }) => {
      ja unötig." Geprüft wird, dass beide Knöpfe da sind und der QR-Code
      wirklich kommt — nicht die ganze Runde: Dafür bräuchte der Test einen
      TOTP-Rechner, und die hat das Backend schon. */
-  const menue = page.getByRole('button', { name: /Benutzermenü|User menu/ }).first()
-  await menue.click()
-  await page.getByRole('button', { name: 'Einstellungen' }).first().click()
-  await bereich(page, 'Sicherheit')
+  await zuEinstellungen(page, 'Sicherheit')
 
   const knopf = page.getByRole('button', { name: /Zweiten Faktor (ein|aus)schalten/ })
   await expect(knopf, 'Zum zweiten Faktor gibt es keinen Knopf.').toBeVisible({ timeout: 10_000 })

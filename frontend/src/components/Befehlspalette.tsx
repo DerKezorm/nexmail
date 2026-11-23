@@ -1,4 +1,4 @@
-/* Strg+K: jeder Handgriff und jeder Ordner, ohne die Hand von der Tastatur.
+/* Strg+Umschalt+P (bis 23.11.2026 Strg+K): jeder Handgriff und jeder Ordner, ohne die Hand von der Tastatur.
  *
  * ⚠️ **Das Eingabefeld behält den Fokus**, die Pfeile bewegen nur die Markierung
  * (`aria-activedescendant`). Wanderte der Fokus in die Liste, ginge das nächste

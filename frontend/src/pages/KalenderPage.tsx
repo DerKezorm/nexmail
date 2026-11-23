@@ -54,7 +54,7 @@ import {
 } from '../api/laden'
 import type { Beteiligter, KalenderZeile, TerminZeile, Umfang } from '../api/laden'
 import type { Konto } from '../daten/typen'
-import { Button, Checkbox, Dialog, EmptyState, Input, Select } from '../ds'
+import { Button, Checkbox, Dialog, EmptyState, IconButton, Input, Select } from '../ds'
 import { PUNKT_KLASSE } from '../lib/farben'
 import { useSchmal } from '../lib/haken'
 import { alsDatum, imTag } from '../lib/kalendertage'
@@ -68,6 +68,8 @@ import {
 import { Kalendereinfuhr } from '../components/Kalendereinfuhr'
 import { Konfliktfenster } from '../components/Konfliktfenster'
 import { Kalenderfenster } from '../components/Kalenderfenster'
+import type { Ansichtsrahmen } from '../components/Ansichtsleiste'
+import { Suchfeld } from '../components/Suchfeld'
 import { Aktionsblatt } from '../components/Aktionsblatt'
 import { Kontextmenue } from '../components/Kontextmenue'
 import type { MenueEintrag } from '../components/Kontextmenue'
@@ -234,7 +236,12 @@ function useZiehen(aufFertig: (t: TerminZeile, z: Zeitraum) => void) {
   return { zug, starten, mitVorschau, warEinZug }
 }
 
-export function KalenderPage() {
+interface SeitenProps {
+  /** Werkzeugleiste und Seitenspalte, von `App` gebaut wie in der Mail. */
+  rahmen: Ansichtsrahmen
+}
+
+export function KalenderPage({ rahmen }: SeitenProps) {
   const { t, i18n } = useTranslation()
   const { fragen, fenster: nachfrage } = useNachfrage()
   const [sicht, setSicht] = useState<Sicht>('monat')
@@ -608,7 +615,38 @@ export function KalenderPage() {
       ? anker.toLocaleDateString(i18n.language, { day: 'numeric', month: 'long', year: 'numeric' })
       : anker.toLocaleDateString(i18n.language, { month: 'long', year: 'numeric' })
 
+  /* ⚠️ **„Neuer Termin" und die Suche stehen oben in der Werkzeugleiste**
+     (gemeldet am 23.11.2026: „Bitte IMMER nach da oben"), wie „Neue Nachricht"
+     und die Mailsuche. Schmal bringt `KalenderSchmal` beides selbst mit. */
+  const kopf = schmal
+    ? rahmen.kopf({})
+    : rahmen.kopf({
+        haupt: (
+          <Button
+            variant="primary"
+            iconLeft={<CalendarPlus className="size-4" />}
+            disabled={!(kalender ?? []).some((k) => !k.nurLesen)}
+            onClick={() => setNeuAb({ beginn: naechsteVolleStunde(), ganztaegig: false })}
+          >
+            {t('kalender.neuer_termin')}
+          </Button>
+        ),
+        /* ⚠️ Sucht über alle sichtbaren Kalender; deshalb oben, nicht in der
+           Kalenderspalte, wo es aussähe, als gehörte es zu einem davon. */
+        suche: (
+          <Suchfeld
+            wert={wort}
+            aufWert={setWort}
+            platzhalter={t('kalender.suchen')}
+            tasten
+            className="w-full"
+          />
+        ),
+      })
+
   return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {kopf}
     <div className="flex min-h-0 flex-1">
       {schmal ? (
         <KalenderSchmal
@@ -653,21 +691,24 @@ export function KalenderPage() {
       ) : (
       <>
       {/* --- Die Kalenderspalte ------------------------------------------ */}
-      <aside className="flex w-[240px] shrink-0 flex-col gap-4 border-r border-line-subtle bg-surface-1 p-3">
-        <Button
-          variant="primary"
-          fullWidth
-          iconLeft={<CalendarPlus className="size-4" />}
-          disabled={!(kalender ?? []).some((k) => !k.nurLesen)}
-          onClick={() => setNeuAb({ beginn: naechsteVolleStunde(), ganztaegig: false })}
-        >
-          {t('kalender.neuer_termin')}
-        </Button>
-
+      {rahmen.spalte(
+        <div className="flex min-h-full flex-col gap-4 p-3">
         <div className="flex flex-col gap-1">
-          <h2 className="px-1 pb-1 text-[11px] font-semibold tracking-wide text-fg-4 uppercase">
-            {t('kalender.meine')}
-          </h2>
+          {/* ⚠️ **„+" an der Überschrift** (seit 23.11.2026), wie „Adressbücher +"
+              in den Kontakten und „Intelligent +" in nexnotes; die Zeile
+              „Kalender hinzufügen …" darunter ist weg. Dasselbe Fenster gibt
+              es auch unter Einstellungen → Kalender und Adressbücher. */}
+          <div className="flex items-center gap-1 pb-1 pl-1">
+            <h2 className="mb-0 min-w-0 flex-1 text-[11px] font-semibold tracking-wide text-fg-4 uppercase">
+              {t('kalender.meine')}
+            </h2>
+            <IconButton
+              icon={<Plus />}
+              label={t('kalender.hinzufuegen_kurz')}
+              size="sm"
+              onClick={() => setKalenderNeu(true)}
+            />
+          </div>
           {(kalender ?? []).map((k) => (
             /* ⚠️ **Der Farbfleck steht VOR dem Haken, nicht dahinter.** Der
                Haken sagt „wird angezeigt", der Fleck sagt „so sieht er im
@@ -716,10 +757,6 @@ export function KalenderPage() {
           ))}
         </div>
 
-        <Button variant="ghost" size="sm" fullWidth onClick={() => setKalenderNeu(true)}>
-          {t('kalender.hinzufuegen')}
-        </Button>
-
         {/* ⚠️ Der Satz steht dort, wo die abonnierten Kalender stehen — und
             nur, wenn es wirklich einen gibt: ein Hinweis ohne Anlass wird nach
             dem zweiten Mal überlesen. */}
@@ -728,8 +765,13 @@ export function KalenderPage() {
             {t('kalender.nur_lesen_hinweis')}
           </p>
         )}
-      </aside>
+        </div>,
+      )}
 
+      {rahmen.ersatz ? (
+        <div className="flex min-w-0 flex-1 flex-col">{rahmen.ersatz}</div>
+      ) : (
+      <>
       {/* --- Der Hauptbereich -------------------------------------------- */}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-3 border-b border-line-subtle px-4 py-2.5">
@@ -756,24 +798,6 @@ export function KalenderPage() {
               <RefreshCw className={gleichtAb ? 'animate-spin' : undefined} />
             </IconKnopf>
           )}
-
-          {/* ⚠️ **Oben im Kopf, nicht in der Kalenderspalte.** Es sucht über
-              alle sichtbaren Kalender; in der Spalte stünde es neben den
-              einzelnen und sähe aus, als gehörte es zu einem davon. */}
-          <div className="relative w-44 shrink-0">
-            <Search
-              aria-hidden
-              className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-fg-4"
-            />
-            <input
-              type="search"
-              value={wort}
-              onChange={(e) => setWort(e.target.value)}
-              placeholder={t('kalender.suchen')}
-              aria-label={t('kalender.suchen')}
-              className="fokusrahmen h-[var(--control-h-sm)] w-full rounded-md border border-line bg-surface-3 pr-2 pl-7 text-[13px] text-fg-1 outline-none transition-[border-color,box-shadow] duration-[var(--dur-fast)] placeholder:text-fg-4 focus:border-accent focus:shadow-[var(--focus-ring)]"
-            />
-          </div>
 
           <div className="flex shrink-0 rounded-md border border-line p-0.5">
             {(['monat', 'woche', 'tag'] as Sicht[]).map((s) => (
@@ -844,6 +868,9 @@ export function KalenderPage() {
       </div>
       </>
       )}
+      </>
+      )}
+    </div>
 
       {menue && (
         <Kontextmenue
@@ -1200,7 +1227,7 @@ function KalenderSchmal({
 
   return (
     /* ⚠️ `overflow-hidden` ist kein Schmuck: Die zugeschobene Schublade steht
-       um ihre Breite nach links versetzt und läge sonst über der NavRail —
+       um ihre Breite nach links versetzt und läge sonst über der Ordnerspalte —
        unsichtbar, aber sie fing dort jeden Tipp ab. Dieselbe Zeile trägt die
        Schublade der Post. */
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface-1">

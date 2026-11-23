@@ -5,7 +5,7 @@
  * Verwaltung, KI und „Über" sind Bereiche darin, keine Punkte der Leiste mehr.
  */
 import { expect, test } from '@playwright/test'
-import { anmelden, bereich, jederKnopfHatEinenNamen, keineRohenSchluessel, keinSeitlichesScrollen, zuEinstellungen } from './hilfen'
+import { anmelden, bereich, jederKnopfHatEinenNamen, keineRohenSchluessel, keinSeitlichesScrollen, zuEinstellungen, zurAnsicht } from './hilfen'
 
 test('Die Einstellungen sind gegliedert wie in nexnotes', async ({ page }, info) => {
   await anmelden(page)
@@ -32,9 +32,9 @@ test('Verwaltung, KI und „Über" sind Bereiche, keine Punkte der Leiste', asyn
   for (const weg of ['Verwaltung', 'KI', 'Über nexmail']) {
     await expect(page.getByRole('button', { name: weg, exact: true })).toHaveCount(0)
   }
-  // Das Zahnrad unten führt für jeden in die Einstellungen, beim Profil.
-  await page.getByRole('button', { name: 'Einstellungen', exact: true }).first().click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+  // Die Profilzeile unten in der Ordnerspalte führt für jeden in die
+  // Einstellungen, beim Profil (seit 23.11.2026, vorher ein Zahnrad links).
+  await zuEinstellungen(page, 'Profil')
   for (const titel of ['Allgemein', 'KI', 'Über nexmail']) await bereich(page, titel)
 })
 
@@ -101,6 +101,8 @@ test('Jeder Bereich geht auf, mit Inhalt und ohne Fehler', async ({ page }, info
     ['Darstellung', [/Dichte der Nachrichtenliste/i, /Heller Modus/]],
     ['Benachrichtigungen', [/Je Abgleich eine Meldung/]],
     ['Verbindungen', [/Verbinde deine Todo-App/, /Code anzeigen/, /Adresse für das Dashboard/]],
+    // Seit 23.11.2026 ein eigener Bereich (vorher nur in Kalender und Kontakten).
+    ['Kalender und Adressbücher', [/^Kalender hinzufügen$/, /^Adressbuch verbinden$/]],
     ['Postfächer', [/Postfach hinzufügen/]],
     ['Regeln', [/Neue Regel/]],
     ['Signaturen', [/Neue Signatur/, /Neue Vorlage/]],
@@ -128,4 +130,19 @@ test('Jeder Bereich geht auf, mit Inhalt und ohne Fehler', async ({ page }, info
     if (titel !== 'Über nexmail') await keineRohenSchluessel(page)
   }
   expect(fehler, 'Fehler beim Öffnen der Bereiche').toEqual([])
+})
+
+/* ⚠️ **Woher man kommt, bleibt links stehen** (gemeldet am 23.11.2026): Aus
+   dem Kalender heraus sprang die Spalte neben den Einstellungen auf die Ordner
+   der Mail. */
+test('Aus dem Kalender geöffnet, steht links weiter die Kalenderliste', async ({ page }, info) => {
+  test.skip(info.project.name === 'schmal', 'Schmal stehen die Einstellungen allein.')
+  await anmelden(page)
+  await zurAnsicht(page, 'Kalender')
+  const spalte = page.getByTestId('seitenspalte')
+  await expect(spalte.getByRole('heading', { name: 'Kalender' })).toBeVisible()
+  await spalte.getByRole('button', { name: /· (Einstellungen|Settings)$/ }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+  await expect(spalte.getByRole('heading', { name: 'Kalender' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Ordner (ein|aus)klappen/ })).toHaveCount(0)
 })

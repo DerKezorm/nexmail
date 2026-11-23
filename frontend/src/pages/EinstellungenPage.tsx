@@ -45,6 +45,7 @@ import { Protokoll } from './Protokoll'
 import { Sicherungen } from './Sicherungen'
 import { Postausgang, ServerAllgemein } from './Verwaltung'
 import { Profil } from './einstellungen/Profil'
+import { KalenderUndBuecher } from './einstellungen/KalenderUndBuecher'
 import { Karte } from './einstellungen/Karte'
 import {
   GRUPPEN,
@@ -73,7 +74,7 @@ interface Props {
   /** ⚠️ Nach einer Betreiber-Übergabe ist man selbst keiner mehr; ohne
    *  Nachladen blieben die Bereiche „Server" stehen. */
   ichNeuLaden?: () => void
-  /** „Abmelden" im Profil, derselbe Weg wie im Benutzermenü. */
+  /** „Abmelden" im Profil (seit 23.11.2026 der einzige Weg). */
   aufAbmelden: () => void
   /** Hell oder dunkel, unter Darstellung (seit 22.11.2026 nur dort). */
   modus: 'dark' | 'light'
@@ -86,6 +87,8 @@ interface Props {
   /** „Regel erstellen …" aus dem Rechtsklick auf eine Mail. */
   regelvorlage?: RegelVorlage | null
   aufRegelvorlageGenommen?: () => void
+  /** „Was ist neu“ noch einmal öffnen, unter „Über nexmail“. */
+  aufWasNeu?: () => void
 }
 
 const EINTRAG =
@@ -109,6 +112,7 @@ export function EinstellungenPage({
   aufSchlagworteGeaendert,
   regelvorlage = null,
   aufRegelvorlageGenommen,
+  aufWasNeu,
 }: Props) {
   // ⚠️ Bearbeiten und Anlegen benutzen dasselbe Formular. Getrennt zu
   // pflegen hieße zwei Stellen, an denen ein Feld fehlen kann.
@@ -179,6 +183,8 @@ export function EinstellungenPage({
         return <Darstellung ichNeuLaden={ichNeuLaden} modus={modus} aufModus={aufModus} />
       case 'benachrichtigungen':
         return <Benachrichtigungen />
+      case 'kalender':
+        return <KalenderUndBuecher />
       case 'verbindungen':
         return (
           <>
@@ -263,7 +269,7 @@ export function EinstellungenPage({
       case 'log':
         return <Protokoll />
       case 'ueber':
-        return <UeberPage istBetreiber={Boolean(ich?.ist_betreiber)} />
+        return <UeberPage istBetreiber={Boolean(ich?.ist_betreiber)} aufWasNeu={aufWasNeu} />
     }
   }
 

@@ -8,7 +8,7 @@
  * kalender.spec.ts: Die Termine landen in nexmails eigener Datenbank.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { anmelden } from './hilfen'
+import { anmelden, zurAnsicht } from './hilfen'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -132,8 +132,8 @@ test('Der runde Knopf öffnet das Terminfenster für den gewählten Tag', async 
  *  ⚠️ Ein Klick auf „Kalender", während der Kalender schon offen ist, tut
  *  nichts; ein über die Adresse angelegter Termin bliebe dann unsichtbar. */
 async function zumKalender(page: Page) {
-  await page.getByRole('button', { name: 'Mail', exact: true }).first().click()
-  await page.getByRole('button', { name: 'Kalender', exact: true }).click()
+  await zurAnsicht(page, 'Mail')
+  await zurAnsicht(page, 'Kalender')
   await expect(page.getByRole('button', { name: 'Monat', exact: true })).toBeVisible()
 }
 

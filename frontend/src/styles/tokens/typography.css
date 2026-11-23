@@ -1,7 +1,7 @@
 /* ============================================================
    nexapps — Typografie
-   Space Grotesk = Display/Wordmark · IBM Plex Sans = UI/Body
-   JetBrains Mono = Zahlen, IDs, Code, Terminal
+   Inter für Text, Überschriften und Schriftzug (seit 23.11.2026, wie
+   nexnotes); Zahlen, IDs, Code in der Festbreitenschrift des Systems.
    Basisgröße im App-UI ist 14px (dichte Dashboards).
    ============================================================ */
 :root{

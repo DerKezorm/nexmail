@@ -95,7 +95,12 @@ interface Props {
   aufAblegen?: (ordnerId: string, ids: string[]) => void
   /** Liegt die geöffnete Nachricht im Entwurfsordner? */
   istEntwurf?: boolean
-  aufPostfachHinzufuegen: () => void
+  /** Unten in der Ordnerspalte: die Profilzeile (Weg in die Einstellungen). */
+  ordnerFuss?: ReactNode
+  /** Steht etwas hier, nimmt es den Platz von Liste und Lesebereich ein, und
+   *  die Ordnerspalte bleibt daneben: so gehen die Einstellungen auf, wie in
+   *  nexnotes neben der Seitenleiste. Nur breit. */
+  ersatz?: ReactNode
   aufNachrichtKontext: (e: React.MouseEvent, n: Nachricht) => void
   aufOrdnerKontext: (e: React.MouseEvent, o: Ordner) => void
   /** Das Blatt mit denselben Einträgen — der Weg am Telefon, wo es keinen
@@ -266,13 +271,15 @@ export function MailPage(p: Props) {
       wiedervorlageZahlen={p.wiedervorlageZahlen}
       konten={p.konten}
       ordner={p.ordner}
-      ziel={ziel}
+      /* Neben den Einstellungen ist kein Ordner gewählt: Hervorgehoben ist
+         dann nur die Profilzeile, wie in nexnotes. */
+      ziel={p.ersatz ? { typ: 'ordner', id: '' } : ziel}
       aufZiel={(z) => {
         p.aufZiel(z)
         p.aufWahl(null)
         p.aufSchublade(false)
       }}
-      aufPostfachHinzufuegen={p.aufPostfachHinzufuegen}
+      fuss={p.ordnerFuss}
       aufKontext={p.aufOrdnerKontext}
       aufMenue={p.schmal ? p.aufOrdnerMenue : undefined}
       favoriten={p.favoriten}
@@ -353,7 +360,9 @@ export function MailPage(p: Props) {
         </>
       )}
 
-      {ohneLesebereich ? (
+      {p.ersatz ? (
+        <div className="flex min-w-0 flex-1 flex-col">{p.ersatz}</div>
+      ) : ohneLesebereich ? (
         /* ⚠️ **Über der Liste heißt: an ihrer Stelle, wie am Telefon.** Die
            Ordnerspalte bleibt stehen; ein Klick auf einen Ordner schließt die
            Mail, denn er wählt ab. */
@@ -391,7 +400,7 @@ export function MailPage(p: Props) {
 
       {/* Das Fenster über der Liste. Die Liste dahinter bleibt, wie sie war —
           wer es schließt, steht wieder an derselben Zeile. */}
-      {ohneLesebereich && p.lesemodus === 'fenster' && (
+      {!p.ersatz && ohneLesebereich && p.lesemodus === 'fenster' && (
         <Dialog
           open={p.geoeffnet}
           onClose={p.aufSchliessen}

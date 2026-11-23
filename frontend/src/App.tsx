@@ -43,12 +43,18 @@ import {
   Tag,
   Trash2,
   Upload,
+  PanelLeft,
 } from 'lucide-react'
+import { IconButton } from './ds'
 import { Kopfbanner } from './components/Kopfbanner'
 import { WasNeuBanner, WasNeuFenster, gesehenMelden } from './components/WasNeu'
 import { useWasNeu } from './lib/wasneu'
-import { NavRail } from './components/NavRail'
-import type { Ansicht } from './components/NavRail'
+import { Ansichtswahl } from './components/Ansichtswahl'
+import type { Ansicht } from './components/Ansichtswahl'
+import { Ansichtsleiste } from './components/Ansichtsleiste'
+import type { Ansichtsrahmen } from './components/Ansichtsleiste'
+import { Seitenspalte } from './components/Seitenspalte'
+import { Profilzeile } from './components/Profilzeile'
 import { Kopfleiste } from './components/Kopfleiste'
 import { Postfachgruppen } from './components/Postfachgruppen'
 import type { Suchbereich } from './components/Kopfleiste'
@@ -217,6 +223,9 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   }
   const schmal = useSchmal()
 
+  /** Aus welcher Ansicht die Einstellungen geöffnet wurden; deren Seitenspalte
+   *  bleibt links stehen. */
+  const [einstellungenVon, setEinstellungenVon] = useState<Ansicht>('mail')
   const [ansicht, setAnsicht] = useState<Ansicht>(
     RUECKWEG.weiter === 'postfach' || KONTO_RUECKWEG.da ? 'einstellungen' : 'mail',
   )
@@ -434,6 +443,11 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const [danachGemerkt] = useGemerkt<Danach>('nexmail.danach', 'nichts')
   const danach = danachAus(danachGemerkt)
   const [ordnerBreite, setOrdnerBreite] = useGemerkt('nexmail.ordnerBreite', 232)
+  /* Die Seitenspalten der anderen Ansichten: je Ansicht eine eigene Breite,
+     eingeklappt aber gemeinsam mit der Ordnerspalte (ein Knopf, eine Wirkung). */
+  const [kalenderBreite, setKalenderBreite] = useGemerkt('nexmail.kalenderBreite', 240)
+  const [kontakteBreite, setKontakteBreite] = useGemerkt('nexmail.kontakteBreite', 260)
+  const [aufgabenBreite, setAufgabenBreite] = useGemerkt('nexmail.aufgabenBreite', 240)
   const [listeBreite, setListeBreite] = useGemerkt('nexmail.listeBreite', 380)
   const [schubladeOffen, setSchubladeOffen] = useState(false)
 
@@ -1480,13 +1494,16 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     return () => document.removeEventListener('keydown', beiTaste)
   }, [betroffene, handeln, mehrfach.length, menue, t, verfassen.offen, mitLesebereich, lesemodus, geoeffnet, ansicht, nachrichten, schmal])
 
-  /* ⚠️ **Eigener Zuhörer, und auch in Eingabefeldern.** Strg+K ist kein Zeichen,
+  /* ⚠️ **Strg+Umschalt+P, nicht mehr Strg+K** (seit 23.11.2026): Strg+K springt
+     in allen nex-Apps in die Suche (`Suchfeld`); die Palette nimmt das Kürzel,
+     das man aus Editoren kennt.
+     ⚠️ **Eigener Zuhörer, und auch in Eingabefeldern.** Das Kürzel ist kein Zeichen,
      und wer gerade im Suchfeld steht, will genauso weiter. Ein offenes Fenster
      geht vor: Dort gehört die Tastatur dem Fenster, und die Palette hat keinen
      Weg, ein halb ausgefülltes Formular zu verlassen. */
   useEffect(() => {
     function beiTaste(e: KeyboardEvent) {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'k') return
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || !e.shiftKey || e.key.toLowerCase() !== 'p') return
       /* ⚠️ **Zuerst das Schließen, und nur hier.** Schlösse die Palette selbst,
          wäre sie schon weg, wenn die Taste hier ankommt, und ginge wieder auf. */
       if (paletteOffen) {
@@ -2204,18 +2221,119 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
     setSchubladeOffen(false)
   }
 
-  function postfachHinzufuegen() {
+  /* Die Profilzeile unten in der Ordnerspalte öffnet die Einstellungen beim
+     Profil, wie „Name · Einstellungen" in nexnotes — immer, auch aus einem
+     anderen Bereich der Einstellungen heraus (der Link dort führt ebenso auf
+     die Einstellungsseite selbst). (Bis 23.11.2026 stand an der Stelle
+     „Postfach hinzufügen"; das geht über die (+)-Kachel unter Postfächer.) */
+  function einstellungenOeffnen() {
+    setReiter('profil')
+    // ⚠️ Woher man kommt, bleibt links stehen (gemeldet am 23.11.2026: aus dem
+    // Kalender heraus sprang die Spalte auf die Ordner der Mail).
+    if (ansicht !== 'einstellungen') setEinstellungenVon(ansicht)
     setAnsicht('einstellungen')
-    setReiter('postfaecher')
-    // ⚠️ **Dieselbe Weiche wie die (+)-Kachel.** Zwei Wege hinein, von denen
-    // einer die Anbieterauswahl überspringt, wären zwei verschiedene
-    // Anwendungen.
-    setWahlOffen(true)
     setSchubladeOffen(false)
   }
 
+  /* Die Ansichten als Knopfgruppe in der Werkzeugleiste (bis 23.11.2026 die
+     Leiste ganz links). Dieselbe Gruppe in jeder Ansicht, an derselben Stelle. */
+  const ansichtswahl = (
+    <Ansichtswahl
+      ansicht={ansicht}
+      aufAnsicht={setAnsicht}
+      offeneAufgaben={offeneAufgaben}
+      schmal={schmal}
+    />
+  )
+
+  const profilzeile = (
+    <Profilzeile ich={ich} aktiv={ansicht === 'einstellungen'} aufEinstellungen={einstellungenOeffnen} />
+  )
+
+  /* Leiste und Seitenspalte für Kalender, Aufgaben und Kontakte, gebaut wie in
+     der Mail (seit 23.11.2026): Knopf der Seitenleiste, Ansichten, Hauptaktion,
+     Suche; links die Spalte mit Griff und Profilzeile. */
+  function rahmen(breite: number, aufBreite: (b: number) => void, eigene: Ansicht): Ansichtsrahmen {
+    // Die Einstellungen stehen neben dieser Spalte: Die Leiste trägt dann keine
+    // Hauptaktion und keine Suche der Ansicht, wie in der Mail.
+    const mitEinstellungen = ansicht === 'einstellungen' && !schmal
+    return {
+      schmal,
+      ersatz: mitEinstellungen ? einstellungenSeite : undefined,
+      zeigen: () => setAnsicht(eigene),
+      kopf: (teile) => (
+        <Ansichtsleiste
+          seitenleiste={
+            schmal ? null : (
+              <IconButton
+                icon={<PanelLeft />}
+                label={ordnerOffen ? t('nav.seitenleiste_zu') : t('nav.seitenleiste_auf')}
+                active={ordnerOffen}
+                onClick={() => setOrdnerOffen(!ordnerOffen)}
+              />
+            )
+          }
+          ansichtswahl={ansichtswahl}
+          {...(mitEinstellungen ? {} : teile)}
+        />
+      ),
+      spalte: (inhalt) =>
+        schmal ? null : (
+          <Seitenspalte
+            offen={ordnerOffen}
+            breite={breite}
+            aufBreite={aufBreite}
+            griffLabel={t('griff.spalte')}
+            fuss={profilzeile}
+          >
+            {inhalt}
+          </Seitenspalte>
+        ),
+    }
+  }
+
+  /* Die Einstellungen: breit neben der Ordnerspalte (als `ersatz` der
+     Mail-Ansicht), schmal allein. */
+  const einstellungenSeite = (
+      <Suspense fallback={null}>
+      <EinstellungenPage
+        ich={ich}
+        ichNeuLaden={ichNeuLaden}
+        bereich={reiter}
+        aufBereich={setReiter}
+        aufAbmelden={abmelden}
+        modus={modus}
+        aufModus={aufModus}
+        formularOffen={formularOffen}
+        wahlOffen={wahlOffen}
+        aufWahl={setWahlOffen}
+        aufFormular={(offen) => {
+          setFormularOffen(offen)
+          if (!offen) void stammLaden()
+        }}
+        /* ⚠️ Der rote Zugangsdaten-Banner haengt an Apps eigener
+           Kontenliste. Ohne diese Leitung blieb er nach dem
+           Entfernen des Postfachs stehen (02.09.2026) - dieselbe
+           Falle wie beim zweiten Faktor: Was ich aendere, muss
+           ich auch sehen. */
+        aufKontenGeaendert={() => void stammLaden()}
+        /* Umbenennen, Farbwechsel und Löschen im Reiter Schlagworte
+           müssen in Liste und Lesebereich ankommen — dieselbe Leitung
+           wie beim Zugangsdaten-Banner. stammLaden holt auch die
+           Definitionen; listeLaden die Marken an den Zeilen. */
+        regelvorlage={regelvorlage}
+        aufRegelvorlageGenommen={regelvorlageGenommen}
+        aufWasNeu={wasNeu ? () => setWasNeuOffen(true) : undefined}
+        aufSchlagworteGeaendert={() => {
+          void stammLaden()
+          void listeLaden()
+        }}
+      />
+      </Suspense>
+  )
+
   /* Nach saemtlichen Hooks, damit deren Reihenfolge in beiden Zweigen gleich
-     bleibt. Das Fenster traegt bewusst weder NavRail noch Spalten: Es ist die
+     bleibt. Das Fenster traegt bewusst weder Leisten noch Spalten: Es ist die
      eine Nachricht, sonst nichts — geschlossen wird es wie ein Fenster. */
   if (soloId || soloMail) {
     return (
@@ -2365,16 +2483,9 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         />
       )}
       <Kopfbanner
-        ich={ich}
-        aufAbmelden={abmelden}
         /* ⚠️ Erst wenn wirklich geladen wurde. Vorher hieße „keine
             Postfächer" nur „noch nichts gehört". */
         ohnePostfach={stammGeladen && konten.length === 0}
-        aufEinstellungen={() => {
-          setReiter('profil')
-          setAnsicht('einstellungen')
-        }}
-        aufWasNeu={wasNeu ? () => setWasNeuOffen(true) : undefined}
       />
 
       <WasNeuBanner
@@ -2425,21 +2536,28 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
       )}
 
       <div className="flex min-h-0 flex-1">
-        <NavRail
-          ansicht={ansicht}
-          aufAnsicht={(a) => {
-            // ⚠️ Das Zahnrad unten öffnet die Einstellungen beim Profil, wie
-            // „Name · Einstellungen" in nexnotes. Wer dort schon ist, bleibt.
-            if (a === 'einstellungen' && ansicht !== 'einstellungen') setReiter('profil')
-            setAnsicht(a)
-          }}
-          offeneAufgaben={offeneAufgaben}
-        />
-
         <div className="flex min-w-0 flex-1 flex-col">
-          {ansicht === 'mail' && (
+          {/* ⚠️ **Die Einstellungen gehen breit neben der Ordnerspalte auf**,
+              wie in nexnotes neben der Seitenleiste: Die Profilzeile unten
+              bleibt sichtbar und zeigt farbig, dass sie offen sind. Schmal
+              stehen sie allein, die Ordnerspalte ist dort eine Schublade. */}
+          {(ansicht === 'mail' || (ansicht === 'einstellungen' && !schmal && einstellungenVon === 'mail')) && (
             <>
+              {ansicht === 'einstellungen' ? (
+                <Ansichtsleiste
+                  seitenleiste={
+                    <IconButton
+                      icon={<PanelLeft />}
+                      label={ordnerOffen ? t('ordner.einklappen') : t('ordner.ausklappen')}
+                      active={ordnerOffen}
+                      onClick={() => setOrdnerOffen(!ordnerOffen)}
+                    />
+                  }
+                  ansichtswahl={ansichtswahl}
+                />
+              ) : (
               <Kopfleiste
+                ansichtswahl={ansichtswahl}
                 suche={suche}
                 aufSuche={setSuche}
                 bereich={bereich}
@@ -2454,10 +2572,12 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 lesemodus={lesemodus}
                 aufLesemodus={setLesemodus}
               />
+              )}
 
               {/* Die Postfachgruppen als Reiter unter der Werkzeugleiste, direkt
                   über Ordnerspalte und Liste, die sie filtern (bis 22.11.2026
                   Pillen in der Ordnerspalte). */}
+              {ansicht === 'mail' && (
               <Postfachgruppen
                 konten={konten}
                 ordner={ordnerMitZaehlern}
@@ -2466,6 +2586,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 reihenfolge={gruppenReihe}
                 aufReihenfolge={gruppenOrdnen}
               />
+              )}
 
               <MailPage
                 dunkelmodus={modus === 'dark'}
@@ -2475,7 +2596,11 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 offene={offene}
                 offeneLaedt={offeneLaedt}
                 ziel={ziel}
-                aufZiel={setZiel}
+                aufZiel={(z) => {
+                  setZiel(z)
+                  // Ein Ordner, angeklickt neben den Einstellungen, führt in die Post.
+                  if (ansicht !== 'mail') setAnsicht('mail')
+                }}
                 gewaehlt={gewaehlt}
                 aufWahl={waehlen}
                 suchbefund={befund}
@@ -2527,7 +2652,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
                 aufAblegen={(ordnerId, ids) => {
                   void handeln(() => verschieben(ids, ordnerId), t('rueck.verschoben'), ids)
                 }}
-                aufPostfachHinzufuegen={postfachHinzufuegen}
+                ordnerFuss={profilzeile}
+                ersatz={ansicht === 'einstellungen' ? einstellungenSeite : undefined}
                 aufNachrichtKontext={nachrichtKontext}
                 aufOrdnerKontext={ordnerKontext}
                 aufOrdnerMenue={ordnerBlatt}
@@ -2611,14 +2737,17 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
           {/* ⚠️ **Noch eine Attrappe** — erfundene Termine, kein Backend. Wie
             Stufe A der Mail-Ansicht: erst die Ansicht abstimmen, dann die
             Datenquelle tauschen. */}
-          {ansicht === 'kalender' && (
+          {ansicht === 'einstellungen' && schmal && <Ansichtsleiste seitenleiste={null} ansichtswahl={ansichtswahl} />}
+
+          {(ansicht === 'kalender' || (ansicht === 'einstellungen' && !schmal && einstellungenVon === 'kalender')) && (
             <Suspense fallback={null}>
-              <KalenderPage />
+              <KalenderPage rahmen={rahmen(kalenderBreite, setKalenderBreite, 'kalender')} />
             </Suspense>
           )}
 
-          {ansicht === 'aufgaben' && (
+          {(ansicht === 'aufgaben' || (ansicht === 'einstellungen' && !schmal && einstellungenVon === 'aufgaben')) && (
             <AufgabenPage
+              rahmen={rahmen(aufgabenBreite, setAufgabenBreite, 'aufgaben')}
               konten={konten}
               aufAenderung={() => void aufgabenZaehlen()}
               /* ⚠️ Ein Klick führt zur **Mail**, nicht in ein Aufgabendetail.
@@ -2633,43 +2762,10 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
             />
           )}
 
-          {ansicht === 'kontakte' && <KontaktePage />}
-          {ansicht === 'einstellungen' && (
-            <Suspense fallback={null}>
-            <EinstellungenPage
-              ich={ich}
-              ichNeuLaden={ichNeuLaden}
-              bereich={reiter}
-              aufBereich={setReiter}
-              aufAbmelden={abmelden}
-              modus={modus}
-              aufModus={aufModus}
-              formularOffen={formularOffen}
-              wahlOffen={wahlOffen}
-              aufWahl={setWahlOffen}
-              aufFormular={(offen) => {
-                setFormularOffen(offen)
-                if (!offen) void stammLaden()
-              }}
-              /* ⚠️ Der rote Zugangsdaten-Banner haengt an Apps eigener
-                 Kontenliste. Ohne diese Leitung blieb er nach dem
-                 Entfernen des Postfachs stehen (02.09.2026) - dieselbe
-                 Falle wie beim zweiten Faktor: Was ich aendere, muss
-                 ich auch sehen. */
-              aufKontenGeaendert={() => void stammLaden()}
-              /* Umbenennen, Farbwechsel und Löschen im Reiter Schlagworte
-                 müssen in Liste und Lesebereich ankommen — dieselbe Leitung
-                 wie beim Zugangsdaten-Banner. stammLaden holt auch die
-                 Definitionen; listeLaden die Marken an den Zeilen. */
-              regelvorlage={regelvorlage}
-              aufRegelvorlageGenommen={regelvorlageGenommen}
-              aufSchlagworteGeaendert={() => {
-                void stammLaden()
-                void listeLaden()
-              }}
-            />
-            </Suspense>
+          {(ansicht === 'kontakte' || (ansicht === 'einstellungen' && !schmal && einstellungenVon === 'kontakte')) && (
+            <KontaktePage rahmen={rahmen(kontakteBreite, setKontakteBreite, 'kontakte')} />
           )}
+          {ansicht === 'einstellungen' && schmal && einstellungenSeite}
 
         </div>
       </div>

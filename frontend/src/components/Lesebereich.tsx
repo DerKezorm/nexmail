@@ -751,22 +751,37 @@ export function Lesebereich({
         )}
 
         {nachricht.geblockteBilder > 0 && freigegeben === null && (
-          <div className="mx-6 mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-warning/40 bg-warning-soft px-4 py-3">
-            <ImageOff className="size-4 shrink-0 text-warning" />
-            <p className="mb-0 min-w-[140px] flex-1 text-[13px] text-fg-2">
-              {bilderFehler ? t('lesen.bilder_ging_nicht') : t('lesen.bilder_geblockt')}
-            </p>
-            <Button size="sm" onClick={() => void bilderZeigen(false)}>
-              {t('lesen.bilder_anzeigen')}
-            </Button>
-            {/* ⚠️ **Nur, wenn der Absender noch nicht freigegeben ist.** Sonst
-                stünde hier ein Knopf, der nichts ändert — und der Balken
-                erscheint bei einem freigegebenen Absender ohnehin nicht. */}
-            {!nachricht.absenderFreigegeben && (
-              <Button size="sm" variant="ghost" onClick={() => void bilderZeigen(true)}>
-                {t('lesen.bilder_immer')}
+          /* ⚠️ **Text oben, Knöpfe darunter** (gemeldet am 23.11.2026): Nebeneinander
+             blieb dem Satz bei schmalem Lesebereich eine Spalte von fünf Wörtern
+             je Zeile, und die Knöpfe standen mitten im Kasten. Die Knöpfe
+             rücken unter den Text, bündig mit ihm, nicht mit dem Symbol. */
+          <div className="mx-6 mt-4 rounded-lg border border-warning/40 bg-warning-soft px-4 py-3">
+            <div className="flex items-start gap-3">
+              <ImageOff className="mt-0.5 size-4 shrink-0 text-warning" />
+              <p className="mb-0 min-w-0 flex-1 text-[13px] text-fg-2">
+                {bilderFehler ? t('lesen.bilder_ging_nicht') : t('lesen.bilder_geblockt')}
+              </p>
+            </div>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-7">
+              <Button size="sm" onClick={() => void bilderZeigen(false)}>
+                {t('lesen.bilder_anzeigen')}
               </Button>
-            )}
+              {/* ⚠️ **Nur, wenn der Absender noch nicht freigegeben ist.** Sonst
+                  stünde hier ein Knopf, der nichts ändert — und der Balken
+                  erscheint bei einem freigegebenen Absender ohnehin nicht.
+                  Der kurze Name braucht den langen im Hinweis: „Immer" heißt
+                  „von diesem Absender", nicht „von allen". */}
+              {!nachricht.absenderFreigegeben && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  title={t('lesen.bilder_immer_titel')}
+                  onClick={() => void bilderZeigen(true)}
+                >
+                  {t('lesen.bilder_immer')}
+                </Button>
+              )}
+            </div>
           </div>
         )}
 

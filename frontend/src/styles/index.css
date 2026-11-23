@@ -9,19 +9,14 @@
  * oder muss das Design-System ergaenzen - nicht die Komponente.
  */
 
-/* Schriften aus dem npm-Paket, mitgebaut, kein fremder Server. */
-@import '@fontsource/space-grotesk/400.css';
-@import '@fontsource/space-grotesk/500.css';
-@import '@fontsource/space-grotesk/600.css';
-@import '@fontsource/ibm-plex-sans/400.css';
-@import '@fontsource/ibm-plex-sans/500.css';
-@import '@fontsource/ibm-plex-sans/600.css';
-@import '@fontsource/ibm-plex-sans/400-italic.css';
-@import '@fontsource/jetbrains-mono/400.css';
-@import '@fontsource/jetbrains-mono/500.css';
-/* Nur für den Schriftzug NEXMAIL: dieselbe Schrift wie in nexnotes (Inter,
-   fett, eng), damit die Familie oben links gleich aussieht (22.11.2026). */
+/* Schrift aus dem npm-Paket, mitgebaut, kein fremder Server.
+   ⚠️ **Inter für alles, wie nexnotes, nextasks und nextime** (seit
+   23.11.2026). Bis dahin IBM Plex Sans für Text, Space Grotesk für
+   Überschriften und JetBrains Mono für Code; Inter nur im Schriftzug. Code
+   und Kürzel nehmen jetzt die Festbreitenschrift des Systems, wie in den
+   anderen Apps. Kursiv kommt aus der Achse der variablen Schrift. */
 @import '@fontsource-variable/inter/wght.css';
+@import '@fontsource-variable/inter/wght-italic.css';
 
 /* Die nexapps-Tokens, wortwoertlich uebernommen. */
 @import './tokens/fonts.css';

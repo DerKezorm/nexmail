@@ -431,11 +431,11 @@ test('Ein Entwurf steht erst nach dem Übernehmen im Text, über Zitat und Signa
   await page.getByRole('button', { name: 'Verwerfen' }).click()
 })
 
-test('Strg K findet Handgriffe und Ordner, Enter führt aus', async ({ page }) => {
+test('Strg Umschalt P findet Handgriffe und Ordner, Enter führt aus', async ({ page }) => {
   await vorspielen(page, null, false)
   await ersteMailOeffnen(page)
 
-  await page.keyboard.press('Control+k')
+  await page.keyboard.press('Control+Shift+P')
   const palette = page.getByRole('dialog', { name: 'Befehle' })
   await expect(palette).toBeVisible()
   const feld = palette.getByRole('combobox')
@@ -459,7 +459,7 @@ test('In der Palette bewegen die Pfeile die Wahl, der Fokus bleibt im Feld', asy
   const liste = page.locator('button[draggable="true"]')
   const vorher = await liste.count()
 
-  await page.keyboard.press('Control+k')
+  await page.keyboard.press('Control+Shift+P')
   const palette = page.getByRole('dialog', { name: 'Befehle' })
   const feld = palette.getByRole('combobox')
   const zeilen = palette.getByRole('option')
@@ -480,19 +480,19 @@ test('In der Palette bewegen die Pfeile die Wahl, der Fokus bleibt im Feld', asy
   await expect(liste).toHaveCount(vorher)
 })
 
-test('Strg K schließt die Palette wieder und öffnet nichts über einem Fenster', async ({ page }) => {
+test('Strg Umschalt P schließt die Palette wieder und öffnet nichts über einem Fenster', async ({ page }) => {
   await vorspielen(page, null, false)
   await ersteMailOeffnen(page)
   const palette = page.getByRole('dialog', { name: 'Befehle' })
 
-  await page.keyboard.press('Control+k')
+  await page.keyboard.press('Control+Shift+P')
   await expect(palette).toBeVisible()
-  await page.keyboard.press('Control+k')
+  await page.keyboard.press('Control+Shift+P')
   await expect(palette).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Neue Nachricht' }).first().click()
   await expect(page.getByRole('dialog', { name: 'Neue Nachricht' })).toBeVisible()
-  await page.keyboard.press('Control+k')
+  await page.keyboard.press('Control+Shift+P')
   await expect(palette).toHaveCount(0)
   await page.getByRole('button', { name: 'Verwerfen' }).click()
 })
@@ -501,7 +501,7 @@ test('Ein Ordner aus der Palette öffnet sich, ein Nichts sagt es', async ({ pag
   await vorspielen(page, null, false)
   await ersteMailOeffnen(page)
 
-  await page.keyboard.press('Control+k')
+  await page.keyboard.press('Control+Shift+P')
   const palette = page.getByRole('dialog', { name: 'Befehle' })
   await palette.getByRole('combobox').fill('zzzqqq')
   await expect(palette.getByRole('status')).toBeVisible()
