@@ -240,5 +240,41 @@
       "A subtle line separates the favourites from the mailboxes.",
       "On start, a column for the order of the tabs is added."
     ]
+  },
+  "0.32.0": {
+    "lead": "nexmail now looks and works like nexnotes and nextasks: no more rail on the left, the views at the top, and your settings at the bottom of the sidebar.",
+    "sections": [
+      {
+        "title": "The views are at the top",
+        "where": "Toolbar, in every view",
+        "body": "Mail, Calendar, Tasks and Contacts are buttons in the toolbar, right after the sidebar button. Next to them are the view's main action, “New message”, “New event” or “New contact”, and the search. The narrow rail on the far left is gone and gives its space to the list."
+      },
+      {
+        "title": "Your profile at the bottom of the sidebar",
+        "where": "Bottom of the sidebar: picture, name, gear",
+        "body": "One click opens the settings at your profile, beside the sidebar of the view you came from. The menu at the top right is gone: “What's new” is under “About nexmail”, the second factor under “Security”, “Sign out” in the profile. Add a mailbox under “Mailboxes”."
+      },
+      {
+        "title": "Sidebars for calendar, contacts and tasks",
+        "where": "Calendar, Contacts, Tasks",
+        "body": "All three now have a sidebar like the mail folders: collapsible, resizable, with your profile at the bottom. In Contacts it holds address books and groups, with the contact list next to it. Tasks can be filtered by “Open”, “Today and overdue”, “With date” and “Done” and, with a connected to-do app, by where they live."
+      },
+      {
+        "title": "Calendars and address books in the settings",
+        "where": "Settings → Calendars and address books",
+        "body": "Add, rename and disconnect calendars, connect and disconnect address books, all in one place. The calendar itself has a “+” next to the “Calendars” heading for the same."
+      },
+      {
+        "title": "Ctrl+K jumps to the search",
+        "where": "Mail, Calendar, Contacts",
+        "body": "As in the other nex apps, Ctrl+K, Cmd+K on a Mac, takes you to the search field; Ctrl+F still works. The command palette with every action now opens with Ctrl+Shift+P."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "The mailbox group tabs and the search fields look as they do in nexnotes.",
+      "nexmail now uses the Inter typeface throughout, like the other nex apps.",
+      "The notice about blocked images has its text on top and “Load images” and “Always load” below."
+    ]
   }
 }

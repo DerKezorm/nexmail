@@ -240,5 +240,41 @@
       "Eine dezente Linie trennt die Favoriten von den Postfächern.",
       "Beim Start kommt eine Spalte für die Reihenfolge der Reiter dazu."
     ]
+  },
+  "0.32.0": {
+    "lead": "nexmail sieht jetzt aus und bedient sich wie nexnotes und nextasks: keine Leiste mehr links, die Ansichten oben, und deine Einstellungen unten in der Seitenleiste.",
+    "sections": [
+      {
+        "title": "Die Ansichten stehen oben",
+        "where": "Werkzeugleiste, in jeder Ansicht",
+        "body": "Mail, Kalender, Aufgaben und Kontakte sind Knöpfe in der Werkzeugleiste, gleich hinter dem Knopf für die Seitenleiste. Daneben steht die Hauptaktion der Ansicht, also „Neue Nachricht“, „Neuer Termin“ oder „Neuer Kontakt“, und die Suche. Die schmale Leiste ganz links ist weg und gibt ihren Platz der Liste."
+      },
+      {
+        "title": "Dein Profil unten in der Seitenleiste",
+        "where": "Unten in der Seitenleiste: Bild, Name, Zahnrad",
+        "body": "Ein Klick öffnet die Einstellungen beim Profil, neben der Seitenleiste der Ansicht, aus der du kommst. Das Menü oben rechts gibt es nicht mehr: „Was ist neu“ steht unter „Über nexmail“, der zweite Faktor unter „Sicherheit“, „Abmelden“ im Profil. Ein Postfach legst du unter „Postfächer“ an."
+      },
+      {
+        "title": "Seitenleisten für Kalender, Kontakte und Aufgaben",
+        "where": "Kalender, Kontakte, Aufgaben",
+        "body": "Alle drei haben jetzt eine Seitenleiste wie die Ordner der Mail: einklappbar, in der Breite zu ziehen, mit deinem Profil unten. In den Kontakten stehen dort Adressbücher und Gruppen, die Kontaktliste daneben. Die Aufgaben lassen sich nach „Offen“, „Heute und überfällig“, „Mit Datum“ und „Erledigt“ filtern und, mit einer verbundenen Todo-App, nach dem Ort."
+      },
+      {
+        "title": "Kalender und Adressbücher in den Einstellungen",
+        "where": "Einstellungen → Kalender und Adressbücher",
+        "body": "Kalender anlegen, umbenennen und trennen, Adressbücher verbinden und trennen, alles an einer Stelle. Im Kalender selbst steht dafür ein „+“ an der Überschrift „Kalender“."
+      },
+      {
+        "title": "Strg+K springt in die Suche",
+        "where": "Mail, Kalender, Kontakte",
+        "body": "Wie in den anderen nex-Apps bringt Strg+K, am Mac Cmd+K, dich ins Suchfeld; Strg+F geht weiterhin. Die Befehlspalette mit allen Handgriffen öffnet jetzt Strg+Umschalt+P."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Die Reiter der Postfachgruppen und die Suchfelder sehen aus wie in nexnotes.",
+      "nexmail nutzt jetzt durchgehend die Schrift Inter, wie die anderen nex-Apps.",
+      "Der Hinweis auf blockierte Bilder hat den Text oben und darunter „Bilder laden“ und „Immer laden“."
+    ]
   }
 }
