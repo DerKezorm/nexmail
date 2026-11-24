@@ -103,6 +103,18 @@ class KalenderZeile(BaseModel):
     herkunft: str
     nur_lesen: bool
     letzter_fehler: str
+    # --- Nur bei Kalendern aus nextime (``art`` = ``nextime``, MAIL-1) ----- #
+    #: ``own`` | ``icloud`` | ``google`` | ``caldav`` | ``shared`` | ``subscriptions``
+    gruppe: str = ""
+    #: Die Farbe, wie nextime sie nennt (``slate``, ``red`` …).
+    farbe_nextime: str = ""
+    symbol: str = ""
+    #: Der Standardkalender in nextime: vorgewählt bei „Neuer Termin".
+    standard: bool = False
+    nur_belegt: bool = False
+    hintergrund: bool = False
+    #: Nimmt nexmail ihn überhaupt (Auswahl in der nextime-Karte)?
+    gewaehlt: bool = True
 
 
 class KalenderWunsch(BaseModel):
@@ -186,6 +198,30 @@ class TerminZeile(BaseModel):
     eingeladen: bool = False
     #: Minuten vor dem Beginn, **-1 heisst keine**.
     erinnerung: int = -1
+    #: Gesetzt bei Terminen aus nextime (MAIL-1): wie man sie dort ändert.
+    fern: "FernZeile | None" = None
+
+
+class FernZeile(BaseModel):
+    """Was die Oberfläche braucht, um einen nextime-Termin zu ändern.
+
+    ⚠️ **``id`` fehlt bei „nur belegt"**: Davon kennt nexmail nur die Zeit.
+    """
+
+    id: int | None = None
+    #: ``20261126T173000Z`` oder ``20261126``, leer bei einem einzelnen Termin.
+    vorkommen: str | None = None
+    etag: str = ""
+    link: str = ""
+    beschreibbar: bool = False
+    nur_belegt: bool = False
+    hintergrund: bool = False
+    uid: str = ""
+    #: Der eigene Stand einer Einladung: ``open`` | ``accepted`` | … | leer.
+    einladung: str = ""
+    #: ``imip`` = aus einer Mail eingetragen.
+    herkunft: str = ""
+    zeitzone: str = ""
 
 
 class FremdeAntwort(BaseModel):

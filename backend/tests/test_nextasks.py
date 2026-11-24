@@ -1,7 +1,9 @@
 """nextasks als Aufgabenziel: Aufgaben aus Mails in nextasks, und der Haken kommt zurück.
 
 Gesprochen wird mit einem nachgebauten nextasks (``Nextasks`` unten), gebaut
-nach dessen ``docs/api.md`` vom 07.11.2026. ⚠️ **Das prüft nexmails Logik,
+nach dessen ``docs/api.md`` vom 07.11.2026, fuer MAIL-2 erweitert um
+Bereiche, Mitglieder, Filter, Einzelabruf, Aendern und Papierkorb (Stand
+``api.md`` vom 24.11.2026). ``test_nextasks_ansicht.py`` benutzt denselben. ⚠️ **Das prüft nexmails Logik,
 nicht nextasks** (FALLSTRICKE §8): Ob nextasks die Felder so versteht, sagt
 erst ein Lauf gegen eine echte Instanz.
 """
@@ -43,15 +45,42 @@ class Nextasks:
             # Ausgeblendeter Bereich: ans Ende. Hier absichtlich nicht am Ende
             # geliefert, damit nexmail selbst sortieren muss.
             {"id": self.projekte, "space_id": self.arbeit, "space_name": "Arbeit", "name": "Projekte",
-             "writable": True, "hidden": True, "sections": []},
+             "writable": True, "hidden": True, "sections": [], "color": "gray", "icon": "folder", "open": 0},
             {"id": self.einkauf, "space_id": self.familie, "space_name": "Familie", "name": "Einkauf",
-             "writable": True, "hidden": False, "sections": [{"id": self.abschnitt, "name": "Markt"}]},
+             "writable": True, "hidden": False, "sections": [{"id": self.abschnitt, "name": "Markt"}],
+             "color": "green", "icon": "cart", "open": 4},
             {"id": self.haushalt, "space_id": self.familie, "space_name": "Familie", "name": "Haushalt",
-             "writable": True, "hidden": False, "sections": []},
+             "writable": True, "hidden": False, "sections": [], "color": "#a1b2c3", "icon": "house", "open": 1},
             # Nur lesbar: gehört nicht in die Auswahl.
             {"id": self.beete, "space_id": self.garten, "space_name": "Garten", "name": "Beete",
-             "writable": False, "hidden": False, "sections": []},
+             "writable": False, "hidden": False, "sections": [], "color": "teal", "icon": "leaf", "open": 0},
         ]
+        #: Wie ``GET /spaces``: nach Namen, mit einem Bereich ohne Liste.
+        self.leer = _uuid()
+        self.bereiche = [
+            {"id": self.arbeit, "name": "Arbeit", "icon": "briefcase", "role": "admin", "writable": True,
+             "shared": False, "hidden": True},
+            {"id": self.familie, "name": "Familie", "icon": "house", "role": "member", "writable": True,
+             "shared": True, "hidden": False},
+            {"id": self.garten, "name": "Garten", "icon": "leaf", "role": "member", "writable": False,
+             "shared": True, "hidden": False},
+            {"id": self.leer, "name": "Leer", "icon": "box", "role": "admin", "writable": True,
+             "shared": False, "hidden": False},
+        ]
+        #: ``GET /spaces/{id}/members``, nur mit ``members`` in ``features``.
+        self.mitglieder = {
+            self.familie: [
+                {"id": 1, "name": "robin", "display_name": "Robin", "role": "admin"},
+                {"id": 12, "name": "mara", "display_name": "Mara", "role": "member"},
+                {"id": 13, "name": "jo", "display_name": None, "role": "member"},
+            ]
+        }
+        #: Die eigene Kontonummer (``assigned=me``).
+        self.ich_nummer = 1
+        #: Seitengroesse fuer ``GET /tasks`` ohne ``ids``; ``None``: ``limit``.
+        self.seitengroesse: int | None = None
+        #: Titel, deren Anlegen mit 500 scheitert (Abbruch mittendrin).
+        self.anlegen_scheitert: set[str] = set()
         self.ich = {"name": "robin", "display_name": "Robin", "level": "write", "time_zone": "Europe/Berlin",
                     "spaces": [], "version": "0.1.0", "features": ["tasks", "dashboard", "external_ref"]}
         self.aufgaben: dict[str, dict] = {}
@@ -85,8 +114,34 @@ class Nextasks:
             return httpx.Response(200, json=self.ich)
         if anfrage.method == "GET" and pfad == "lists":
             return httpx.Response(200, json={"lists": self.listen})
+        if anfrage.method == "GET" and pfad == "spaces":
+            return httpx.Response(200, json={"spaces": self.bereiche})
+        if anfrage.method == "GET" and pfad.startswith("spaces/") and pfad.endswith("/members"):
+            if "members" not in self.ich["features"]:
+                return self._fehler(404, "not_found")
+            bereich = pfad.split("/")[1]
+            if bereich not in self.mitglieder:
+                return self._fehler(404, "not_found")
+            return httpx.Response(200, json={"members": self.mitglieder[bereich]})
         if anfrage.method == "POST" and pfad == "tasks":
             return self._anlegen(json.loads(anfrage.content))
+        if anfrage.method == "GET" and pfad == "tasks" and "ids" not in anfrage.url.params:
+            return self._filtern(anfrage.url.params)
+        if anfrage.method == "GET" and pfad.startswith("tasks/"):
+            kennung = pfad.split("/")[1]
+            if kennung in self.fort or kennung not in self.aufgaben:
+                return self._fehler(404, "not_found")
+            kinder = [self._zeige(a) for a in self.aufgaben.values()
+                      if a.get("parent_id") == kennung and a["id"] not in self.fort]
+            antwort = self._zeige(self.aufgaben[kennung])
+            antwort["subtasks"] = {**antwort["subtasks"], "items": kinder}
+            return httpx.Response(200, json=antwort)
+        if anfrage.method == "DELETE" and pfad.startswith("tasks/"):
+            kennung = pfad.split("/")[1]
+            if kennung in self.fort or kennung not in self.aufgaben:
+                return self._fehler(404, "not_found")
+            self.aufgaben[kennung].update(trashed=True, trashed_at="2026-11-24T08:00:00.000Z")
+            return httpx.Response(204)
         if anfrage.method == "GET" and pfad == "tasks":
             ids = [i for i in anfrage.url.params.get("ids", "").split(",") if i]
             assert len(ids) <= 200
@@ -108,11 +163,86 @@ class Nextasks:
                 naechstes = date.fromisoformat(a["due_date"]) + timedelta(days=7)
                 a["due_date"] = naechstes.isoformat()
                 return httpx.Response(200, json={**a, "next": kennung, "completed_copy": _uuid()})
+            erlaubt = {"title", "notes", "url", "due_date", "due_time", "priority", "flagged", "tags",
+                       "assignees", "list_id", "section_id", "completed", "trashed"}
+            if set(rumpf) - erlaubt:
+                return self._fehler(422, "invalid_input", felder=sorted(set(rumpf) - erlaubt))
+            for feld in ("title", "priority", "flagged", "completed", "list_id"):
+                if feld in rumpf and rumpf[feld] is None:
+                    return self._fehler(422, "invalid_input", felder=[feld])
+            if "list_id" in rumpf and not any(
+                l["id"] == rumpf["list_id"] and l["writable"] for l in self.listen
+            ):
+                return self._fehler(422, "invalid_input", felder=["list_id"])
             if "completed" in rumpf:
                 a["completed"] = rumpf["completed"]
                 a["completed_at"] = "2026-11-07T09:00:00.000Z" if rumpf["completed"] else None
-            return httpx.Response(200, json=a)
+            for feld in ("title", "url", "due_date", "due_time", "priority", "flagged", "list_id",
+                         "section_id"):
+                if feld in rumpf:
+                    a[feld] = rumpf[feld]
+            if "notes" in rumpf:
+                a["notes"] = rumpf["notes"] or ""
+                a["notes_text"] = (rumpf["notes"] or "").replace("**", "")
+            if "tags" in rumpf:
+                a["tags"] = rumpf["tags"] or []
+            if "assignees" in rumpf:
+                a["assignees"] = self._personen(rumpf["assignees"] or [])
+            if "due_date" in rumpf and rumpf["due_date"] is None:
+                a["due_time"], a["repeat"] = None, None
+            if rumpf.get("trashed") is False:
+                a["trashed"], a["trashed_at"] = False, None
+            return httpx.Response(200, json=self._zeige(a))
         return self._fehler(404, "not_found")
+
+    def _personen(self, ids: list[int]) -> list[dict]:
+        """Wie nextasks: ein ehemaliges Mitglied hat keinen Namen."""
+        bekannt = {m["id"]: m for ms in self.mitglieder.values() for m in ms}
+        return [
+            {"id": i, "name": bekannt[i]["name"], "display_name": bekannt[i]["display_name"]}
+            if i in bekannt else {"id": i, "name": None, "display_name": None}
+            for i in ids
+        ]
+
+    def _zeige(self, a: dict) -> dict:
+        kinder = [k for k in self.aufgaben.values()
+                  if k.get("parent_id") == a["id"] and k["id"] not in self.fort]
+        return {
+            **a,
+            "subtasks": {"open": sum(1 for k in kinder if not k["completed"]), "total": len(kinder)},
+        }
+
+    def _filtern(self, params) -> httpx.Response:
+        """``GET /tasks`` mit Filtern, wie ``api.md`` sie beschreibt."""
+        zustand = params.get("state", "open")
+        zeilen = [a for a in self.aufgaben.values() if a["id"] not in self.fort]
+        if params.get("include_trashed") != "true":
+            zeilen = [a for a in zeilen if not a.get("trashed")]
+        if params.get("subtasks") != "true":
+            zeilen = [a for a in zeilen if not a.get("parent_id")]
+        if zustand == "open":
+            zeilen = [a for a in zeilen if not a["completed"]]
+        elif zustand == "completed":
+            zeilen = [a for a in zeilen if a["completed"]]
+        if "list_id" in params:
+            zeilen = [a for a in zeilen if a["list_id"] == params["list_id"]]
+        if "due_before" in params:
+            zeilen = [a for a in zeilen if a.get("due_date") and a["due_date"] < params["due_before"]]
+        if "due_after" in params:
+            zeilen = [a for a in zeilen if a.get("due_date") and a["due_date"] > params["due_after"]]
+        if params.get("flagged") == "true":
+            zeilen = [a for a in zeilen if a.get("flagged")]
+        if params.get("assigned") == "me":
+            zeilen = [a for a in zeilen
+                      if any(p["id"] == self.ich_nummer for p in a.get("assignees", []))]
+        groesse = self.seitengroesse or int(params.get("limit", 100))
+        start = int(params.get("cursor") or 0)
+        ende = start + groesse
+        return httpx.Response(200, json={
+            "tasks": [self._zeige(a) for a in zeilen[start:ende]],
+            "next_cursor": str(ende) if ende < len(zeilen) else None,
+            "as_of": "2026-11-24T08:00:00.000Z",
+        })
 
     def _fehler(self, status: int, code: str, *, felder: list | None = None, kopf: dict | None = None):
         detail = {"code": code, "message": "nope"}
@@ -133,17 +263,25 @@ class Nextasks:
             if self.liste_fehlt_als_422:
                 return self._fehler(422, "invalid_input", felder=["list_id"])
             return self._fehler(404, "not_found")
+        if rumpf["title"] in self.anlegen_scheitert:
+            return self._fehler(500, "boom")
         kennung = _uuid()
         self.aufgaben[kennung] = {
             "id": kennung,
             "list_id": rumpf.get("list_id", self.haushalt),
             "section_id": rumpf.get("section_id"),
+            "parent_id": rumpf.get("parent_id"),
             "title": rumpf["title"],
             "notes": rumpf.get("notes", ""),
+            "notes_text": rumpf.get("notes", "").replace("**", ""),
             "url": rumpf.get("url"),
             "due_date": rumpf.get("due_date"),
-            "due_time": None,
+            "due_time": rumpf.get("due_time"),
             "repeat": None,
+            "flagged": rumpf.get("flagged", False),
+            "priority": rumpf.get("priority", 0),
+            "tags": rumpf.get("tags", []),
+            "assignees": self._personen(rumpf.get("assignees", [])),
             "completed": False,
             "completed_at": None,
             "trashed": False,

@@ -235,6 +235,10 @@ def _absage(antwort: httpx.Response, methode: str, pfad: str) -> NoReturn:
         raise NextasksFehler("nextasks_konflikt")
     if status == 422 and "list_id" in felder:
         raise NextasksFehler("nextasks_liste_unbekannt")
+    if status == 422:
+        # ⚠️ Ein Feld, das nextasks so nicht nimmt (MAIL-2: Ändern aus der
+        # Ansicht). Eine Eingabe, kein Ausfall der Gegenseite.
+        raise NextasksFehler("nextasks_eingabe_ungueltig")
     if status == 429:
         raise NextasksFehler("nextasks_zu_viele_anfragen", sekunden=_pause(antwort))
     if 300 <= status < 400:
@@ -406,11 +410,19 @@ def anlegen(
     liste: str,
     faellig: date | None,
     schluessel: str,
+    zeit: str | None = None,
+    prioritaet: int | None = None,
+    markiert: bool | None = None,
+    zustaendige: list[int] | None = None,
 ) -> tuple[FernStand, bool]:
     """Eine Aufgabe anlegen. Gibt ihren Stand zurueck und ob sie neu ist.
 
     ⚠️ **200 heisst „gab es schon"**, auch erledigt oder im Papierkorb; der
     Stand sagt dann, wie sie gerade ist.
+
+    ``zeit``, ``prioritaet``, ``markiert`` und ``zustaendige`` kamen mit MAIL-2
+    (AC-7). ⚠️ **Eine Uhrzeit nur mit Datum**: nextasks kennt keine Uhrzeit
+    ohne Tag, und eine verlorene Uhrzeit ist besser als eine Absage.
     """
     rumpf: dict = {"title": titel[:500]}
     if notizen:
@@ -424,6 +436,14 @@ def anlegen(
         rumpf["section_id"] = abschnitt_id
     if faellig is not None:
         rumpf["due_date"] = faellig.isoformat()
+        if zeit:
+            rumpf["due_time"] = zeit
+    if prioritaet:
+        rumpf["priority"] = prioritaet
+    if markiert:
+        rumpf["flagged"] = True
+    if zustaendige:
+        rumpf["assignees"] = list(zustaendige)
     if schluessel:
         rumpf["external_ref"] = schluessel
     try:
@@ -482,3 +502,91 @@ def haken(zugang: Zugang, fern_id: str, erledigt: bool) -> FernStand:
     """
     antwort = _anfrage(zugang, "PATCH", f"tasks/{fern_id}", json={"completed": erledigt})
     return _stand(_json(antwort))
+
+
+# --- Live lesen und schreiben (MAIL-2) ---------------------------------------- #
+#
+# ⚠️ **Roh, wie nextasks es liefert.** Was daraus fuer die Oberflaeche wird
+# (deutsche Feldnamen, Auswahl der Listen, Mail dazu), steht in
+# ``nextasksansicht.py``. Hier nur: fragen, Kennung bei Absage, Form pruefen.
+
+#: Seitengroesse beim Lesen: nextasks' Hoechstwert.
+SEITE = 500
+#: Ohne dieses Wort in ``features`` gibt es ``/spaces/{id}/members`` nicht.
+MITGLIEDER = "members"
+
+
+def _liste_aus(daten: dict, schluessel: str) -> list[dict]:
+    zeilen = daten.get(schluessel)
+    if not isinstance(zeilen, list):
+        raise NextasksFehler("nextasks_antwort_unlesbar")
+    return [z for z in zeilen if isinstance(z, dict)]
+
+
+def _aufgabe_pruefen(daten: dict) -> dict:
+    if not isinstance(daten.get("id"), str) or not daten["id"]:
+        raise NextasksFehler("nextasks_antwort_unlesbar")
+    return daten
+
+
+def ich(zugang: Zugang) -> dict:
+    """``GET /me`` roh: Name, Zeitzone, ``features``."""
+    return _json(_anfrage(zugang, "GET", "me"))
+
+
+def bereiche(zugang: Zugang) -> list[dict]:
+    """``GET /spaces``: alle Bereiche, die der Token sieht."""
+    return _liste_aus(_json(_anfrage(zugang, "GET", "spaces")), "spaces")
+
+
+def alle_listen(zugang: Zugang) -> list[dict]:
+    """``GET /lists`` roh, ⚠️ **auch die nur lesbaren** (anders als ``listen``)."""
+    return [
+        z
+        for z in _liste_aus(_json(_anfrage(zugang, "GET", "lists")), "lists")
+        if isinstance(z.get("id"), str) and z["id"]
+    ]
+
+
+def aufgaben_seite(zugang: Zugang, params: dict) -> tuple[list[dict], str]:
+    """Eine Seite ``GET /tasks``. Gibt die Aufgaben und den naechsten Cursor
+    (leer am Ende). Endgueltig Verschwundene (``gone``) fallen weg."""
+    daten = _json(_anfrage(zugang, "GET", "tasks", params=params))
+    zeilen = [
+        z for z in _liste_aus(daten, "tasks")
+        if z.get("gone") is not True and isinstance(z.get("id"), str) and z["id"]
+    ]
+    cursor = daten.get("next_cursor")
+    return zeilen, cursor if isinstance(cursor, str) else ""
+
+
+def aufgabe_lesen(zugang: Zugang, fern_id: str) -> dict:
+    """``GET /tasks/{id}`` samt Teilaufgaben."""
+    return _aufgabe_pruefen(_json(_anfrage(zugang, "GET", f"tasks/{fern_id}")))
+
+
+def aufgabe_neu(zugang: Zugang, rumpf: dict) -> dict:
+    """``POST /tasks`` mit fertigem Rumpf. ⚠️ Ein 404 heisst hier wie bei
+    ``anlegen``: Die Liste (oder ihr Abschnitt, ihre Oberaufgabe) fehlt."""
+    try:
+        antwort = _anfrage(zugang, "POST", "tasks", json=rumpf)
+    except NextasksFehler as fehler:
+        if fehler.kennung == "nextasks_nicht_gefunden":
+            raise NextasksFehler("nextasks_liste_unbekannt") from fehler
+        raise
+    return _aufgabe_pruefen(_json(antwort))
+
+
+def aufgabe_aendern(zugang: Zugang, fern_id: str, rumpf: dict) -> dict:
+    """``PATCH /tasks/{id}``, die Aufgabe danach."""
+    return _aufgabe_pruefen(_json(_anfrage(zugang, "PATCH", f"tasks/{fern_id}", json=rumpf)))
+
+
+def aufgabe_loeschen(zugang: Zugang, fern_id: str) -> None:
+    """``DELETE /tasks/{id}``: in nextasks' Papierkorb, mit Teilaufgaben."""
+    _anfrage(zugang, "DELETE", f"tasks/{fern_id}")
+
+
+def mitglieder(zugang: Zugang, bereich_id: str) -> list[dict]:
+    """``GET /spaces/{id}/members``. Nur fragen, wenn ``/me`` ``members`` nennt."""
+    return _liste_aus(_json(_anfrage(zugang, "GET", f"spaces/{bereich_id}/members")), "members")

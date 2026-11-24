@@ -110,6 +110,10 @@ class Zugangsdaten:
     #: Neue Post sofort sehen (``services/postfachwache.py``). ``None`` heißt
     #: beim Ändern „unverändert".
     idle_aktiv: bool | None = None
+    #: Farbe und Symbol wie in nextasks. ``None`` heißt beim Ändern
+    #: „unverändert“, leer „automatische Farbe“ bzw. „kein Symbol“.
+    farbton: str | None = None
+    symbol: str | None = None
 
 
 #: Mehr als das braucht niemand, und es hält die Pillenreihe lesbar.
@@ -204,6 +208,8 @@ def anlegen(db: Session, benutzer: Benutzer, daten: Zugangsdaten) -> Konto:
         smtp_benutzer=daten.smtp_benutzer.strip(),
         tags=tags_normieren(daten.tags),
         idle_aktiv=bool(daten.idle_aktiv),
+        farbton=daten.farbton or "",
+        symbol=daten.symbol or "",
         farbe=naechste_farbe(db, benutzer),
         reihenfolge=(hoechste or 0) + 1,
     )
@@ -269,6 +275,10 @@ def aendern(db: Session, benutzer: Benutzer, konto_id: str, daten: Zugangsdaten)
         aliasdienst.schreiben(konto, daten.aliase)
     if daten.idle_aktiv is not None:
         konto.idle_aktiv = daten.idle_aktiv
+    if daten.farbton is not None:
+        konto.farbton = daten.farbton
+    if daten.symbol is not None:
+        konto.symbol = daten.symbol
 
     _anmeldeweg_wechseln(db, benutzer, konto, daten)
 

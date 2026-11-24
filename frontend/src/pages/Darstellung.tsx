@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Info, Moon, Sun, Trash2 } from 'lucide-react'
+import { Info, Monitor, Moon, Sun, Trash2 } from 'lucide-react'
 import { Button, IconButton, Select, Switch, Tabs } from '../ds'
 import { api } from '../api/client'
 import { useGemerkt } from '../lib/haken'
@@ -58,8 +58,9 @@ interface Props {
   /** Hell oder dunkel. ⚠️ Seit dem 22.11.2026 nur noch hier, nicht mehr
    *  oben rechts in der Kopfleiste, wie in nexnotes unter
    *  „Darstellung". Liegt im Browser, wie bisher. */
-  modus?: 'dark' | 'light'
-  aufModus?: (m: 'dark' | 'light') => void
+  /** Hell, dunkel oder wie das System (seit 24.11.2026, wie nexnotes und nextasks). */
+  modus?: 'dark' | 'light' | 'system'
+  aufModus?: (m: 'dark' | 'light' | 'system') => void
 }
 
 export function Darstellung({ ichNeuLaden, modus, aufModus }: Props = {}) {
@@ -204,10 +205,11 @@ export function Darstellung({ ichNeuLaden, modus, aufModus }: Props = {}) {
             <Tabs
               variant="segment"
               activeId={modus}
-              onSelect={(m) => aufModus(m as 'dark' | 'light')}
+              onSelect={(m) => aufModus(m as 'dark' | 'light' | 'system')}
               tabs={[
-                { id: 'light', label: t('nav.hell'), icon: <Sun className="size-4" /> },
-                { id: 'dark', label: t('nav.dunkel'), icon: <Moon className="size-4" /> },
+                { id: 'light', label: t('darstellung.modus_hell'), icon: <Sun className="size-4" /> },
+                { id: 'dark', label: t('darstellung.modus_dunkel'), icon: <Moon className="size-4" /> },
+                { id: 'system', label: t('darstellung.modus_system'), icon: <Monitor className="size-4" /> },
               ]}
             />
           </div>

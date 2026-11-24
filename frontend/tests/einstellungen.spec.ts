@@ -43,7 +43,7 @@ test('Hell/Dunkel und Sprache stehen nicht mehr oben, sondern in den Einstellung
   await expect(page.getByRole('button', { name: /Dunkler Modus|Heller Modus/ })).toHaveCount(0)
   await expect(page.getByRole('group', { name: 'Sprache' })).toHaveCount(0)
   await zuEinstellungen(page, 'Darstellung')
-  await expect(page.getByRole('tab', { name: 'Dunkler Modus' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Dunkel', exact: true })).toBeVisible()
   await bereich(page, 'Profil')
   await expect(page.getByRole('combobox', { name: /^Sprache/ })).toBeVisible()
 })
@@ -98,7 +98,7 @@ test('Jeder Bereich geht auf, mit Inhalt und ohne Fehler', async ({ page }, info
   const merkmal: Array<[string, RegExp[]]> = [
     ['Profil', [/Bild wählen|Anderes Bild/, /Gilt in diesem Browser/, /^Abmelden$/]],
     ['Sicherheit', [/Angemeldete Geräte/, /Wiederherstellungscode/]],
-    ['Darstellung', [/Dichte der Nachrichtenliste/i, /Heller Modus/]],
+    ['Darstellung', [/Dichte der Nachrichtenliste/i, /Wie das System/]],
     ['Benachrichtigungen', [/Je Abgleich eine Meldung/]],
     ['Verbindungen', [/Verbinde deine Todo-App/, /Code anzeigen/, /Adresse für das Dashboard/]],
     // Seit 23.11.2026 ein eigener Bereich (vorher nur in Kalender und Kontakten).

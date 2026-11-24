@@ -27,7 +27,11 @@ import {
   kalenderAnlegen,
   kalenderPruefen,
   kalenderVerbinden,
+  nextimeStandLaden,
+  type NextimeStand,
 } from '../api/laden'
+import nextimeLogo from '../assets/nextime.svg'
+import { ZU_NEXTIME, nextimeMarkeSetzen } from '../pages/einstellungen/NexApps'
 import type { GefundenerKalender, KalenderZeile } from '../api/laden'
 import { Button, Checkbox, Dialog, Input, Select } from '../ds'
 import { PUNKT_KLASSE } from '../lib/farben'
@@ -78,6 +82,20 @@ export function Kalenderfenster({ vorhanden, onClose, onFertig }: Props) {
       .catch(() => setZugaenge([]))
   }, [])
   const passende = zugaenge.filter((z) => z.art === 'google')
+
+  /* nextime als erster Weg (Befund 2 vom 24.11.2026): alle Kalender auf
+     einmal. Der Klick führt zur nextime-Karte unter „Verbindungen". */
+  const [nextime, setNextime] = useState<NextimeStand | null>(null)
+  useEffect(() => {
+    void nextimeStandLaden()
+      .then(setNextime)
+      .catch(() => setNextime(null))
+  }, [])
+  const zuNextime = () => {
+    nextimeMarkeSetzen()
+    onClose()
+    window.dispatchEvent(new Event(ZU_NEXTIME))
+  }
   useEffect(() => {
     if (anbieter === 'google' && !zugangId && passende.length) setZugangId(passende[0].id)
   }, [anbieter, zugangId, passende])
@@ -172,7 +190,7 @@ export function Kalenderfenster({ vorhanden, onClose, onFertig }: Props) {
         )
       }
     >
-      {weg === null && <Weiche aufWeg={setWeg} />}
+      {weg === null && <Weiche aufWeg={setWeg} nextime={nextime} aufNextime={zuNextime} />}
 
       {weg === 'eigener' && (
         <div className="flex flex-col gap-3">
@@ -330,8 +348,23 @@ export function Kalenderfenster({ vorhanden, onClose, onFertig }: Props) {
 
 /* --- Die Weiche --------------------------------------------------------- */
 
-function Weiche({ aufWeg }: { aufWeg: (w: Weg) => void }) {
+function Weiche({
+  aufWeg,
+  nextime,
+  aufNextime,
+}: {
+  aufWeg: (w: Weg) => void
+  nextime: NextimeStand | null
+  aufNextime: () => void
+}) {
   const { t } = useTranslation()
+  const wirt = (() => {
+    try {
+      return nextime?.adresse ? new URL(nextime.adresse).host : ''
+    } catch {
+      return nextime?.adresse ?? ''
+    }
+  })()
   const karten: Array<{ id: Weg; symbol: React.ReactNode; titel: string; text: string }> = [
     {
       id: 'eigener',
@@ -355,6 +388,21 @@ function Weiche({ aufWeg }: { aufWeg: (w: Weg) => void }) {
 
   return (
     <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={aufNextime}
+        className="flex items-start gap-3 rounded-md border border-line p-3 text-left transition-colors duration-[var(--dur-fast)] hover:border-accent-line hover:bg-surface-3"
+      >
+        <img src={nextimeLogo} alt="" aria-hidden className="size-5 shrink-0 rounded-[5px]" />
+        <span className="min-w-0">
+          <span className="block text-[13px] font-medium text-fg-1">nextime</span>
+          <span className="block text-[12px] leading-relaxed text-fg-4">
+            {nextime?.verbunden
+              ? t('kalender.hinzu_nextime_verbunden', { wo: wirt })
+              : t('kalender.hinzu_nextime_text')}
+          </span>
+        </span>
+      </button>
       {karten.map((k) => (
         <button
           key={k.id}

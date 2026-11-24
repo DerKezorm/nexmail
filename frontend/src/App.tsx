@@ -24,6 +24,7 @@ import {
   CornerUpRight,
   Flag,
   ListChecks,
+  CalendarClock,
   FolderInput,
   FolderCog,
   FolderPlus,
@@ -135,7 +136,6 @@ import type { Rueckweg, VolleNachricht, WiedervorlageEintrag } from './api/laden
 import type { Ausgangseintrag, Konto, Nachricht, Ordner, Schlagwort } from './daten/typen'
 import { Schlagwortmarke } from './components/Schlagwortmarke'
 import { Umzugsfenster } from './components/Umzugsfenster'
-import { PUNKT_KLASSE } from './lib/farben'
 import { useGemerkt, useSchmal } from './lib/haken'
 import { lesemodusAus } from './lib/lesemodus'
 import type { Lesemodus } from './lib/lesemodus'
@@ -155,6 +155,9 @@ import { ausMenue } from './lib/befehle'
 import type { Befehl } from './lib/befehle'
 import { Befehlspalette } from './components/Befehlspalette'
 import { AufgabeAnlegen } from './components/AufgabeAnlegen'
+import { Postfachzeichen } from './components/Postfachzeichen'
+import { TerminAusMail, type MailFuerTermin } from './components/TerminAusMail'
+import { ZU_NEXTIME } from './pages/einstellungen/NexApps'
 import type { Mailkopf } from './components/AufgabeAnlegen'
 import type { ZielStand } from './lib/aufgabenziele'
 
@@ -163,6 +166,9 @@ type Modus = 'dark' | 'light'
 interface AppProps {
   modus: Modus
   aufModus: (m: Modus) => void
+  /** Was unter Darstellung gewählt ist, samt „Wie das System“. */
+  darstellung?: Modus | 'system'
+  aufDarstellung?: (w: Modus | 'system') => void
   ich: Ich | null
   /** Den angemeldeten Benutzer neu holen — nach jeder Änderung an ihm. */
   ichNeuLaden?: () => void
@@ -210,7 +216,7 @@ interface Menuelage {
   eintraege: MenueEintrag[]
 }
 
-export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: AppProps) {
+export default function App({ modus, aufModus, darstellung, aufDarstellung, ich, ichNeuLaden, aufAbmelden }: AppProps) {
   const { t, i18n } = useTranslation()
   /* „Was ist neu“ zur laufenden Version: der Text, ob das Fenster offen ist,
      und ob der Banner in dieser Sitzung schon weg ist. */
@@ -380,6 +386,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
   const [stoerung, setStoerung] = useState('')
   /** Die Mails, für die das Fenster „Zu Aufgabe machen" offen steht. */
   const [aufgabeFuer, setAufgabeFuer] = useState<Mailkopf[]>([])
+  /** Die Mail hinter „Termin daraus machen“ (MAIL-1 AC-17), `null` heißt zu. */
+  const [terminAus, setTerminAus] = useState<MailFuerTermin | null>(null)
   const stoerUhr = useRef<number | undefined>(undefined)
   useEffect(() => {
     if (!stoerung) return
@@ -1728,10 +1736,7 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         text: konto.adresse,
         trennerDavor: i === 0 && eigene.length > 0,
         symbol: (
-          <span
-            aria-hidden
-            className={`size-2 shrink-0 rounded-full ${PUNKT_KLASSE[konto.farbe]}`}
-          />
+          <Postfachzeichen konto={konto} />
         ),
         unter: seine.map(eintrag),
       })),
@@ -1845,6 +1850,19 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
             })()
           },
         },
+        ...(ids.length === 1
+          ? [
+              {
+                /* MAIL-1 AC-17: neben „Zu Aufgabe machen“, weil beide aus
+                   einer Mail etwas für später machen. Nur für eine Mail; aus
+                   mehreren entsteht kein gemeinsamer Termin. */
+                id: 'termin',
+                text: t('termin.aus_mail'),
+                symbol: <CalendarClock />,
+                tun: () => setTerminAus({ id: String(n.id), betreff: n.betreff }),
+              },
+            ]
+          : []),
         {
           /* Die Wiedervorlage direkt neben der Aufgabe: Beide beantworten
              „das noch, aber später" — die Aufgabe merkt es sich nur, die
@@ -2226,6 +2244,20 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
      anderen Bereich der Einstellungen heraus (der Link dort führt ebenso auf
      die Einstellungsseite selbst). (Bis 23.11.2026 stand an der Stelle
      „Postfach hinzufügen"; das geht über die (+)-Kachel unter Postfächer.) */
+  /* „Kalender hinzufügen" › nextime: zur nextime-Karte unter „Verbindungen"
+     (Befund 2 vom 24.11.2026). Das Fenster kommt aus dem Kalender oder aus
+     den Einstellungen; links bleibt stehen, woher man kam. */
+  useEffect(() => {
+    const zu = () => {
+      setReiter('verbindungen')
+      if (ansicht !== 'einstellungen') setEinstellungenVon(ansicht)
+      setAnsicht('einstellungen')
+      setSchubladeOffen(false)
+    }
+    window.addEventListener(ZU_NEXTIME, zu)
+    return () => window.removeEventListener(ZU_NEXTIME, zu)
+  }, [ansicht])
+
   function einstellungenOeffnen() {
     setReiter('profil')
     // ⚠️ Woher man kommt, bleibt links stehen (gemeldet am 23.11.2026: aus dem
@@ -2304,6 +2336,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         aufAbmelden={abmelden}
         modus={modus}
         aufModus={aufModus}
+        darstellung={darstellung}
+        aufDarstellung={aufDarstellung}
         formularOffen={formularOffen}
         wahlOffen={wahlOffen}
         aufWahl={setWahlOffen}
@@ -2931,6 +2965,8 @@ export default function App({ modus, aufModus, ich, ichNeuLaden, aufAbmelden }: 
         aufZu={() => setAufgabeFuer([])}
         aufFertig={() => void aufgabenZaehlen()}
       />
+
+      <TerminAusMail mail={terminAus} aufZu={() => setTerminAus(null)} />
 
       {verfassenGebraucht && (
       <Suspense fallback={null}>

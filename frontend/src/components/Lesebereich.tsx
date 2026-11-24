@@ -52,6 +52,7 @@ import {
 import { KiKarte } from './KiKarte'
 import type { KiArt } from './KiKarte'
 import { Einladungskarte } from './Einladungskarte'
+import { TermineAusMail } from './TerminAusMail'
 import { anzeigename, groesse, langesDatum } from '../lib/format'
 import { Schlagwortmarke } from './Schlagwortmarke'
 import { Button, EmptyState, IconButton } from '../ds'
@@ -749,6 +750,9 @@ export function Lesebereich({
             aufAntwort={setEinladung}
           />
         )}
+
+        {/* MAIL-1 AC-17: Was aus dieser Mail schon an Terminen entstanden ist. */}
+        <TermineAusMail nachrichtId={nachricht.id} />
 
         {nachricht.geblockteBilder > 0 && freigegeben === null && (
           /* ⚠️ **Text oben, Knöpfe darunter** (gemeldet am 23.11.2026): Nebeneinander

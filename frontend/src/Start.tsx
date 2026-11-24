@@ -22,10 +22,32 @@ import type { Ich, Stand } from './api/client'
 import { useGemerkt } from './lib/haken'
 
 type Modus = 'dark' | 'light'
+/** Was gewählt ist: hell, dunkel oder wie das System (seit 24.11.2026, wie
+ *  nexnotes und nextasks). */
+export type Darstellungswahl = Modus | 'system'
+
+/** Ob das System gerade dunkel will; folgt dem Umschalten live. */
+function useSystemDunkel(): boolean {
+  const frage = '(prefers-color-scheme: dark)'
+  const [dunkel, setDunkel] = useState(() => window.matchMedia?.(frage).matches ?? true)
+  useEffect(() => {
+    const m = window.matchMedia?.(frage)
+    if (!m) return
+    const neu = () => setDunkel(m.matches)
+    m.addEventListener('change', neu)
+    return () => m.removeEventListener('change', neu)
+  }, [])
+  return dunkel
+}
 type Lage = 'laedt' | 'einrichten' | 'anmelden' | 'drin' | 'server_weg'
 
 export default function Start() {
-  const [modus, setModus] = useGemerkt<Modus>('nexmail.modus', 'dark')
+  /* ⚠️ **Derselbe Schlüssel wie vorher**, jetzt mit `system` als drittem Wert:
+     Wer hell oder dunkel gewählt hatte, behält es. Die Umschalter auf den
+     Seiten vor der Anmeldung setzen ausdrücklich hell oder dunkel. */
+  const [wahl, setModus] = useGemerkt<Darstellungswahl>('nexmail.modus', 'dark')
+  const systemDunkel = useSystemDunkel()
+  const modus: Modus = wahl === 'system' ? (systemDunkel ? 'dark' : 'light') : wahl
   const [lage, setLage] = useState<Lage>('laedt')
   const [ich, setIch] = useState<Ich | null>(null)
   /* Der Schlüssel aus der Adresse. Einmal beim Start gelesen — danach räumt
@@ -182,6 +204,8 @@ export default function Start() {
     <App
       modus={modus}
       aufModus={setModus}
+      darstellung={wahl}
+      aufDarstellung={setModus}
       ich={ich}
       ichNeuLaden={() => void ichNeuLaden()}
       aufAbmelden={() => void pruefen()}

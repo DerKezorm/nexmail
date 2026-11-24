@@ -24,6 +24,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  ExternalLink,
   Link2,
   Menu,
   MoreHorizontal,
@@ -43,19 +44,24 @@ import {
   kalenderAendern,
   kalenderEntfernen,
   einladungVersenden,
-  kalenderLaden,
+  eigeneKalender,
+  istNextimeKalender,
   kontenLaden,
+  nextimeKalender,
   konfliktAufloesen,
+  nextimeVersion,
   terminAendern,
   terminAnlegen,
+  terminDetail,
   terminEntfernen,
-  termineLaden,
+  termineMitNextime,
   termineSuchen,
 } from '../api/laden'
 import type { Beteiligter, KalenderZeile, TerminZeile, Umfang } from '../api/laden'
 import type { Konto } from '../daten/typen'
 import { Button, Checkbox, Dialog, EmptyState, IconButton, Input, Select } from '../ds'
-import { PUNKT_KLASSE } from '../lib/farben'
+import { kalenderPunkt } from '../lib/farben'
+import { servermeldung } from '../lib/servermeldung'
 import { useSchmal } from '../lib/haken'
 import { alsDatum, imTag } from '../lib/kalendertage'
 import { farbpunkte, monatsraster, nachTagen, tagesliste } from '../lib/kalenderschmal'
@@ -86,6 +92,17 @@ import type { Zeitraum } from '../lib/ziehen'
 import { nebeneinander } from '../lib/ueberlappung'
 
 type Sicht = 'monat' | 'woche' | 'tag'
+
+/** Wie oft nach Neuem in nextime gefragt wird (MAIL-1 EC-6). */
+const NEXTIME_NACHSEHEN_MS = 60_000
+
+/** Die Überschrift einer Gruppe aus nextime, wie in nextimes Seitenleiste. */
+function gruppenName(k: KalenderZeile, t: (s: string) => string): string {
+  if (k.gruppe === 'own') return 'nextime'
+  if (k.gruppe === 'shared') return t('kalender.gruppe_geteilt')
+  if (k.gruppe === 'subscriptions') return t('kalender.gruppe_abos')
+  return k.herkunft || 'nextime'
+}
 
 /** Von wann bis wann das Zeitraster reicht. Nachts liegt fast nie etwas, und
  *  volle 24 Stunden drücken den Tag auf Streichholzhöhe. */
@@ -253,6 +270,12 @@ export function KalenderPage({ rahmen }: SeitenProps) {
   const [postfaecher, setPostfaecher] = useState<Konto[]>([])
   const [termine, setTermine] = useState<TerminZeile[]>([])
   const [fehler, setFehler] = useState('')
+  /* ⚠️ **nextime kann fehlen, ohne dass der Kalender fehlt** (MAIL-1 EC-1):
+     Dann stehen die eigenen Kalender da, und an der Gruppe „nextime" steht,
+     warum der Rest fehlt. Kein roter Balken über der ganzen Seite. */
+  const [nextimeFehler, setNextimeFehler] = useState<unknown>(null)
+  /** Zählt die Ladeläufe der Termine; nur der neueste darf schreiben. */
+  const termineLauf = useRef(0)
   const [offen, setOffen] = useState<TerminZeile | null>(null)
   const [neuAb, setNeuAb] = useState<{ beginn: Date; ganztaegig: boolean } | null>(null)
   const [kalenderNeu, setKalenderNeu] = useState(false)
@@ -306,7 +329,19 @@ export function KalenderPage({ rahmen }: SeitenProps) {
       // ⚠️ Ein Fehlschlag bei den Postfächern darf den Kalender nicht kosten;
       // ohne sie fehlt nur die Absenderwahl.
       void kontenLaden().then(setPostfaecher).catch(() => undefined)
-      setKalender(await kalenderLaden())
+      /* ⚠️ **Die eigenen sofort, nextime danach** (Prüfbericht, Befund 6): Ein
+         nextime, das nicht antwortet, soll die eigenen Kalender nicht bis zu
+         15 s aufhalten. */
+      const eigene = await eigeneKalender()
+      setKalender((alt) => [...eigene, ...(alt ?? []).filter((k) => k.art === 'nextime')])
+      try {
+        const fern = await nextimeKalender()
+        setKalender([...eigene, ...fern])
+        setNextimeFehler(null)
+      } catch (f) {
+        setKalender(eigene)
+        setNextimeFehler(f)
+      }
     } catch {
       setKalender([])
       setFehler(t('kalender.laden_fehler'))
@@ -319,9 +354,31 @@ export function KalenderPage({ rahmen }: SeitenProps) {
       setTermine([])
       return
     }
+    const nr = ++termineLauf.current
     try {
-      setTermine(await termineLaden(von, bis, sichtbare))
+      /* ⚠️ **Auch hier die eigenen zuerst** (Befund 6), nextime kommt dazu,
+         sobald es antwortet. Die Laufnummer verwirft eine Antwort, die zu
+         einem älteren Fenster gehört. */
+      const eigene = await termineMitNextime(
+        von,
+        bis,
+        sichtbare.filter((id) => !istNextimeKalender(id)),
+      )
+      if (nr !== termineLauf.current) return
+      const fern = sichtbare.filter(istNextimeKalender)
+      setTermine((alt) =>
+        [...eigene.termine, ...alt.filter((t) => t.fern && fern.includes(t.kalenderId))].sort((a, b) =>
+          a.beginn.localeCompare(b.beginn),
+        ),
+      )
       setFehler('')
+      if (!fern.length) return
+      const dort = await termineMitNextime(von, bis, fern)
+      if (nr !== termineLauf.current) return
+      setTermine(
+        [...eigene.termine, ...dort.termine].sort((a, b) => a.beginn.localeCompare(b.beginn)),
+      )
+      if (dort.nextimeFehler) setNextimeFehler(dort.nextimeFehler)
     } catch (f) {
       melden(f)
     }
@@ -366,6 +423,52 @@ export function KalenderPage({ rahmen }: SeitenProps) {
   useEffect(() => {
     void termineHolen()
   }, [termineHolen])
+
+  /* Ändert sich in nextime etwas, steht es nach kurzer Zeit hier (MAIL-1 EC-6).
+   *
+   * ⚠️ **Gefragt wird nur nach der Versionsnummer**, nicht nach den Terminen:
+   * Erst wenn sie sich ändert, lädt das Fenster neu. Und nur, solange die
+   * Seite sichtbar ist; ein Reiter im Hintergrund fragt nicht. */
+  const mitNextime = (kalender ?? []).some((k) => k.art === 'nextime')
+  const nextimeStand = useRef('')
+  useEffect(() => {
+    if (!mitNextime) return
+    let aus = false
+    const nachsehen = async () => {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const version = await nextimeVersion()
+        if (aus) return
+        if (nextimeStand.current && version !== nextimeStand.current) void termineHolen()
+        nextimeStand.current = version
+      } catch {
+        // Fehlt nextime gerade, sagt es das nächste Laden; hier nicht zweimal.
+      }
+    }
+    void nachsehen()
+    const uhr = window.setInterval(() => void nachsehen(), NEXTIME_NACHSEHEN_MS)
+    return () => {
+      aus = true
+      window.clearInterval(uhr)
+    }
+  }, [mitNextime, termineHolen])
+
+  /** Einen Termin öffnen. ⚠️ **Einen aus nextime erst ganz holen**: Das
+   *  Fenster der Woche kennt seine Notiz nicht, und wer mit dem leeren Feld
+   *  speicherte, löschte sie in nextime. „Nur belegt" öffnet gar nicht. */
+  const oeffnen = useCallback(
+    (termin: TerminZeile) => {
+      if (termin.fern?.nurBelegt) return
+      if (!termin.fern) {
+        setOffen(termin)
+        return
+      }
+      void terminDetail(termin)
+        .then(setOffen)
+        .catch(melden)
+    },
+    [melden],
+  )
 
   async function jetztAbgleichen() {
     if (gleichtAb) return
@@ -516,6 +619,9 @@ export function KalenderPage({ rahmen }: SeitenProps) {
   }
 
   function kalenderMenue(k: KalenderZeile): MenueEintrag[] {
+    /* ⚠️ **Ein Kalender aus nextime gehört nextime** (MAIL-1 Out of Scope):
+       Umbenennen, Farbe, Trennen geschehen dort. Hier gibt es nur den Haken. */
+    if (k.art === 'nextime') return []
     return [
       {
         id: 'umbenennen',
@@ -610,6 +716,59 @@ export function KalenderPage({ rahmen }: SeitenProps) {
     ]
   }
 
+  const eigene = (kalender ?? []).filter((k) => k.art !== 'nextime')
+  const ausNextime = (kalender ?? []).filter((k) => k.art === 'nextime')
+
+  function kalenderReihe(k: KalenderZeile) {
+    return (
+            /* ⚠️ **Der Farbfleck steht VOR dem Haken, nicht dahinter.** Der
+               Haken sagt „wird angezeigt", der Fleck sagt „so sieht er im
+               Raster aus" — zwei Aussagen, und die Farbe ist die, nach der man
+               sucht. Thunderbird hält es genauso. */
+            <div
+              key={k.id}
+              className="flex items-center gap-2 rounded-md px-1 py-1.5 hover:bg-surface-3"
+              /* ⚠️ Dieselbe Bedienung wie am Ordner nebenan. Eine Liste, die
+                 sich anders bedienen lässt als die Liste daneben, ist ein
+                 Fehler — dasselbe hat der OIDC-Reiter schon einmal gekostet. */
+              onContextMenu={(e) => {
+                e.preventDefault()
+                const eintraege = kalenderMenue(k)
+                if (eintraege.length) setMenue({ x: e.clientX, y: e.clientY, eintraege })
+              }}
+            >
+              <span aria-hidden className={`size-2.5 shrink-0 rounded-sm ${kalenderPunkt(k)}`} />
+              <span className="min-w-0 flex-1 truncate text-[13px]">
+                <Checkbox
+                  label={k.name}
+                  checked={k.sichtbar}
+                  onCheckedChange={(an) => void sichtbarSetzen(k, an)}
+                />
+              </span>
+              {/* ⚠️ **Der Fehler steht am Kalender, nicht in einem Banner.**
+                  Bei fünf verbundenen Kalendern sagt „Abgleich fehlgeschlagen"
+                  nicht, welcher — und man sucht am falschen. */}
+              {k.letzterFehler ? (
+                <span
+                  title={
+                    i18n.exists(`kalender.fehler_${k.letzterFehler}`)
+                      ? t(`kalender.fehler_${k.letzterFehler}`)
+                      : t('kalender.fehler_allgemein')
+                  }
+                >
+                  <AlertTriangle aria-hidden className="size-3.5 shrink-0 text-warning" />
+                </span>
+              ) : (
+                k.art && (
+                  <span title={`${k.herkunft}${k.nurLesen ? ` · ${t('kalender.nur_lesen')}` : ''}`}>
+                    <Link2 aria-hidden className="size-3.5 shrink-0 text-fg-4" />
+                  </span>
+                )
+              )}
+            </div>
+    )
+  }
+
   const titel =
     sicht === 'tag'
       ? anker.toLocaleDateString(i18n.language, { day: 'numeric', month: 'long', year: 'numeric' })
@@ -656,7 +815,7 @@ export function KalenderPage({ rahmen }: SeitenProps) {
           kalender={kalender ?? []}
           nachId={nachId}
           leer={kalender !== null && kalender.length === 0}
-          aufTermin={setOffen}
+          aufTermin={oeffnen}
           aufNeu={(d) =>
             setNeuAb({
               beginn:
@@ -681,7 +840,7 @@ export function KalenderPage({ rahmen }: SeitenProps) {
                 kalender={nachId}
                 aufTermin={(termin) => {
                   setAnker(new Date(termin.beginn))
-                  setOffen(termin)
+                  oeffnen(termin)
                   setWort('')
                 }}
               />
@@ -709,53 +868,42 @@ export function KalenderPage({ rahmen }: SeitenProps) {
               onClick={() => setKalenderNeu(true)}
             />
           </div>
-          {(kalender ?? []).map((k) => (
-            /* ⚠️ **Der Farbfleck steht VOR dem Haken, nicht dahinter.** Der
-               Haken sagt „wird angezeigt", der Fleck sagt „so sieht er im
-               Raster aus" — zwei Aussagen, und die Farbe ist die, nach der man
-               sucht. Thunderbird hält es genauso. */
-            <div
-              key={k.id}
-              className="flex items-center gap-2 rounded-md px-1 py-1.5 hover:bg-surface-3"
-              /* ⚠️ Dieselbe Bedienung wie am Ordner nebenan. Eine Liste, die
-                 sich anders bedienen lässt als die Liste daneben, ist ein
-                 Fehler — dasselbe hat der OIDC-Reiter schon einmal gekostet. */
-              onContextMenu={(e) => {
-                e.preventDefault()
-                setMenue({ x: e.clientX, y: e.clientY, eintraege: kalenderMenue(k) })
-              }}
-            >
-              <span aria-hidden className={`size-2.5 shrink-0 rounded-sm ${PUNKT_KLASSE[k.farbe]}`} />
-              <span className="min-w-0 flex-1 truncate text-[13px]">
-                <Checkbox
-                  label={k.name}
-                  checked={k.sichtbar}
-                  onCheckedChange={(an) => void sichtbarSetzen(k, an)}
-                />
-              </span>
-              {/* ⚠️ **Der Fehler steht am Kalender, nicht in einem Banner.**
-                  Bei fünf verbundenen Kalendern sagt „Abgleich fehlgeschlagen"
-                  nicht, welcher — und man sucht am falschen. */}
-              {k.letzterFehler ? (
-                <span
-                  title={
-                    i18n.exists(`kalender.fehler_${k.letzterFehler}`)
-                      ? t(`kalender.fehler_${k.letzterFehler}`)
-                      : t('kalender.fehler_allgemein')
-                  }
-                >
-                  <AlertTriangle aria-hidden className="size-3.5 shrink-0 text-warning" />
-                </span>
-              ) : (
-                k.art && (
-                  <span title={`${k.herkunft}${k.nurLesen ? ` · ${t('kalender.nur_lesen')}` : ''}`}>
-                    <Link2 aria-hidden className="size-3.5 shrink-0 text-fg-4" />
-                  </span>
-                )
-              )}
-            </div>
-          ))}
+          {eigene.map(kalenderReihe)}
         </div>
+
+        {/* ⚠️ **Die Kalender aus nextime in nextimes Gruppen und Reihenfolge**
+            (MAIL-1 AC-3): Wer sie dort als „iCloud" und „Abos und Hintergrund"
+            sieht, soll sie hier genauso finden. */}
+        {(ausNextime.length > 0 || Boolean(nextimeFehler)) && (
+          <div className="flex flex-col gap-1">
+            {ausNextime.map((k, i) => {
+              const ueberschrift = gruppenName(k, t)
+              const neu = i === 0 || gruppenName(ausNextime[i - 1], t) !== ueberschrift
+              return (
+                <div key={k.id} className="flex flex-col">
+                  {neu && (
+                    <h2
+                      className={`mb-0 pb-1 pl-1 text-[11px] font-semibold tracking-wide text-fg-4 uppercase ${i ? 'pt-3' : ''}`}
+                    >
+                      {ueberschrift}
+                    </h2>
+                  )}
+                  {kalenderReihe(k)}
+                </div>
+              )
+            })}
+            {Boolean(nextimeFehler) && (
+              <p className="mb-0 flex items-start gap-1.5 px-1 pt-1 text-[11px] leading-relaxed text-warning">
+                <AlertTriangle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  {t('kalender.nextime_fehlt', {
+                    grund: servermeldung(nextimeFehler, t('kalender.nextime_nicht_erreichbar')),
+                  })}
+                </span>
+              </p>
+            )}
+          </div>
+        )}
 
         {/* ⚠️ Der Satz steht dort, wo die abonnierten Kalender stehen — und
             nur, wenn es wirklich einen gibt: ein Hinweis ohne Anlass wird nach
@@ -829,7 +977,7 @@ export function KalenderPage({ rahmen }: SeitenProps) {
                  „wann ist das?" offen; nur hinzuspringen zwänge, den Termin im
                  Raster noch einmal zu suchen. */
               setAnker(new Date(termin.beginn))
-              setOffen(termin)
+              oeffnen(termin)
               setWort('')
             }}
           />
@@ -850,7 +998,7 @@ export function KalenderPage({ rahmen }: SeitenProps) {
             anker={anker}
             termine={termine}
             kalender={nachId}
-            aufTermin={setOffen}
+            aufTermin={oeffnen}
             aufLeer={(d) => setNeuAb({ beginn: d, ganztaegig: true })}
             aufVerschieben={verschieben}
           />
@@ -860,7 +1008,7 @@ export function KalenderPage({ rahmen }: SeitenProps) {
             tage={sicht === 'woche' ? 7 : 1}
             termine={termine}
             kalender={nachId}
-            aufTermin={setOffen}
+            aufTermin={oeffnen}
             aufLeer={(d) => setNeuAb({ beginn: d, ganztaegig: false })}
             aufVerschieben={verschieben}
           />
@@ -904,7 +1052,7 @@ export function KalenderPage({ rahmen }: SeitenProps) {
           termin={offen}
           vorgabe={neuAb}
           kalender={(kalender ?? []).filter((k) => !k.nurLesen)}
-          gesperrt={Boolean(offen && nachId.get(offen.kalenderId)?.nurLesen)}
+          gesperrt={Boolean(offen && (nachId.get(offen.kalenderId)?.nurLesen || (offen.fern && !offen.fern.beschreibbar)))}
           herkunft={offen ? (nachId.get(offen.kalenderId)?.herkunft ?? '') : ''}
           postfaecher={postfaecher}
           aufEinladen={einladenFragen}
@@ -1061,7 +1209,7 @@ function Trefferliste({
           <span
             aria-hidden
             className={`mt-1.5 size-2 shrink-0 rounded-pill ${
-              PUNKT_KLASSE[kalender.get(e.kalenderId)?.farbe ?? 1]
+              kalenderPunkt(kalender.get(e.kalenderId))
             }`}
           />
           <span className="min-w-0 flex-1">
@@ -1213,7 +1361,7 @@ function KalenderSchmal({
       </span>
       <span
         aria-hidden
-        className={`rounded-sm ${PUNKT_KLASSE[nachId.get(e.kalenderId)?.farbe ?? 1]}`}
+        className={`rounded-sm ${kalenderPunkt(nachId.get(e.kalenderId))}`}
       />
       <span className="min-w-0">
         <span className="block truncate text-[14px] font-medium text-fg-1">{e.titel}</span>
@@ -1362,7 +1510,7 @@ function KalenderSchmal({
                       <span
                         key={id}
                         aria-hidden
-                        className={`size-1.5 rounded-pill ${PUNKT_KLASSE[nachId.get(id)?.farbe ?? 1]}`}
+                        className={`size-1.5 rounded-pill ${kalenderPunkt(nachId.get(id))}`}
                       />
                     ))}
                   </span>
@@ -1459,7 +1607,7 @@ function KalenderSchmal({
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {kalender.map((k) => (
             <div key={k.id} className="flex items-center gap-2 rounded-md px-1 py-2">
-              <span aria-hidden className={`size-2.5 shrink-0 rounded-sm ${PUNKT_KLASSE[k.farbe]}`} />
+              <span aria-hidden className={`size-2.5 shrink-0 rounded-sm ${kalenderPunkt(k)}`} />
               <span className="min-w-0 flex-1 truncate text-[14px]">
                 <Checkbox
                   label={k.name}
@@ -1472,9 +1620,12 @@ function KalenderSchmal({
               ) : (
                 k.art && <Link2 aria-hidden className="size-3.5 shrink-0 text-fg-4" />
               )}
-              <IconKnopf label={t('kalender.mehr_zu', { name: k.name })} onClick={() => setBlatt(k)}>
-                <MoreHorizontal />
-              </IconKnopf>
+              {/* ⚠️ Kalender aus nextime haben hier kein Menü: Sie gehören nextime. */}
+              {k.art !== 'nextime' && (
+                <IconKnopf label={t('kalender.mehr_zu', { name: k.name })} onClick={() => setBlatt(k)}>
+                  <MoreHorizontal />
+                </IconKnopf>
+              )}
             </div>
           ))}
           <Button
@@ -1583,7 +1734,7 @@ function Monat({
                 {d.getDate()}
               </div>
               {drin.slice(0, 3).map((e) => {
-                const fest = kalender.get(e.kalenderId)?.nurLesen ?? false
+                const fest = (kalender.get(e.kalenderId)?.nurLesen ?? false) || Boolean(e.fern && !e.fern.beschreibbar)
                 const wandert = Boolean(zug) && zug?.ur.id === e.id
                 return (
                 <button
@@ -1601,13 +1752,14 @@ function Monat({
                   className={
                     'flex items-center gap-1.5 rounded-sm px-1 py-0.5 text-left hover:bg-surface-3 ' +
                     (fest ? '' : 'cursor-grab ') +
+                    (e.fern?.hintergrund ? 'opacity-60 ' : '') +
                     (wandert ? 'opacity-70' : '')
                   }
                 >
                   <span
                     aria-hidden
                     className={`size-1.5 shrink-0 rounded-pill ${
-                      PUNKT_KLASSE[kalender.get(e.kalenderId)?.farbe ?? 1]
+                      kalenderPunkt(kalender.get(e.kalenderId))
                     }`}
                   />
                   <span className="min-w-0 flex-1 truncate text-[11px] text-fg-2">
@@ -1711,7 +1863,7 @@ function Raster({
             {gezeigte
               .filter((e) => e.ganztaegig && imTag(e, d))
               .map((e) => {
-                const fest = kalender.get(e.kalenderId)?.nurLesen ?? false
+                const fest = (kalender.get(e.kalenderId)?.nurLesen ?? false) || Boolean(e.fern && !e.fern.beschreibbar)
                 const wandert = zug?.ur.id === e.id
                 return (
                 <button
@@ -1726,13 +1878,14 @@ function Raster({
                   className={
                     'flex items-center gap-1.5 rounded-sm bg-surface-3 px-1.5 py-0.5 text-left ' +
                     (fest ? '' : 'cursor-grab ') +
+                    (e.fern?.hintergrund ? 'opacity-60 ' : '') +
                     (wandert ? 'opacity-70' : '')
                   }
                 >
                   <span
                     aria-hidden
                     className={`h-3 w-1 shrink-0 rounded-pill ${
-                      PUNKT_KLASSE[kalender.get(e.kalenderId)?.farbe ?? 1]
+                      kalenderPunkt(kalender.get(e.kalenderId))
                     }`}
                   />
                   <span className="min-w-0 flex-1 truncate text-[11px] text-fg-2">{e.titel}</span>
@@ -1773,7 +1926,7 @@ function Raster({
               />
             ))}
             {tagesTermine(gezeigte, d).map(({ termin: e, lage }) => {
-                const fest = kalender.get(e.kalenderId)?.nurLesen ?? false
+                const fest = (kalender.get(e.kalenderId)?.nurLesen ?? false) || Boolean(e.fern && !e.fern.beschreibbar)
                 const wandert = zug?.ur.id === e.id
                 const a = new Date(e.beginn)
                 const b = new Date(e.ende)
@@ -1807,13 +1960,14 @@ function Raster({
                          und man zieht etwas, das man nicht mehr sieht. */
                       (wandert ? 'z-10 ' : '') +
                       (fest ? '' : 'cursor-grab ') +
+                    (e.fern?.hintergrund ? 'opacity-60 ' : '') +
                       (wandert ? 'opacity-70 ring-1 ring-accent' : '')
                     }
                   >
                     <span
                       aria-hidden
                       className={`w-1 shrink-0 rounded-pill ${
-                        PUNKT_KLASSE[kalender.get(e.kalenderId)?.farbe ?? 1]
+                        kalenderPunkt(kalender.get(e.kalenderId))
                       }`}
                     />
                     {/* ⚠️ **Ein halbstündiger Block ist 24 px hoch.** Zwei
@@ -2001,7 +2155,16 @@ function Terminfenster({
     leuteBeruehrt.current = true
     setLeute(leute.filter((p) => p.adresse !== adresse))
   }
-  const [kalenderId, setKalenderId] = useState(termin?.kalenderId ?? kalender[0]?.id ?? '')
+  /* ⚠️ **Neu angelegt wird im Standardkalender von nextime**, wenn es
+     verbunden ist (MAIL-1 AC-5): Den hat man dort mit Absicht gewählt. */
+  const [kalenderId, setKalenderId] = useState(
+    termin?.kalenderId ?? kalender.find((k) => k.standard)?.id ?? kalender[0]?.id ?? '',
+  )
+  /* Ein Termin aus nextime, oder einer, der dort entsteht. ⚠️ **Ohne
+     Erinnerung und ohne Teilnehmer zum Bearbeiten**: Erinnern tut nextime
+     (AC-16), Einladen kommt später (MAIL-3). */
+  const istFern = Boolean(termin?.fern) || istNextimeKalender(kalenderId)
+  const leuteBearbeitbar = !gesperrt && !istFern
   /** Der Kalender, in dem dieser Termin liegt — für die Zeile ganz oben. */
   const dieser = termin ? kalender.find((k) => k.id === termin.kalenderId) : undefined
   const [laeuft, setLaeuft] = useState(false)
@@ -2029,7 +2192,7 @@ function Terminfenster({
           teilnehmer: leute.map((p) => ({ adresse: p.adresse, name: p.name })),
           absender: leute.length ? absender : '',
         })
-        if (leute.length) await aufEinladen(neu.id, leute.length, absender)
+        if (leute.length && !istFern) await aufEinladen(neu.id, leute.length, absender)
         onFertig()
         return
       }
@@ -2059,7 +2222,7 @@ function Terminfenster({
 
           try {
             await schreiben(false)
-            if (leute.length)
+            if (leute.length && !istFern)
               await aufEinladen(termin.id, leute.length, absender, termin.eingeladen)
             onFertig()
           } catch (f) {
@@ -2156,6 +2319,18 @@ function Terminfenster({
       onClose={onClose}
       footer={
         <>
+          {termin?.fern?.link && (
+            /* AC-7: der Weg nach nextime, für alles, was nur dort geht. */
+            <a
+              href={termin.fern.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mr-auto inline-flex items-center gap-1.5 text-[13px] text-accent-text hover:underline"
+            >
+              <ExternalLink aria-hidden className="size-3.5" />
+              {t('kalender.in_nextime_oeffnen')}
+            </a>
+          )}
           {termin && !gesperrt && (
             <Button variant="danger" onClick={loeschen}>
               {t('aktion.loeschen')}
@@ -2186,7 +2361,7 @@ function Terminfenster({
           <p className="mb-0 flex items-center gap-2 text-[12px] text-fg-3">
             <span
               aria-hidden
-              className={`size-2.5 shrink-0 rounded-full ${PUNKT_KLASSE[dieser.farbe]}`}
+              className={`size-2.5 shrink-0 rounded-full ${kalenderPunkt(dieser)}`}
             />
             <span className="truncate">{dieser.name}</span>
             {dieser.herkunft && (
@@ -2271,7 +2446,7 @@ function Terminfenster({
           >
             {kalender.map((k) => (
               <option key={k.id} value={k.id}>
-                {k.name}
+                {k.art === 'nextime' && k.herkunft ? `${k.name} · ${k.herkunft}` : k.name}
               </option>
             ))}
           </Select>
@@ -2281,6 +2456,9 @@ function Terminfenster({
             `VALARM` über CalDAV mit — wer ihn hier setzt, wird auch auf dem
             Telefon erinnert, und ein Alarm aus einem anderen Programm steht
             hier. */}
+        {istFern ? (
+          <p className="mb-0 text-[12px] text-fg-4">{t('kalender.nextime_erinnert')}</p>
+        ) : (
         <Select
           label={t('kalender.erinnerung')}
           value={String(erinnerung)}
@@ -2301,6 +2479,7 @@ function Terminfenster({
             <option value={erinnerung}>{vorlaufSatz(erinnerung, t)}</option>
           )}
         </Select>
+        )}
 
         <Input
           label={t('kalender.notiz')}
@@ -2313,6 +2492,7 @@ function Terminfenster({
             Liste im Original aber nur, wenn hier wirklich jemand dazukam oder
             wegfiel — sonst bliebe von den Zusagen eines fremden Termins
             nichts übrig. Den Riegel dafür hält `leuteBeruehrt`. */}
+        {(!istFern || leute.length > 0 || Boolean(termin?.organisator)) && (
         <div className="flex flex-col gap-1.5 border-t border-line-subtle pt-3">
           {/* ⚠️ **Kein „0 Teilnehmer".** Die Zählung steht erst da, wenn es
               etwas zu zählen gibt; das Feld darunter bleibt, sonst käme man
@@ -2346,7 +2526,7 @@ function Terminfenster({
                     defaultValue: t('kalender.antwort_unbekannt'),
                   })}
                 </span>
-                {!gesperrt && (
+                {leuteBearbeitbar && (
                   <button
                     type="button"
                     aria-label={t('kalender.teilnehmer_entfernen', { wer: b.adresse })}
@@ -2359,7 +2539,7 @@ function Terminfenster({
               </li>
             ))}
           </ul>
-          {!gesperrt && leute.length > 0 && absenderWahl.length > 0 && (
+          {leuteBearbeitbar && leute.length > 0 && absenderWahl.length > 0 && (
             /* ⚠️ **Je Termin gewählt, nicht am Kalender hinterlegt.** Ein
                Kalender gehört zu keinem Postfach; wer den Vereinstermin aus
                dem privaten Kalender heraus anlegt, soll trotzdem als Verein
@@ -2404,7 +2584,7 @@ function Terminfenster({
               </p>
             </div>
           )}
-          {!gesperrt && (
+          {leuteBearbeitbar && (
             <Input
               type="email"
               value={neueAdresse}
@@ -2424,6 +2604,7 @@ function Terminfenster({
             />
           )}
         </div>
+        )}
 
         {termin?.ausEinladung && (
           <p className="text-[12px] text-fg-4">{t('kalender.aus_einladung')}</p>

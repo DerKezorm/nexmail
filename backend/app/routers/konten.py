@@ -100,6 +100,14 @@ class Eingabe(BaseModel):
     oauth_zugang_id: str = Field(default="", max_length=32)
     #: Neue Post sofort sehen. ⚠️ Nicht mitgeschickt heisst unveraendert.
     idle_aktiv: bool | None = None
+    #: Farbe wie in nextasks: einer der elf Namen oder ``#rrggbb``, leer =
+    #: automatisch. ⚠️ Nicht mitgeschickt heisst unveraendert.
+    farbton: str | None = Field(
+        default=None,
+        pattern=r"^(|red|orange|yellow|green|teal|blue|indigo|purple|pink|brown|gray|#[0-9a-f]{6})$",
+    )
+    #: Ein Symbol aus nextasks' Liste, leer = kein Symbol (der Punkt bleibt).
+    symbol: str | None = Field(default=None, pattern=r"^[a-z0-9-]{0,40}$")
 
     def als_zugangsdaten(self) -> Zugangsdaten:
         felder = self.model_dump()
@@ -185,6 +193,10 @@ class KontoAntwort(BaseModel):
     absendername: str
     adresse: str
     farbe: int
+    #: Gewählte Farbe (Name oder ``#rrggbb``); leer = ``farbe``.
+    farbton: str = ""
+    #: Symbol aus nextasks' Liste; leer = Punkt.
+    symbol: str = ""
     aktiv: bool
     imap_server: str
     smtp_server: str
@@ -234,6 +246,8 @@ def _antwort(konto) -> KontoAntwort:
         absendername=konto.absendername,
         adresse=konto.adresse,
         farbe=konto.farbe,
+        farbton=konto.farbton or "",
+        symbol=konto.symbol or "",
         aktiv=konto.aktiv,
         imap_server=konto.imap_server,
         smtp_server=konto.smtp_server,

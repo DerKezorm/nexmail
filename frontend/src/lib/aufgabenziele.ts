@@ -18,6 +18,10 @@ export interface Verbindung {
 export interface ZielStand {
   standard: string
   verbindungen: Verbindung[]
+  /** Die eigene Aufgabenliste in nexmail ist an (MAIL-2 AC-16; ab Werk an). */
+  eigene?: boolean
+  /** Offene eigene Aufgaben, für die Frage nach dem Umzug (AC-17). */
+  eigene_offen?: number
 }
 
 export interface ZielListe {

@@ -392,6 +392,8 @@ export async function keineRohenSchluessel(seite: Page) {
       if (!text || text.includes(' ')) continue
       // Adressen und Dateinamen sehen ähnlich aus, sind aber keine Schlüssel.
       if (text.includes('@') || text.includes('/') || text.includes(':')) continue
+      // Ein Rechnername ohne Schema (`tasks.example.com`) ist so gekennzeichnet.
+      if (el.closest('[data-adresse]')) continue
       if (muster.test(text)) treffer.push(text)
     }
     return treffer

@@ -13,7 +13,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ExternalLink } from 'lucide-react'
 import { api } from '../api/client'
-import { Button, Dialog, Input, Select } from '../ds'
+import { Button, Checkbox, Dialog, Input, Select } from '../ds'
+import { mitglieder, nextasksLage, nextasksListen, type NtBereich, type NtPerson } from '../api/nextasks'
 import { BASIS } from '../lib/basis'
 import { servermeldung } from '../lib/servermeldung'
 import {
@@ -50,6 +51,16 @@ export function AufgabeAnlegen({ mails, aufZu, aufFertig }: Props) {
   const [ziel, setZiel] = useState('')
   const [titel, setTitel] = useState('')
   const [faellig, setFaellig] = useState('')
+  /* Mit nextasks mehr Felder (MAIL-2 AC-7). */
+  const [zeit, setZeit] = useState('')
+  const [prio, setPrio] = useState(0)
+  const [markiert, setMarkiert] = useState(false)
+  const [zustaendige, setZustaendige] = useState<number[]>([])
+  const [ntBereiche, setNtBereiche] = useState<NtBereich[]>([])
+  const [mitgliederAn, setMitgliederAn] = useState(false)
+  const [leute, setLeute] = useState<NtPerson[] | null>(null)
+  /** Die eigene Liste ist abgeschaltet (AC-16): dann steht sie nicht zur Wahl. */
+  const [ohneEigene, setOhneEigene] = useState(false)
   const [laeuft, setLaeuft] = useState(false)
   const [fehler, setFehler] = useState('')
   /** Was es schon gab — dann zeigt das Fenster das statt eines Formulars. */
@@ -59,6 +70,10 @@ export function AufgabeAnlegen({ mails, aufZu, aufFertig }: Props) {
     if (!offen) return
     setTitel(mails.length === 1 ? mails[0].betreff : '')
     setFaellig('')
+    setZeit('')
+    setPrio(0)
+    setMarkiert(false)
+    setZustaendige([])
     setFehler('')
     setSchonDa([])
     setGruppen(null)
@@ -71,10 +86,21 @@ export function AufgabeAnlegen({ mails, aufZu, aufFertig }: Props) {
         ])
         if (!lebt) return
         setGruppen(listen)
+        const ohne = stand.eigene === false
+        setOhneEigene(ohne)
         // ⚠️ Ein Standard, dessen Liste gerade nicht kam, fällt auf die
-        // eigene Liste zurück — sichtbar, nicht still beim Anlegen.
+        // eigene Liste zurück — sichtbar, nicht still beim Anlegen. Ist die
+        // eigene Liste aus, auf die erste erreichbare Liste.
         const da = listen.some((g) => g.listen.some((l) => l.ziel === stand.standard))
-        setZiel(da ? stand.standard : '')
+        const erste = listen.find((g) => !g.fehler && g.listen.length)?.listen[0]?.ziel ?? ''
+        setZiel(da ? stand.standard : ohne ? erste : '')
+        // nextasks: Bereiche der Listen (für Zuständige) und ob nextasks Mitglieder kennt.
+        if (listen.some((g) => g.art === 'nextasks')) {
+          const lage = await nextasksLage().catch(() => null)
+          if (!lebt || !lage?.verbunden) return
+          setMitgliederAn(lage.mitglieder)
+          setNtBereiche(await nextasksListen().catch(() => []))
+        }
       } catch (f) {
         if (!lebt) return
         setGruppen([])
@@ -89,6 +115,25 @@ export function AufgabeAnlegen({ mails, aufZu, aufFertig }: Props) {
   }, [offen, mails])
 
   const schnell = schnellwahl(new Date())
+  const ntGruppe = (gruppen ?? []).find((g) => g.art === 'nextasks' && ziel.startsWith(`${g.verbindung_id}:`))
+  const ntListe = ntGruppe ? ziel.slice(ntGruppe.verbindung_id.length + 1).split('/')[0] : null
+  const ntBereich = ntListe ? ntBereiche.find((b) => b.listen.some((l) => l.id === ntListe)) ?? null : null
+
+  useEffect(() => {
+    // Zuständige nur in geteilten Bereichen und nur, wenn nextasks Mitglieder kennt.
+    setZustaendige([])
+    if (!offen || !mitgliederAn || !ntBereich?.geteilt) {
+      setLeute(null)
+      return
+    }
+    let lebt = true
+    void mitglieder(ntBereich.id)
+      .then((m) => lebt && setLeute(m))
+      .catch(() => lebt && setLeute(null))
+    return () => {
+      lebt = false
+    }
+  }, [offen, mitgliederAn, ntBereich?.id, ntBereich?.geteilt])
 
   async function anlegen() {
     setLaeuft(true)
@@ -103,6 +148,14 @@ export function AufgabeAnlegen({ mails, aufZu, aufFertig }: Props) {
           liste_name: ziel ? zielname(gruppen ?? [], ziel) : '',
           faellig: faellig || null,
           adresse: window.location.origin + BASIS,
+          ...(ntGruppe
+            ? {
+                faellig_zeit: faellig && zeit ? zeit : null,
+                prioritaet: prio,
+                markiert,
+                zustaendige: zustaendige.length ? zustaendige : null,
+              }
+            : {}),
         })
         if (!raus.neu) gefunden.push(raus.aufgabe)
       }
@@ -223,9 +276,11 @@ export function AufgabeAnlegen({ mails, aufZu, aufFertig }: Props) {
           disabled={gruppen === null}
           onChange={(e) => setZiel(e.target.value)}
         >
-          <option value="" className="bg-surface-1 text-fg-1">
-            {t('todoapps.eigene_liste')}
-          </option>
+          {!ohneEigene && (
+            <option value="" className="bg-surface-1 text-fg-1">
+              {t('todoapps.eigene_liste')}
+            </option>
+          )}
           {/* ⚠️ **Die App steht in jeder Zeile, keine Gruppen.** Eine
               geschlossene Auswahl zeigt nur die Zeile, nicht die Gruppe:
               Bei zwei Verbindungen stünde dort zweimal „Inbox". */}
@@ -260,8 +315,52 @@ export function AufgabeAnlegen({ mails, aufZu, aufFertig }: Props) {
               onChange={(e) => setFaellig(e.target.value)}
               className="rounded-sm border border-line bg-surface-3 px-2 py-1 text-[12px] text-fg-1"
             />
+            {ntGruppe && faellig && (
+              <input
+                type="time"
+                aria-label={t('nextasks.uhrzeit')}
+                value={zeit}
+                onChange={(e) => setZeit(e.target.value)}
+                className="rounded-sm border border-line bg-surface-3 px-2 py-1 text-[12px] text-fg-1"
+              />
+            )}
           </div>
         </div>
+
+        {ntGruppe && (
+          <div className="grid grid-cols-2 items-end gap-3">
+            <Select label={t('nextasks.prioritaet')} value={String(prio)} onChange={(e) => setPrio(Number(e.target.value))}>
+              {[0, 1, 2, 3].map((p) => (
+                <option key={p} value={p} className="bg-surface-1 text-fg-1">
+                  {t(`nextasks.prio_${p}`)}
+                </option>
+              ))}
+            </Select>
+            <div className="pb-1">
+              <Checkbox label={t('nextasks.markiert')} checked={markiert} onCheckedChange={setMarkiert} />
+            </div>
+          </div>
+        )}
+
+        {ntGruppe && leute && leute.length > 0 && (
+          <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0">
+            <legend className="mb-1 p-0 text-[12px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
+              {t('nextasks.zustaendig')}
+            </legend>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {leute.map((p) => (
+                <Checkbox
+                  key={p.id}
+                  label={p.name || t('nextasks.ehemalig')}
+                  checked={zustaendige.includes(p.id)}
+                  onCheckedChange={(an) =>
+                    setZustaendige((alt) => (an ? [...alt, p.id] : alt.filter((x) => x !== p.id)))
+                  }
+                />
+              ))}
+            </div>
+          </fieldset>
+        )}
 
         {fehler && (
           <p role="alert" className="mb-0 text-[13px] text-danger">

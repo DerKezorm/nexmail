@@ -41,6 +41,8 @@ from .routers import (
     apischluessel as apischluessel_router,
     aufgaben as aufgaben_router,
     aufgabenziele as aufgabenziele_router,
+    nextime as nextime_router,
+    nextasksansicht as nextasksansicht_router,
     mailoauth as mailoauth_router,
     austausch as austausch_router,
     bilder as bilder_router,
@@ -557,6 +559,8 @@ app.include_router(suche.router, dependencies=NUR_ANGEMELDET)
 app.include_router(benutzer_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(aufgaben_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(aufgabenziele_router.router, dependencies=NUR_ANGEMELDET)
+app.include_router(nextime_router.router, dependencies=NUR_ANGEMELDET)
+app.include_router(nextasksansicht_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(termine_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(austausch_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(erinnerungen_router.router, dependencies=NUR_ANGEMELDET)

@@ -70,6 +70,12 @@ class ZielWunsch(BaseModel):
     #: Wie der Browser nexmail erreicht — nur, wenn keine oeffentliche Adresse
     #: eingestellt ist, fuer den Link zurueck zur Mail.
     adresse: str = Field(default="", max_length=500)
+    # ⚠️ **Nur fuer nextasks** (MAIL-2 AC-7); jedes andere Ziel laesst sie liegen.
+    #: ``HH:MM`` in nextasks' Zeitzone, nur zusammen mit ``faellig``.
+    faellig_zeit: str | None = Field(default=None, pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
+    prioritaet: int | None = Field(default=None, ge=0, le=3)
+    markiert: bool | None = None
+    zustaendige: list[int] | None = Field(default=None, max_length=50)
 
 
 class Angelegt(BaseModel):
@@ -125,6 +131,15 @@ def _voll(s: dienst.Sicht) -> ZeileVoll:
 #: Betreiber dort die Schnittstelle abgeschaltet hat, der Token nur lesen darf,
 #: es zu alt ist, die Liste fehlt oder die Aufgabe in einem Bereich liegt, den
 #: der Token nicht sieht.
+#: ⚠️ **Was nicht zum Stand passt** (MAIL-2): eine zweite nextasks-Verbindung,
+#: eine eigene Aufgabe bei ausgeschalteter eigener Liste, Ausschalten ohne
+#: jede Verbindung. 409 wie ein Konflikt, nicht 400 wie eine kaputte Eingabe.
+KONFLIKT = (
+    "nextasks_schon_verbunden",
+    "eigene_aufgaben_aus",
+    "eigene_aufgaben_ohne_verbindung",
+)
+
 NEU_VERBINDEN = (
     "todoist_zugang_ungueltig",
     "nextasks_zugang_ungueltig",
@@ -142,8 +157,10 @@ def _status(fehler: Exception) -> int:
     401 aus nexmail ab; der Mensch soll die Todo-App neu verbinden, nicht sich
     selbst neu anmelden."""
     kennung = getattr(fehler, "kennung", "")
-    if kennung in NEU_VERBINDEN:
+    if kennung in NEU_VERBINDEN or kennung in KONFLIKT:
         return status.HTTP_409_CONFLICT
+    if kennung == "nextasks_eingabe_ungueltig":
+        return status.HTTP_400_BAD_REQUEST
     if kennung in ("todoist_zu_viele_anfragen", "nextasks_zu_viele_anfragen"):
         return status.HTTP_429_TOO_MANY_REQUESTS
     if isinstance(fehler, todoist.TodoistFehler) and kennung != "todoist_zugang_fehlt":
@@ -165,7 +182,7 @@ def _frisch(db, person, aufgabe_id: int) -> ZeileVoll:
     # Frisch nachschlagen: Die Mail kann inzwischen umgezogen sein.
     # ⚠️ Mit Gesendetem: Auch eine Mail, die nur an einen Webhook ging, soll
     # sagen koennen, wohin.
-    for sicht in dienst.alle(db, person, mit_gesendeten=True):
+    for sicht in dienst.alle(db, person, mit_gesendeten=True, mit_versteckten=True):
         if sicht.aufgabe.id == aufgabe_id:
             return _voll(sicht)
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
@@ -190,6 +207,12 @@ def mit_ziel(wunsch: ZielWunsch, person: AngemeldeterBenutzer, db: DbSession) ->
             faellig=wunsch.faellig,
             vom_browser=wunsch.adresse,
             koerper=lambda n: _koerper_sicherstellen(db, n),
+            extras=aufgabenziele.NextasksExtras(
+                zeit=wunsch.faellig_zeit,
+                prioritaet=wunsch.prioritaet,
+                markiert=wunsch.markiert,
+                zustaendige=wunsch.zustaendige,
+            ),
         )
     except (dienst.AufgabenFehler, aufgabenziele.ZielFehler, *aufgabenziele.AppFehler) as fehler:
         raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
@@ -228,6 +251,10 @@ def mail_finden(
 
 @router.post("", response_model=Zeile, status_code=status.HTTP_201_CREATED)
 def anlegen(wunsch: Wunsch, person: AngemeldeterBenutzer, db: DbSession) -> Zeile:
+    # ⚠️ Eigene Liste aus (MAIL-2 AC-16): Eine eigene Aufgabe hiesse eine,
+    # die niemand sieht.
+    if not person.aufgaben_eigene:
+        raise MeldungHttp(status.HTTP_409_CONFLICT, "eigene_aufgaben_aus")
     try:
         aufgabe = dienst.anlegen(db, person, wunsch.nachricht_id)
     except dienst.AufgabenFehler as fehler:

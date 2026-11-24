@@ -23,7 +23,8 @@ import { Absenderfeld } from '../components/Absenderfeld'
 import type { Absenderalias } from '../components/Absenderfeld'
 import { api } from '../api/client'
 import type { Befund, KontoZeile, Vorschlag } from '../api/client'
-import { PUNKT_KLASSE } from '../lib/farben'
+import { Zeichenwahl } from '../components/Zeichenwahl'
+import type { Postfachfarbe } from '../daten/typen'
 import { servermeldung } from '../lib/servermeldung'
 
 interface Props {
@@ -59,10 +60,14 @@ interface Felder {
   smtp_sicherheit: string
   smtp_benutzer: string
   idle_aktiv: boolean
+  farbton: string
+  symbol: string
 }
 
 const LEER: Felder = {
   idle_aktiv: false,
+  farbton: '',
+  symbol: '',
   anzeigename: '',
   tags: [],
   aliase: [],
@@ -104,6 +109,8 @@ export function KontoFormular({
     bestehend
       ? {
           idle_aktiv: bestehend.idle_aktiv ?? false,
+          farbton: bestehend.farbton ?? '',
+          symbol: bestehend.symbol ?? '',
           anzeigename: bestehend.anzeigename,
           tags: bestehend.tags ?? [],
           aliase: bestehend.aliase ?? [],
@@ -269,6 +276,8 @@ export function KontoFormular({
       smtp_passwort: zugangId ? '' : felder.passwort,
       oauth_zugang_id: zugangId,
       idle_aktiv: felder.idle_aktiv,
+      farbton: felder.farbton,
+      symbol: felder.symbol,
     }
   }
 
@@ -466,12 +475,16 @@ export function KontoFormular({
         </div>
       )}
 
-      <div className="flex items-center gap-3 rounded-lg border border-line bg-surface-2 px-4 py-3">
-        <span aria-hidden className={`size-3 shrink-0 rounded-full ${PUNKT_KLASSE[naechsteFarbe]}`} />
-        <div className="min-w-0 flex-1">
-          <p className="mb-0 text-[13px] text-fg-1">{t('konto.farbe')}</p>
-          <p className="mb-0 text-[12px] text-fg-4">{t('konto.farbe_hinweis')}</p>
-        </div>
+      {/* Farbe und Symbol wie in nextasks (24.11.2026); ab Werk die
+          automatische Farbe und kein Symbol, dann bleibt der Punkt. */}
+      <div className="rounded-lg border border-line bg-surface-2 px-4 py-3">
+        <Zeichenwahl
+          farbe={((bestehend?.farbe ?? naechsteFarbe) || 1) as Postfachfarbe}
+          farbton={felder.farbton}
+          symbol={felder.symbol}
+          aufFarbton={(farbton) => setzen({ farbton })}
+          aufSymbol={(symbol) => setzen({ symbol })}
+        />
       </div>
 
       {/* --- Serverdaten ------------------------------------------------- */}

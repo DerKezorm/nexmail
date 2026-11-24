@@ -99,6 +99,11 @@ class AppPostfach(BaseModel):
     anzeigename: str
     adresse: str
     farbe: int
+    #: Seit 24.11.2026: gewählte Farbe wie in nextasks (Name oder ``#rrggbb``),
+    #: leer = ``farbe``; Symbol aus nextasks' Liste, leer = Punkt. Neu dazu,
+    #: ``farbe`` bleibt.
+    farbton: str = ""
+    symbol: str = ""
     #: ``anmeldung``, wenn der Mailserver die Zugangsdaten ablehnt.
     stoerung: str = ""
     tags: list[str] = []
@@ -164,6 +169,8 @@ def selbstauskunft(
                 anzeigename=k.anzeigename,
                 adresse=k.adresse,
                 farbe=k.farbe,
+                farbton=k.farbton or "",
+                symbol=k.symbol or "",
                 stoerung=k.stoerung or "",
                 tags=kontendienst.tags_lesen(k),
                 aliase=[AppAlias(adresse=a.adresse, name=a.name) for a in aliasdienst.lesen(k)],

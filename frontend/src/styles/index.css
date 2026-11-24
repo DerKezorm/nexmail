@@ -235,3 +235,48 @@ select optgroup {
   --nm-logo-verlauf-3: #06513d;
   --nm-logo-klappe: #12b886;
 }
+
+/* Die elf Kalenderfarben von nextime (MAIL-1): Kalender aus nextime tragen
+   hier dieselbe Farbe wie dort. Werte aus nextimes Designsystem
+   (nextime/frontend/src/styles/index.css, `--color-cal-*`), dunkle Fassung
+   zuerst. ⚠️ Eigene Klassen statt Tailwind: `kalenderPunkt` setzt sie aus
+   einem Schlüssel zusammen, und Tailwind fände nur Wörtliches. */
+:root {
+  --nt-slate: #9fb4d8;
+  --nt-red: #fb7185;
+  --nt-orange: #fb923c;
+  --nt-yellow: #fbbf24;
+  --nt-green: #4ade80;
+  --nt-teal: #2dd4bf;
+  --nt-blue: #60a5fa;
+  --nt-violet: #a78bfa;
+  --nt-pink: #f472b6;
+  --nt-brown: #d6a77a;
+  --nt-gray: #9a9aa8;
+}
+
+[data-theme='light'] {
+  --nt-slate: #4a6491;
+  --nt-red: #c62f47;
+  --nt-orange: #c2410c;
+  --nt-yellow: #a16207;
+  --nt-green: #2f7d4f;
+  --nt-teal: #0e7f74;
+  --nt-blue: #2563a8;
+  --nt-violet: #6d4bc2;
+  --nt-pink: #be3d78;
+  --nt-brown: #8a5a3b;
+  --nt-gray: #61616f;
+}
+
+.nt-farbe-slate { background-color: var(--nt-slate); }
+.nt-farbe-red { background-color: var(--nt-red); }
+.nt-farbe-orange { background-color: var(--nt-orange); }
+.nt-farbe-yellow { background-color: var(--nt-yellow); }
+.nt-farbe-green { background-color: var(--nt-green); }
+.nt-farbe-teal { background-color: var(--nt-teal); }
+.nt-farbe-blue { background-color: var(--nt-blue); }
+.nt-farbe-violet { background-color: var(--nt-violet); }
+.nt-farbe-pink { background-color: var(--nt-pink); }
+.nt-farbe-brown { background-color: var(--nt-brown); }
+.nt-farbe-gray { background-color: var(--nt-gray); }

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <style>
+    .tile { fill: #ffffff; }
+    .rim { stroke: #4a6491; stroke-opacity: .35; }
+    .sheet { stroke: #4a6491; }
+    .cut { stroke: #ffffff; }
+    .arrow { stroke: #3d5682; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #0e1118; }
+      .rim { stroke: #9fb4d8; stroke-opacity: .45; }
+      .sheet { stroke: #9fb4d8; }
+      .cut { stroke: #0e1118; }
+      .arrow { stroke: #c3d2ea; }
+    }
+  </style>
+  <rect class="tile" x="2" y="2" width="60" height="60" rx="16"/>
+  <rect class="rim" x="2.75" y="2.75" width="58.5" height="58.5" rx="15.3" fill="none" stroke-width="1.5"/>
+  <rect class="sheet" x="11" y="16" width="32" height="33" rx="6" fill="none" stroke-width="5"/>
+  <path class="sheet" d="M20 11.5v8M34 11.5v8" fill="none" stroke-width="5" stroke-linecap="round"/>
+  <path class="cut" d="M40 33l12 9-12 9" fill="none" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path class="arrow" d="M40 33l12 9-12 9" fill="none" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

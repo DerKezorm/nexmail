@@ -201,6 +201,12 @@ class Benutzer(Base):
     aufgaben_standard: Mapped[str] = mapped_column(
         String(200), default="", server_default=""
     )
+    #: Ob nexmail eine eigene Aufgabenliste führt (MAIL-2 AC-16). Aus heißt:
+    #: Aufgaben gehen nur noch in eine verbundene Todo-App, eigene Zeilen
+    #: bleiben gespeichert, aber unsichtbar. ⚠️ **Ab Werk an**, und das Trennen
+    #: der letzten Verbindung schaltet sie wieder an (EC-18): Sonst hätte
+    #: „Zu Aufgabe machen" kein Ziel mehr.
+    aufgaben_eigene: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
 
     # --- Web Push --------------------------------------------------------- #
     #
@@ -249,6 +255,12 @@ class Benutzer(Base):
     #: Postfächer stehen. ⚠️ **Am Konto, nicht im Browser**, damit sie auf jedem
     #: Gerät gleich ist (22.11.2026).
     gruppen_reihenfolge: Mapped[str] = mapped_column(Text, default="")
+
+    #: Welcher Kalender zuletzt für Termine aus einem Postfach gewählt wurde,
+    #: als JSON ``{"<konto_id>": "<kalender>"}`` (``nt:<id>`` für nextime).
+    #: ⚠️ **Je Postfach**, weil geschäftliche und private Post in
+    #: verschiedene Kalender gehören (MAIL-1 AC-5, 23.11.2026).
+    kalender_vorwahl: Mapped[str] = mapped_column(Text, default="", server_default="")
 
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
@@ -562,6 +574,15 @@ class Konto(Base):
     #: Beim Antworten wird in Python ueber die paar Adressen gegangen.
     aliase: Mapped[str] = mapped_column(Text, default="[]")
     farbe: Mapped[int] = mapped_column(Integer, default=1)
+    #: Eine gewählte Farbe wie in nextasks: einer der elf Namen (``red`` …
+    #: ``gray``) oder ``#rrggbb``. ⚠️ **Leer heißt: ``farbe``** (die sechs
+    #: geprüften Töne, automatisch vergeben). ``farbe`` bleibt immer gesetzt,
+    #: weil die iPhone-App sie liest (seit 24.11.2026, gewünscht: „Farbwahl wie
+    #: nextasks“).
+    farbton: Mapped[str] = mapped_column(String(10), default="", server_default="")
+    #: Ein Symbol aus der Liste von nextasks (``briefcase``, ``house`` …).
+    #: ⚠️ **Leer heißt: kein Symbol, der Punkt bleibt.**
+    symbol: Mapped[str] = mapped_column(String(40), default="", server_default="")
     reihenfolge: Mapped[int] = mapped_column(Integer, default=0)
     aktiv: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -1379,6 +1400,86 @@ class Aufgabenverbindung(Base):
     #: Betreiber es erlaubt (``webhook.SCHALTER_TEXT``); gefragt wird bei jedem
     #: Senden.
     mit_text: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    #: Nur nextasks: welche Listen nexmail NICHT nimmt, JSON-Liste der
+    #: Kennungen (MAIL-2 AC-9). ⚠️ **Die Abgewählten, nicht die Gewählten**,
+    #: wie ``NextimeVerbindung.ohne``: Eine in nextasks neu angelegte Liste ist
+    #: so von selbst dabei.
+    ohne: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
+
+
+class NextimeVerbindung(Base):
+    """Die Verbindung eines Benutzers zu seinem nextime (MAIL-1).
+
+    ⚠️ **Höchstens eine je Benutzer.** nextime führt alle Kalender eines
+    Menschen zusammen; zwei davon gegeneinander zu stellen wäre genau die
+    Zersplitterung, die die Verbindung beenden soll.
+
+    ⚠️ **Nichts von nextime wird hier kopiert.** Kalender und Termine holt
+    nexmail bei jedem Blick live; gespeichert wird nur, was nexmail selbst
+    entscheidet: der Haken je Kalender (``sichtbar``) und der Zugang.
+
+    ⚠️ **Der Zugang ist ein Passwort** und liegt verschlüsselt, Kontext
+    ``nextime_verbindung:<id>:zugang``. Er geht nie zurück an die Oberfläche.
+    """
+
+    __tablename__ = "nextime_verbindung"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), unique=True
+    )
+    zugang: Mapped[str] = mapped_column(Text, default="")
+    #: Wie nextime das Konto nennt (``display_name`` aus ``/me``).
+    name: Mapped[str] = mapped_column(String(200), default="")
+    #: Die Fassung von nextime beim letzten Prüfen.
+    version: Mapped[str] = mapped_column(String(40), default="")
+    #: Die Zeitzone des nextime-Kontos. Neue Termine ohne eigene Zone gehen in
+    #: dieser hinaus, damit „jeden Montag um 9" auch nach der Zeitumstellung
+    #: um 9 ist.
+    zeitzone: Mapped[str] = mapped_column(String(64), default="")
+    #: Die Haken je nextime-Kalender, JSON ``{"<id>": true|false}``. ⚠️ **Nur
+    #: in nexmail**: Ein- und Ausblenden hier ändert in nextime nichts. Fehlt
+    #: ein Kalender, gilt, was nextime sagt (``hidden``).
+    sichtbar: Mapped[str] = mapped_column(Text, default="{}")
+    #: Welche nextime-Kalender nexmail NICHT nimmt, JSON-Liste der Kennungen.
+    #: ⚠️ **Die Ausgeschlossenen, nicht die Gewählten**: Ein Kalender, der in
+    #: nextime neu dazukommt, erscheint so von selbst (Entscheidung 23.11.2026,
+    #: „anfangs alle gewählt"). Nicht gewählte erscheinen nirgends in nexmail.
+    ohne: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    #: ⚠️ **Eine Kennung, kein Satz**, sichtbar unter „Verbindungen".
+    letzter_fehler: Mapped[str] = mapped_column(String(80), default="")
+
+
+class MailTermin(Base):
+    """Ein Termin, der aus einer Mail gemacht wurde (MAIL-1 AC-17).
+
+    ⚠️ **Über die Message-ID, nicht die Zeilennummer**: Verschiebt jemand die
+    Mail, bekommt sie eine neue Zeile, und der Hinweis „daraus entstand ein
+    Termin" wäre weg. Dieselbe Regel wie beim Link aus einer Aufgabe.
+
+    ⚠️ **Mehrere je Mail sind gewollt**: Eine Mail nennt oft zwei Termine.
+    """
+
+    __tablename__ = "mail_termin"
+    __table_args__ = (Index("ix_mail_termin_mail", "benutzer_id", "message_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    message_id: Mapped[str] = mapped_column(Text)
+    #: ``nt:<id>`` für nextime, sonst die Kennung des eigenen Kalenders.
+    kalender: Mapped[str] = mapped_column(String(64), default="")
+    titel: Mapped[str] = mapped_column(Text, default="")
+    beginn: Mapped[datetime] = mapped_column(UtcDateTime)
+    ganztaegig: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Der Sprung in nextime (``web_url``); leer bei eigenen Kalendern.
+    link: Mapped[str] = mapped_column(Text, default="")
+    #: Der Schlüssel des Fensters, aus dem er kam: Ein Doppelklick schickt
+    #: denselben zweimal und legt dann nichts Zweites an (EC-15).
+    anfrage: Mapped[str] = mapped_column(String(40), default="")
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
 class Wiedervorlage(Base):

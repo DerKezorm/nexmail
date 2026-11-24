@@ -19,6 +19,7 @@
  * die eigenen. Nicht abonnierte Ordner erscheinen gar nicht - iCloud und
  * Gmail legen welche an, die niemand sehen will.
  */
+import { Postfachzeichen, type Postfachmerkmale } from './Postfachzeichen'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -38,7 +39,6 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { Konto, Ordner, OrdnerRolle } from '../daten/typen'
-import { PUNKT_KLASSE } from '../lib/farben'
 import { gruppenVon } from './Postfachgruppen'
 import { elternVon, istWiedervorlage, ordnerName } from '../lib/ordnername'
 
@@ -170,7 +170,7 @@ export function Ordnerspalte({
     .filter((o) => sichtbareKonten.some((k) => k.id === o.kontoId))
 
   function farbeVon(kontoId: string) {
-    return konten.find((k) => k.id === kontoId)?.farbe
+    return konten.find((k) => k.id === kontoId)
   }
 
 
@@ -273,7 +273,7 @@ export function Ordnerspalte({
                 ) : (
                   <ChevronDown className="size-3.5 shrink-0 text-fg-4" />
                 )}
-                <span aria-hidden className={`size-2 shrink-0 rounded-full ${PUNKT_KLASSE[k.farbe]}`} />
+                <Postfachzeichen konto={k} />
                 <span className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
                   {k.anzeigename}
                 </span>
@@ -328,7 +328,8 @@ interface ZeileProps {
   /** Öffnet das Menü dieses Ordners als Blatt; gesetzt nur am Telefon. */
   aufMenue?: () => void
   /** Postfach-Punkt — nur bei Favoriten, wo die Herkunft sonst fehlt. */
-  punkt?: 1 | 2 | 3 | 4 | 5 | 6
+  /** Das Postfach, dessen Zeichen vorn steht. */
+  punkt?: Postfachmerkmale
   /** Kleiner Stern im Baum, wenn der Ordner oben angeheftet ist. */
   stern?: boolean
   /** Wie tief im Baum — 0 ist die oberste Ebene. */
@@ -462,7 +463,7 @@ function Zeile({
             : 'text-fg-2 hover:bg-surface-3 hover:text-fg-1')
       }
     >
-      {punkt && <span aria-hidden className={`size-2 shrink-0 rounded-full ${PUNKT_KLASSE[punkt]}`} />}
+      {punkt && <Postfachzeichen konto={punkt} />}
       {symbol}
       <span className="min-w-0 flex-1 truncate">{name}</span>
       {stern && <Star className="size-3 shrink-0 fill-current text-warning opacity-70" />}

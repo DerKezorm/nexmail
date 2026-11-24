@@ -28,6 +28,7 @@ Abgleich laesst Webhooks aus. Zurueck kommt ein Haken nur ueber ``/api/v1``.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections.abc import Callable
@@ -90,6 +91,43 @@ class Gruppe:
     #: Leer, wenn die Listen kamen. Sonst die Kennung, warum nicht.
     fehler: str = ""
     listen: list[Liste] = field(default_factory=list)
+
+
+@dataclass
+class NextasksExtras:
+    """Was „Zu Aufgabe machen" nur fuer nextasks mitgibt (MAIL-2 AC-7)."""
+
+    #: ``HH:MM``, nur zusammen mit einem Datum.
+    zeit: str | None = None
+    #: 0 keine, 1 niedrig, 2 mittel, 3 hoch.
+    prioritaet: int | None = None
+    markiert: bool | None = None
+    #: Konto-Nummern in nextasks, nur in geteilten Bereichen.
+    zustaendige: list[int] | None = None
+
+
+#: Wohin eigene Aufgaben umziehen koennen (MAIL-2 AC-17). ⚠️ **Kein Webhook**:
+#: Der laesst sich nicht fragen, ob es die Aufgabe dort schon gibt, und „Nur
+#: senden" naehme sie hier ganz weg.
+UMZUG_ARTEN = ("nextasks", "todoist")
+
+#: ⚠️ **Was die ganze Verbindung trifft, beendet den Umzug** (EC-17): Ist die
+#: App nicht erreichbar, bittet um Pause oder nimmt den Token nicht, scheiterte
+#: jede weitere Aufgabe genauso, nur jeweils erst nach der Wartezeit. Der Rest
+#: zaehlt dann gleich als gescheitert und bleibt eigene Aufgabe.
+UMZUG_ABBRUCH = (
+    "todoist_nicht_erreichbar",
+    "todoist_zu_viele_anfragen",
+    "todoist_zugang_ungueltig",
+    "nextasks_nicht_erreichbar",
+    "nextasks_zeitueberschreitung",
+    "nextasks_zu_viele_anfragen",
+    "nextasks_zugang_ungueltig",
+    "nextasks_api_aus",
+    "nextasks_nur_lesen",
+    "nextasks_liste_unbekannt",
+    "nextasks_zugang_kaputt",
+)
 
 
 def _kontext(verbindung_id: str) -> str:
@@ -164,6 +202,12 @@ def trennen(db: Session, person: Benutzer, verbindung_id: str) -> None:
     if person.aufgaben_standard.split(":", 1)[0] == v.id:
         person.aufgaben_standard = ""
     db.delete(v)
+    db.flush()
+    if not verbindungen(db, person):
+        # ⚠️ **Ohne Verbindung muss die eigene Liste an sein** (MAIL-2 EC-18):
+        # Sonst hätte „Zu Aufgabe machen" kein Ziel mehr, und versteckte
+        # eigene Aufgaben blieben für immer versteckt.
+        person.aufgaben_eigene = True
     db.commit()
     logger.info("A to-do app was disconnected.")
 
@@ -284,6 +328,15 @@ def _nextasks_zugang(v: Aufgabenverbindung) -> nextasks.Zugang:
     return nextasks.zugang_lesen(_zugang(v))
 
 
+def nextasks_abgewaehlt(v: Aufgabenverbindung) -> set[str]:
+    """Die nextasks-Listen, die nexmail nicht nimmt (MAIL-2 AC-9)."""
+    try:
+        daten = json.loads(v.ohne or "[]")
+    except ValueError:
+        return set()
+    return {str(x) for x in daten} if isinstance(daten, list) else set()
+
+
 def nextasks_verbinden(
     db: Session, person: Benutzer, url: str, token: str, name: str = ""
 ) -> Aufgabenverbindung:
@@ -291,7 +344,13 @@ def nextasks_verbinden(
 
     ⚠️ **Ein Lese-Token oder ein zu altes nextasks wird nie gespeichert**: Es
     stuende sonst eine Verbindung da, die beim ersten Anlegen scheitert.
+
+    ⚠️ **Nur eine nextasks-Verbindung** (MAIL-2 AC-18). Gefragt wird vor jeder
+    Anfrage hinaus; einen neuen Token bekommt die bestehende ueber
+    ``nextasks_aendern``.
     """
+    if any(v.art == "nextasks" for v in verbindungen(db, person)):
+        raise ZielFehler("nextasks_schon_verbunden")
     zugang = nextasks.Zugang(url=nextasks.adresse_bereinigen(url), token=token.strip())
     nextasks.pruefen(zugang)
     v = Aufgabenverbindung(id=neue_id(), benutzer_id=person.id, art="nextasks", name=name.strip()[:80])
@@ -353,7 +412,13 @@ def ziele(db: Session, person: Benutzer) -> list[Gruppe]:
             continue
         try:
             if v.art == "nextasks":
-                fern = nextasks.listen(_nextasks_zugang(v))
+                # ⚠️ Abgewaehlte Listen stehen auch hier nicht zur Wahl (AC-9).
+                ohne = nextasks_abgewaehlt(v)
+                fern = [
+                    l
+                    for l in nextasks.listen(_nextasks_zugang(v))
+                    if l.id.partition(nextasks.ABSCHNITT)[0] not in ohne
+                ]
             else:
                 fern = todoist.listen(_zugang(v))
             gruppe.listen = [Liste(ziel=f"{v.id}:{l.id}", name=l.name) for l in fern]
@@ -374,11 +439,41 @@ def _zerlegen(db: Session, person: Benutzer, ziel: str) -> tuple[Aufgabenverbind
 
 
 def standard_von(db: Session, person: Benutzer) -> str:
+    """Wohin „Zu Aufgabe machen" ohne weitere Wahl geht.
+
+    ⚠️ **Ist die eigene Liste aus (MAIL-2 AC-16), nie leer**, solange es eine
+    Verbindung gibt: dann das erste Ziel. Das kostet eine Frage an die App,
+    aber nur in diesem Fall (kein Standard gesetzt und eigene Liste aus).
+    """
     ziel = person.aufgaben_standard or ""
-    if not ziel:
-        return ""
-    v = db.get(Aufgabenverbindung, ziel.split(":", 1)[0])
-    return ziel if v is not None and v.benutzer_id == person.id else ""
+    if ziel:
+        v = db.get(Aufgabenverbindung, ziel.split(":", 1)[0])
+        if v is None or v.benutzer_id != person.id:
+            ziel = ""
+    if ziel or person.aufgaben_eigene:
+        return ziel
+    return _erstes_ziel(db, person)
+
+
+def _erstes_ziel(db: Session, person: Benutzer) -> str:
+    for v in verbindungen(db, person):
+        if v.art == "webhook":
+            return f"{v.id}:{webhook.LISTE}"
+        try:
+            if v.art == "nextasks":
+                ohne = nextasks_abgewaehlt(v)
+                fern = [
+                    l
+                    for l in nextasks.listen(_nextasks_zugang(v))
+                    if l.id.partition(nextasks.ABSCHNITT)[0] not in ohne
+                ]
+            else:
+                fern = todoist.listen(_zugang(v))
+        except (*AppFehler, crypto.SchluesselFehler):
+            continue
+        if fern:
+            return f"{v.id}:{fern[0].id}"
+    return ""
 
 
 def standard_setzen(db: Session, person: Benutzer, ziel: str) -> str:
@@ -460,6 +555,7 @@ def anlegen(
     faellig: date | None = None,
     vom_browser: str = "",
     koerper: Callable[[Nachricht], None] | None = None,
+    extras: NextasksExtras | None = None,
 ) -> tuple[Aufgabe, bool]:
     """Eine Aufgabe aus einer Mail, dort, wo der Mensch sie haben will.
 
@@ -470,18 +566,36 @@ def anlegen(
     ``koerper`` holt den Text der Mail nach, wenn er noch nie geholt wurde;
     gebraucht nur von einem Webhook mit Mailtext. Der Router reicht seinen
     eigenen Weg herein, weil der die Frist der App kennt.
+
+    ``extras`` (Uhrzeit, Prioritaet, markiert, Zustaendige) gelten nur fuer
+    nextasks (MAIL-2 AC-7); jedes andere Ziel laesst sie liegen.
+
+    ⚠️ **Ist die eigene Liste aus** (MAIL-2 AC-16), gibt es kein leeres Ziel
+    mehr (``eigene_aufgaben_aus``). Liegt zu dieser Mail noch eine versteckte
+    eigene Aufgabe, zieht genau sie ins gewaehlte Ziel um, statt als
+    unsichtbare Antwort zurueckzukommen.
     """
     nachricht = db.get(Nachricht, nachricht_id)
     if nachricht is None or nachricht.benutzer_id != person.id:
         raise aufgaben.AufgabenFehler("nachricht_unbekannt")
 
     schon = _vorhanden(db, person, nachricht)
+    if schon is not None and not person.aufgaben_eigene and _ist_eigene(schon):
+        if not ziel:
+            raise ZielFehler("eigene_aufgaben_aus")
+        v, liste_id = _zerlegen(db, person, ziel)
+        if v.art in UMZUG_ARTEN:
+            _umziehen(db, v, schon, liste_id, liste_name=liste_name, vom_browser=vom_browser)
+            return schon, True
+        return schon, False
     if schon is not None:
         return schon, False
 
     titel = " ".join(titel.split())[:500] or nachricht.betreff or ""
 
     if not ziel:
+        if not person.aufgaben_eigene:
+            raise ZielFehler("eigene_aufgaben_aus")
         aufgabe = aufgaben.anlegen(db, person, nachricht_id)
         aufgabe.betreff = titel
         aufgabe.faellig = _als_zeitpunkt(faellig)
@@ -512,6 +626,7 @@ def anlegen(
             liste_name=liste_name,
             faellig=faellig,
             link=mail_link(db, nachricht.message_id, vom_browser),
+            extras=extras,
         )
     try:
         stand = todoist.anlegen(
@@ -567,10 +682,20 @@ def anlegen(
     return aufgabe, True
 
 
-def _absender(nachricht: Nachricht) -> str:
+def _absender(nachricht: Nachricht | Aufgabe) -> str:
     if nachricht.von_name and nachricht.von_adresse:
         return f"{nachricht.von_name} <{nachricht.von_adresse}>"
     return nachricht.von_adresse or nachricht.von_name or ""
+
+
+def _nextasks_notiz(quelle: Nachricht | Aufgabe, link: str) -> str:
+    """Nur der Absender, ohne Link die Message-ID dazu. ⚠️ Gilt fuer die Mail
+    und fuer eine eigene Aufgabe, die umzieht: Beide tragen Absender und
+    Message-ID."""
+    zeilen = [_absender(quelle)] if _absender(quelle) else []
+    if not link and quelle.message_id:
+        zeilen.append(f"Message-ID: {quelle.message_id}")
+    return "\n\n".join(zeilen)
 
 
 def _per_nextasks(
@@ -584,6 +709,7 @@ def _per_nextasks(
     liste_name: str,
     faellig: date | None,
     link: str,
+    extras: NextasksExtras | None = None,
 ) -> tuple[Aufgabe, bool]:
     """Eine Aufgabe in nextasks, und die Zeile hier.
 
@@ -596,18 +722,20 @@ def _per_nextasks(
     Das passiert, wenn die Aufgabe hier entfernt und dieselbe Mail wieder zur
     Aufgabe gemacht wurde.
     """
-    zeilen = [_absender(nachricht)] if _absender(nachricht) else []
-    if not link and nachricht.message_id:
-        zeilen.append(f"Message-ID: {nachricht.message_id}")
+    extras = extras or NextasksExtras()
     try:
         stand, neu = nextasks.anlegen(
             _nextasks_zugang(v),
             titel=titel or "(no subject)",
-            notizen="\n\n".join(zeilen),
+            notizen=_nextasks_notiz(nachricht, link),
             link=link,
             liste=liste_id,
             faellig=faellig,
             schluessel=nextasks.schluessel_fuer(nachricht.message_id) if nachricht.message_id else "",
+            zeit=extras.zeit,
+            prioritaet=extras.prioritaet,
+            markiert=extras.markiert,
+            zustaendige=extras.zustaendige,
         )
     except nextasks.NextasksFehler as fehler:
         _fehler_merken(v, fehler)
@@ -655,6 +783,155 @@ def _per_nextasks(
         "A message was turned into a task in nextasks%s.", "" if neu else " (it was there already)"
     )
     return aufgabe, True
+
+
+# --- Eigene Liste aus, Umzug (MAIL-2 AC-16, AC-17) -------------------------- #
+
+
+def _ist_eigene(a: Aufgabe) -> bool:
+    return not a.fern_art and not a.nur_gesendet
+
+
+def eigene_offen(db: Session, person: Benutzer) -> int:
+    """Offene eigene Aufgaben, fuer die Frage „<n> eigene Aufgaben verschieben?"."""
+    return len(_offene_eigene(db, person))
+
+
+def _offene_eigene(db: Session, person: Benutzer) -> list[Aufgabe]:
+    return list(
+        db.scalars(
+            select(Aufgabe)
+            .where(
+                Aufgabe.benutzer_id == person.id,
+                Aufgabe.fern_art == "",
+                Aufgabe.nur_gesendet.is_(False),
+                Aufgabe.erledigt.is_(None),
+            )
+            .order_by(Aufgabe.reihenfolge, Aufgabe.id)
+        )
+    )
+
+
+def _listenname(v: Aufgabenverbindung, liste_id: str) -> str:
+    """Der Name der Liste zum Anzeigen; leer, wenn die App gerade nichts sagt."""
+    try:
+        if v.art == "nextasks":
+            fern = nextasks.listen(_nextasks_zugang(v))
+        else:
+            fern = todoist.listen(_zugang(v))
+    except (*AppFehler, crypto.SchluesselFehler):
+        return ""
+    return next((l.name for l in fern if l.id == liste_id), "")
+
+
+def _umziehen(
+    db: Session,
+    v: Aufgabenverbindung,
+    aufgabe: Aufgabe,
+    liste_id: str,
+    *,
+    liste_name: str = "",
+    vom_browser: str = "",
+) -> None:
+    """Eine eigene Aufgabe in die App, wie „Zu Aufgabe machen" es taete.
+
+    ⚠️ **Dieselbe Zeile wird zur App-Aufgabe**, keine zweite: Haken, Reihenfolge
+    und Mail bleiben dran. ⚠️ **Festgeschrieben je Aufgabe**, damit ein Abbruch
+    danach nichts Umgezogenes zuruecknimmt. nextasks legt ueber ``external_ref``
+    beim zweiten Versuch nichts doppelt an.
+    """
+    link = mail_link(db, aufgabe.message_id, vom_browser)
+    faellig = aufgabe.faellig.date() if aufgabe.faellig else None
+    titel = aufgabe.betreff or "(no subject)"
+    try:
+        if v.art == "nextasks":
+            stand, _ = nextasks.anlegen(
+                _nextasks_zugang(v),
+                titel=titel,
+                notizen=_nextasks_notiz(aufgabe, link),
+                link=link,
+                liste=liste_id,
+                faellig=faellig,
+                schluessel=nextasks.schluessel_fuer(aufgabe.message_id) if aufgabe.message_id else "",
+            )
+            if stand.erledigt is not None and aufgabe.erledigt is None:
+                aufgabe.erledigt = stand.erledigt
+            aufgabe.fern_geloescht = stand.papierkorb
+        else:
+            stand = todoist.anlegen(
+                _zugang(v),
+                titel=titel,
+                beschreibung=_beschreibung(aufgabe, link),  # type: ignore[arg-type]
+                liste_id=liste_id,
+                faellig=faellig,
+            )
+    except AppFehler as fehler:
+        _fehler_merken(v, fehler)
+        db.commit()
+        raise
+    aufgabe.fern_art = v.art
+    aufgabe.verbindung_id = v.id
+    aufgabe.fern_id = stand.id
+    aufgabe.fern_url = stand.url
+    aufgabe.fern_liste = liste_name.strip()[:200]
+    if stand.faellig is not None:
+        aufgabe.faellig = _als_zeitpunkt(stand.faellig)
+    v.letzter_fehler = ""
+    db.commit()
+
+
+@dataclass
+class Umzug:
+    umgezogen: int = 0
+    fehlgeschlagen: int = 0
+
+
+def eigene_setzen(db: Session, person: Benutzer, an: bool, umziehen: bool = False) -> Umzug:
+    """Die eigene Aufgabenliste an- oder ausschalten (AC-16), beim Ausschalten
+    auf Wunsch mit Umzug in die Standardliste (AC-17).
+
+    ⚠️ **Nur offene ziehen um** (EC-19); erledigte bleiben gespeichert und
+    kommen mit der eigenen Liste wieder. ⚠️ **Standardliste Webhook oder
+    keine**: nichts umziehen, nur ausblenden. ⚠️ **Scheitert eine, laeuft der
+    Rest weiter** (EC-17), ausser der Fehler trifft die ganze Verbindung.
+    """
+    ergebnis = Umzug()
+    if an:
+        person.aufgaben_eigene = True
+        db.commit()
+        return ergebnis
+    if not verbindungen(db, person):
+        raise ZielFehler("eigene_aufgaben_ohne_verbindung")
+    person.aufgaben_eigene = False
+    db.commit()
+    if not umziehen:
+        return ergebnis
+    ziel = standard_von(db, person)
+    if not ziel:
+        return ergebnis
+    v, liste_id = _zerlegen(db, person, ziel)
+    if v.art not in UMZUG_ARTEN:
+        return ergebnis
+    offene = _offene_eigene(db, person)
+    if not offene:
+        return ergebnis
+    liste_name = _listenname(v, liste_id)
+    for platz, a in enumerate(offene):
+        try:
+            _umziehen(db, v, a, liste_id, liste_name=liste_name)
+        except (*AppFehler, crypto.SchluesselFehler) as fehler:
+            ergebnis.fehlgeschlagen += 1
+            logger.info("A task could not move to the to-do app: %s", fehler.kennung)
+            if fehler.kennung in UMZUG_ABBRUCH or isinstance(fehler, crypto.SchluesselFehler):
+                ergebnis.fehlgeschlagen += len(offene) - platz - 1
+                break
+            continue
+        ergebnis.umgezogen += 1
+    logger.info(
+        "Own tasks moved to a to-do app (%s): %d moved, %d failed.",
+        v.art, ergebnis.umgezogen, ergebnis.fehlgeschlagen,
+    )
+    return ergebnis
 
 
 # --- Was ein Webhook bekommt --------------------------------------------------- #

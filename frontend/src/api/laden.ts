@@ -6,7 +6,8 @@
  * hieße, jeden davon anzufassen — und dabei geht Abgestimmtes verloren. Also
  * wird hier übersetzt: eine Datei, eine Aufgabe.
  */
-import { api } from './client'
+import i18next from 'i18next'
+import { api, ApiFehler } from './client'
 import { WIEDERVORLAGE_PFAD } from '../lib/ordnername'
 import type { Wiederholung } from '../components/Wiederholungsfeld'
 import type { KontoZeile, OrdnerZeile } from './client'
@@ -116,6 +117,8 @@ export async function kontenLaden(): Promise<Konto[]> {
     anzeigename: k.anzeigename,
     adresse: k.adresse,
     farbe: (k.farbe as Postfachfarbe) ?? 1,
+    farbton: k.farbton ?? '',
+    symbol: k.symbol ?? '',
     tags: k.tags ?? [],
     aliase: k.aliase ?? [],
     stoerung: k.stoerung ?? '',
@@ -565,6 +568,50 @@ export interface Einladung {
   antwortAm: string | null
   /** Liegt der Termin schon in einem Kalender? */
   imKalender: boolean
+  /** Der Stand in nextime — `null` ohne Verbindung (MAIL-1). */
+  nextime: NextimeLage | null
+}
+
+/** Ein Termin zur selben Zeit wie eine Einladung (MAIL-1 AC-12). */
+export interface Ueberschneidung {
+  titel: string
+  beginn: string
+  ende: string
+  ganztaegig: boolean
+  kalender: string
+}
+
+/** Was nextime über eine Einladung weiß (MAIL-1). */
+export interface NextimeLage {
+  /** Eine Kennung, wenn nextime gerade nicht zu sprechen war. */
+  fehler: string
+  /** Gesetzt, wenn die Einladung schon in nextime steht. */
+  terminId: number | null
+  kalenderId: string
+  kalenderName: string
+  link: string
+  /** `zusage` | `vorbehalt` | `absage` | leer (offen). */
+  antwort: string
+  /** Aus einer Mail eingetragen: Nur dann darf nexmail ihn ändern oder streichen. */
+  ausMail: boolean
+  /** `titel` | `zeit` | `ort` — was die Mail anders sagt (AC-11). */
+  abweichungen: string[]
+  ueberschneidungen: Ueberschneidung[]
+  /** Der Kalender, der für dieses Postfach zuletzt gewählt wurde. */
+  vorwahl: string
+}
+
+interface ApiNextimeLage {
+  fehler: string
+  termin_id: number | null
+  kalender_id: string
+  kalender_name: string
+  link: string
+  antwort: string
+  aus_mail: boolean
+  abweichungen: string[]
+  ueberschneidungen: Ueberschneidung[]
+  vorwahl: string
 }
 
 interface ApiEinladung {
@@ -584,6 +631,7 @@ interface ApiEinladung {
   antwort: string
   antwort_am: string | null
   im_kalender?: boolean
+  nextime?: ApiNextimeLage | null
 }
 
 function einladung(roh: ApiEinladung): Einladung {
@@ -604,6 +652,20 @@ function einladung(roh: ApiEinladung): Einladung {
     antwort: roh.antwort,
     antwortAm: roh.antwort_am,
     imKalender: Boolean(roh.im_kalender),
+    nextime: roh.nextime
+      ? {
+          fehler: roh.nextime.fehler,
+          terminId: roh.nextime.termin_id,
+          kalenderId: roh.nextime.kalender_id,
+          kalenderName: roh.nextime.kalender_name,
+          link: roh.nextime.link,
+          antwort: roh.nextime.antwort,
+          ausMail: roh.nextime.aus_mail,
+          abweichungen: roh.nextime.abweichungen ?? [],
+          ueberschneidungen: roh.nextime.ueberschneidungen ?? [],
+          vorwahl: roh.nextime.vorwahl,
+        }
+      : null,
   }
 }
 
@@ -613,12 +675,78 @@ export async function einladungLaden(id: string): Promise<Einladung | null> {
   return roh ? einladung(roh) : null
 }
 
-/** Zusagen, mit Vorbehalt zusagen oder absagen. */
+/** Zusagen, mit Vorbehalt zusagen oder absagen.
+ *
+ * Mit nextime trägt eine Zusage den Termin gleich in `kalenderId` ein (MAIL-1
+ * AC-10); leer heißt: nur antworten. */
 export async function terminAntworten(
   id: string,
   antwort: 'zusage' | 'vorbehalt' | 'absage',
+  kalenderId = '',
 ): Promise<Einladung> {
-  return einladung(await api.senden<ApiEinladung>(`/api/termine/${id}/antwort`, { antwort }))
+  return einladung(
+    await api.senden<ApiEinladung>(`/api/termine/${id}/antwort`, {
+      antwort,
+      kalender_id: kalenderId,
+    }),
+  )
+}
+
+/** Eine abgesagte Einladung aus nextime nehmen — nur eine Kopie aus einer Mail (AC-18). */
+export async function nextimeEntfernen(id: string): Promise<Einladung> {
+  return einladung(await api.senden<ApiEinladung>(`/api/termine/${id}/nextime-entfernen`, {}))
+}
+
+/** Eine geänderte Einladung in die Kopie in nextime übernehmen (AC-11). */
+export async function nextimeAktualisieren(id: string): Promise<Einladung> {
+  return einladung(await api.senden<ApiEinladung>(`/api/termine/${id}/nextime-aktualisieren`, {}))
+}
+
+/* --- Termin aus einer Mail (MAIL-1 AC-17) -------------------------------- */
+
+export interface MailTermin {
+  id: number
+  /** `nt:<id>` für nextime, sonst ein eigener Kalender. */
+  kalender: string
+  titel: string
+  beginn: string
+  ganztaegig: boolean
+  /** Der Sprung in nextime; leer bei eigenen Kalendern. */
+  link: string
+}
+
+export interface AusMail {
+  /** Der für dieses Postfach zuletzt gewählte Kalender, leer ohne. */
+  vorwahl: string
+  termine: MailTermin[]
+}
+
+export async function ausMailLaden(nachrichtId: string): Promise<AusMail> {
+  return api.holen<AusMail>(`/api/termine/${nachrichtId}/aus-mail`)
+}
+
+export async function terminAusMail(
+  nachrichtId: string,
+  wunsch: {
+    kalenderId: string
+    titel: string
+    beginn: string
+    ende?: string
+    ganztaegig: boolean
+    ort: string
+    /** Je Fenster einer: Ein Doppelklick legt dann nichts Zweites an. */
+    anfrage: string
+  },
+): Promise<AusMail> {
+  return api.senden<AusMail>(`/api/termine/${nachrichtId}/aus-mail`, {
+    kalender_id: wunsch.kalenderId,
+    titel: wunsch.titel,
+    beginn: wunsch.beginn,
+    ende: wunsch.ende ?? null,
+    ganztaegig: wunsch.ganztaegig,
+    ort: wunsch.ort,
+    anfrage: wunsch.anfrage,
+  })
 }
 
 /* --- Umzug: Post hinein und hinaus ------------------------------------- */
@@ -721,6 +849,33 @@ export interface KalenderZeile {
   herkunft: string
   nurLesen: boolean
   letzterFehler: string
+  /* --- Nur bei Kalendern aus nextime (`art` = `nextime`, MAIL-1) --- */
+  /** `own` | `icloud` | `google` | `caldav` | `shared` | `subscriptions` */
+  gruppe?: string
+  /** Die Farbe, wie nextime sie nennt (`slate`, `red` …). */
+  farbeNextime?: string
+  /** Der Standardkalender in nextime: vorgewählt bei „Neuer Termin". */
+  standard?: boolean
+  nurBelegt?: boolean
+  hintergrund?: boolean
+  /** Nimmt nexmail ihn überhaupt (Auswahl in der nextime-Karte)? */
+  gewaehlt?: boolean
+}
+
+/** Was nexmail über einen Termin aus nextime wissen muss (MAIL-1). */
+export interface Fern {
+  /** Fehlt bei „nur belegt": Davon kennt nexmail nur die Zeit. */
+  id: number | null
+  vorkommen: string | null
+  etag: string
+  link: string
+  beschreibbar: boolean
+  nurBelegt: boolean
+  hintergrund: boolean
+  uid: string
+  einladung: string
+  herkunft: string
+  zeitzone: string
 }
 
 /** Organisator oder Teilnehmer eines Termins. */
@@ -776,6 +931,9 @@ export interface TerminZeile {
    *  nicht verschwiegen** — nur wer eingeladen wurde, kann antworten, und
    *  entscheiden muss ein Mensch. */
   fremdeAntworten: { adresse: string; antwort: string; am: string }[]
+  /** Gesetzt bei Terminen aus nextime. ⚠️ Ihre `id` ist negativ; geändert
+   *  werden sie über die Wege unter `/api/nextime`. */
+  fern?: Fern
 }
 
 /** ``dieser`` gilt nur für dieses Vorkommen, ``folgende`` ab hier, ``alle``. */
@@ -790,6 +948,26 @@ interface ApiKalender {
   herkunft: string
   nur_lesen: boolean
   letzter_fehler: string
+  gruppe?: string
+  farbe_nextime?: string
+  standard?: boolean
+  nur_belegt?: boolean
+  hintergrund?: boolean
+  gewaehlt?: boolean
+}
+
+interface ApiFern {
+  id: number | null
+  vorkommen: string | null
+  etag: string
+  link: string
+  beschreibbar: boolean
+  nur_belegt: boolean
+  hintergrund: boolean
+  uid: string
+  einladung: string
+  herkunft: string
+  zeitzone: string
 }
 
 interface ApiTermin {
@@ -821,10 +999,11 @@ interface ApiTermin {
   eingeladen: boolean
   fremde_antworten?: { adresse: string; antwort: string; am: string }[]
   erinnerung: number
+  fern?: ApiFern | null
 }
 
 function kalenderZeile(k: ApiKalender): KalenderZeile {
-  return {
+  const zeile: KalenderZeile = {
     id: k.id,
     name: k.name,
     farbe: (k.farbe as Postfachfarbe) ?? 1,
@@ -834,13 +1013,41 @@ function kalenderZeile(k: ApiKalender): KalenderZeile {
     nurLesen: k.nur_lesen,
     letzterFehler: k.letzter_fehler,
   }
+  if (k.art === 'nextime') {
+    zeile.gruppe = k.gruppe ?? 'own'
+    zeile.farbeNextime = k.farbe_nextime || 'slate'
+    zeile.standard = Boolean(k.standard)
+    zeile.nurBelegt = Boolean(k.nur_belegt)
+    zeile.hintergrund = Boolean(k.hintergrund)
+    zeile.gewaehlt = k.gewaehlt ?? true
+  }
+  return zeile
+}
+
+function fernZeile(f: ApiFern): Fern {
+  return {
+    id: f.id,
+    vorkommen: f.vorkommen,
+    etag: f.etag,
+    link: f.link,
+    beschreibbar: f.beschreibbar,
+    nurBelegt: f.nur_belegt,
+    hintergrund: f.hintergrund,
+    uid: f.uid,
+    einladung: f.einladung,
+    herkunft: f.herkunft,
+    zeitzone: f.zeitzone,
+  }
 }
 
 function terminZeile(t: ApiTermin): TerminZeile {
-  return {
+  const fern = t.fern ? fernZeile(t.fern) : undefined
+  const zeile: TerminZeile = {
     id: t.id,
     kalenderId: t.kalender_id,
-    titel: t.titel,
+    /* ⚠️ **„Nur belegt" hat keinen Titel**, nur eine Zeit; die Ansichten
+       zeigen ihn trotzdem als Block, also bekommt er ein Wort. */
+    titel: fern?.nurBelegt ? i18next.t('kalender.belegt') : t.titel,
     beginn: t.beginn,
     ende: t.ende,
     ganztaegig: t.ganztaegig,
@@ -869,10 +1076,204 @@ function terminZeile(t: ApiTermin): TerminZeile {
     fremdeAntworten: t.fremde_antworten ?? [],
     erinnerung: t.erinnerung ?? -1,
   }
+  if (fern) {
+    zeile.fern = fern
+    // ⚠️ **Gemerkt, wie er beim Laden aussah.** Geändert wird nur, was davon
+    // abweicht (siehe `terminAendern`).
+    FERN_STAND.set(zeile.id, zeile)
+  }
+  return zeile
+}
+
+/* --- nextime (MAIL-1) --------------------------------------------------- */
+
+/** Wie nextime-Termine zuletzt aussahen, nach ihrer (negativen) Nummer.
+ *
+ * ⚠️ **Der Grund, warum es das gibt:** Die Kalenderseite schickt beim
+ * Speichern alle Felder des Formulars. Für nexmails eigene Termine ist das
+ * richtig; bei nextime hieße ein mitgeschicktes Feld „ändern", und ein
+ * leeres Notizfeld löschte dort die Notiz. Also geht nur hinaus, was sich
+ * gegenüber dieser Fassung geändert hat. */
+const FERN_STAND = new Map<number, TerminZeile>()
+
+/** Die beim Öffnen geholte ganze Fassung eines nextime-Termins (mit Notiz,
+ *  Regel und dem ETag, der gelesen wurde).
+ *
+ * ⚠️ **Getrennt von `FERN_STAND`** (Prüfbericht MAIL-1, Befund 7): Das
+ * Nachsehen alle 60 s lädt die Woche neu und überschriebe sonst die Fassung
+ * eines offenen Termins mit der aus dem Fenster, ohne Notiz und Regel und mit
+ * einem neueren ETag. Beim Speichern gingen Notiz und Regel dann als
+ * „geändert" hinaus. */
+const FERN_OFFEN = new Map<number, TerminZeile>()
+
+/** Eine Kennung für einen Wunsch: Kommt derselbe zweimal (Doppelklick), legt
+ *  nextime nichts Zweites an. */
+export function neueAnfrage(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+}
+
+/** Ist das ein Kalender aus nextime? */
+export function istNextimeKalender(id: string): boolean {
+  return id.startsWith('nt:')
+}
+
+export interface NextimeStand {
+  verbunden: boolean
+  adresse: string
+  name: string
+  version: string
+  /** Eine Kennung, wenn der Zugang zuletzt abgelehnt wurde. */
+  letzterFehler: string
+}
+
+export async function nextimeStandLaden(): Promise<NextimeStand> {
+  const roh = await api.holen<{
+    verbunden: boolean
+    adresse: string
+    name: string
+    version: string
+    letzter_fehler: string
+  }>('/api/nextime/verbindung')
+  return {
+    verbunden: roh.verbunden,
+    adresse: roh.adresse,
+    name: roh.name,
+    version: roh.version,
+    letzterFehler: roh.letzter_fehler,
+  }
+}
+
+export async function nextimeVerbinden(
+  adresse: string,
+  schluessel: string,
+): Promise<NextimeStand & { kalender: number }> {
+  const roh = await api.senden<{
+    verbunden: boolean
+    adresse: string
+    name: string
+    version: string
+    letzter_fehler: string
+    kalender: number
+  }>('/api/nextime/verbindung', { adresse, schluessel })
+  return {
+    verbunden: roh.verbunden,
+    adresse: roh.adresse,
+    name: roh.name,
+    version: roh.version,
+    letzterFehler: roh.letzter_fehler ?? '',
+    kalender: roh.kalender,
+  }
+}
+
+export async function nextimeTrennen(): Promise<void> {
+  await api.loeschen('/api/nextime/verbindung')
+  FERN_STAND.clear()
+  FERN_OFFEN.clear()
+}
+
+/** Alle nextime-Kalender, auch die nicht gewählten — für die Auswahl in der Karte. */
+export async function nextimeKalenderAlle(): Promise<KalenderZeile[]> {
+  return (await api.holen<ApiKalender[]>('/api/nextime/kalender?alle=true')).map(kalenderZeile)
+}
+
+/** Einen nextime-Kalender in nexmail nehmen oder weglassen (nur in nexmail). */
+export async function nextimeAuswahl(id: string, gewaehlt: boolean): Promise<void> {
+  await api.flicken(`/api/nextime/kalender/${id}`, { gewaehlt })
+}
+
+/** Nur die eigenen Kalender, ohne auf nextime zu warten (Befund 6). */
+export async function eigeneKalender(): Promise<KalenderZeile[]> {
+  return (await api.holen<ApiKalender[]>('/api/kalender')).map(kalenderZeile)
+}
+
+/** Nur die nextime-Kalender; `[]`, wenn nextime nicht verbunden ist. */
+export async function nextimeKalender(): Promise<KalenderZeile[]> {
+  try {
+    return (await api.holen<ApiKalender[]>('/api/nextime/kalender')).map(kalenderZeile)
+  } catch (f) {
+    if (f instanceof ApiFehler && f.status === 404) return []
+    throw f
+  }
+}
+
+/** nextimes Versionsnummer: Ändert sie sich, gibt es Neues (EC-6). */
+export async function nextimeVersion(): Promise<string> {
+  return (await api.holen<{ version: string }>('/api/nextime/stand')).version
+}
+
+/** Einen nextime-Termin samt Notiz, Regel und Leuten — vor dem Bearbeiten.
+ *
+ * ⚠️ **Ohne diesen Abruf stünde im Notizfeld nichts**, und wer dann eine
+ * Notiz eintippte, überschriebe die vorhandene in nextime. */
+export async function terminDetail(t: TerminZeile): Promise<TerminZeile> {
+  if (!t.fern || t.fern.id === null) return t
+  const frage = new URLSearchParams()
+  if (t.fern.vorkommen) frage.set('vorkommen', t.fern.vorkommen)
+  const zeile = terminZeile(
+    await api.holen<ApiTermin>(`/api/nextime/termine/${t.fern.id}?${frage}`),
+  )
+  /* Das Vorkommen gilt, das angeklickt wurde — der Einzelabruf nennt bei
+     einer Reihe sonst womöglich ihren Beginn. */
+  const mitVorkommen = { ...zeile, id: t.id, beginn: t.beginn, ende: t.ende }
+  FERN_OFFEN.set(t.id, mitVorkommen)
+  return mitVorkommen
+}
+
+/** Eigene und nextime-Kalender zusammen, dazu ein Fehler von nextime.
+ *
+ * ⚠️ **nextime kann fehlen, ohne dass der Kalender fehlt** (EC-1): Ist es
+ * nicht verbunden (404), gibt es keine nextime-Kalender; ist es nicht zu
+ * sprechen, stehen die eigenen trotzdem da, und `nextimeFehler` sagt, warum
+ * die anderen fehlen. */
+export async function kalenderMitNextime(): Promise<{
+  kalender: KalenderZeile[]
+  nextimeFehler: unknown
+}> {
+  const [eigene, fern] = await Promise.allSettled([
+    api.holen<ApiKalender[]>('/api/kalender'),
+    api.holen<ApiKalender[]>('/api/nextime/kalender'),
+  ])
+  if (eigene.status === 'rejected') throw eigene.reason
+  const kalender = eigene.value.map(kalenderZeile)
+  if (fern.status === 'fulfilled') {
+    return { kalender: [...kalender, ...fern.value.map(kalenderZeile)], nextimeFehler: null }
+  }
+  const fehler = fern.reason
+  const nichtVerbunden = fehler instanceof ApiFehler && fehler.status === 404
+  return { kalender, nextimeFehler: nichtVerbunden ? null : fehler }
 }
 
 export async function kalenderLaden(): Promise<KalenderZeile[]> {
-  return (await api.holen<ApiKalender[]>('/api/kalender')).map(kalenderZeile)
+  return (await kalenderMitNextime()).kalender
+}
+
+/** Was eine Änderung an einem nextime-Termin wirklich ändert.
+ *
+ * ⚠️ **Zeiten gehen zusammen** (`beginn`, `ende`, `ganztaegig`): nextime nimmt
+ * sie nur gemeinsam an, und die Zone des Termins fährt mit. */
+export function fernAenderung(
+  alt: TerminZeile,
+  neu: Partial<Omit<Terminwunsch, 'kalenderId'>>,
+): Record<string, unknown> {
+  const raus: Record<string, unknown> = {}
+  if (neu.titel !== undefined && neu.titel !== alt.titel) raus.titel = neu.titel
+  if (neu.ort !== undefined && neu.ort !== alt.ort) raus.ort = neu.ort
+  if (neu.beschreibung !== undefined && neu.beschreibung !== alt.beschreibung)
+    raus.beschreibung = neu.beschreibung
+  const ganz = neu.ganztaegig ?? alt.ganztaegig
+  const beginn = neu.beginn ?? alt.beginn
+  const ende = neu.ende ?? alt.ende
+  const zeitGleich = (a: string, b: string) => new Date(a).getTime() === new Date(b).getTime()
+  if (ganz !== alt.ganztaegig || !zeitGleich(beginn, alt.beginn) || !zeitGleich(ende, alt.ende)) {
+    raus.beginn = beginn
+    raus.ende = ende
+    raus.ganztaegig = ganz
+    raus.zeitzone = alt.fern?.zeitzone ?? ''
+  }
+  if (neu.rrule !== undefined && neu.rrule !== alt.rrule) raus.rrule = neu.rrule
+  return raus
 }
 
 export async function kalenderAnlegen(name: string, farbe = 0): Promise<KalenderZeile> {
@@ -882,7 +1283,14 @@ export async function kalenderAnlegen(name: string, farbe = 0): Promise<Kalender
 export async function kalenderAendern(
   id: string,
   aenderung: { name?: string; farbe?: number; sichtbar?: boolean },
-): Promise<KalenderZeile> {
+): Promise<KalenderZeile | null> {
+  /* ⚠️ **Bei nextime nur der Haken, und nur in nexmail** (MAIL-1 AC-3).
+     Name und Farbe gehören nextime; die Oberfläche bietet sie dort nicht an. */
+  if (istNextimeKalender(id)) {
+    if (aenderung.sichtbar !== undefined)
+      await api.flicken(`/api/nextime/kalender/${id}`, { sichtbar: aenderung.sichtbar })
+    return null
+  }
   return kalenderZeile(await api.flicken<ApiKalender>(`/api/kalender/${id}`, aenderung))
 }
 
@@ -896,9 +1304,39 @@ export async function termineLaden(
   bis: Date,
   nurKalender?: string[],
 ): Promise<TerminZeile[]> {
-  const frage = new URLSearchParams({ von: von.toISOString(), bis: bis.toISOString() })
-  for (const id of nurKalender ?? []) frage.append('kalender', id)
-  return (await api.holen<ApiTermin[]>(`/api/kalender/termine?${frage}`)).map(terminZeile)
+  return (await termineMitNextime(von, bis, nurKalender)).termine
+}
+
+/** Eigene Termine und die aus nextime im selben Fenster (MAIL-1 AC-4).
+ *
+ * ⚠️ **Scheitert nextime, bleiben die eigenen** (EC-1): `nextimeFehler` sagt
+ * dann, warum ein Teil fehlt, statt die ganze Woche leer zu lassen. */
+export async function termineMitNextime(
+  von: Date,
+  bis: Date,
+  nurKalender?: string[],
+): Promise<{ termine: TerminZeile[]; nextimeFehler: unknown }> {
+  const eigene = (nurKalender ?? []).filter((id) => !istNextimeKalender(id))
+  const fern = (nurKalender ?? []).filter(istNextimeKalender)
+  const frage = (ids: string[]) => {
+    const f = new URLSearchParams({ von: von.toISOString(), bis: bis.toISOString() })
+    for (const id of ids) f.append('kalender', id)
+    return f
+  }
+  const [hier, dort] = await Promise.allSettled([
+    nurKalender === undefined || eigene.length
+      ? api.holen<ApiTermin[]>(`/api/kalender/termine?${frage(eigene)}`)
+      : Promise.resolve([] as ApiTermin[]),
+    fern.length
+      ? api.holen<ApiTermin[]>(`/api/nextime/termine?${frage(fern)}`)
+      : Promise.resolve([] as ApiTermin[]),
+  ])
+  if (hier.status === 'rejected') throw hier.reason
+  const termine = hier.value.map(terminZeile)
+  if (dort.status === 'rejected') return { termine, nextimeFehler: dort.reason }
+  const alle = [...termine, ...dort.value.map(terminZeile)]
+  alle.sort((a, b) => a.beginn.localeCompare(b.beginn))
+  return { termine: alle, nextimeFehler: null }
 }
 
 export interface Terminwunsch {
@@ -992,15 +1430,48 @@ export async function termineSuchen(
   wort: string,
   kalenderIds: string[],
 ): Promise<{ treffer: TerminZeile[]; abgeschnitten: boolean }> {
-  const frage = new URLSearchParams({ q: wort })
-  for (const id of kalenderIds) frage.append('kalender', id)
-  const roh = await api.holen<{ treffer: ApiTermin[]; abgeschnitten: boolean }>(
-    `/api/kalender/suche?${frage}`,
-  )
-  return { treffer: roh.treffer.map(terminZeile), abgeschnitten: roh.abgeschnitten }
+  const frage = (ids: string[]) => {
+    const f = new URLSearchParams({ q: wort })
+    for (const id of ids) f.append('kalender', id)
+    return f
+  }
+  const fern = kalenderIds.filter(istNextimeKalender)
+  const [hier, dort] = await Promise.allSettled([
+    api.holen<{ treffer: ApiTermin[]; abgeschnitten: boolean }>(
+      `/api/kalender/suche?${frage(kalenderIds.filter((id) => !istNextimeKalender(id)))}`,
+    ),
+    fern.length
+      ? api.holen<{ treffer: ApiTermin[]; abgeschnitten: boolean }>(`/api/nextime/suche?${frage(fern)}`)
+      : Promise.resolve({ treffer: [] as ApiTermin[], abgeschnitten: false }),
+  ])
+  if (hier.status === 'rejected') throw hier.reason
+  // ⚠️ Fehlt nextime gerade, findet die Suche eben nur die eigenen (EC-1).
+  const dazu = dort.status === 'fulfilled' ? dort.value : { treffer: [], abgeschnitten: false }
+  return {
+    treffer: [...hier.value.treffer, ...dazu.treffer].map(terminZeile),
+    abgeschnitten: hier.value.abgeschnitten || dazu.abgeschnitten,
+  }
 }
 
 export async function terminAnlegen(wunsch: Terminwunsch): Promise<TerminZeile> {
+  if (istNextimeKalender(wunsch.kalenderId)) {
+    /* ⚠️ **Ohne Erinnerung und Teilnehmer**: Erinnern tut nextime (AC-16),
+       Einladen kommt später (MAIL-3). Die Anfrage-Kennung macht einen
+       Doppelklick unschädlich (EC-15). */
+    return terminZeile(
+      await api.senden<ApiTermin>('/api/nextime/termine', {
+        kalender_id: wunsch.kalenderId,
+        titel: wunsch.titel,
+        beginn: wunsch.beginn,
+        ende: wunsch.ende ?? null,
+        ganztaegig: wunsch.ganztaegig ?? false,
+        ort: wunsch.ort ?? '',
+        beschreibung: wunsch.beschreibung ?? '',
+        rrule: wunsch.rrule ?? '',
+        anfrage: neueAnfrage(),
+      }),
+    )
+  }
   return terminZeile(
     await api.senden<ApiTermin>('/api/kalender/termine', {
       kalender_id: wunsch.kalenderId,
@@ -1029,6 +1500,20 @@ export async function terminAendern(
     erzwingen?: boolean
   },
 ): Promise<TerminZeile> {
+  const alt = FERN_OFFEN.get(id) ?? FERN_STAND.get(id)
+  if (id < 0) {
+    if (!alt?.fern || alt.fern.id === null) throw new ApiFehler(404, 'nextime_nicht_gefunden')
+    FERN_OFFEN.delete(id)
+    const neu = terminZeile(
+      await api.flicken<ApiTermin>(`/api/nextime/termine/${alt.fern.id}`, {
+        ...fernAenderung(alt, aenderung),
+        umfang: aenderung.umfang ?? 'alle',
+        vorkommen: alt.fern.vorkommen,
+        etag: alt.fern.etag,
+      }),
+    )
+    return { ...neu, id }
+  }
   return terminZeile(
     await api.flicken<ApiTermin>(`/api/kalender/termine/${id}`, {
       titel: aenderung.titel ?? null,
@@ -1073,6 +1558,16 @@ export async function terminEntfernen(
   vorkommen?: string,
   absagen = false,
 ): Promise<void> {
+  if (id < 0) {
+    const alt = FERN_OFFEN.get(id) ?? FERN_STAND.get(id)
+    if (!alt?.fern || alt.fern.id === null) throw new ApiFehler(404, 'nextime_nicht_gefunden')
+    FERN_OFFEN.delete(id)
+    const f = new URLSearchParams({ umfang })
+    if (alt.fern.vorkommen) f.set('vorkommen', alt.fern.vorkommen)
+    await api.loeschen(`/api/nextime/termine/${alt.fern.id}?${f}`)
+    FERN_STAND.delete(id)
+    return
+  }
   const frage = new URLSearchParams({ umfang })
   if (vorkommen) frage.set('vorkommen', vorkommen)
   // ⚠️ Nur mitschicken, wenn wirklich abgesagt werden soll. Der Server nimmt

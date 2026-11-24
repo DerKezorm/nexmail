@@ -400,6 +400,12 @@ const NEXTASKS_LISTEN = [
   },
 ]
 
+/** nextasks steht seit dem 24.11.2026 in seiner Karte oben unter „Verbindungen"
+ *  und klappt dort auf (MAIL-1, Befund 1). */
+async function nextasksKarte(page: Page) {
+  await page.getByRole('region', { name: 'nextasks' }).getByRole('button', { name: /nextasks/ }).first().click()
+}
+
 test('nextasks wird mit Adresse und Token verbunden, ein Lese-Token sagt warum', async ({ page }) => {
   const gesendet: Array<Record<string, unknown>> = []
   let verbunden = false
@@ -418,11 +424,16 @@ test('nextasks wird mit Adresse und Token verbunden, ein Lese-Token sagt warum',
     verbunden = true
     await route.fulfill({ status: 201, json: NEXTASKS })
   })
+  await page.route('**/api/aufgabenziele/v3/nextasks', (route) =>
+    route.fulfill({ json: { url: 'https://tasks.example.com' } }),
+  )
   await anmelden(page)
   await zuEinstellungen(page)
   await bereich(page, 'Verbindungen')
+  await nextasksKarte(page)
 
-  const formular = abschnitt(page, 'nextasks verbinden')
+  // Ohne Verbindung steht das Formular direkt in der Karte, „Verbinden" rechts (wie nextime).
+  const formular = page.getByRole('region', { name: 'nextasks' })
   const token = formular.getByLabel('API-Token')
   await expect(token).toHaveAttribute('type', 'password')
   await formular.getByRole('textbox', { name: /^Adresse/ }).fill('https://tasks.example.com')
@@ -434,13 +445,20 @@ test('nextasks wird mit Adresse und Token verbunden, ein Lese-Token sagt warum',
 
   await token.fill('probe-tok-1')
   await formular.getByRole('button', { name: 'Verbinden' }).click()
-  await expect(token).toHaveValue('')
+  await expect.poll(() => gesendet.length).toBe(2)
   expect(gesendet[1]).toEqual({ url: 'https://tasks.example.com', token: 'probe-tok-1', name: '' })
 
-  const verbindung = abschnitt(page, 'Verbunden').locator('li').filter({ hasText: 'nextasks' })
-  // Das Logo bettet Vite als data:-Adresse ein; gezählt wird das Bild.
-  await expect(verbindung.locator('img')).toHaveCount(1)
+  // Verbunden, aufgebaut wie in nextime: Statuszeile mit Adresse, darunter die
+  // Standardliste, ganz unten „Schlüssel ändern" und „Trennen" nebeneinander.
+  const verbindung = formular.locator('li').filter({ hasText: 'tasks.example.com' })
+  await expect(verbindung.getByText('verbunden', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Standardliste')).toContainText('nextasks › Familie › Einkauf › Markt')
+  const aendern = verbindung.getByRole('button', { name: 'Schlüssel ändern' })
+  const trennen = verbindung.getByRole('button', { name: 'Trennen', exact: true })
+  const [a, b, liste] = await Promise.all([aendern.boundingBox(), trennen.boundingBox(), page.getByLabel('Standardliste').boundingBox()])
+  expect(Math.abs((a?.y ?? 0) - (b?.y ?? 1))).toBeLessThan(2)
+  expect(a!.y).toBeGreaterThan(liste!.y)
+  await expect(formular.getByRole('textbox', { name: /^Adresse/ })).toBeHidden()
   await jederKnopfHatEinenNamen(page)
   await keineRohenSchluessel(page)
   await page.screenshot({ path: 'test-results/todoapps-nextasks.png', fullPage: true })
@@ -468,19 +486,27 @@ test('Token erneuern hält nextasks verbunden und zeigt das alte nie', async ({ 
   await anmelden(page)
   await zuEinstellungen(page)
   await bereich(page, 'Verbindungen')
+  await nextasksKarte(page)
 
-  const verbindung = abschnitt(page, 'Verbunden').locator('li').filter({ hasText: 'nextasks' })
+  const verbindung = page.getByRole('region', { name: 'nextasks' })
   await expect(verbindung.getByText('nextasks nimmt das Token nicht mehr an', { exact: false })).toBeVisible()
-  await verbindung.getByRole('button', { name: 'Token erneuern' }).click()
+  await expect(verbindung.getByText('Zugang abgelehnt', { exact: true })).toBeVisible()
+  await verbindung.getByRole('button', { name: 'Schlüssel ändern' }).click()
   await expect(verbindung.getByRole('textbox', { name: /^Adresse/ })).toHaveValue('https://tasks.example.com')
-  const token = verbindung.getByLabel('API-Token')
+  // ⚠️ Das zugeklappte „Weiteres nextasks verbinden" hat ein eigenes Token-Feld.
+  const token = verbindung.getByLabel('API-Token').first()
   await expect(token).toHaveValue('')
   await token.fill('probe-tok-2')
-  await verbindung.getByRole('button', { name: 'Speichern' }).click()
+  // Im Formular steht der Hauptknopf rechts neben „Abbrechen" (wie nextime).
+  const speichern = verbindung.getByRole('button', { name: 'Speichern' })
+  const abbrechen = verbindung.getByRole('button', { name: 'Abbrechen' })
+  expect((await speichern.boundingBox())!.x).toBeGreaterThan((await abbrechen.boundingBox())!.x)
+  await speichern.click()
 
   await expect.poll(() => geaendert.length).toBe(1)
   expect(geaendert[0]).toEqual({ url: 'https://tasks.example.com', token: 'probe-tok-2' })
-  await expect(verbindung.getByText('Verbunden und erreichbar')).toBeVisible()
-  await expect(verbindung.getByLabel('API-Token')).toHaveCount(0)
+  await expect(verbindung.getByText('verbunden', { exact: true })).toBeVisible()
+  await expect(verbindung.getByRole('button', { name: 'Speichern' })).toHaveCount(0)
+  await expect(verbindung.getByRole('button', { name: 'Schlüssel ändern' })).toBeVisible()
   await keineRohenSchluessel(page)
 })

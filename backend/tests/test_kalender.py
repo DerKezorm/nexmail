@@ -237,7 +237,7 @@ def _mail_mit_einladung(klient, ics: str, dateiname: str = "einladung.ics",
     from app.models import Anhang, Nachricht, Ordner
     from test_konten import _eingabe
 
-    konto_id = klient.post("/api/konten", json=_eingabe("termin@beispiel.example")).json()["id"]
+    konto_id = klient.post("/api/konten", json=_eingabe("termin@example.com")).json()["id"]
     with SessionLocal() as db:
         posteingang = (
             db.query(Ordner)

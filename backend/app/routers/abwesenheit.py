@@ -29,6 +29,8 @@ class Stand(BaseModel):
     konto_id: str
     adresse: str
     farbe: int
+    farbton: str = ""
+    symbol: str = ""
     aktiv: bool = False
     von: str = ""
     bis: str = ""
@@ -64,6 +66,8 @@ def _stand(konto: Konto, zeitzone: str) -> Stand:
         konto_id=konto.id,
         adresse=konto.adresse,
         farbe=konto.farbe,
+        farbton=konto.farbton or "",
+        symbol=konto.symbol or "",
         aktiv=konto.abwesenheit_aktiv,
         von=konto.abwesenheit_von,
         bis=konto.abwesenheit_bis,

@@ -17,18 +17,23 @@
  * nach 90 Tagen ab; Trennen und neu Verbinden nähme jeder Aufgabe den
  * Abgleich. Der Server prüft das neue Token, bevor es das alte ersetzt.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { createElement, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, ExternalLink, KeyRound, ListChecks, Send, Settings2, Unplug, Webhook } from 'lucide-react'
 import nextasksLogo from '../assets/nextasks.svg'
 import { api } from '../api/client'
-import { Button, Checkbox, Dialog, Input, Select } from '../ds'
+import { Button, Checkbox, Dialog, Input, Select, Switch } from '../ds'
+import { listeWaehlen, nextasksListen, type NtBereich } from '../api/nextasks'
+import { symbolFuer } from '../lib/nextasksSymbole'
+import { listenTon } from './AufgabenPage'
 import { useNachfrage } from '../components/Nachfrage'
 import { Klartext } from './ApiSchluessel'
 import { servermeldung } from '../lib/servermeldung'
+import { Abschnitt, Knopfreihe, Lage } from './einstellungen/Verbindungsteile'
 import {
   gruppenname,
   NEXTASKS_ZU_BEHEBEN,
+  zielname,
   type Verbindung,
   type ZielGruppe,
   type ZielStand,
@@ -37,7 +42,25 @@ import {
 /** Wo man den Token findet — nur der Verweis, kein nacherzählter Weg. */
 const TODOIST_TOKEN = 'https://app.todoist.com/app/settings/integrations/developer'
 
-export function TodoApps() {
+function wirtVon(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
+}
+
+/** Geht durchs Fenster, sobald sich eine Todo-App-Verbindung ändert: Die
+ *  nextasks-Karte und der Abschnitt „Aufgaben" sind zwei Teile derselben Seite
+ *  und sollen beide den neuen Stand zeigen. */
+export const AUFGABENZIELE_GEAENDERT = 'nexmail:aufgabenziele'
+
+/** Welcher Teil gezeigt wird (MAIL-1, Befund 1 vom 24.11.2026):
+ *  `nextasks` steht in der nextasks-Karte unter „Verbindungen", `ohne-nextasks`
+ *  im Abschnitt „Aufgaben" (Todoist, Webhook, Standardliste). */
+export type TodoTeil = 'alle' | 'nextasks' | 'ohne-nextasks'
+
+export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
   const { t } = useTranslation()
   const { fragen, fenster: nachfrage } = useNachfrage()
   const [stand, setStand] = useState<ZielStand | null>(null)
@@ -50,6 +73,9 @@ export function TodoApps() {
   const [geheimnis, setGeheimnis] = useState<string | null>(null)
   /** Welcher Webhook seine Einstellungen aufgeklappt hat. */
   const [offen, setOffen] = useState<string | null>(null)
+  const [umzug, setUmzug] = useState<{ umgezogen: number; fehlgeschlagen: number } | null>(null)
+  /** Die Adressen der nextasks-Verbindungen, für die Statuszeile in der Karte. */
+  const [adressen, setAdressen] = useState<Record<string, string>>({})
 
   const laden = useCallback(async () => {
     try {
@@ -63,14 +89,36 @@ export function TodoApps() {
           ? await api.holen<ZielGruppe[]>('/api/aufgabenziele/listen')
           : [],
       )
+      if (teil === 'nextasks') {
+        const paare = await Promise.all(
+          s.verbindungen
+            .filter((v) => v.art === 'nextasks')
+            .map(async (v) => {
+              const wo = await api
+                .holen<{ url: string }>(`/api/aufgabenziele/${v.id}/nextasks`)
+                .then((x) => x.url)
+                .catch(() => '')
+              return [v.id, wo] as const
+            }),
+        )
+        setAdressen(Object.fromEntries(paare))
+      }
     } catch (f) {
       setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     }
-  }, [t])
+  }, [t, teil])
 
   useEffect(() => {
     void laden()
+    const neu = () => void laden()
+    window.addEventListener(AUFGABENZIELE_GEAENDERT, neu)
+    return () => window.removeEventListener(AUFGABENZIELE_GEAENDERT, neu)
   }, [laden])
+
+  /** Neu laden — hier und im anderen Teil der Seite. */
+  const geaendert = useCallback(() => {
+    window.dispatchEvent(new Event(AUFGABENZIELE_GEAENDERT))
+  }, [])
 
   async function verbinden() {
     setLaeuft(true)
@@ -79,7 +127,7 @@ export function TodoApps() {
       await api.senden('/api/aufgabenziele', { art: 'todoist', zugang, name })
       setZugang('')
       setName('')
-      await laden()
+      geaendert()
     } catch (f) {
       setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     } finally {
@@ -97,7 +145,7 @@ export function TodoApps() {
     if (!ja) return
     try {
       await api.loeschen(`/api/aufgabenziele/${v.id}`)
-      await laden()
+      geaendert()
     } catch (f) {
       setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     }
@@ -113,9 +161,187 @@ export function TodoApps() {
 
   if (stand === null && !fehler) return <div className="h-24" />
 
+  /* Welche Verbindungen dieser Teil zeigt, und wo die Standardliste steht.
+     ⚠️ **Die Standardliste gilt für alle Apps** und steht deshalb nur einmal:
+     im Abschnitt „Aufgaben", sobald dort eine andere App verbunden ist, sonst
+     in der nextasks-Karte. */
+  const alleVerbindungen = stand?.verbindungen ?? []
+  const verbindungen = alleVerbindungen.filter((v) =>
+    teil === 'nextasks' ? v.art === 'nextasks' : teil === 'ohne-nextasks' ? v.art !== 'nextasks' : true,
+  )
+  const andere = alleVerbindungen.some((v) => v.art !== 'nextasks')
+  const mitStandard =
+    teil === 'alle' ||
+    (teil === 'ohne-nextasks' && andere) ||
+    (teil === 'nextasks' && !andere && verbindungen.length > 0)
+
+  /* ⚠️ **In der nextasks-Karte wie in nextime** (gemeldet am 24.11.2026):
+     Statuszeile, Abschnitte mit Überschrift, die Knöpfe unten nebeneinander. */
+  if (teil === 'nextasks') {
+    const standardwahl = mitStandard && stand && (
+      <Abschnitt titel={t('todoapps.standard')} hinweis={t('todoapps.standard_hinweis')}>
+        <Select
+          aria-label={t('todoapps.standard')}
+          value={stand.standard}
+          onChange={(e) => void standardSetzen(e.target.value)}
+        >
+          <option value="" className="bg-surface-1 text-fg-1">
+            {t('todoapps.eigene_liste')}
+          </option>
+          {(gruppen ?? []).flatMap((g) =>
+            g.listen.map((l) => (
+              <option key={l.ziel} value={l.ziel} className="bg-surface-1 text-fg-1">
+                {`${gruppenname(g)} › ${l.name}`}
+              </option>
+            )),
+          )}
+          {stand.standard &&
+            !(gruppen ?? []).some((g) => g.listen.some((l) => l.ziel === stand.standard)) && (
+              <option value={stand.standard}>{t('todoapps.liste_unerreichbar')}</option>
+            )}
+        </Select>
+      </Abschnitt>
+    )
+    return (
+      <div className="flex flex-col gap-4">
+        {fehler && (
+          <p role="alert" className="mb-0 text-[13px] text-danger">
+            {fehler}
+          </p>
+        )}
+        <ul className="m-0 flex list-none flex-col gap-5 p-0">
+          {verbindungen.map((v, i) =>
+            i > 0 ? (
+              /* ⚠️ **Nur eine nextasks-Verbindung** (MAIL-2 AC-18): Weitere aus der
+                 Zeit davor zählen nicht mehr; sie stehen mit Hinweis da, bis man
+                 sie trennt. Aufgaben aus Mails bleiben als Abzug. */
+              <li key={v.id} className="flex flex-col gap-2 border-t border-line-subtle pt-4">
+                <Lage
+                  art="aus"
+                  text={t('nextasks.zaehlt_nicht')}
+                  adresse={adressen[v.id] ? `${wirtVon(adressen[v.id])}${v.name ? ` (${v.name})` : ''}` : gruppenname(v)}
+                />
+                <p className="mb-0 text-[12px] text-fg-4">{t('nextasks.weitere_hinweis')}</p>
+                <Knopfreihe>
+                  <Button variant="secondary" onClick={() => void trennen(v)}>
+                    {t('todoapps.trennen')}
+                  </Button>
+                </Knopfreihe>
+              </li>
+            ) : offen === v.id ? (
+              <li key={v.id}>
+                <NextasksErneuern
+                  verbindung={v}
+                  aufAbbrechen={() => setOffen(null)}
+                  aufGespeichert={() => {
+                    setOffen(null)
+                    geaendert()
+                  }}
+                />
+              </li>
+            ) : (
+              <li key={v.id} className="flex flex-col gap-4">
+                <Lage
+                  art={v.fehler ? 'warn' : 'ok'}
+                  text={
+                    !v.fehler
+                      ? t('nextime.verbunden')
+                      : v.fehler === 'nextasks_zugang_ungueltig'
+                        ? t('nextime.gestoert')
+                        : t('todoapps.gestoert')
+                  }
+                  adresse={adressen[v.id] ? `${wirtVon(adressen[v.id])}${v.name ? ` (${v.name})` : ''}` : gruppenname(v)}
+                  zusatz={t('todoapps.nextasks_zeigt')}
+                />
+                {v.fehler && (
+                  <p role="alert" className="mb-0 text-[13px] text-warning">
+                    {v.fehler === 'nextasks_zugang_ungueltig'
+                      ? t('todoapps.nextasks_token_abgelehnt')
+                      : NEXTASKS_ZU_BEHEBEN.includes(v.fehler)
+                        ? t(`serverfehler.${v.fehler}`)
+                        : t('todoapps.klemmt')}
+                  </p>
+                )}
+                {!v.fehler && <NextasksListenwahl />}
+                {standardwahl}
+                <Knopfreihe>
+                  <Button variant="secondary" onClick={() => setOffen(v.id)}>
+                    {t('nextime.schluessel_aendern')}
+                  </Button>
+                  <Button variant="secondary" onClick={() => void trennen(v)}>
+                    {t('todoapps.trennen')}
+                  </Button>
+                </Knopfreihe>
+              </li>
+            ),
+          )}
+        </ul>
+        {verbindungen.length === 0 && <NextasksVerbinden schlicht aufVerbunden={geaendert} />}
+        {nachfrage}
+      </div>
+    )
+  }
+
+  async function eigeneSchalten(an: boolean) {
+    if (!stand) return
+    let umziehen = false
+    if (!an) {
+      // ⚠️ **Umzug anbieten** (AC-17): in die Standardliste, wenn die zu
+      // nextasks oder Todoist gehört; sonst nur ausblenden.
+      const ziel = stand.standard ? zielname(gruppen ?? [], stand.standard) : ''
+      const art = alleVerbindungen.find((v) => stand.standard.startsWith(`${v.id}:`))?.art ?? ''
+      const umzugGeht = Boolean(ziel) && (art === 'nextasks' || art === 'todoist')
+      const zahl = stand.eigene_offen ?? 0
+      const antwort = await fragen({
+        titel: t('aufgaben.eigene_aus_titel'),
+        text: umzugGeht && zahl ? t('aufgaben.eigene_aus_text') : t('aufgaben.eigene_aus_nur_aus', { count: zahl }),
+        knopf: t('aufgaben.eigene_aus_knopf'),
+        ...(umzugGeht && zahl
+          ? { haken: { beschriftung: t('aufgaben.eigene_umziehen', { count: zahl, ziel }), vorgabe: true } }
+          : {}),
+      })
+      if (!antwort) return
+      umziehen = typeof antwort === 'object' && antwort !== null && antwort.haken
+    }
+    try {
+      const raus = await api.aendern<{ stand: ZielStand; umgezogen: number; fehlgeschlagen: number }>(
+        '/api/aufgabenziele/eigene',
+        { an, umziehen },
+      )
+      setStand(raus.stand)
+      setUmzug(umziehen ? { umgezogen: raus.umgezogen, fehlgeschlagen: raus.fehlgeschlagen } : null)
+      window.dispatchEvent(new Event(AUFGABENZIELE_GEAENDERT))
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    }
+  }
+
   return (
     <div className="flex max-w-[720px] flex-col gap-6">
       <p className="mb-0 text-[13px] text-fg-2">{t('todoapps.einleitung')}</p>
+
+      {/* Die eigene Aufgabenliste in nexmail; abschaltbar, sobald irgendeine
+          Todo-App verbunden ist (MAIL-2 AC-16). */}
+      {stand && (
+        <div className="flex flex-col gap-2">
+          <Switch
+            label={t('aufgaben.eigene_schalter')}
+            description={
+              alleVerbindungen.length ? t('aufgaben.eigene_schalter_hinweis') : t('aufgaben.eigene_schalter_ohne')
+            }
+            checked={stand.eigene !== false}
+            disabled={stand.eigene !== false && alleVerbindungen.length === 0}
+            onCheckedChange={(an) => void eigeneSchalten(an)}
+          />
+          {umzug && (
+            <p role="status" className="mb-0 text-[13px] text-success">
+              {umzug.fehlgeschlagen
+                ? t('aufgaben.umzug_teils', { count: umzug.umgezogen, fehlt: umzug.fehlgeschlagen })
+                : t('aufgaben.umzug_fertig', { count: umzug.umgezogen })}
+            </p>
+          )}
+        </div>
+      )}
 
       {fehler && (
         <p role="alert" className="mb-0 rounded-md border border-danger bg-surface-1 px-3 py-2 text-[13px] text-fg-1">
@@ -123,11 +349,13 @@ export function TodoApps() {
         </p>
       )}
 
-      {stand && stand.verbindungen.length > 0 && (
+      {stand && (verbindungen.length > 0 || mitStandard) && (
         <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
-          <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{t('todoapps.verbunden')}</h2>
+          {verbindungen.length > 0 && (
+            <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{t('todoapps.verbunden')}</h2>
+          )}
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
-            {stand.verbindungen.map((v) => (
+            {verbindungen.map((v) => (
               <li key={v.id} className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="flex items-center gap-1.5 text-[13px] font-semibold text-fg-1">
@@ -187,14 +415,14 @@ export function TodoApps() {
                   </Button>
                 </div>
                 {v.art === 'webhook' && offen === v.id && (
-                  <WebhookEinstellungen verbindung={v} aufGeaendert={() => void laden()} />
+                  <WebhookEinstellungen verbindung={v} aufGeaendert={geaendert} />
                 )}
                 {v.art === 'nextasks' && offen === v.id && (
                   <NextasksErneuern
                     verbindung={v}
                     aufGespeichert={() => {
                       setOffen(null)
-                      void laden()
+                      geaendert()
                     }}
                   />
                 )}
@@ -202,6 +430,7 @@ export function TodoApps() {
             ))}
           </ul>
 
+          {mitStandard && (
           <Select
             label={t('todoapps.standard')}
             hint={t('todoapps.standard_hinweis')}
@@ -227,6 +456,7 @@ export function TodoApps() {
                 <option value={stand.standard}>{t('todoapps.liste_unerreichbar')}</option>
               )}
           </Select>
+          )}
         </section>
       )}
 
@@ -277,12 +507,12 @@ export function TodoApps() {
         </form>
       </section>
 
-      <NextasksVerbinden aufVerbunden={() => void laden()} />
+      {teil === 'alle' && <NextasksVerbinden aufVerbunden={geaendert} />}
 
       <WebhookVerbinden
         aufVerbunden={(g) => {
           setGeheimnis(g)
-          void laden()
+          geaendert()
         }}
       />
 
@@ -564,7 +794,71 @@ function NextasksLogo() {
 /** nextasks verbinden: Adresse und Token. nexmail fragt vor dem Speichern
  * `/api/v1/me`; ein Token, das nur lesen darf, oder ein zu altes nextasks
  * steht hier mit Grund da, und nichts ist gespeichert. */
-function NextasksVerbinden({ aufVerbunden }: { aufVerbunden: () => void }) {
+/** Welche nextasks-Listen nexmail zeigt (MAIL-2 AC-9). ⚠️ **Nicht gewählte
+ *  Listen erscheinen nirgends** in nexmail; in nextasks ändert sich nichts,
+ *  neue Listen sind von selbst gewählt. */
+function NextasksListenwahl() {
+  const { t } = useTranslation()
+  const [bereiche, setBereiche] = useState<NtBereich[] | null>(null)
+  const [fehler, setFehler] = useState('')
+
+  useEffect(() => {
+    void nextasksListen(true)
+      .then(setBereiche)
+      .catch(() => setBereiche(null))
+  }, [])
+
+  async function waehlen(id: string, an: boolean) {
+    setBereiche((alt) =>
+      (alt ?? []).map((b) => ({ ...b, listen: b.listen.map((l) => (l.id === id ? { ...l, gewaehlt: an } : l)) })),
+    )
+    try {
+      await listeWaehlen(id, an)
+      setFehler('')
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+      setBereiche(await nextasksListen(true).catch(() => null))
+    }
+  }
+
+  if (!bereiche?.length) return null
+  return (
+    <Abschnitt titel={t('nextasks.auswahl_titel')} hinweis={t('nextasks.auswahl_hinweis')}>
+      {bereiche.map((b, i) => (
+        <div key={b.id} className="flex flex-col">
+          <span className={`flex items-center gap-2 text-[13px] font-medium text-fg-1 ${i ? 'pt-2' : ''}`}>
+            {createElement(symbolFuer(b.symbol), { className: 'size-3.5 shrink-0 text-fg-3', 'aria-hidden': true })}
+            {b.name}
+          </span>
+          {b.listen.map((l) => (
+            <span key={l.id} className="flex items-center gap-2 py-0.5 pl-6 text-[13px]">
+              {createElement(symbolFuer(l.symbol), {
+                className: 'size-3.5 shrink-0',
+                style: { color: listenTon(l.farbe) },
+                'aria-hidden': true,
+              })}
+              <Checkbox label={l.name} checked={l.gewaehlt} onCheckedChange={(an) => void waehlen(l.id, an)} />
+            </span>
+          ))}
+        </div>
+      ))}
+      {fehler && (
+        <p role="alert" className="mb-0 text-[13px] text-danger">
+          {fehler}
+        </p>
+      )}
+    </Abschnitt>
+  )
+}
+
+function NextasksVerbinden({
+  aufVerbunden,
+  schlicht = false,
+}: {
+  aufVerbunden: () => void
+  /** In der nextasks-Karte: ohne eigenen Rahmen und Überschrift, Knopf rechts. */
+  schlicht?: boolean
+}) {
   const { t } = useTranslation()
   const [url, setUrl] = useState('')
   const [token, setToken] = useState('')
@@ -588,13 +882,22 @@ function NextasksVerbinden({ aufVerbunden }: { aufVerbunden: () => void }) {
     }
   }
 
+  const Rahmen = schlicht ? 'div' : 'section'
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
-      <h2 className="mb-0 flex items-center gap-2 text-[13px] font-semibold text-fg-1">
-        <NextasksLogo />
-        {t('todoapps.nextasks_verbinden')}
-      </h2>
-      <p className="mb-0 text-[12px] text-fg-3">{t('todoapps.nextasks_hinweis')}</p>
+    <Rahmen
+      className={
+        schlicht
+          ? 'flex flex-col gap-3'
+          : 'flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4'
+      }
+    >
+      {!schlicht && (
+        <h2 className="mb-0 flex items-center gap-2 text-[13px] font-semibold text-fg-1">
+          <NextasksLogo />
+          {t('todoapps.nextasks_verbinden')}
+        </h2>
+      )}
+      <p className={`mb-0 ${schlicht ? 'text-[13px]' : 'text-[12px]'} text-fg-3`}>{t('todoapps.nextasks_hinweis')}</p>
       <form
         className="flex flex-col gap-3"
         onSubmit={(e) => {
@@ -633,13 +936,13 @@ function NextasksVerbinden({ aufVerbunden }: { aufVerbunden: () => void }) {
             {fehler}
           </p>
         )}
-        <div>
+        <Knopfreihe rechts={schlicht}>
           <Button type="submit" variant="primary" disabled={!url.trim() || !token.trim() || laeuft}>
             {laeuft ? t('todoapps.prueft') : t('todoapps.verbinden')}
           </Button>
-        </div>
+        </Knopfreihe>
       </form>
-    </section>
+    </Rahmen>
   )
 }
 
@@ -648,9 +951,12 @@ function NextasksVerbinden({ aufVerbunden }: { aufVerbunden: () => void }) {
 function NextasksErneuern({
   verbindung,
   aufGespeichert,
+  aufAbbrechen,
 }: {
   verbindung: Verbindung
   aufGespeichert: () => void
+  /** In der nextasks-Karte: „Abbrechen" neben dem Hauptknopf, ohne eigenen Rahmen. */
+  aufAbbrechen?: () => void
 }) {
   const { t } = useTranslation()
   const [url, setUrl] = useState('')
@@ -682,7 +988,11 @@ function NextasksErneuern({
 
   return (
     <form
-      className="flex w-full flex-col gap-3 rounded-md border border-line bg-surface-1 p-3"
+      className={
+        aufAbbrechen
+          ? 'flex w-full flex-col gap-3'
+          : 'flex w-full flex-col gap-3 rounded-md border border-line bg-surface-1 p-3'
+      }
       onSubmit={(e) => {
         e.preventDefault()
         if (url.trim() && token.trim() && !laeuft) void speichern()
@@ -711,11 +1021,20 @@ function NextasksErneuern({
           {fehler}
         </p>
       )}
-      <div>
-        <Button type="submit" disabled={!url.trim() || !token.trim() || laeuft}>
+      <Knopfreihe rechts={Boolean(aufAbbrechen)}>
+        {aufAbbrechen && (
+          <Button type="button" variant="secondary" onClick={aufAbbrechen}>
+            {t('aktion.abbrechen')}
+          </Button>
+        )}
+        <Button
+          type="submit"
+          variant={aufAbbrechen ? 'primary' : undefined}
+          disabled={!url.trim() || !token.trim() || laeuft}
+        >
           {laeuft ? t('todoapps.prueft') : t('aktion.speichern')}
         </Button>
-      </div>
+      </Knopfreihe>
     </form>
   )
 }

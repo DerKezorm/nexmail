@@ -42,3 +42,23 @@ export function naechsteFarbe(vergeben: Postfachfarbe[]): Postfachfarbe {
   // ehrlicher als ein siebter, ungepruefter Ton.
   return ((vergeben.length % 6) + 1) as Postfachfarbe
 }
+
+/** Die elf Farben, die nextime für Kalender kennt (MAIL-1). */
+export const NEXTIME_FARBEN = [
+  'slate', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'violet', 'pink', 'brown', 'gray',
+] as const
+
+/** Die Klasse für den Farbfleck eines Kalenders.
+ *
+ * ⚠️ **Kalender aus nextime tragen nextimes Farbe**, nicht eine der sechs
+ * Töne hier: Wer D&M in nextime blau sieht, sucht ihn in nexmail nicht in
+ * Grün. Eine unbekannte Farbe fällt auf nextimes Vorgabe zurück. */
+export function kalenderPunkt(k?: { farbe: Postfachfarbe; farbeNextime?: string } | null): string {
+  if (k?.farbeNextime) {
+    const farbe = (NEXTIME_FARBEN as readonly string[]).includes(k.farbeNextime)
+      ? k.farbeNextime
+      : 'slate'
+    return `nt-farbe-${farbe}`
+  }
+  return PUNKT_KLASSE[k?.farbe ?? 1]
+}

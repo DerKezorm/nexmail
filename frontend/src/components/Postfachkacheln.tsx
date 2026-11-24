@@ -9,12 +9,12 @@
  * gesetzt — dieselbe Bedienung an beiden Stellen ist mehr wert als eine
  * eigene Idee.
  */
+import { Postfachzeichen } from './Postfachzeichen'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Folder, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Badge, IconButton } from '../ds'
 import { useNachfrage } from './Nachfrage'
-import { PUNKT_KLASSE } from '../lib/farben'
 import { api } from '../api/client'
 import type { KontoZeile } from '../api/client'
 
@@ -71,10 +71,7 @@ export function Postfachkacheln({ konten, aufHinzufuegen, aufBearbeiten, aufNeuL
           className="flex min-h-[132px] flex-col gap-2 rounded-xl border border-line bg-surface-1 px-4 py-3"
         >
           <div className="flex min-w-0 items-start gap-2">
-            <span
-              aria-hidden
-              className={`mt-1.5 size-2.5 shrink-0 rounded-full ${PUNKT_KLASSE[k.farbe as 1 | 2 | 3 | 4 | 5 | 6]}`}
-            />
+            <Postfachzeichen konto={k} groesse="mittel" className="mt-1.5" />
             <div className="min-w-0 flex-1">
               <p className="mb-0 truncate text-sm font-medium text-fg-1">{k.anzeigename}</p>
               <p className="mb-0 truncate font-mono text-[12px] text-fg-4">{k.adresse}</p>

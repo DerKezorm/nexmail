@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import type { Datumsgruppe } from '../lib/format'
 import { anzeigename, gruppeVon, kurzesDatum, planzeit } from '../lib/format'
-import { PUNKT_KLASSE } from '../lib/farben'
+import { Postfachzeichen, type Postfachmerkmale } from './Postfachzeichen'
 import { Schlagwortmarke } from './Schlagwortmarke'
 import type { WischAktion } from '../lib/wischen'
 import { wischSchwelle } from '../lib/wischen'
@@ -355,7 +355,7 @@ export function Nachrichtenliste({
                     <div key={n.id}>
                       <Zeile
                         n={n}
-                        farbe={konten.find((k) => k.id === n.kontoId)?.farbe}
+                        farbe={konten.find((k) => k.id === n.kontoId)}
                         marken={markenVon(n, schlagworte)}
                         postfachZeigen={postfachZeigen}
                         gewaehlt={n.id === gewaehlt}
@@ -414,7 +414,7 @@ export function Nachrichtenliste({
                             <div key={m.id} className="border-l-2 border-line-subtle pl-3">
                               <Zeile
                                 n={m}
-                                farbe={konten.find((k) => k.id === m.kontoId)?.farbe}
+                                farbe={konten.find((k) => k.id === m.kontoId)}
                                 marken={markenVon(m, schlagworte)}
                                 postfachZeigen={postfachZeigen}
                                 gewaehlt={m.id === gewaehlt}
@@ -535,7 +535,8 @@ function markenVon(n: Nachricht, definitionen: Schlagwort[]) {
 
 interface ZeileProps {
   n: Nachricht
-  farbe?: 1 | 2 | 3 | 4 | 5 | 6
+  /** Das Postfach der Mail (Farbe und Symbol). */
+  farbe?: Postfachmerkmale
   /** Die gesetzten Schlagworte als Farbmarken — mit Name für title/aria. */
   marken?: { atom: string; name: string; farbe: Postfachfarbe }[]
   postfachZeigen: boolean
@@ -891,9 +892,10 @@ function Zeile({
         </span>
       )}
 
-      <div className="mt-1 flex w-2 shrink-0 flex-col items-center gap-1">
+      {/* Breit genug für das Symbol des Postfachs (seit 24.11.2026), nicht nur den Punkt. */}
+      <div className="mt-1 flex w-3 shrink-0 flex-col items-center gap-1">
         {postfachZeigen && farbe && (
-          <span aria-hidden className={`size-2 rounded-full ${PUNKT_KLASSE[farbe]}`} />
+          <Postfachzeichen konto={farbe} />
         )}
       </div>
 

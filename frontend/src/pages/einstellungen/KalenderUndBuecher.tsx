@@ -34,7 +34,10 @@ export function KalenderUndBuecher() {
   const laden = useCallback(async () => {
     try {
       const [k, b] = await Promise.all([kalenderLaden(), api.holen<Buch[]>('/api/adressbuecher')])
-      setKalender(k)
+      /* ⚠️ **Kalender aus nextime stehen hier nicht**: Umbenennen und Trennen
+         geschieht in nextime; die Verbindung selbst steht unter
+         „Verbindungen" (MAIL-1). */
+      setKalender(k.filter((x) => x.art !== 'nextime'))
       setBuecher(b)
       setFehler('')
     } catch (f) {

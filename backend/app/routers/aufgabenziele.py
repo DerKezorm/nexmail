@@ -33,6 +33,24 @@ class Stand(BaseModel):
     #: Leer heisst: nexmails eigene Liste.
     standard: str
     verbindungen: list[Verbindung]
+    #: Ob nexmail eine eigene Aufgabenliste fuehrt (MAIL-2 AC-16).
+    eigene: bool = True
+    #: Offene eigene Aufgaben, fuer die Frage beim Ausschalten (AC-17).
+    eigene_offen: int = 0
+
+
+class Eigene(BaseModel):
+    an: bool
+    #: Nur beim Ausschalten: offene eigene Aufgaben in die Standardliste.
+    umziehen: bool = False
+
+
+class EigeneErgebnis(BaseModel):
+    stand: Stand
+    umgezogen: int
+    #: ⚠️ Gescheitert und deshalb noch eigene Aufgabe (EC-17); ein zweiter
+    #: Versuch legt nichts doppelt an.
+    fehlgeschlagen: int
 
 
 class Neu(BaseModel):
@@ -73,6 +91,8 @@ def _stand(db, person) -> Stand:
     return Stand(
         standard=aufgabenziele.standard_von(db, person),
         verbindungen=[_verbindung(v) for v in aufgabenziele.verbindungen(db, person)],
+        eigene=person.aufgaben_eigene,
+        eigene_offen=aufgabenziele.eigene_offen(db, person),
     )
 
 
@@ -108,6 +128,25 @@ def standard(eingabe: Standard, person: AngemeldeterBenutzer, db: DbSession) -> 
     except aufgabenziele.ZielFehler as fehler:
         raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
     return _stand(db, person)
+
+
+@router.put("/eigene", response_model=EigeneErgebnis)
+def eigene(eingabe: Eigene, person: AngemeldeterBenutzer, db: DbSession) -> EigeneErgebnis:
+    """Die eigene Aufgabenliste an oder aus, beim Ausschalten auf Wunsch mit
+    Umzug in die Standardliste (MAIL-2 AC-16, AC-17).
+
+    ⚠️ **Ein gescheiterter Umzug ist kein Fehler der Anfrage**: Was umzog,
+    bleibt umgezogen; die Antwort zaehlt, was fehlt.
+    """
+    try:
+        ergebnis = aufgabenziele.eigene_setzen(db, person, eingabe.an, eingabe.umziehen)
+    except aufgabenziele.ZielFehler as fehler:
+        raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
+    return EigeneErgebnis(
+        stand=_stand(db, person),
+        umgezogen=ergebnis.umgezogen,
+        fehlgeschlagen=ergebnis.fehlgeschlagen,
+    )
 
 
 @router.get("/listen", response_model=list[Gruppe])

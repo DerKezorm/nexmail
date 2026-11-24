@@ -100,7 +100,9 @@ def mails_der_aufgabe(db: Session, benutzer: Benutzer, aufgabe: Aufgabe) -> list
     return [mail]
 
 
-def alle(db: Session, benutzer: Benutzer, *, mit_gesendeten: bool = False) -> list[Sicht]:
+def alle(
+    db: Session, benutzer: Benutzer, *, mit_gesendeten: bool = False, mit_versteckten: bool = False
+) -> list[Sicht]:
     """Offene zuerst, in der gezogenen Reihenfolge; Erledigte darunter.
 
     ⚠️ **Erledigte verschwinden nicht.** Wer gerade abgehakt hat, will es
@@ -111,10 +113,17 @@ def alle(db: Session, benutzer: Benutzer, *, mit_gesendeten: bool = False) -> li
     beim Empfaenger des Webhooks, hier stuende sie fuer immer offen.
     ``mit_gesendeten`` braucht nur das Fenster, das sagt, wohin eine Mail
     schon ging.
+
+    ⚠️ **Eigene Liste aus** (``Benutzer.aufgaben_eigene``, MAIL-2 AC-16):
+    Eigene Zeilen bleiben gespeichert, stehen aber nicht in der Liste, bis der
+    Schalter wieder an ist. ``mit_versteckten`` braucht nur die Antwort auf
+    „Zu Aufgabe machen", die auch eine versteckte Aufgabe nennen kann.
     """
     abfrage = select(Aufgabe).where(Aufgabe.benutzer_id == benutzer.id)
     if not mit_gesendeten:
         abfrage = abfrage.where(Aufgabe.nur_gesendet.is_(False))
+    if not benutzer.aufgaben_eigene and not mit_versteckten:
+        abfrage = abfrage.where(Aufgabe.fern_art != "")
     zeilen = db.execute(
         abfrage.order_by(
             # SQLite sortiert NULL zuerst — genau richtig: offen vor erledigt.
@@ -232,12 +241,11 @@ def ordnen(db: Session, benutzer: Benutzer, reihenfolge: list[int]) -> None:
 
 def offene(db: Session, benutzer: Benutzer) -> int:
     """Wie viele noch offen sind — fuer die Zahl an der Leiste."""
-    return len(
-        db.execute(
-            select(Aufgabe.id).where(
-                Aufgabe.benutzer_id == benutzer.id,
-                Aufgabe.erledigt.is_(None),
-                Aufgabe.nur_gesendet.is_(False),
-            )
-        ).all()
+    abfrage = select(Aufgabe.id).where(
+        Aufgabe.benutzer_id == benutzer.id,
+        Aufgabe.erledigt.is_(None),
+        Aufgabe.nur_gesendet.is_(False),
     )
+    if not benutzer.aufgaben_eigene:
+        abfrage = abfrage.where(Aufgabe.fern_art != "")
+    return len(db.execute(abfrage).all())

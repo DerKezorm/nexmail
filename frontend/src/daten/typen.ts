@@ -24,6 +24,10 @@ export interface Konto {
   anzeigename: string
   adresse: string
   farbe: Postfachfarbe
+  /** Farbe wie nextasks (Name oder `#rrggbb`); leer = `farbe`. */
+  farbton?: string
+  /** Symbol aus nextasks' Liste; leer = Punkt. */
+  symbol?: string
   /** Freie Schlagworte zum Gruppieren — „privat", „arbeit", „verein". */
   tags: string[]
   /** Weitere Absenderadressen dieses Postfachs. Leer bei fast allen. */

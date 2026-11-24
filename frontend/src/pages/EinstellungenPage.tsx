@@ -45,6 +45,7 @@ import { Protokoll } from './Protokoll'
 import { Sicherungen } from './Sicherungen'
 import { Postausgang, ServerAllgemein } from './Verwaltung'
 import { Profil } from './einstellungen/Profil'
+import { NexApps } from './einstellungen/NexApps'
 import { KalenderUndBuecher } from './einstellungen/KalenderUndBuecher'
 import { Karte } from './einstellungen/Karte'
 import {
@@ -79,6 +80,9 @@ interface Props {
   /** Hell oder dunkel, unter Darstellung (seit 22.11.2026 nur dort). */
   modus: 'dark' | 'light'
   aufModus: (m: 'dark' | 'light') => void
+  /** Die Wahl samt „Wie das System“ (seit 24.11.2026). */
+  darstellung?: 'dark' | 'light' | 'system'
+  aufDarstellung?: (w: 'dark' | 'light' | 'system') => void
   /** Nach Anlegen/AEndern/Entfernen: App-weite Kontenliste nachziehen (Banner!). */
   aufKontenGeaendert?: () => void
   /** Nach jeder AEnderung bei den Schlagworten: Marken und Menues der
@@ -108,6 +112,8 @@ export function EinstellungenPage({
   aufAbmelden,
   modus,
   aufModus,
+  darstellung,
+  aufDarstellung,
   aufKontenGeaendert,
   aufSchlagworteGeaendert,
   regelvorlage = null,
@@ -180,7 +186,13 @@ export function EinstellungenPage({
       case 'sicherheit':
         return <Sicherheit ich={ich} ichNeuLaden={ichNeuLaden} />
       case 'darstellung':
-        return <Darstellung ichNeuLaden={ichNeuLaden} modus={modus} aufModus={aufModus} />
+        return (
+          <Darstellung
+            ichNeuLaden={ichNeuLaden}
+            modus={darstellung ?? modus}
+            aufModus={aufDarstellung ?? ((m) => m !== 'system' && aufModus(m))}
+          />
+        )
       case 'benachrichtigungen':
         return <Benachrichtigungen />
       case 'kalender':
@@ -188,8 +200,11 @@ export function EinstellungenPage({
       case 'verbindungen':
         return (
           <>
+            {/* MAIL-1 AC-2: die nex-Apps zuerst, als Karten wie in nextime. */}
+            <NexApps />
             <Karte id="todoapps" symbol={ListChecks} titel={t('einstellungen.aufgaben')}>
-              <TodoApps />
+              {/* nextasks steht in seiner Karte oben (Befund 1 vom 24.11.2026). */}
+              <TodoApps teil="ohne-nextasks" />
             </Karte>
             <Karte id="iphone" symbol={Smartphone} titel={t('einstellungen.iphone')}>
               <IphoneVerbinden istBetreiber={Boolean(ich?.ist_betreiber)} />

@@ -270,6 +270,10 @@ export interface KontoZeile {
   absendername: string
   adresse: string
   farbe: number
+  /** Farbe wie nextasks (Name oder `#rrggbb`); leer = `farbe`. */
+  farbton?: string
+  /** Symbol aus nextasks' Liste; leer = Punkt. */
+  symbol?: string
   aktiv: boolean
   imap_server: string
   smtp_server: string

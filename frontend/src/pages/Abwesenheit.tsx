@@ -10,18 +10,19 @@
  * Fehlerquelle ohne Gewinn. Signaturen haben den vollen Editor, das hier
  * bewusst nicht.
  */
+import { Postfachzeichen } from '../components/Postfachzeichen'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Check } from 'lucide-react'
 import { api, ApiFehler } from '../api/client'
 import { Button, Input, Switch } from '../ds'
-import { PUNKT_KLASSE } from '../lib/farben'
-import type { Postfachfarbe } from '../daten/typen'
 
 interface Stand {
   konto_id: string
   adresse: string
   farbe: number
+  farbton?: string
+  symbol?: string
   aktiv: boolean
   von: string
   bis: string
@@ -122,10 +123,7 @@ export function Abwesenheit() {
             }
           >
             <div className="flex flex-wrap items-center gap-3">
-              <span
-                aria-hidden
-                className={`size-2 shrink-0 rounded-full ${PUNKT_KLASSE[(s.farbe || 1) as Postfachfarbe]}`}
-              />
+              <Postfachzeichen konto={s} />
               <span className="font-mono text-[13px] font-medium text-fg-1">{s.adresse}</span>
               <span className="flex-1" />
               {/* ⚠️ **„Läuft" ist nicht dasselbe wie „an".** Der Zeitraum kann
