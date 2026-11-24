@@ -55,8 +55,10 @@ class Codeeingabe(BaseModel):
 
 
 class Schritt(BaseModel):
-    #: "fertig" | "code" | "einrichten"
+    #: "fertig" | "code" | "einrichten" | "passkey" (ein Passkey ist der zweite Schritt)
     schritt: str
+    #: Nach dem Einrichten beim Anmelden: die Wiederherstellungscodes, genau einmal (wie unter Sicherheit).
+    codes: list[str] = []
 
 
 class Einrichtung(BaseModel):
@@ -202,6 +204,10 @@ def anmelden(
         sitzungsdienst.anlegen(db, person, request, response, bestaetigt=False, merken=merken)
         return Schritt(schritt="einrichten")
 
+    if sitzungsdienst.passkey_als_zweiter_schritt(db, person):
+        sitzungsdienst.anlegen(db, person, request, response, bestaetigt=False, merken=merken)
+        return Schritt(schritt="passkey")
+
     if not person.totp_bestaetigt:
         sitzungsdienst.anlegen(db, person, request, response, bestaetigt=True, merken=merken)
         nexkonten.login.succeeded(store, person.id)
@@ -251,15 +257,18 @@ def code_pruefen(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="code_falsch"
         )
 
+    codes: list[str] = []
     if not person.totp_bestaetigt:
+        # Eingerichtet beim Anmelden („fuer alle verlangen“): die Codes gleich hier, wie unter Sicherheit.
         person.totp_bestaetigt = True
         db.commit()
+        codes = zwei_faktor.codes_neu(db, person)
 
     wache.geschafft()
     sitzungsdienst.bestaetigen(db, sitzung, request, response)
     nexkonten.login.succeeded(kontenstore.store_fuer(db), person.id)
     sitzungsdienst.angemeldet(db, person, request, response)
-    return Schritt(schritt="fertig")
+    return Schritt(schritt="fertig", codes=codes)
 
 
 @router.post("/wiederherstellung", response_model=Schritt)

@@ -339,9 +339,39 @@ def faktor_einrichten(db: Session, benutzer: Benutzer) -> bool:
 
     if benutzer.totp_bestaetigt or get_settings().zwei_faktor_aus:
         return False
-    if not konten_store.store_fuer(db).factor_required():
+    store = konten_store.store_fuer(db)
+    if not store.factor_required():
+        return False
+    # Ein Passkey zaehlt als zweiter Faktor (Entscheidung 25.11.2026): Er ist dann der zweite Schritt
+    # (``passkey_als_zweiter_schritt``), eine Authenticator-App muss nicht dazu.
+    if store.passkeys_of(benutzer.id):
         return False
     if not benutzer.totp_geheimnis:
         zwei_faktor.geheimnis_speichern(benutzer, zwei_faktor.geheimnis_erzeugen())
         db.commit()
     return True
+
+
+def passkey_als_zweiter_schritt(db: Session, benutzer: Benutzer) -> bool:
+    """Ob nach dem Passwort (oder dem Anbieter) ein Passkey der zweite Schritt ist: Der Betreiber verlangt einen
+    zweiten Faktor fuer alle, und das Konto hat statt einer Authenticator-App einen Passkey. Ohne den Schalter bleibt
+    der Passkey ein eigener Weg hinein, und das Passwort allein genuegt wie bisher."""
+    from . import konten_store
+
+    if benutzer.totp_bestaetigt or get_settings().zwei_faktor_aus:
+        return False
+    store = konten_store.store_fuer(db)
+    return store.factor_required() and bool(store.passkeys_of(benutzer.id))
+
+
+def halbe_beenden(db: Session, request: Request) -> None:
+    """Die halbe Sitzung dieses Browsers wegwerfen, wenn ein Passkey sie abloest (dort entsteht eine neue, volle)."""
+    token = request.cookies.get(COOKIE_NAME)
+    if not token:
+        return
+    zeile = db.execute(
+        select(Sitzung).where(Sitzung.token_hash == _hash(token), Sitzung.bestaetigt.is_(False))
+    ).scalar_one_or_none()
+    if zeile is not None:
+        db.delete(zeile)
+        db.commit()

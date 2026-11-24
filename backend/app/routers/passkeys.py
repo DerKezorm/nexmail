@@ -39,7 +39,16 @@ COOKIE_ANMELDEN = "nexmail_passkey"
 COOKIE_NEU = "nexmail_passkey_neu"
 
 
-def _ort(db) -> passkeys.Party:
+def _ort(db, request: Request) -> passkeys.Party:
+    """Der Host, zu dem ein Passkey gehoert: die oeffentliche Adresse. ⚠️ **Auf localhost die Seite selbst**
+    (``Origin``, sonst die Adresse der Anfrage): Browser erlauben WebAuthn dort ohne https, und die Seite laeuft beim
+    Ausprobieren oft unter einem anderen Port als die eingetragene Adresse. Ein Passkey fuer localhost taugt nirgends
+    sonst, deshalb gibt es diesen Weg nur dort."""
+    from urllib.parse import urlsplit
+
+    seite = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    if (urlsplit(seite).hostname or "").lower() == "localhost":
+        return passkeys.party(seite)
     return passkeys.party(kontenpost.oeffentliche_adresse(db))
 
 
@@ -68,10 +77,10 @@ class Stand(BaseModel):
 
 
 @router.get("/passkey", response_model=Stand)
-def passkey_stand(db: DbSession) -> Stand:
+def passkey_stand(request: Request, db: DbSession) -> Stand:
     store = kontenstore.store_fuer(db)
     try:
-        _ort(db)
+        _ort(db, request)
     except nexkonten.AccountError:
         return Stand(an=False)
     return Stand(an=store.passkeys_allowed())
@@ -81,7 +90,7 @@ def passkey_stand(db: DbSession) -> Stand:
 def passkey_anmelden_start(request: Request, response: Response, db: DbSession) -> dict[str, Any]:
     store = kontenstore.store_fuer(db)
     try:
-        token, optionen = passkeys.begin_sign_in(store, _ort(db), sender=anmeldebremse.adresse_von(request))
+        token, optionen = passkeys.begin_sign_in(store, _ort(db, request), sender=anmeldebremse.adresse_von(request))
     except nexkonten.AccountError as fehler:
         raise kontenstore.http(fehler) from fehler
     _cookie(request, response, COOKIE_ANMELDEN, token)
@@ -103,12 +112,14 @@ def passkey_anmelden(
     token = request.cookies.get(COOKIE_ANMELDEN, "")
     _weg(response, COOKIE_ANMELDEN)
     try:
-        konto = passkeys.finish_sign_in(store, token, eingabe.credential, _ort(db))
+        konto = passkeys.finish_sign_in(store, token, eingabe.credential, _ort(db, request))
     except nexkonten.AccountError as fehler:
         raise kontenstore.http(fehler) from fehler
     from ..models import Benutzer
 
     person = db.get(Benutzer, str(konto.id))
+    # War der Passkey der zweite Schritt nach dem Passwort, weicht die halbe Sitzung der neuen, vollen.
+    sitzungsdienst.halbe_beenden(db, request)
     sitzungsdienst.anlegen(db, person, request, response, bestaetigt=True, merken=eingabe.angemeldet_bleiben)
     nexkonten.login.succeeded(store, person.id)
     sitzungsdienst.angemeldet(db, person, request, response)
@@ -126,11 +137,11 @@ class Liste(BaseModel):
 
 
 @router.get("/passkeys", response_model=Liste)
-def passkeys_liste(person: AngemeldeterBenutzer, db: DbSession) -> Liste:
+def passkeys_liste(person: AngemeldeterBenutzer, request: Request, db: DbSession) -> Liste:
     store = kontenstore.store_fuer(db)
     grund = ""
     try:
-        _ort(db)
+        _ort(db, request)
     except nexkonten.AccountError as fehler:
         grund = fehler.code
     return Liste(
@@ -165,7 +176,7 @@ def passkey_neu_start(
         token, optionen = passkeys.begin_register(
             store,
             person.id,
-            _ort(db),
+            _ort(db, request),
             app_name="nexmail",
             password=eingabe.passwort,
             actor_confirmed=_bestaetigt(person, sitzung),
@@ -189,7 +200,7 @@ def passkey_neu(
     token = request.cookies.get(COOKIE_NEU, "")
     _weg(response, COOKIE_NEU)
     try:
-        neu = passkeys.finish_register(store, person.id, token, eingabe.credential, _ort(db), name=eingabe.name)
+        neu = passkeys.finish_register(store, person.id, token, eingabe.credential, _ort(db, request), name=eingabe.name)
     except nexkonten.AccountError as fehler:
         raise kontenstore.http(fehler) from fehler
     return passkeys.view(neu)

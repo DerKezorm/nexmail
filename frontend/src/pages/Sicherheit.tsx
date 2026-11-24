@@ -58,9 +58,9 @@ export function Sicherheit({
   const [passkeys, setPasskeys] = useState<Passkeys | null>(null)
 
   const laden = useCallback(async () => {
-    setGeraete(await api.holen<Geraet[]>('/api/sitzungen'))
+    setGeraete(await api.holen<Geraet[]>(`/api/sitzungen?sprache=${encodeURIComponent(i18n.language)}`))
     setPasskeys(await api.holen<Passkeys>('/api/auth/passkeys').catch(() => null))
-  }, [])
+  }, [i18n.language])
 
   useEffect(() => {
     void laden().catch(() => setGeraete([]))
@@ -465,7 +465,8 @@ export function Sicherheit({
               void (async () => {
                 const ja = await fragen({
                   titel: t('sicherheit.alle_beenden'),
-                  text: t('sicherheit.alle_beenden_sicher'),
+                  // Browser und gekoppelte iPhones/iPads; Kalender-Programme, API-Schlüssel, Passkeys bleiben.
+                  text: t('account.signOutEverywhereHint'),
                   knopf: t('sicherheit.alle_beenden'),
                   gefaehrlich: true,
                 })

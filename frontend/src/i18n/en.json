@@ -90,7 +90,8 @@
     "ordnen": "Move “{{name}}” (arrow keys up and down)",
     "verknuepfung_loesen": "Remove link",
     "verknuepfung_loesen_mit": "Remove the link of {{wer}} to {{name}}",
-    "verknuepfung_loesen_text": "{{wer}} will no longer sign in through {{name}}. Your password confirms it."
+    "verknuepfung_loesen_text": "{{wer}} will no longer sign in through {{name}}. Your password confirms it.",
+    "faktor_fuer_alle_hinweis": "On: every account without a second factor sets one up at its next sign-in. A passkey counts."
   },
   "todoapps": {
     "einleitung": "Connect your to-do app, and “Turn into task” can put the task there. When you complete it in the app, nexmail sees that a few minutes later.",

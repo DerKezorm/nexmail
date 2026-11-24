@@ -289,6 +289,10 @@ async def _zurueck(slug: str, request: Request, db: Session) -> Response:
         antwort = _weiter(flow.arrived(arrival, f"{current().login_page}?schritt=code"))
         sitzungsdienst.anlegen(db, person, request, antwort, bestaetigt=False)
         return antwort
+    if sitzungsdienst.passkey_als_zweiter_schritt(db, person):
+        antwort = _weiter(flow.arrived(arrival, f"{current().login_page}?schritt=passkey"))
+        sitzungsdienst.anlegen(db, person, request, antwort, bestaetigt=False)
+        return antwort
     if sitzungsdienst.faktor_einrichten(db, person):
         # „Zweiten Faktor fuer alle verlangen“: Wer noch keinen hat, richtet ihn jetzt ein, auch nach dem Anbieter.
         antwort = _weiter(flow.arrived(arrival, f"{current().login_page}?schritt=einrichten"))

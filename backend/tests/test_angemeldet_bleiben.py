@@ -201,3 +201,30 @@ def test_der_betreiber_sieht_den_letzten_fehler_der_systempost(klient, db, monke
     stand = klient.get("/api/einstellungen/postausgang").json()
     assert stand["letzter_fehler"] == "mail_unreachable" and stand["letzter_fehler_am"]
     assert stand["wartend"] == 1
+
+
+def test_die_geraeteliste_zeigt_nie_den_rohen_user_agent(klient, db):
+    einrichten(klient)
+    roh = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0 bitte https://x.example"
+    browser = TestClient(app, headers={"user-agent": roh})
+    assert _anmelden(browser).status_code == 200
+    namen = [g["geraet"] for g in klient.get("/api/sitzungen?sprache=de").json()]
+    assert "Firefox auf Windows" in namen, namen
+    assert not any("Mozilla" in n or "example" in n for n in namen)
+    assert "Firefox on Windows" in [g["geraet"] for g in klient.get("/api/sitzungen?sprache=en").json()]
+
+
+def test_nach_dem_einrichten_beim_anmelden_kommen_die_codes(klient, db):
+    from app.services import benutzer as benutzerdienst
+    from conftest import aktueller_code
+
+    einrichten(klient)
+    benutzerdienst.anlegen(db, "zweiter", "auch-geheim-456")
+    db.commit()
+    klient.put("/api/oidc/admin/anmeldung", json={"zwei_faktor_fuer_alle": True})
+    browser = _neuer_browser()
+    browser.post("/api/auth/anmelden", json={"benutzername": "zweiter", "passwort": "auch-geheim-456"})
+    geheimnis = browser.get("/api/auth/einrichtung").json()["geheimnis"]
+    fertig = browser.post("/api/auth/code", json={"code": aktueller_code(geheimnis)}).json()
+    assert fertig["schritt"] == "fertig" and len(fertig["codes"]) == 10
+    assert browser.get("/api/auth/ich").json()["offene_codes"] == 10

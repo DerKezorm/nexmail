@@ -97,3 +97,37 @@ def test_ohne_https_adresse_keine_passkeys(klient):
     assert TestClient(app).get("/api/auth/passkey").json()["an"] is False
     liste = klient.get("/api/auth/passkeys").json()
     assert liste["erlaubt"] is False and liste["grund"] == "passkeys_off"
+
+
+def test_auf_localhost_gehoert_der_passkey_zur_seite_selbst(klient):
+    """Browser erlauben WebAuthn auf localhost ohne https; die Seite laeuft dort oft unter einem anderen Port als die
+    eingetragene Adresse. Der Passkey gehoert dann zu ``localhost``, nirgends sonst."""
+    einrichten(klient)
+    lokal = TestClient(app, base_url="http://localhost:8399", headers={"origin": "http://localhost:5173"})
+    assert lokal.post("/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": PASSWORT}).status_code == 200
+    geraet = Device("http://localhost:5173", "localhost")
+    assert lokal.get("/api/auth/passkeys").json()["erlaubt"] is True
+    assert _hinzufuegen(lokal, geraet).status_code == 201
+    browser = TestClient(app, base_url="http://localhost:8399", headers={"origin": "http://localhost:5173"})
+    assert browser.get("/api/auth/passkey").json()["an"] is True
+    assert _anmelden(browser, geraet).status_code == 200
+    # Derselbe Passkey taugt unter der echten Adresse nicht.
+    assert _anmelden(TestClient(app), geraet).status_code == 401
+
+
+def test_ein_passkey_ist_der_zweite_schritt_wenn_der_betreiber_ihn_verlangt(klient):
+    """Entscheidung 25.11.2026: Ein Passkey zaehlt als zweiter Faktor. Mit „fuer alle verlangen“ folgt er dem
+    Passwort; eine Authenticator-App muss nicht dazu. Ohne den Schalter genuegt das Passwort wie bisher."""
+    einrichten(klient)
+    geraet = Device(ADRESSE, "mail.example")
+    assert _hinzufuegen(klient, geraet).status_code == 201
+    daten = {"benutzername": "betreiber", "passwort": PASSWORT}
+    assert TestClient(app).post("/api/auth/anmelden", json=daten).json()["schritt"] == "fertig"
+
+    assert klient.put("/api/oidc/admin/anmeldung", json={"zwei_faktor_fuer_alle": True}).status_code == 200
+    browser = TestClient(app)
+    erst = browser.post("/api/auth/anmelden", json=daten)
+    assert erst.json()["schritt"] == "passkey", erst.text
+    assert browser.get("/api/auth/ich").status_code == 401
+    assert _anmelden(browser, geraet).status_code == 200
+    assert browser.get("/api/auth/ich").json()["benutzername"] == "betreiber"

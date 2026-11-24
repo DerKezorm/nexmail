@@ -204,7 +204,9 @@ export interface Ich {
 }
 
 export interface Schritt {
-  /** "fertig" | "code" | "einrichten" */
+  /** Nach dem Einrichten beim Anmelden: die Wiederherstellungscodes, einmal. */
+  codes?: string[]
+  /** "fertig" | "code" | "einrichten" | "passkey" */
   schritt: string
 }
 

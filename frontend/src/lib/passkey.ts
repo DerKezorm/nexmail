@@ -70,9 +70,14 @@ export function alsJson(c: PublicKeyCredential): Json {
   }
 }
 
-/** Ob dieser Browser Passkeys kann. */
+/** Ob dieser Browser Passkeys kann: im sicheren Kontext (https, oder localhost auch mit http). */
 export function passkeyMoeglich(): boolean {
-  return typeof window !== 'undefined' && typeof window.PublicKeyCredential === 'function' && !!navigator.credentials
+  return (
+    typeof window !== 'undefined' &&
+    window.isSecureContext === true &&
+    typeof window.PublicKeyCredential === 'function' &&
+    !!navigator.credentials
+  )
 }
 
 /** Ein Vorschlag für die Bezeichnung eines neuen Passkeys, aus dem System des Browsers („iPhone“, „Mac“ …). */

@@ -14,6 +14,7 @@ import { appPfad } from '../lib/basis'
 import { Torbogen } from '../components/Torbogen'
 import { Button, Checkbox, Input } from '../ds'
 import { Meldung } from './EinrichtungPage'
+import { CodesZeigen } from '../components/ZweiterFaktor'
 import { ApiFehler, api } from '../api/client'
 import { servermeldung } from '../lib/servermeldung'
 import type { Einrichtung, Schritt } from '../api/client'
@@ -21,7 +22,7 @@ import { oidcErrorKey } from '../vendor/nexoidc/oidc'
 import { EMAIL_MAX } from '../vendor/nexkonten/konten'
 import { alsJson, anmeldeOptionen, passkeyMoeglich } from '../lib/passkey'
 
-type Lage = 'passwort' | 'code' | 'wiederherstellung' | 'einrichten'
+type Lage = 'passwort' | 'code' | 'wiederherstellung' | 'einrichten' | 'passkey' | 'codes'
 
 interface Props {
   modus: 'dark' | 'light'
@@ -40,7 +41,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
     // Nach einem Anbieter: `?schritt=code` (Faktor vorhanden) oder `?schritt=einrichten` (Betreiber verlangt ihn).
     (() => {
       const schritt = new URLSearchParams(window.location.search).get('schritt')
-      return schritt === 'code' || schritt === 'einrichten' ? schritt : 'passwort'
+      return schritt === 'code' || schritt === 'einrichten' || schritt === 'passkey' ? schritt : 'passwort'
     })(),
   )
   const [benutzername, setBenutzername] = useState('')
@@ -52,6 +53,8 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
   const [fehler, setFehler] = useState('')
   const [laeuft, setLaeuft] = useState(false)
   const [einrichtung, setEinrichtung] = useState<Einrichtung | null>(null)
+  // Nach dem Einrichten beim Anmelden: die Wiederherstellungscodes, einmal.
+  const [codes, setCodes] = useState<string[]>([])
 
   /* Anmelde-Anbieter.
      Leer heißt: Es gibt keine, und dann steht hier nichts. Ist die Anmeldung
@@ -130,8 +133,12 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
     setLaeuft(true)
     try {
       const antwort = await aufruf()
-      if (antwort.schritt === 'fertig') aufFertig()
+      if (antwort.schritt === 'fertig' && antwort.codes && antwort.codes.length > 0) {
+        setCodes(antwort.codes)
+        setLage('codes')
+      } else if (antwort.schritt === 'fertig') aufFertig()
       else if (antwort.schritt === 'einrichten') setLage('einrichten')
+      else if (antwort.schritt === 'passkey') setLage('passkey')
       else setLage('code')
     } catch (f) {
       setFehler(deuten(f))
@@ -257,6 +264,36 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
   }
 
   // --- Nachträgliche Einrichtung des zweiten Faktors -------------------- //
+
+  if (lage === 'codes') {
+    return (
+      <Torbogen titel={t('einrichtung.codes_titel')} breit modus={modus} aufModus={aufModus}>
+        <CodesZeigen codes={codes} benutzername={benutzername} aufFertig={aufFertig} />
+      </Torbogen>
+    )
+  }
+
+  // Ein Passkey ist der zweite Schritt (der Betreiber verlangt einen zweiten Faktor, das Konto hat einen Passkey).
+  if (lage === 'passkey') {
+    return (
+      <Torbogen titel={t('account.secondFactor')} untertitel={t('account.passkeysHint')} modus={modus} aufModus={aufModus}>
+        <div className="flex flex-col gap-4">
+          {fehler && <Meldung text={fehler} />}
+          <Button
+            variant="primary"
+            size="lg"
+            fullWidth
+            loading={laeuft}
+            iconLeft={<Fingerprint className="size-4" />}
+            disabled={!passkeyMoeglich()}
+            onClick={() => void mitPasskey()}
+          >
+            {t('account.passkeySignIn')}
+          </Button>
+        </div>
+      </Torbogen>
+    )
+  }
 
   if (lage === 'einrichten') {
     return (

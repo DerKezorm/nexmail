@@ -86,10 +86,14 @@ Lauf davor fehlten `webauthn` und `cbor2` in `THIRD-PARTY.md`, nachgetragen), Ve
 12 übersprungen, `tests/nexpost` grün, Test „Bestand“ 62 grün, Frontend `npx vitest run --maxWorkers=2` 266 grün,
 `npx tsc -b`, `npm run lint` und `npm run build` grün. Kein Playwright, keine Server.
 
-**Noch nicht gebaut:** Ein Konto mit Passkey und ohne Authenticator-App muss bei „für alle verlangen“ nach dem
-Passwort trotzdem die App einrichten (nexmails Codeabfrage kennt den Passkey als zweiten Schritt nicht; mit dem
-Passkey allein meldet es sich ohne Passwort an). Nach dem Einrichten beim Anmelden gibt es keine
-Wiederherstellungscodes, bis man sie unter Sicherheit neu macht (wie vor dem Modul).
+**Runde 4 (25.11.2026, entschieden):** Ein Passkey zählt als zweiter Faktor: Bei „für alle verlangen“ ist er nach
+dem Passwort oder Anbieter der zweite Schritt (`schritt: "passkey"`), eine App muss nicht dazu; ohne den Schalter
+genügt das Passwort wie bisher. Nach dem Einrichten beim Anmelden kommen die Wiederherstellungscodes sofort
+(`codes` in der Antwort von `/api/auth/code`, `CodesZeigen`). Die Geräteliste zeigt „Browser auf System“
+(`describe_browser`), nie den rohen User-Agent. Passkeys gehen auch auf `localhost` (sicherer Kontext; der Passkey
+gehört dann zu `localhost`). „Alle anderen Geräte abmelden“ fragt mit dem Satz des Moduls (Browser und gekoppelte
+Geräte, Kalender-Programme, API-Schlüssel und Passkeys bleiben). Der Schalter „Mail bei neuer Anmeldung“ bleibt
+unter Sicherheit.
 
 **Wo das Modul nicht passte (Teil 2):**
 
