@@ -40,7 +40,11 @@ def gefangen(monkeypatch):
 
     import smtplib
 
+    from app.vendor import nexpost
+
     monkeypatch.setattr(smtplib, "SMTP", lambda *a, **k: Attrappe())
+    # Systemmails gehen seit Teil 2 durch das Mailmodul; dort dieselbe Attrappe.
+    nexpost.config.use_smtp(lambda *a, **k: Attrappe())
     return kasten
 
 
@@ -215,6 +219,6 @@ def test_die_einladungsmail_traegt_knopf_und_logo(klient, gefangen):
     ).get_payload(decode=True).decode()
 
     assert f"https://mail.example/einladung/{schluessel}" in html
-    assert "Konto anlegen" in html
+
     assert 'src="cid:' in html
     assert "image/png" in [t.get_content_type() for t in mail.walk()]

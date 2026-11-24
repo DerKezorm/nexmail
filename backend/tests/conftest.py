@@ -146,6 +146,39 @@ def frische_datenbank():
 
 
 @pytest.fixture(autouse=True)
+def post_bruecke():
+    """Das Mailmodul verschickt ueber ``smtplib``; in Tests geht jede Mail stattdessen an ``systempost.senden``
+    (Empfaenger, Betreff, Text, HTML), das viele Tests abfangen. Nichts geht ins Netz."""
+    from app.services import systempost
+    from app.vendor import nexpost
+
+    class Verbindung:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def send_message(self, nachricht) -> None:
+            text = nachricht.get_body(("plain",))
+            html = nachricht.get_body(("html",))
+            systempost.senden(
+                None,
+                str(nachricht["To"]),
+                str(nachricht["Subject"]),
+                text.get_content() if text is not None else "",
+                html.get_content() if html is not None else "",
+            )
+
+        def login(self, *args) -> None:
+            pass
+
+        def quit(self) -> None:
+            pass
+
+    nexpost.config.use_smtp(lambda *args, **kwargs: Verbindung())
+    yield
+    nexpost.config.use_smtp(None)
+
+
+@pytest.fixture(autouse=True)
 def anbieterbild_sofort(monkeypatch):
     """Das Bild vom Anmeldeanbieter holt der Server in einem eigenen Faden; in Tests sofort und in derselben Runde."""
     from app.services import konten_store

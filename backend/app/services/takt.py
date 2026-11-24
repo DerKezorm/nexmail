@@ -296,6 +296,13 @@ def _pushschleife() -> None:
 
     while not _push_halt.wait(push.NACHSEHEN_SEKUNDEN):
         try:
+            # Die Outbox der Systemmails (Mailmodul) im selben Minutentakt: Versuche nach 1, 5, 15, 60, 180 Minuten.
+            from . import post_store
+
+            post_store.abarbeiten()
+        except Exception as fehler:  # noqa: BLE001
+            logger.warning("A round of the mail outbox failed: %s", fehler)
+        try:
             push.erinnerungen_runde()
         except Exception as fehler:  # noqa: BLE001
             # Der Faden darf nie sterben — sonst hoeren die Meldungen still

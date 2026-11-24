@@ -346,6 +346,26 @@ class FruehererName(Base):
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
+class PostAusgang(Base):
+    """Eine Systemmail in der Outbox des Mailmoduls (``services/post_store``): sofort faellig, dann Versuche nach 1, 5,
+    15, 60, 180 Minuten. ``naechster`` leer heisst aufgegeben (bleibt fuer die Seite des Betreibers stehen),
+    ``verschickt`` gesetzt heisst draussen. Nur Systemmails, nie die Post der Menschen."""
+
+    __tablename__ = "post_ausgang"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    an: Mapped[str] = mapped_column(String(320))
+    betreff: Mapped[str] = mapped_column(String(500))
+    text: Mapped[str] = mapped_column(Text)
+    html: Mapped[str] = mapped_column(Text, default="")
+    art: Mapped[str] = mapped_column(String(32), default="")
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    naechster: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, index=True)
+    versuche: Mapped[int] = mapped_column(Integer, default=0)
+    fehler: Mapped[str] = mapped_column(String(500), default="")
+    verschickt: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+
+
 class Einrichtung(Base):
     """Die Ersteinrichtung ist beansprucht (Kontenmodul, ``Store.claim_setup``): genau eine Zeile je Datenbank. Zwei
     Einrichtungen zugleich, auch aus zwei Prozessen, legen so nie zwei Betreiber an. Im Bestand leer (es gibt Konten,

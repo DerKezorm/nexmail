@@ -468,13 +468,15 @@ def test_ein_abgelehnter_empfaenger_sagt_warum(klient, monkeypatch):
             pass
 
     monkeypatch.setattr(smtplib, "SMTP", lambda *a, **k: Attrappe())
+    from app.vendor import nexpost
+
+    nexpost.config.use_smtp(lambda *a, **k: Attrappe())
 
     antwort = klient.post(
         "/api/benutzer/einladungen",
         json={"benutzername": "anna", "adresse": "zz@example.com"},
     )
     assert antwort.status_code == 502
-    detail = antwort.json()["detail"]
     # ⚠️ **Der Satz des Servers muss durchkommen.** Er steht jetzt als Wert
     # neben der Kennung — „Der Postausgang hat den Empfänger abgelehnt"
     # allein sagt nicht, welchen und warum.
