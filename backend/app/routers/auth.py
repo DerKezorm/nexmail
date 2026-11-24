@@ -198,6 +198,10 @@ def anmelden(
     # lokal betreibt, braucht ihn nicht. Eingeschaltet wird er unter
     # Einstellungen → Sicherheit, nicht mitten in der Anmeldung: Ein
     # Assistent, den man nicht abbrechen kann, ist keine Wahl.
+    if sitzungsdienst.faktor_einrichten(db, person):
+        sitzungsdienst.anlegen(db, person, request, response, bestaetigt=False, merken=merken)
+        return Schritt(schritt="einrichten")
+
     if not person.totp_bestaetigt:
         sitzungsdienst.anlegen(db, person, request, response, bestaetigt=True, merken=merken)
         nexkonten.login.succeeded(store, person.id)

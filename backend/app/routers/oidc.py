@@ -104,20 +104,40 @@ def passwort_anmeldung_an(db: Session) -> bool:
 
 
 class AnmeldungIn(BaseModel):
-    passwort: bool
+    #: Jeder Schalter fuer sich; was fehlt, bleibt, wie es ist.
+    passwort: bool | None = None
+    #: „Zweiten Faktor fuer alle verlangen“ (Kontenmodul Teil 2), ab Werk aus: Wer noch keinen hat, richtet ihn bei
+    #: der naechsten Anmeldung ein. Laufende Installationen behalten ihren Stand (nexmail hatte keinen Pflichtschalter).
+    zwei_faktor_fuer_alle: bool | None = None
 
 
 @router.get(f"{API}/oidc/admin/anmeldung", summary="Card 1: whether people sign in with a password")
 def anmeldung_lesen(_: Betreiber, db: DbSession) -> dict[str, Any]:
-    return {"passwort": passwort_anmeldung_an(db), "anbieter_aktiv": aktiver_anbieter(db)}
+    from ..services import konten_store
+
+    return {
+        "passwort": passwort_anmeldung_an(db),
+        "anbieter_aktiv": aktiver_anbieter(db),
+        "zwei_faktor_fuer_alle": einstellung_lesen(db, konten_store.SCHALTER_FAKTOR_FUER_ALLE) == "1",
+    }
 
 
 @router.put(f"{API}/oidc/admin/anmeldung", summary="Card 1: switch password sign-in on or off")
 def anmeldung_setzen(eingabe: AnmeldungIn, betreiber: Betreiber, db: DbSession) -> dict[str, Any]:
-    if not eingabe.passwort and not aktiver_anbieter(db):
-        raise MeldungHttp(status.HTTP_409_CONFLICT, "passwort_ohne_anbieter")
-    einstellung_schreiben(db, SCHLUESSEL_PASSWORT, "an" if eingabe.passwort else "aus")
-    logger.info("Password sign-in switched %s by=%s", "on" if eingabe.passwort else "off", betreiber.benutzername)
+    from ..services import konten_store
+
+    if eingabe.passwort is not None:
+        if not eingabe.passwort and not aktiver_anbieter(db):
+            raise MeldungHttp(status.HTTP_409_CONFLICT, "passwort_ohne_anbieter")
+        einstellung_schreiben(db, SCHLUESSEL_PASSWORT, "an" if eingabe.passwort else "aus")
+        logger.info("Password sign-in switched %s by=%s", "on" if eingabe.passwort else "off", betreiber.benutzername)
+    if eingabe.zwei_faktor_fuer_alle is not None:
+        einstellung_schreiben(db, konten_store.SCHALTER_FAKTOR_FUER_ALLE, "1" if eingabe.zwei_faktor_fuer_alle else "0")
+        logger.info(
+            "Second factor for everybody switched %s by=%s",
+            "on" if eingabe.zwei_faktor_fuer_alle else "off",
+            betreiber.benutzername,
+        )
     return anmeldung_lesen(betreiber, db)
 
 
@@ -259,6 +279,11 @@ async def _zurueck(slug: str, request: Request, db: Session) -> Response:
     if angemeldet.second_factor_due:
         # Dieselbe Codeabfrage wie nach dem Passwort: eine halbe Sitzung, die nur den zweiten Schritt darf.
         antwort = _weiter(flow.arrived(arrival, f"{current().login_page}?schritt=code"))
+        sitzungsdienst.anlegen(db, person, request, antwort, bestaetigt=False)
+        return antwort
+    if sitzungsdienst.faktor_einrichten(db, person):
+        # „Zweiten Faktor fuer alle verlangen“: Wer noch keinen hat, richtet ihn jetzt ein, auch nach dem Anbieter.
+        antwort = _weiter(flow.arrived(arrival, f"{current().login_page}?schritt=einrichten"))
         sitzungsdienst.anlegen(db, person, request, antwort, bestaetigt=False)
         return antwort
     antwort = _weiter(flow.arrived(arrival))

@@ -328,3 +328,20 @@ def angemeldet(db: Session, benutzer: Benutzer, request: Request, response: Resp
         kontenpost.senden(db, bescheid, where=_geraet(request))
     except Exception as fehler:  # noqa: BLE001 - die Anmeldung gilt, auch wenn der Bescheid nicht hinausgeht
         logger.warning("The new sign-in mail could not be queued: %r", getattr(fehler, "kennung", fehler))
+
+
+def faktor_einrichten(db: Session, benutzer: Benutzer) -> bool:
+    """Ob diese Anmeldung erst einen zweiten Faktor einrichten muss: Der Betreiber verlangt ihn fuer alle
+    (Kontenmodul Teil 2), und das Konto hat noch keinen. Dann liegt ein frisches, unbestaetigtes Geheimnis bereit
+    (ein schon bereitliegendes bleibt, damit ein halb eingescannter QR-Code weiter passt), die Anmeldung wird eine
+    halbe Sitzung, und ``/api/auth/code`` bestaetigt beides zugleich. Mit ``NEXMAIL_ZWEI_FAKTOR_AUS`` nie."""
+    from . import konten_store, zwei_faktor
+
+    if benutzer.totp_bestaetigt or get_settings().zwei_faktor_aus:
+        return False
+    if not konten_store.store_fuer(db).factor_required():
+        return False
+    if not benutzer.totp_geheimnis:
+        zwei_faktor.geheimnis_speichern(benutzer, zwei_faktor.geheimnis_erzeugen())
+        db.commit()
+    return True

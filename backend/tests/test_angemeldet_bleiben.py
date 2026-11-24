@@ -155,3 +155,26 @@ def test_der_bekannte_browser_kommt_auch_an_der_bremse_vorbei(klient, db):
         fremd.post("/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": "falsch-falsch"})
     assert _anmelden(_neuer_browser()).status_code == 429
     assert _anmelden(klient).status_code == 200
+
+
+def test_zweiter_faktor_fuer_alle_verlangt_ihn_bei_der_naechsten_anmeldung(klient, db):
+    """Kontenmodul Teil 2: ab Werk aus; an, richtet ein Konto ohne Faktor ihn beim Anmelden ein."""
+    from app.services import benutzer as benutzerdienst
+    from conftest import aktueller_code
+
+    einrichten(klient)
+    benutzerdienst.anlegen(db, "zweiter", "auch-geheim-456")
+    db.commit()
+    stand = klient.get("/api/oidc/admin/anmeldung").json()
+    assert stand["zwei_faktor_fuer_alle"] is False
+    an = klient.put("/api/oidc/admin/anmeldung", json={"zwei_faktor_fuer_alle": True})
+    assert an.status_code == 200 and an.json()["zwei_faktor_fuer_alle"] is True and an.json()["passwort"] is True
+
+    browser = _neuer_browser()
+    antwort = browser.post("/api/auth/anmelden", json={"benutzername": "zweiter", "passwort": "auch-geheim-456"})
+    assert antwort.json()["schritt"] == "einrichten", antwort.text
+    assert browser.get("/api/auth/ich").status_code == 401
+    geheimnis = browser.get("/api/auth/einrichtung").json()["geheimnis"]
+    fertig = browser.post("/api/auth/code", json={"code": aktueller_code(geheimnis)})
+    assert fertig.status_code == 200 and fertig.json()["schritt"] == "fertig", fertig.text
+    assert browser.get("/api/auth/ich").json()["zwei_faktor_aktiv"] is True

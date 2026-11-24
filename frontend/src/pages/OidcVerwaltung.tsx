@@ -226,6 +226,7 @@ function AnmeldungKarte({
   const { t } = useTranslation()
   const deuten = useDeuten()
   const [passwort, setPasswort] = useState<boolean | null>(null)
+  const [faktorFuerAlle, setFaktorFuerAlle] = useState<boolean | null>(null)
   const [adresse, setAdresse] = useState('')
   const [zone, setZone] = useState('')
   const [gespeichert, setGespeichert] = useState('')
@@ -236,10 +237,11 @@ function AnmeldungKarte({
 
   const laden = useCallback(async () => {
     const [anmeldung, einstellungen] = await Promise.all([
-      api.holen<{ passwort: boolean }>('/api/oidc/admin/anmeldung'),
+      api.holen<{ passwort: boolean; zwei_faktor_fuer_alle: boolean }>('/api/oidc/admin/anmeldung'),
       api.holen<{ oeffentliche_adresse: string; zeitzone: string }>('/api/einstellungen'),
     ])
     setPasswort(anmeldung.passwort)
+    setFaktorFuerAlle(anmeldung.zwei_faktor_fuer_alle)
     setAdresse(einstellungen.oeffentliche_adresse)
     setGespeichert(einstellungen.oeffentliche_adresse)
     setZone(einstellungen.zeitzone)
@@ -249,11 +251,15 @@ function AnmeldungKarte({
     void laden().catch((f) => setFehler(deuten(f)))
   }, [laden, deuten, aktiv, oeffentlich])
 
-  async function umschalten(an: boolean) {
+  async function umschalten(schalter: { passwort?: boolean; zwei_faktor_fuer_alle?: boolean }) {
     setFehler('')
     try {
-      const antwort = await api.aendern<{ passwort: boolean }>('/api/oidc/admin/anmeldung', { passwort: an })
+      const antwort = await api.aendern<{ passwort: boolean; zwei_faktor_fuer_alle: boolean }>(
+        '/api/oidc/admin/anmeldung',
+        schalter,
+      )
       setPasswort(antwort.passwort)
+      setFaktorFuerAlle(antwort.zwei_faktor_fuer_alle)
     } catch (f) {
       setFehler(deuten(f))
     }
@@ -292,7 +298,16 @@ function AnmeldungKarte({
         checked={passwort ?? true}
         // Ohne aktiven Anbieter käme außer dem Betreiber niemand herein: der Schalter bleibt an.
         disabled={passwort === null || (passwort && !aktiv)}
-        onCheckedChange={(an) => void umschalten(an)}
+        onCheckedChange={(an) => void umschalten({ passwort: an })}
+      />
+      {/* Kontenmodul Teil 2, ab Werk aus: Wer noch keinen zweiten Faktor hat, richtet ihn bei der nächsten Anmeldung
+          ein (auch nach einem Anbieter). */}
+      <Switch
+        label={t('account.factorRequiredSwitch')}
+        description={t('account.factorRequired')}
+        checked={faktorFuerAlle ?? false}
+        disabled={faktorFuerAlle === null}
+        onCheckedChange={(an) => void umschalten({ zwei_faktor_fuer_alle: an })}
       />
       <form
         className="flex flex-wrap items-end gap-2"

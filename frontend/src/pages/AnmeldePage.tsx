@@ -36,7 +36,11 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
      der Browser mit `?schritt=code` zurück: Die halbe Sitzung steht, jetzt der
      Code, wie nach dem Passwort. */
   const [lage, setLage] = useState<Lage>(() =>
-    new URLSearchParams(window.location.search).get('schritt') === 'code' ? 'code' : 'passwort',
+    // Nach einem Anbieter: `?schritt=code` (Faktor vorhanden) oder `?schritt=einrichten` (Betreiber verlangt ihn).
+    (() => {
+      const schritt = new URLSearchParams(window.location.search).get('schritt')
+      return schritt === 'code' || schritt === 'einrichten' ? schritt : 'passwort'
+    })(),
   )
   const [benutzername, setBenutzername] = useState('')
   const [passwort, setPasswort] = useState('')
