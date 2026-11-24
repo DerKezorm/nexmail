@@ -1,4 +1,39 @@
 {
+  "0.33.0": {
+    "lead": "nexmail arbeitet jetzt mit nextime und nextasks zusammen: alle Kalender über eine Verbindung, Aufgaben aus nextasks direkt in nexmail. Dazu Symbole für deine Postfächer und die Darstellung „Wie das System“.",
+    "sections": [
+      {
+        "title": "nextime verbinden",
+        "where": "Einstellungen → Verbindungen → nextime",
+        "body": "Statt jeden Kalender einzeln einzubinden, verbindest du einmal nextime mit Adresse und Schlüssel. Alle Kalender erscheinen im Kalender von nexmail, in den Gruppen und Farben von nextime; welche nexmail nimmt, hakst du in der Karte an. Termine änderst, legst an und löschst du direkt dort. Unter „Kalender hinzufügen“ steht nextime ganz oben."
+      },
+      {
+        "title": "Einladungen und Termine aus Mails",
+        "where": "Lesebereich, Menü einer Mail",
+        "body": "Eine Einladung sagst du in einem Schritt zu und wählst dabei den Kalender; nexmail merkt sich je Postfach, welchen du zuletzt genommen hast. Die Karte sagt, ob der Termin schon in nextime steht und was sich zur selben Zeit überschneidet. Aus jeder Mail machst du mit „Termin daraus machen“ einen Termin."
+      },
+      {
+        "title": "nextasks direkt in den Aufgaben",
+        "where": "Aufgaben; Einstellungen → Verbindungen → nextasks",
+        "body": "Mit verbundenem nextasks stehen seine Bereiche und Listen mit ihren Symbolen in der Seitenleiste. Du hakst ab, änderst Datum, Uhrzeit, Priorität und Zuständige, legst neue Aufgaben an, auch ohne Mail, und suchst darin. Welche Listen nexmail zeigt, wählst du in der Karte. Die eigene Aufgabenliste von nexmail lässt sich abschalten; ihre offenen Aufgaben ziehen dabei auf Wunsch in deine Standardliste um."
+      },
+      {
+        "title": "Farbe und Symbol für Postfächer",
+        "where": "Einstellungen → Postfächer → Bearbeiten",
+        "body": "Jedes Postfach bekommt auf Wunsch ein Symbol und eine Farbe wie in nextasks, auch eine eigene. Das Symbol steht dann überall, wo bisher der farbige Punkt war. Ohne Symbol bleibt es beim Punkt."
+      },
+      {
+        "title": "Hell, dunkel oder wie das System",
+        "where": "Einstellungen → Darstellung",
+        "body": "Mit „Wie das System“ folgt nexmail der Einstellung deines Geräts und schaltet mit ihm um."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Die Karten für nextime und nextasks unter „Verbindungen“ sind aufgebaut wie in nextime: oben der Stand, darunter die Abschnitte, ganz unten „Schlüssel ändern“ und „Trennen“.",
+      "Es gibt nur noch eine nextasks-Verbindung; weitere aus der Zeit davor stehen mit Hinweis in der Karte."
+    ]
+  },
   "0.24.0": {
     "lead": "Ab dieser Version sagt nexmail nach einem Update selbst, was sich geändert hat. Dieser Text ist der erste davon.",
     "sections": [

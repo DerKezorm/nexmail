@@ -26,7 +26,7 @@ Roundcube is webmail bolted onto one mailbox. Thunderbird does not run in a
 browser. Commercial clients want to pull your mail onto their servers. nexmail
 is the third option — and if you can use Outlook, you should feel at home.
 
-> **Version 0.32.0.** It reads, writes, searches, sorts, labels, sends,
+> **Version 0.33.0.** It reads, writes, searches, sorts, labels, sends,
 > schedules, prints, answers for you while you are away, keeps a calendar and
 > your address books in sync with iCloud or Google, invites people to your own
 > appointments, rephrases a draft with an AI service of your choice, backs
@@ -118,7 +118,12 @@ sends each message at most once (nextasks' `external_ref`), and sees completed,
 reopened, rescheduled and binned tasks within a few minutes; when the token runs
 out, *Renew token* keeps your tasks connected. A nextasks on your local network
 needs the operator's permission under *Settings → Server → General*, as webhooks and
-calendars do. For tools of your own there is a webhook target: nexmail posts
+calendars do. With nextasks connected, the task view goes further: its spaces and
+lists appear in the sidebar with their symbols, read live from nextasks (nothing is
+copied), and you can tick off, edit, move and add tasks there, also without a mail;
+you choose in the nextasks card which lists nexmail shows. nexmail's own task list
+can be switched off once a to-do app is connected, and its open tasks can move to
+your default list. For tools of your own there is a webhook target: nexmail posts
 each task as signed JSON to an address you choose (see
 [Webhooks for tasks](#webhooks-for-tasks)).
 
@@ -181,6 +186,10 @@ would stay in their calendars and they would turn up.
 
 **Calendar.** Month, week and day, with your own calendars in nexmail or
 connected over CalDAV to iCloud, Nextcloud or anything else that speaks it.
+With a self-hosted [nextime](https://github.com/DerKezorm/nextime) (0.2.0 or
+later) one connection under *Settings → Connections* brings all its calendars,
+in its groups and colours, read live; invitations are accepted into a nextime
+calendar in one step, and *Turn into event* makes an event from any mail.
 A server on your own network or VPN is refused until the operator allows it
 under *Settings → Server → General*; the same switch covers address books and
 subscribed calendars.

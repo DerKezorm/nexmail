@@ -1,4 +1,39 @@
 {
+  "0.33.0": {
+    "lead": "nexmail now works with nextime and nextasks: all calendars through one connection, tasks from nextasks right in nexmail. Plus symbols for your mailboxes and the appearance “Like the system”.",
+    "sections": [
+      {
+        "title": "Connect nextime",
+        "where": "Settings → Connections → nextime",
+        "body": "Instead of adding each calendar on its own, you connect nextime once with its address and key. All calendars show up in nexmail's calendar, in nextime's groups and colours; you tick in the card which ones nexmail uses. You change, add and delete events right there. “Add calendar” lists nextime first."
+      },
+      {
+        "title": "Invitations and events from mails",
+        "where": "Reading pane, a message's menu",
+        "body": "Accept an invitation in one step and pick the calendar while you do; nexmail remembers per mailbox which one you used last. The card says whether the event is already in nextime and what overlaps it. “Turn into event” makes an event from any mail."
+      },
+      {
+        "title": "nextasks right in Tasks",
+        "where": "Tasks; Settings → Connections → nextasks",
+        "body": "With nextasks connected, its spaces and lists appear in the sidebar with their symbols. Tick tasks off, change date, time, priority and assignees, add new tasks, also without a mail, and search them. You pick in the card which lists nexmail shows. nexmail's own task list can be switched off; its open tasks can move to your default list when you do."
+      },
+      {
+        "title": "Colour and symbol for mailboxes",
+        "where": "Settings → Mailboxes → Edit",
+        "body": "Each mailbox can get a symbol and a colour as in nextasks, an own colour too. The symbol then shows wherever the coloured dot was. Without a symbol the dot stays."
+      },
+      {
+        "title": "Light, dark or like the system",
+        "where": "Settings → Appearance",
+        "body": "With “Like the system”, nexmail follows your device's setting and switches with it."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "The nextime and nextasks cards under “Connections” are laid out as in nextime: the state at the top, the sections below, “Change key” and “Disconnect” at the bottom.",
+      "There is only one nextasks connection now; others from before stay in the card with a note."
+    ]
+  },
   "0.24.0": {
     "lead": "From this version on, nexmail tells you after an update what has changed. This text is the first one.",
     "sections": [
