@@ -80,6 +80,12 @@ Profilbild von 0.33.0 zeigt sich (jetzt jedem Angemeldeten), die Postausgang-Ein
 Mailmoduls, der Betreiber setzt Monas Faktor zurück und ihr gekoppeltes iPhone ist getrennt. Die Zeilen für Bild und
 halbe Sitzung schreibt der Test vor dem Start in die Spalten von 0.33.0 (die Vorlage hat keine).
 
+**Geprüft am 25.11.2026:** Backend voll einmal ohne xdist (`pytest -q`: 3022 bestanden, 16 übersprungen, 1 rot:
+`test_waechter` kannte die öffentlichen Passkey-Wege noch nicht, eingetragen und mit `test_passkeys` erneut grün; im
+Lauf davor fehlten `webauthn` und `cbor2` in `THIRD-PARTY.md`, nachgetragen), Vertrag `tests/nexkonten` 184 grün und
+12 übersprungen, `tests/nexpost` grün, Test „Bestand“ 62 grün, Frontend `npx vitest run --maxWorkers=2` 266 grün,
+`npx tsc -b`, `npm run lint` und `npm run build` grün. Kein Playwright, keine Server.
+
 **Noch nicht gebaut:** Ein Konto mit Passkey und ohne Authenticator-App muss bei „für alle verlangen“ nach dem
 Passwort trotzdem die App einrichten (nexmails Codeabfrage kennt den Passkey als zweiten Schritt nicht; mit dem
 Passkey allein meldet es sich ohne Passwort an). Nach dem Einrichten beim Anmelden gibt es keine
