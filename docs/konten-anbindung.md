@@ -1,6 +1,6 @@
 # Anbindung des Kontenmoduls (`nexkonten`) an nexmail
 
-Stand 24.11.2026, Zweig `konten`. **Gebaut** mit `konten` 0.2.1 und `oidc` 1.1.0 (Abschnitt 0); die Abschnitte
+Stand 24.11.2026, Zweig `konten`. **Gebaut** mit `konten` 0.2.1 und `oidc` 1.1.0 (Abschnitt 0), Teil 2 mit `konten` 0.3.1 und `post` 0.1.1 (Abschnitt 0b); die Abschnitte
 ab 1 sind der Plan der Vorbereitung (gegen `konten` 0.1.0) und bleiben als Begründung stehen. Maßgeblich sind der
 Entwurf in nexlore (`Development/nexapps/Baupläne/Entwurf Konten, Einrichtung und Anmeldung.md`, Tabelle
 „Entscheidungen“) und die Schnittstelle des Moduls (`bauplaene/konten/SCHNITTSTELLE.md`).
@@ -15,7 +15,7 @@ Entwurf in nexlore (`Development/nexapps/Baupläne/Entwurf Konten, Einrichtung u
 | Mails | `services/kontenpost.py` (Einladung, Link für ein neues Passwort, Adresse bestätigen, neuer Benutzername, Bescheid an die alte Adresse), Deutsch oder Englisch nach der Sprache des Kontos |
 | Notfallbefehl | `python -m app.notfall reset-link <name oder e-mail> [--tage 1/7/30]` |
 | Routen | gleiche Feldnamen; neu: `GET /api/auth/kennwort-vergessen`, `GET /api/auth/kennwort-neu/{schluessel}`, `GET/POST /api/auth/adresse/{schluessel}`, `PUT /api/auth/ich/benutzername`, `PUT /api/auth/ich/sprache`, `POST /api/auth/ich/kontaktadresse/nochmal`, `DELETE /api/auth/ich/kontaktadresse/wartend`, `GET /api/auth/zugaenge`, `POST /api/auth/zugaenge/trennen` und `/gesehen`, `PUT /api/benutzer/{id}/benutzername` und `/anzeigename`, `POST /api/benutzer/{id}/passwort-link` und `/kontaktadresse-entfernen` |
-| Oberfläche | Anmelden, Einrichtung, Einladung, Passwort vergessen und neu, Adresse bestätigen (neu, `pages/AdressePage.tsx`), Profil, Benutzerverwaltung, „Diese Geräte haben noch Zugriff“ nach der Anmeldung (`components/NeuesPasswort.tsx`); „Passwort“ statt „Passwort“ in allen Texten |
+| Oberfläche | Anmelden, Einrichtung, Einladung, Passwort vergessen und neu, Adresse bestätigen (neu, `pages/AdressePage.tsx`), Profil, Benutzerverwaltung, „Diese Geräte haben noch Zugriff“ nach der Anmeldung (`components/NeuesPasswort.tsx`); „Passwort“ statt „Kennwort“ in allen Texten |
 | Tests | Vertrag `tests/nexkonten` (149, 10 übersprungen, s. unten), `tests/nexoidc`, `tests/test_konten_routen.py`, Test „Bestand“ ohne `xfail` |
 
 **Geprüft am 24.11.2026:** Backend voll einmal (`pytest`, ohne xdist: 2935 bestanden, 14 übersprungen, 6 rot, alle
@@ -53,6 +53,47 @@ Playwright, keine Server; die Oberflächentests unter `frontend/tests` suchen no
 Grundsatz für nexmail: **Für niemanden, der nexmail heute benutzt, ändert sich etwas, das er nicht selbst anstößt.**
 Jede heutige Anmeldung geht weiter (Test „Bestand“), die Schnittstellen behalten ihre Feldnamen, und die Oberfläche
 ändert sich nur, wo ein neues Feld dazukommt.
+
+## 0b. Teil 2 (`konten` 0.3.1, `post` 0.1.1)
+
+Gebaut am 24.11.2026 auf demselben Zweig. Maßgeblich ist der Abschnitt „Teil 2“ des Entwurfs in nexlore.
+
+| Teil | Wo |
+|---|---|
+| Module | `backend/app/vendor/nexkonten` 0.3.1, neu `backend/app/vendor/nexpost` 0.1.1 (Mailmodul), Wortlaute unter `frontend/src/vendor/{nexkonten,nexpost}`; `requirements.txt` um `webauthn` und `cbor2` |
+| Store | `services/konten_store.py` jetzt auch `FactorStore`, `PasskeyStore`, `SessionStore`, `PictureStore`; `services/post_store.py` für das Mailmodul über die bisherigen Einstellungen `system_smtp_*` (die Seite und `systempost.schreiben` bleiben, das Modul liest dieselben Werte) und die Tabelle `post_ausgang` |
+| Wanderung | `benutzer.passkey_handle`, `geraete_schluessel`, `mail_neue_anmeldung` (1), `fehlversuche`, `gesperrt_bis`; `sitzung.merken` (1: bestehende Sitzungen bleiben gemerkt und gleiten wie bisher), `stufe` (`full`), `anbieter_geprueft`; Tabellen `passkey`, `post_ausgang`. Beim Start fallen halbe Sitzungen (`bestaetigt = 0`) weg (`konten_wanderung.halbe_sitzungen_verwerfen`) |
+| Zweiter Faktor | Geheimnis und Wiederherstellungscodes bleiben, wo und wie sie waren (versiegelt, Kontext `benutzer:<id>:totp`); das Modul liest sie über den Store. Die Codeabfrage beim Anmelden bleibt nexmails eigene (`/api/auth/code`, `/wiederherstellung`), `NEXMAIL_ZWEI_FAKTOR_AUS` gilt weiter und schlägt auch „für alle verlangen“ |
+| Schalter des Betreibers | Verwaltung → Anmeldung: „Zweiten Faktor für alle verlangen“ (ab Werk aus; wer keinen hat, richtet ihn bei der nächsten Anmeldung ein, auch nach einem Anbieter: Schritt `einrichten`) und „Passkeys erlaubt“ (ab Werk an) über `PUT /api/oidc/admin/anmeldung` |
+| Zurücksetzen | `POST /api/benutzer/{id}/zweiter-faktor-zuruecksetzen` (Passwort des Betreibers, `geraete_trennen` ab Werk an), Knopf in der Benutzerverwaltung |
+| Passkeys | `routers/passkeys.py`: `GET /api/auth/passkey`, `POST /api/auth/passkey/start`, `POST /api/auth/passkey` (anmelden, ohne Code), `GET/POST /api/auth/passkeys`, `POST /api/auth/passkeys/start`, `POST /api/auth/passkeys/{uid}/entfernen`; nur mit https-Adresse (oder localhost). Oberfläche: Knopf „Mit Passkey anmelden“, Abschnitt Passkeys unter Sicherheit (`lib/passkey.ts` wandelt von Hand, ältere Browser haben `parseCreationOptionsFromJSON` nicht) |
+| Sitzungen | „Angemeldet bleiben“ beim Anmelden (ab Werk an: 30 Tage gleitend, Cookie 400 Tage; aus: Sitzungscookie, höchstens 12 Stunden). Die Liste „Angemeldete Geräte“ und „Auf allen Geräten abmelden“ gab es schon; sie beenden Browser und gekoppelte iPhones, API-Schlüssel bleiben |
+| Bekannter Browser | Cookie `nexmail_bekannt` mit bis zu fünf signierten Marken über `benutzer.geraete_schluessel` (neues Passwort: neuer Schlüssel). Ein bekannter Browser ist von der Kontosperre ausgenommen und zählt an der Bremse in einem eigenen Topf. `GET /api/auth/ich` gibt einem Browser von vor dem Update still eine Marke |
+| Kontosperre | 10 Fehlversuche, 15 Minuten (`konten_store.SPERRE_NACH`, `SPERRE_MINUTEN`), Antwort wie bei einem falschen Passwort; ein neues Passwort hebt sie auf |
+| Mails | alle Systemmails über `nexpost` (Logo, Text und HTML, Sprache des Kontos, sonst des Betreibers, sonst Englisch) in die Outbox, erster Versuch sofort, weitere nach 1, 5, 15, 60, 180 Minuten im Takt (`takt._pushschleife`). Einladungen gehen sofort und ohne Outbox (scheitert die Mail, gibt es die Einladung nicht). Neu: „Neue Anmeldung“ für einen unbekannten Browser, im Profil unter Sicherheit abschaltbar (`PUT /api/auth/ich/neue-anmeldung`). Verwaltung → Postausgang zeigt den letzten Versand, den letzten Fehler und was noch wartet. Unverschlüsselt erlaubt, mit Warnung |
+| Profilbilder | sehen alle angemeldeten Konten (vorher nur das Konto selbst und der Betreiber), nie Abgemeldete; ohne Bild ein Buchstabe auf einer Farbe aus dem Namen (`avatarPlaceholder`) statt zweier Initialen |
+| 429 | `too_many_attempts` des Moduls kommt als nexmails `zu_viele_versuche` mit `Retry-After` |
+
+**Test „Bestand“, Teil 2** (`tests/test_bestand.py`, Ende): das Geheimnis von 0.33.0 ist das Geheimnis des Moduls,
+Browser-Sitzungen von 0.33.0 sind gemerkt und voll, eine halbe Anmeldung von 0.33.0 fällt beim Start weg, ein
+Profilbild von 0.33.0 zeigt sich (jetzt jedem Angemeldeten), die Postausgang-Einstellungen von 0.33.0 sind die des
+Mailmoduls, der Betreiber setzt Monas Faktor zurück und ihr gekoppeltes iPhone ist getrennt. Die Zeilen für Bild und
+halbe Sitzung schreibt der Test vor dem Start in die Spalten von 0.33.0 (die Vorlage hat keine).
+
+**Noch nicht gebaut:** Ein Konto mit Passkey und ohne Authenticator-App muss bei „für alle verlangen“ nach dem
+Passwort trotzdem die App einrichten (nexmails Codeabfrage kennt den Passkey als zweiten Schritt nicht; mit dem
+Passkey allein meldet es sich ohne Passwort an). Nach dem Einrichten beim Anmelden gibt es keine
+Wiederherstellungscodes, bis man sie unter Sicherheit neu macht (wie vor dem Modul).
+
+**Wo das Modul nicht passte (Teil 2):**
+
+7. **Hinweis am Benutzernamen** („Du kannst ihn später im Profil ändern“) steht im Profil selbst falsch. nexmail
+   nimmt dort einen eigenen Satz (`profil.benutzername_hinweis`: „Damit meldest du dich an.“). Vorschlag: ein
+   zweiter Wortlaut `account.usernameHintProfile` im Modul.
+8. **`sessions.current` und eigene Sitzungen:** nexmail behält seine Sitzungsschicht (`services/sitzung.py`), weil
+   Gerätetoken und Browser in derselben Tabelle liegen und die iPhone-App daran hängt; das Modul liefert Laufzeiten,
+   Marken und die Mail. Vorschlag: in `SCHNITTSTELLE.md` sagen, welche Teile eine App mit eigener Sitzungsschicht
+   mindestens nehmen muss.
 
 ## 1. Bestand heute (0.33.0)
 
