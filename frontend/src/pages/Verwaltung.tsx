@@ -171,6 +171,15 @@ function EigenesNetz() {
  * Wahl schicken lassen. Ob Mailtext das Haus verlässt, entscheidet der
  * Betreiber; der Benutzer schaltet es danach an seinem Webhook ein.
  */
+
+/** Was der Mailversand zuletzt tat (Mailmodul): Zeitpunkte als ISO, Fehler als Kennung ``mail_*``. */
+interface Poststand {
+  zuletzt_ok: string | null
+  letzter_fehler: string
+  letzter_fehler_am: string | null
+  wartend: number
+}
+
 function WebhookMailtext() {
   const { t } = useTranslation()
   const [erlaubt, setErlaubt] = useState<boolean | null>(null)
@@ -229,7 +238,7 @@ function WebhookMailtext() {
  * niemanden einladen.
  */
 export function Postausgang() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [f, setF] = useState({
     server: '',
     port: 587,
@@ -240,13 +249,15 @@ export function Postausgang() {
   })
   const [passwort, setPasswort] = useState('')
   const [liegtVor, setLiegtVor] = useState(false)
+  // Mailmodul: letzter Versand, letzter Fehler, was noch auf einen Versuch wartet.
+  const [stand, setStand] = useState<Poststand | null>(null)
   const [probeAn, setProbeAn] = useState('')
   const [fehler, setFehler] = useState('')
   const [meldung, setMeldung] = useState('')
   const [laeuft, setLaeuft] = useState(false)
 
   const laden = useCallback(async () => {
-    const a = await api.holen<typeof f & { passwort_liegt_vor: boolean }>(
+    const a = await api.holen<typeof f & Poststand & { passwort_liegt_vor: boolean }>(
       '/api/einstellungen/postausgang',
     )
     setF({
@@ -258,6 +269,12 @@ export function Postausgang() {
       absendername: a.absendername,
     })
     setLiegtVor(a.passwort_liegt_vor)
+    setStand({
+      zuletzt_ok: a.zuletzt_ok ?? null,
+      letzter_fehler: a.letzter_fehler ?? '',
+      letzter_fehler_am: a.letzter_fehler_am ?? null,
+      wartend: a.wartend ?? 0,
+    })
   }, [])
 
   useEffect(() => {
@@ -346,6 +363,23 @@ export function Postausgang() {
           onChange={(e) => setF({ ...f, absendername: e.target.value })}
         />
       </div>
+
+      {/* Mailmodul: Der Betreiber sieht, ob Systemmails hinausgehen; eine Mail, die scheitert, versucht es nach 1, 5,
+          15, 60 und 180 Minuten noch einmal. */}
+      {stand?.zuletzt_ok && (
+        <p className="mb-0 text-[12px] text-fg-3">
+          {t('mail.lastOk', { when: new Date(stand.zuletzt_ok).toLocaleString(i18n.language) })}
+        </p>
+      )}
+      {stand?.letzter_fehler && stand.letzter_fehler_am && (
+        <p className="mb-0 text-[12px] text-danger">
+          {t('mail.lastError', {
+            when: new Date(stand.letzter_fehler_am).toLocaleString(i18n.language),
+            error: t(`mail.error.${stand.letzter_fehler}`, { defaultValue: t('mail.error.unknown') }),
+          })}
+          {stand.wartend > 0 && ` (${stand.wartend})`}
+        </p>
+      )}
 
       {fehler && <p className="mb-0 text-[13px] text-danger">{fehler}</p>}
       {meldung && !fehler && <p className="mb-0 text-[13px] text-accent-text">{meldung}</p>}

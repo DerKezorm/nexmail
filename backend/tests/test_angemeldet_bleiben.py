@@ -178,3 +178,26 @@ def test_zweiter_faktor_fuer_alle_verlangt_ihn_bei_der_naechsten_anmeldung(klien
     fertig = browser.post("/api/auth/code", json={"code": aktueller_code(geheimnis)})
     assert fertig.status_code == 200 and fertig.json()["schritt"] == "fertig", fertig.text
     assert browser.get("/api/auth/ich").json()["zwei_faktor_aktiv"] is True
+
+
+def test_der_betreiber_sieht_den_letzten_fehler_der_systempost(klient, db, monkeypatch):
+    """Mailmodul: Eine Systemmail, die scheitert, steht als letzter Fehler im Postausgang und wartet auf den naechsten
+    Versuch."""
+    from app.vendor import nexpost
+    from app.vendor.nexpost.errors import MailError
+
+    einrichten(klient)
+    with SessionLocal() as s:
+        systempost.schreiben(s, systempost.Postausgang(server="s.example", absender="a@example.com"), None)
+        einstellung_schreiben(s, "oeffentliche_adresse", "https://mail.example")
+
+    class Weg:
+        def __init__(self, *a, **k) -> None:
+            raise MailError("mail_unreachable", "no route")
+
+    nexpost.config.use_smtp(lambda *a, **k: Weg())
+    _adresse_bestaetigt(db)
+    assert _anmelden(_neuer_browser()).status_code == 200
+    stand = klient.get("/api/einstellungen/postausgang").json()
+    assert stand["letzter_fehler"] == "mail_unreachable" and stand["letzter_fehler_am"]
+    assert stand["wartend"] == 1

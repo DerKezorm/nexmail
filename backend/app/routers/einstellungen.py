@@ -277,6 +277,12 @@ class PostausgangAntwort(BaseModel):
     #: ⚠️ Das Passwort verlaesst den Server nie — auch nicht verschluesselt.
     #: Die Oberflaeche erfaehrt nur, **dass** eines hinterlegt ist.
     passwort_liegt_vor: bool = False
+    #: Mailmodul: wann zuletzt eine Systemmail hinausging, der letzte Fehler (Kennung ``mail_*``, die Seite zeigt
+    #: ``mail.error.<kennung>``) und wann, und wie viele Mails noch auf einen weiteren Versuch warten.
+    zuletzt_ok: str | None = None
+    letzter_fehler: str = ""
+    letzter_fehler_am: str | None = None
+    wartend: int = 0
 
 
 class PostausgangEingabe(BaseModel):
@@ -308,7 +314,28 @@ def postausgang_lesen(_: Betreiber, db: DbSession) -> PostausgangAntwort:
         absender=angaben.absender,
         absendername=angaben.absendername,
         passwort_liegt_vor=bool(einstellung_lesen(db, systempost.S_PASSWORT)),
+        **_poststand(db),
     )
+
+
+def _poststand(db) -> dict:
+    from sqlalchemy import func, select
+
+    from ..models import PostAusgang
+    from ..services import post_store
+
+    stand = post_store.PostStore(db).mail_status()
+    wartend = db.scalar(
+        select(func.count()).select_from(PostAusgang).where(
+            PostAusgang.verschickt.is_(None), PostAusgang.naechster.is_not(None)
+        )
+    )
+    return {
+        "zuletzt_ok": stand.last_ok_at.isoformat() if stand.last_ok_at else None,
+        "letzter_fehler": stand.last_error or "",
+        "letzter_fehler_am": stand.last_error_at.isoformat() if stand.last_error_at else None,
+        "wartend": int(wartend or 0),
+    }
 
 
 @router.put("/postausgang", response_model=PostausgangAntwort)
