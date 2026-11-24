@@ -108,7 +108,7 @@ export default function Start() {
     } catch {
       // Der Server antwortet gar nicht. Das ist etwas anderes als "nicht
       // angemeldet", und es darf nicht wie eine Anmeldemaske aussehen -
-      // sonst tippt jemand fünfmal sein Kennwort in eine tote Oberfläche.
+      // sonst tippt jemand fünfmal sein Passwort in eine tote Oberfläche.
       setLage('server_weg')
     }
   }, [])

@@ -1,6 +1,6 @@
 /* Postfach hinzufügen.
  *
- * Der Weg ist kurz gehalten: Adresse, Name, Kennwort. Sobald die Adresse
+ * Der Weg ist kurz gehalten: Adresse, Name, Passwort. Sobald die Adresse
  * vollständig ist, fragt nexmail beim Anbieter nach den Serverdaten
  * (Autoconfig) und trägt sie ein.
  *

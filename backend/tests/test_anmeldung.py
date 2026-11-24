@@ -380,7 +380,7 @@ def test_totp_toleranz_akzeptiert_den_vorigen_schritt(klient):
     assert klient.post("/api/auth/code", json={"code": naechster}).status_code == 200
 
 
-# --- Eigenes Kennwort ändern ------------------------------------------------ #
+# --- Eigenes Passwort ändern ------------------------------------------------ #
 
 
 def test_kennwort_aendern_und_damit_anmelden(klient):
@@ -397,7 +397,7 @@ def test_kennwort_aendern_und_damit_anmelden(klient):
     alt = klient.post(
         "/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": "sehr-geheim-123"}
     )
-    assert alt.status_code == 401, "Das alte Kennwort funktioniert noch."
+    assert alt.status_code == 401, "Das alte Passwort funktioniert noch."
 
     neu = klient.post(
         "/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": "noch-geheimer-456"}
@@ -409,7 +409,7 @@ def test_ohne_das_bisherige_kennwort_geht_es_nicht(klient):
     """⚠️ **Sonst genügt eine geklaute Sitzung**, um den Zugang zu übernehmen.
 
     Ein offener Rechner, ein mitgelesenes Cookie — und der Eigentümer ist
-    ausgesperrt. Das alte Kennwort ist der Beweis, dass der Richtige sitzt.
+    ausgesperrt. Das alte Passwort ist der Beweis, dass der Richtige sitzt.
     """
     einrichten(klient)
 
@@ -448,7 +448,7 @@ def test_dasselbe_kennwort_noch_einmal_ist_kein_wechsel(klient):
 def test_ein_wechsel_wirft_die_anderen_geraete_hinaus(klient, zweiter_klient):
     """⚠️ **Der Punkt der Übung.**
 
-    Wer sein Kennwort ändert, tut das meist, weil er jemanden im Verdacht hat.
+    Wer sein Passwort ändert, tut das meist, weil er jemanden im Verdacht hat.
     Ein Wechsel, nach dem der andere angemeldet bleibt, hilft nicht.
     """
     einrichten(klient)

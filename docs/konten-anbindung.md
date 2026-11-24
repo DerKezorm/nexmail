@@ -15,7 +15,7 @@ Entwurf in nexlore (`Development/nexapps/Baupläne/Entwurf Konten, Einrichtung u
 | Mails | `services/kontenpost.py` (Einladung, Link für ein neues Passwort, Adresse bestätigen, neuer Benutzername, Bescheid an die alte Adresse), Deutsch oder Englisch nach der Sprache des Kontos |
 | Notfallbefehl | `python -m app.notfall reset-link <name oder e-mail> [--tage 1/7/30]` |
 | Routen | gleiche Feldnamen; neu: `GET /api/auth/kennwort-vergessen`, `GET /api/auth/kennwort-neu/{schluessel}`, `GET/POST /api/auth/adresse/{schluessel}`, `PUT /api/auth/ich/benutzername`, `PUT /api/auth/ich/sprache`, `POST /api/auth/ich/kontaktadresse/nochmal`, `DELETE /api/auth/ich/kontaktadresse/wartend`, `GET /api/auth/zugaenge`, `POST /api/auth/zugaenge/trennen` und `/gesehen`, `PUT /api/benutzer/{id}/benutzername` und `/anzeigename`, `POST /api/benutzer/{id}/passwort-link` und `/kontaktadresse-entfernen` |
-| Oberfläche | Anmelden, Einrichtung, Einladung, Passwort vergessen und neu, Adresse bestätigen (neu, `pages/AdressePage.tsx`), Profil, Benutzerverwaltung, „Diese Geräte haben noch Zugriff“ nach der Anmeldung (`components/NeuesPasswort.tsx`); „Passwort“ statt „Kennwort“ in allen Texten |
+| Oberfläche | Anmelden, Einrichtung, Einladung, Passwort vergessen und neu, Adresse bestätigen (neu, `pages/AdressePage.tsx`), Profil, Benutzerverwaltung, „Diese Geräte haben noch Zugriff“ nach der Anmeldung (`components/NeuesPasswort.tsx`); „Passwort“ statt „Passwort“ in allen Texten |
 | Tests | Vertrag `tests/nexkonten` (149, 10 übersprungen, s. unten), `tests/nexoidc`, `tests/test_konten_routen.py`, Test „Bestand“ ohne `xfail` |
 
 **Geprüft am 24.11.2026:** Backend voll einmal (`pytest`, ohne xdist: 2935 bestanden, 14 übersprungen, 6 rot, alle
@@ -62,7 +62,7 @@ Jede heutige Anmeldung geht weiter (Test „Bestand“), die Schnittstellen beha
 |---|---|
 | `benutzer` | `id` (32 Hex, Primärschlüssel, an ihm hängt alles), `nummer` (ganze Zahl für `nexoidc`), `benutzername` (String 64, `unique=True`, **aber Groß/Klein-empfindlich** in der DB), `anzeigename` (120, beim Anlegen leer → Kopie des Benutzernamens), `passwort_hash` (Argon2id, leer = nur Anbieter), `ist_betreiber` (genau einer), `kontaktadresse` (320, leer = kein Weg zurück, **nicht eindeutig**), `totp_*`, `profilbild`, `profilbild_am` |
 | `einladung` | `schluessel_hash`, `benutzername` (vom Betreiber vorgegeben), `anzeigename`, `adresse` (Pflicht), `laeuft_ab` (7 Tage), `eingeloest` |
-| `ruecksetzung` | Link „Kennwort vergessen“: `schluessel_hash`, `benutzer_id`, `laeuft_ab` (2 Stunden), `eingeloest` |
+| `ruecksetzung` | Link „Passwort vergessen“: `schluessel_hash`, `benutzer_id`, `laeuft_ab` (2 Stunden), `eingeloest` |
 | `sitzung` | Browser **und** iPhone (`art = geraet`, Token `nxa_…`), am `benutzer_id`; Push-Ticket des Relays an der Sitzung |
 | `wiederherstellungscode`, `app_kopplung`, `push_anmeldung`, `api_schluessel` | alle am `benutzer_id` |
 | `oidc_anbieter`, `oidc_verknuepfung` | Verknüpfung `(anbieter_id, subject)` → `benutzer_id`; `email` nur Anzeige |
@@ -223,17 +223,17 @@ vorhandenen nexmail-Bausteinen**: `Torbogen` (Rahmen der Anmeldeseiten), `Input`
 
 | Bildschirm | Heute | Künftig | Bausteine | Sichtbar anders |
 |---|---|---|---|---|
-| **Anmelden** (`AnmeldePage.tsx`) | `Torbogen`, Feld „Benutzername“, „Kennwort“, Knopf, „Kennwort vergessen?“, Anbieterknöpfe | gleich | `Input` (`autoComplete="username"` bleibt) | nur die Beschriftung: „Benutzername oder E-Mail“; Fehlertext „Benutzername, E-Mail oder Passwort stimmt nicht.“ |
-| **Einrichtung** (`EinrichtungPage.tsx`) | Benutzername, Angezeigter Name (frei), Kennwort, Kennwort wiederholen | Einrichtungscode (mit Hinweis auf `docker logs nexmail` / `NEXMAIL_SETUP_TOKEN`), Anzeigename, Benutzername (Vorschlag folgt dem Anzeigenamen, bis man ihn anfasst), E-Mail (frei), Kennwort, Kennwort wiederholen; Sprache wie heute aus dem Browser | dieselben `Input` und `Meldung` im selben `Torbogen`; der Vorschlag ist nur ein vorbelegter Wert, kein eigener Baustein | zwei Felder mehr (Code oben, E-Mail), Reihenfolge wie nexnotes, Hinweise in Entwurfs-Wortlaut, Mindestlänge 12 |
-| **Einladung** (`EinladungPage.tsx`) | „Willkommen, {Name}“, „Vergib ein Kennwort für den Benutzernamen {Name}“, Kennwort zweimal, darunter Anbieter | Anzeigename (vorbelegt), Benutzername (Vorschlag oder der Name der alten Einladung), E-Mail (vorbelegt), Kennwort zweimal, darunter „oder“ und die Anbieter wie heute | dieselben `Input`, `Button`, `Meldung` | drei Felder mehr; Untertitel ohne festen Namen. Alte Einladungen zeigen ihren Namen im Feld, nicht mehr im Satz |
-| **Kennwort vergessen** (`KennwortPage.tsx`) | Feld „Benutzername“, „Link anfordern“, Bestätigung „…zwei Stunden“ | Feld „Benutzername oder E-Mail“; ohne Postausgang statt des Formulars der Satz „Der Betreiber kann dir unter Konten einen Link erstellen …“; Seite zum Setzen unverändert | `Input`, `Button`, `Torbogen` | Beschriftung, Bestätigungssatz aus dem Entwurf („eine Stunde“ entfällt dort), Hinweis ohne Postausgang |
+| **Anmelden** (`AnmeldePage.tsx`) | `Torbogen`, Feld „Benutzername“, „Passwort“, Knopf, „Passwort vergessen?“, Anbieterknöpfe | gleich | `Input` (`autoComplete="username"` bleibt) | nur die Beschriftung: „Benutzername oder E-Mail“; Fehlertext „Benutzername, E-Mail oder Passwort stimmt nicht.“ |
+| **Einrichtung** (`EinrichtungPage.tsx`) | Benutzername, Angezeigter Name (frei), Passwort, Passwort wiederholen | Einrichtungscode (mit Hinweis auf `docker logs nexmail` / `NEXMAIL_SETUP_TOKEN`), Anzeigename, Benutzername (Vorschlag folgt dem Anzeigenamen, bis man ihn anfasst), E-Mail (frei), Passwort, Passwort wiederholen; Sprache wie heute aus dem Browser | dieselben `Input` und `Meldung` im selben `Torbogen`; der Vorschlag ist nur ein vorbelegter Wert, kein eigener Baustein | zwei Felder mehr (Code oben, E-Mail), Reihenfolge wie nexnotes, Hinweise in Entwurfs-Wortlaut, Mindestlänge 12 |
+| **Einladung** (`EinladungPage.tsx`) | „Willkommen, {Name}“, „Vergib ein Passwort für den Benutzernamen {Name}“, Passwort zweimal, darunter Anbieter | Anzeigename (vorbelegt), Benutzername (Vorschlag oder der Name der alten Einladung), E-Mail (vorbelegt), Passwort zweimal, darunter „oder“ und die Anbieter wie heute | dieselben `Input`, `Button`, `Meldung` | drei Felder mehr; Untertitel ohne festen Namen. Alte Einladungen zeigen ihren Namen im Feld, nicht mehr im Satz |
+| **Passwort vergessen** (`KennwortPage.tsx`) | Feld „Benutzername“, „Link anfordern“, Bestätigung „…zwei Stunden“ | Feld „Benutzername oder E-Mail“; ohne Postausgang statt des Formulars der Satz „Der Betreiber kann dir unter Konten einen Link erstellen …“; Seite zum Setzen unverändert | `Input`, `Button`, `Torbogen` | Beschriftung, Bestätigungssatz aus dem Entwurf („eine Stunde“ entfällt dort), Hinweis ohne Postausgang |
 | **Profil** (`einstellungen/Profil.tsx`) | Karte „Profil“: Bild, Name, E-Mail (Hinweis „Adresse für Kontosachen“, Warnkasten ohne Adresse), Sprache (nur dieser Browser), Rolle | gleiche Karte: Bild, Anzeigename, **Benutzername** (Feld mit „Ändern“; Kennwortabfrage über `Dialog`, wie bei „Betreiber übergeben“), E-Mail (mit Postausgang: „wartet auf Bestätigung“ als `Badge` daneben, Knopf „Zurücknehmen“), Sprache, Rolle | `Karte`, `Profilbild`, `Input`, `Select`, `Badge`, `Dialog`, `Button` | Benutzername sichtbar und änderbar; Beschriftung „Anzeigename“ statt „Name“; Warnkasten bleibt |
-| **Benutzerverwaltung** (`Benutzerverwaltung.tsx`) | Zeile: Anzeigename, darunter klein Benutzername; Einladen-Dialog mit Adresse (Pflicht), Benutzername (Pflicht), Angezeigter Name; Einladungszeile zeigt den Namen | Zeile: Anzeigename, darunter klein Benutzername · E-Mail, `Badge` „Adresse doppelt“ wo nötig; Menü der Zeile um „Benutzername ändern“, „Anzeigename ändern“, „Passwort-Link erstellen“, „Adresse entfernen“ (je `IconButton` + `Dialog` mit eigenem Kennwort); Einladen-Dialog: E-Mail (frei), Anzeigename (frei), **kein** Benutzername; ohne Postausgang zeigt der Dialog danach den Link zum Kopieren; Einladungszeile zeigt Anzeigename oder Adresse, alte zeigen weiter ihren Namen | `Dialog`, `Input`, `IconButton`, `Badge`, `useNachfrage` | Benutzername-Feld im Einladen-Dialog fällt weg; neue Knöpfe in der Zeile; Link zum Kopieren |
+| **Benutzerverwaltung** (`Benutzerverwaltung.tsx`) | Zeile: Anzeigename, darunter klein Benutzername; Einladen-Dialog mit Adresse (Pflicht), Benutzername (Pflicht), Angezeigter Name; Einladungszeile zeigt den Namen | Zeile: Anzeigename, darunter klein Benutzername · E-Mail, `Badge` „Adresse doppelt“ wo nötig; Menü der Zeile um „Benutzername ändern“, „Anzeigename ändern“, „Passwort-Link erstellen“, „Adresse entfernen“ (je `IconButton` + `Dialog` mit eigenem Passwort); Einladen-Dialog: E-Mail (frei), Anzeigename (frei), **kein** Benutzername; ohne Postausgang zeigt der Dialog danach den Link zum Kopieren; Einladungszeile zeigt Anzeigename oder Adresse, alte zeigen weiter ihren Namen | `Dialog`, `Input`, `IconButton`, `Badge`, `useNachfrage` | Benutzername-Feld im Einladen-Dialog fällt weg; neue Knöpfe in der Zeile; Link zum Kopieren |
 
 Wortlaute: die Schlüssel `account.*` aus dem Entwurf kommen als eigener Namensraum in `de.json`/`en.json` (aus
 `vendor/nexkonten`), die alten nexmail-Schlüssel (`anmeldung.benutzername`, `einrichtung.anzeigename`,
 `sicherheit.kontaktadresse*`, `verwaltung.einladung_benutzername*`) fallen weg, sobald nichts mehr sie liest
-(`schluessel-vorhanden.test.ts`). „Kennwort“ oder „Passwort“: offene Frage 1.
+(`schluessel-vorhanden.test.ts`). „Passwort“ oder „Passwort“: offene Frage 1.
 
 Vor dem Festschreiben wird jede geänderte Ansicht gezeigt und abgenommen.
 
@@ -241,7 +241,7 @@ Vor dem Festschreiben wird jede geänderte Ansicht gezeigt und abgenommen.
 
 - **Selbst per Mail** wie heute, aber mit Benutzername oder bestätigter, eindeutiger Adresse; Link eine Stunde, einmal,
   beendet alle Sitzungen und Geräte.
-- **Betreiber-Link**: Benutzerverwaltung → Zeile → „Passwort-Link erstellen“, mit eigenem Kennwort; mit Postausgang
+- **Betreiber-Link**: Benutzerverwaltung → Zeile → „Passwort-Link erstellen“, mit eigenem Passwort; mit Postausgang
   und Adresse per Mail, sonst einmal angezeigt zum Weitergeben, 24 Stunden. Der Betreiber setzt nie selbst ein
   Passwort. Für ein Konto nur über Anbieter (kein Passwort) erstellt der Link ein erstes Passwort; ob das gewollt ist:
   offene Frage 5.
@@ -303,7 +303,7 @@ Groß/Klein und doppelte Adressen zählen, dann die neue Fassung gegen die Kopie
 
 ## 12. Offene Fragen
 
-1. **„Kennwort“ oder „Passwort“?** nexmail sagt überall „Kennwort“, der Entwurf und die anderen Apps „Passwort“. Für
+1. **„Passwort“ oder „Passwort“?** nexmail sagt überall „Passwort“, der Entwurf und die anderen Apps „Passwort“. Für
    „alle Apps gleich“ müsste nexmail umstellen (viele Schlüssel, Mailtexte, README).
 2. **Sprache bei Einrichtung und im Profil**: In nexmail gilt sie heute nur im Browser („Gilt in diesem Browser“), in
    nexnotes reist sie mit dem Konto. Soll nexmail sie am Konto speichern?

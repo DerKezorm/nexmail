@@ -67,8 +67,8 @@ test('Einladen, annehmen, entfernen', async ({ page, request }) => {
 
   await einladen.click()
   const fenster = page.getByRole('dialog')
-  await fenster.getByRole('textbox', { name: 'E-Mail-Adresse' }).fill(ZIEL)
-  await fenster.getByRole('textbox', { name: 'Benutzername' }).fill(NAME)
+  await fenster.getByRole('textbox', { name: 'E-Mail' }).fill(ZIEL)
+  await fenster.getByRole('textbox', { name: 'Anzeigename' }).fill(NAME)
   await fenster.getByRole('button', { name: 'Einladung verschicken' }).click()
 
   // ⚠️ **Die Wirkung, nicht der Klick.** Die Einladung muss in der Liste
@@ -107,8 +107,8 @@ test('Eine abgelehnte Adresse sagt warum — und lässt keine Leiche zurück', a
 
   await einladen.click()
   const fenster = page.getByRole('dialog')
-  await fenster.getByRole('textbox', { name: 'E-Mail-Adresse' }).fill('zz@example.com')
-  await fenster.getByRole('textbox', { name: 'Benutzername' }).fill(NAME)
+  await fenster.getByRole('textbox', { name: 'E-Mail' }).fill('zz@example.com')
+  await fenster.getByRole('textbox', { name: 'Anzeigename' }).fill(NAME)
   await fenster.getByRole('button', { name: 'Einladung verschicken' }).click()
 
   const meldung = fenster.getByRole('alert')
@@ -167,7 +167,7 @@ test('Der zweite Faktor lässt sich ein- und ausschalten', async ({ page }) => {
     // Der QR-Code kommt aus dem eigenen Server, nicht von einem fremden Dienst.
     await expect(fenster.locator('svg').first()).toBeVisible({ timeout: 15_000 })
   } else {
-    // Ausschalten verlangt das Kennwort — sonst genügt ein offener Bildschirm.
+    // Ausschalten verlangt das Passwort — sonst genügt ein offener Bildschirm.
     await expect(fenster.locator('input[type="password"]')).toBeVisible()
   }
   await keineRohenSchluessel(page)

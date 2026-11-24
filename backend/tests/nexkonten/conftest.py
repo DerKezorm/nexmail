@@ -44,6 +44,10 @@ def app() -> Iterator[Any]:
     adapter.start()
     package = contract.konten_package(adapter)
     package.setup.forget_generated_code()
+    # What lives in memory: an enrolment, a waiting sign-in, a challenge, the brake.
+    package.factor.forget()
+    package.passkeys.forget()
+    package.brake.BRAKE.forget()
     try:
         yield adapter
     finally:

@@ -101,7 +101,7 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
    *
    * ⚠️ **Danach ist man selbst keiner mehr.** Der Haken wandert, er wird nicht
    * vergeben; zwei Betreiber wären nicht schlimm, aber null sind das Ende. Die
-   * Rückfrage sagt genau das, und sie verlangt das eigene Kennwort — eine
+   * Rückfrage sagt genau das, und sie verlangt das eigene Passwort — eine
    * geklaute Sitzung soll dafür nicht reichen.
    */
   async function uebergeben(p: BenutzerZeile) {
@@ -140,7 +140,7 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
   }
 
   /** Eine Verknüpfung eines Kontos lösen: mit dem eigenen
-   *  Kennwort des Betreibers, und die Rückfrage nennt Konto und Anbieter. */
+   *  Passwort des Betreibers, und die Rückfrage nennt Konto und Anbieter. */
   async function verknuepfungLoesen(p: BenutzerZeile, a: { id: number; label: string }) {
     const wer = p.anzeigename || p.benutzername
     const kennwort = await fragen({
@@ -363,7 +363,7 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
                   kein Weg zurück. */}
               {/* ⚠️ **Der teuerste Knopf der Verwaltung.** Wer ihn drückt,
                   gibt die Verwaltung ab und kann sie sich nicht zurückholen.
-                  Deshalb steht das eigene Kennwort davor — und deshalb ist er
+                  Deshalb steht das eigene Passwort davor — und deshalb ist er
                   ein stiller Knopf, kein bunter. */}
               {/* ⚠️ **Die Ausnahmeliste, nicht die Einladungsliste.** Ab Werk
                   darf jedes Konto; wer einzelne aussperren will, tut es hier.

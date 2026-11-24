@@ -303,7 +303,8 @@
     "warnung_text": "Without the app and without these codes you can no longer reach your mailboxes. There is an emergency exit (NEXMAIL_ZWEI_FAKTOR_AUS in the compose file), but it requires access to the server.",
     "grund_benutzername": "A username is still missing.",
     "grund_kennwort": "{{fehlen}} more character(s).",
-    "grund_kennwort_lang": "The password needs {{fehlen}} more character(s)."
+    "grund_kennwort_lang": "The password needs {{fehlen}} more character(s).",
+    "grund_code": "The setup code is still missing."
   },
   "einstellungen": {
     "aufgaben": "Tasks",
@@ -2252,7 +2253,8 @@
     "abmelden_text": "Ends your session in this browser. Your mail stays as it is.",
     "neues_passwort_titel": "New password",
     "zugang_geraet": "iPhone app",
-    "zugang_schluessel": "API key"
+    "zugang_schluessel": "API key",
+    "benutzername_hinweis": "You sign in with it."
   },
   "nextime": {
     "satz": "All your calendars from nextime in nexmail's calendar, without adding each one. Invitations from mails go there.",

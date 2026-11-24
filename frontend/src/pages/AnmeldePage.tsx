@@ -1,6 +1,6 @@
 /* Anmelden — zwei Schritte, wie im Server.
  *
- * Kennwort → Code. Dazu zwei Nebenwege, die beide schon einmal jemandem den
+ * Passwort → Code. Dazu zwei Nebenwege, die beide schon einmal jemandem den
  * Zugang gerettet haben:
  *
  *   • **Wiederherstellungscode**, wenn das Telefon weg ist.
@@ -34,7 +34,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
 
   /* Nach einem Anbieter, dem der Eintrag den zweiten Faktor nicht glaubt, kommt
      der Browser mit `?schritt=code` zurück: Die halbe Sitzung steht, jetzt der
-     Code, wie nach dem Kennwort. */
+     Code, wie nach dem Passwort. */
   const [lage, setLage] = useState<Lage>(() =>
     new URLSearchParams(window.location.search).get('schritt') === 'code' ? 'code' : 'passwort',
   )
@@ -110,7 +110,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
     }
   }
 
-  // --- Schritt 1: Kennwort --------------------------------------------- //
+  // --- Schritt 1: Passwort --------------------------------------------- //
 
   /* Das Formular steht da, solange die Anmeldung mit Passwort an ist, es keinen
      Anbieter gibt oder der Betreiber seinen Weg geöffnet hat. */
@@ -164,7 +164,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
           >
             {t('anmeldung.weiter')}
           </Button>
-          {/* ⚠️ **Hier und nirgends sonst.** Wer sein Kennwort vergessen hat,
+          {/* ⚠️ **Hier und nirgends sonst.** Wer sein Passwort vergessen hat,
               kommt nicht bis in ein Menü. */}
           <button
             type="button"

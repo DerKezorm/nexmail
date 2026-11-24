@@ -64,7 +64,7 @@ def schreiben(
 ) -> Einstellungen:
     # ⚠️ **Nur der Betreiber.** Bis zum 18.09.2026 genuegte hier eine
     # Anmeldung. Aus der oeffentlichen Adresse entsteht der Link in der Mail
-    # „Kennwort vergessen"; wer sie umbiegen darf, schickt dem Betreiber einen
+    # „Passwort vergessen"; wer sie umbiegen darf, schickt dem Betreiber einen
     # Ruecksetz-Link auf einen fremden Server und liest dort den Schluessel ab.
     adresse = eingabe.oeffentliche_adresse.strip().rstrip("/")
     if adresse:

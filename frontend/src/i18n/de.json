@@ -303,7 +303,8 @@
     "warnung_text": "Ohne App und ohne diese Codes kommst du nicht mehr an deine Postfächer. Ein Notausgang existiert (NEXMAIL_ZWEI_FAKTOR_AUS in der compose-Datei), aber er setzt Zugriff auf den Server voraus.",
     "grund_benutzername": "Es fehlt noch ein Benutzername.",
     "grund_kennwort": "Noch {{fehlen}} Zeichen.",
-    "grund_kennwort_lang": "Das Passwort braucht noch {{fehlen}} Zeichen."
+    "grund_kennwort_lang": "Das Passwort braucht noch {{fehlen}} Zeichen.",
+    "grund_code": "Es fehlt noch der Einrichtungscode."
   },
   "einstellungen": {
     "aufgaben": "Aufgaben",
@@ -2252,7 +2253,8 @@
     "abmelden_text": "Beendet deine Sitzung in diesem Browser. Deine Mails bleiben, wie sie sind.",
     "neues_passwort_titel": "Neues Passwort",
     "zugang_geraet": "iPhone-App",
-    "zugang_schluessel": "API-Schlüssel"
+    "zugang_schluessel": "API-Schlüssel",
+    "benutzername_hinweis": "Damit meldest du dich an."
   },
   "nextime": {
     "satz": "Alle deine Kalender aus nextime im Kalender von nexmail, ohne jeden einzeln einzubinden. Einladungen aus Mails landen dort.",

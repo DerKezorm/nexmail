@@ -24,6 +24,8 @@ function datenordner(): string {
   process.env.NEXMAIL_E2E_DATA = ordner
   // Das Kennwort des Betreibers, je Lauf neu; die Tests lesen es aus der Umgebung.
   process.env.NEXMAIL_E2E_PASSWORD = randomBytes(12).toString('base64url')
+  // Der Einrichtungscode des ersten Kontos (Kontenmodul), je Lauf neu, mindestens 16 Zeichen.
+  process.env.NEXMAIL_SETUP_TOKEN = randomBytes(18).toString('base64url')
   return ordner
 }
 
@@ -58,6 +60,7 @@ export default defineConfig({
         NEXMAIL_DATA_DIR: path.join(DATEN, 'data'),
         NEXMAIL_STATIC_DIR: path.resolve('dist'),
         NEXMAIL_SECRET_KEY: randomBytes(24).toString('base64url'),
+        NEXMAIL_SETUP_TOKEN: process.env.NEXMAIL_SETUP_TOKEN ?? '',
         NEXMAIL_TAKT_SEKUNDEN: '0',
         NEXMAIL_URL_BASE: '',
         NEXMAIL_CLIENT_IP: '',

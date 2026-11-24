@@ -215,7 +215,7 @@ def umfang(benutzer_id: str, _: Betreiber, db: DbSession) -> Umfang:
 
 
 class Uebergabe(BaseModel):
-    #: ⚠️ Das eigene Kennwort. Siehe die Begruendung an der Adresse.
+    #: ⚠️ Das eigene Passwort. Siehe die Begruendung an der Adresse.
     passwort: str = Field(min_length=1, max_length=200)
 
 
@@ -230,7 +230,7 @@ def betreiber_uebergeben(
     nicht schlimm, aber null waeren das Ende — aus der Anwendung heraus fuehrt
     dann kein Weg zurueck.
 
-    ⚠️ **Das eigene Kennwort steht davor.** Das ist der teuerste Knopf in der
+    ⚠️ **Das eigene Passwort steht davor.** Das ist der teuerste Knopf in der
     ganzen Verwaltung: Wer ihn drueckt, gibt die Verwaltung ab und kann sie
     sich nicht zurueckholen. Eine geklaute Sitzung genuegt dafuer nicht —
     dieselbe Ueberlegung wie beim Abschalten des zweiten Faktors.
@@ -296,7 +296,7 @@ def ki_erlaubnis(
 ) -> BenutzerZeile:
     """Einem einzelnen Konto KI-Dienste erlauben oder verbieten.
 
-    ⚠️ **Kein Kennwort davor, anders als beim Uebergeben des Betreibers.** Das
+    ⚠️ **Kein Passwort davor, anders als beim Uebergeben des Betreibers.** Das
     hier ist umkehrbar mit demselben Klick und kostet niemandem seinen Zugang —
     die Schluessel bleiben stehen. Eine Bremse fuer jede Verwaltungsaenderung
     macht die Verwaltung unbenutzbar, und dann wird sie umgangen.

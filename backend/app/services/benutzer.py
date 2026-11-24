@@ -100,15 +100,15 @@ def hash_auffrischen(db: Session, benutzer: Benutzer, passwort: str) -> None:
 def passwort_aendern(
     db: Session, benutzer: Benutzer, altes: str, neues: str
 ) -> None:
-    """Das eigene Kennwort ändern.
+    """Das eigene Passwort ändern.
 
     ⚠️ **Das alte wird verlangt, obwohl der Benutzer angemeldet ist.** Sonst
     genügt eine geklaute Sitzung — ein offener Rechner, ein mitgelesenes
     Cookie — um den Zugang zu übernehmen und den Eigentümer auszusperren. Das
-    alte Kennwort ist der Beweis, dass da der Richtige sitzt.
+    alte Passwort ist der Beweis, dass da der Richtige sitzt.
 
     ⚠️ **Der Aufrufer beendet danach die übrigen Sitzungen.** Wer sein
-    Kennwort ändert, tut das meist, weil er jemand anderen im Verdacht hat —
+    Passwort ändert, tut das meist, weil er jemand anderen im Verdacht hat —
     ein Wechsel, nach dem der andere angemeldet bleibt, hilft nicht.
     """
     if not passwort_stimmt(benutzer, altes):

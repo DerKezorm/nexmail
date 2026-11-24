@@ -5,9 +5,9 @@
  * 5174, der noch keinen Benutzer hat.
  *
  * ⚠️ **Aus Schaden entstanden, 01.09.2026.** Der Weiter-Knopf war gesperrt,
- * weil das Kennwort ein Zeichen zu kurz war — der Grund stand aber unter dem
+ * weil das Passwort ein Zeichen zu kurz war — der Grund stand aber unter dem
  * Formular, nicht am Feld. Anna las ihn und bezog ihn nicht auf das
- * Kennwort: „hier ist Ende".
+ * Passwort: „hier ist Ende".
  */
 import { expect, test } from '@playwright/test'
 
@@ -23,12 +23,14 @@ test.beforeEach(async ({ page }) => {
   await page.goto(CONTAINER)
 })
 
-test('Ein zu kurzes Kennwort wird am Feld selbst gemeldet', async ({ page }, info) => {
+test('Ein zu kurzes Passwort wird am Feld selbst gemeldet', async ({ page }, info) => {
   test.skip(info.project.name === 'schmal', 'Wird in der breiten Ansicht geprüft.')
 
-  await page.getByRole('textbox', { name: 'Benutzername' }).fill('admin')
+  // Kontenmodul: erst der Einrichtungscode und der Anzeigename, dann der Benutzername (folgt dem Anzeigenamen).
+  await page.getByRole('textbox', { name: 'Einrichtungscode' }).fill(process.env.NEXMAIL_SETUP_TOKEN ?? '')
+  await page.getByRole('textbox', { name: 'Anzeigename' }).fill('Admin')
   const kennwort = page.locator('input[type="password"]').first()
-  await kennwort.fill('123456789') // neun Zeichen
+  await kennwort.fill('12345678901') // elf Zeichen, eins zu wenig
 
   /* Der Grund muss **beim Kennwortfeld** stehen — nicht nur unten. Gemessen
      wird der Abstand: Steht er weiter als eine Feldhöhe entfernt, bezieht ihn
@@ -50,16 +52,17 @@ test('Ein zu kurzes Kennwort wird am Feld selbst gemeldet', async ({ page }, inf
   ).toBeLessThan(40)
 })
 
-test('Mit zehn Zeichen geht es weiter', async ({ page }, info) => {
+test('Mit zwölf Zeichen geht es weiter', async ({ page }, info) => {
   test.skip(info.project.name === 'schmal', 'Wird in der breiten Ansicht geprüft.')
 
-  await page.getByRole('textbox', { name: 'Benutzername' }).fill('admin')
+  await page.getByRole('textbox', { name: 'Einrichtungscode' }).fill(process.env.NEXMAIL_SETUP_TOKEN ?? '')
+  await page.getByRole('textbox', { name: 'Anzeigename' }).fill('Admin')
   const felder = page.locator('input[type="password"]')
-  await felder.nth(0).fill('1234567890')
-  await felder.nth(1).fill('1234567890')
+  await felder.nth(0).fill('123456789012')
+  await felder.nth(1).fill('123456789012')
 
   await expect(
     page.getByRole('button', { name: 'Weiter' }),
-    'Zehn Zeichen, gleich getippt — der Knopf muss frei sein.',
+    'Zwölf Zeichen, gleich getippt — der Knopf muss frei sein.',
   ).toBeEnabled()
 })

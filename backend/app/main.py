@@ -224,7 +224,7 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
     "/api/oidc/{slug}/einladung": (
         "Eine Einladung ueber einen Anbieter annehmen. Wer eingeladen ist, hat "
         "noch kein Konto; der Schluessel aus der Mail ist der Nachweis, genau "
-        "wie beim Annehmen mit Kennwort, und dieselbe Bremse steht davor. POST, "
+        "wie beim Annehmen mit Passwort, und dieselbe Bremse steht davor. POST, "
         "damit der Schluessel in keinem Protokoll steht."
     ),
     "/api/oidc/{slug}/zurueck": (

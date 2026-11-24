@@ -12,7 +12,7 @@ const STAND = 'tests/.sitzung.json'
 
 /* ⚠️ **Die Zugangsdaten stehen nicht im Repo.**
  *
- * Sie gehoerten frueher hier hin — der Name des Betreibers und sein Kennwort,
+ * Sie gehoerten frueher hier hin — der Name des Betreibers und sein Passwort,
  * fest eingetippt. In einem oeffentlichen Repo ist beides fehl am Platz, und
  * ausserdem heisst der Benutzer nicht in jeder Installation gleich.
  *
@@ -24,10 +24,10 @@ const KENNWORT = process.env.NEXMAIL_TEST_PASS ?? 'betreiber'
 setup('anmelden', async ({ page }) => {
   await page.goto('/')
 
-  const benutzerfeld = page.getByRole('textbox', { name: 'Benutzername' })
+  const benutzerfeld = page.getByRole('textbox', { name: 'Benutzername oder E-Mail' })
   await expect(benutzerfeld).toBeVisible()
   await benutzerfeld.fill(NUTZER)
-  await page.getByRole('textbox', { name: 'Kennwort' }).fill(KENNWORT)
+  await page.getByRole('textbox', { name: 'Passwort' }).fill(KENNWORT)
 
   const weiter = page.getByRole('button', { name: 'Weiter' })
   await expect(weiter, 'Der Anmeldeknopf bleibt gesperrt.').toBeEnabled()

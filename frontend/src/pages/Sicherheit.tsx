@@ -72,8 +72,8 @@ export function Sicherheit({
 
   const wenige = (ich?.offene_codes ?? 0) <= 3
 
-  /* Kennwort ändern. Die Schnittstelle gab es seit Stufe 0, einen Dialog
-     dafür erst seit 0.23.0. ⚠️ Das bisherige Kennwort wird verlangt, auch
+  /* Passwort ändern. Die Schnittstelle gab es seit Stufe 0, einen Dialog
+     dafür erst seit 0.23.0. ⚠️ Das bisherige Passwort wird verlangt, auch
      angemeldet: Sonst genügt eine geklaute Sitzung, um den Eigentümer
      auszusperren. Danach fliegen die anderen Geräte hinaus, das eigene
      bleibt; die Liste darunter zeigt es sofort. */
@@ -122,7 +122,7 @@ export function Sicherheit({
     <div className="flex max-w-[720px] flex-col gap-6">
       {/* Die Adresse für Kontosachen steht seit dem Umbau der Einstellungen
           (22.11.2026) im Profil, wie in nexnotes (`einstellungen/Profil.tsx`). */}
-      {/* --- Kennwort ---------------------------------------------------- */}
+      {/* --- Passwort ---------------------------------------------------- */}
       {ich?.hat_kennwort !== false && (
         <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-4">
           <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{t('sicherheit.kennwort')}</h2>
@@ -300,7 +300,7 @@ export function Sicherheit({
         </Dialog>
       )}
 
-      {/* --- Anmeldeanbieter: verknüpfen mit Kennwort, lösen ------------- */}
+      {/* --- Anmeldeanbieter: verknüpfen mit Passwort, lösen ------------- */}
       <Anmeldeanbieter />
 
       {/* --- Google und Microsoft ---------------------------------------- */}

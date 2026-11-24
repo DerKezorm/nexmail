@@ -41,6 +41,20 @@ export const ACCOUNT_ERROR_CODES = [
   'email_link_invalid',
   'email_link_expired',
   'no_pending_email',
+  'code_wrong',
+  'enrolment_expired',
+  'sign_in_expired',
+  'factor_missing',
+  'factor_required',
+  'passkeys_off',
+  'passkey_invalid',
+  'passkey_expired',
+  'passkey_exists',
+  'too_many_passkeys',
+  'too_many_attempts',
+  'avatar_too_large',
+  'avatar_not_a_picture',
+  'avatars_busy',
 ] as const
 
 export type AccountErrorCode = (typeof ACCOUNT_ERROR_CODES)[number]
@@ -196,4 +210,34 @@ export function usernameProblem(raw: string): string {
 export function kontenVariables(app: string): { app: string; setupTokenEnv: string; minimum: number } {
   const name = app.trim().toLowerCase()
   return { app: name, setupTokenEnv: `${name.toUpperCase().replace(/-/g, '_')}_SETUP_TOKEN`, minimum: PASSWORD_MIN }
+}
+
+// --- Since 0.3.0: second factor, sessions, passkeys, pictures ------------------------------------------------------
+
+/** Digits of a time-based code; recovery codes are ``xxxxx-xxxxx``. */
+export const CODE_DIGITS = 6
+export const RECOVERY_CODES = 10
+/** "Stay signed in" is ticked by default; ticked 30 days from the last use, else until the browser closes (12 h). */
+export const STAY_SIGNED_IN_DEFAULT = true
+export const REMEMBER_DAYS = 30
+export const BROWSER_HOURS = 12
+
+/** What the code field takes: digits of the authenticator app or a recovery code (letters, a hyphen). */
+export function codeLooksValid(typed: string): boolean {
+  const code = typed.trim().replace(/[\s-]/g, '')
+  return /^[0-9]{6}$/.test(code) || /^[a-z2-9]{10}$/i.test(code)
+}
+
+/** The picture for an account without a photo: one letter and a hue (0 to 359) from the name, the same in every app
+ * and in the iPhone apps (avatars.placeholder on the server). The app picks lightness and saturation for its look. */
+export function avatarPlaceholder(name: string): { letter: string; hue: number } {
+  const text = name.trim()
+  const first = Array.from(text)[0] ?? ''
+  const letter = first ? (Array.from(first.toUpperCase())[0] ?? '?') : '?'
+  let hash = 0x811c9dc5
+  for (const byte of new TextEncoder().encode(text.toLowerCase())) {
+    hash ^= byte
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return { letter, hue: hash % 360 }
 }

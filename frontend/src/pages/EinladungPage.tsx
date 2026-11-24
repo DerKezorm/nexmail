@@ -3,7 +3,7 @@
  * ⚠️ **Die einzige Seite, die ohne Anmeldung etwas anlegt.** Wer hier landet,
  * hat noch kein Konto — der Schlüssel aus der Mail ist der ganze Nachweis.
  *
- * ⚠️ **Ein Kennwort und sonst nichts.** Kein zweiter Faktor, kein
+ * ⚠️ **Ein Passwort und sonst nichts.** Kein zweiter Faktor, kein
  * Postfach-Assistent, keine Tour. Das ist die erste Minute, die jemand mit
  * nexmail verbringt; alles, was hier steht, muss er beantworten können, ohne
  * etwas zu wissen. Den zweiten Faktor schaltet er später selbst ein.
@@ -255,8 +255,8 @@ export function EinladungPage({
 
       {/* ⚠️ **Beide Wege nebeneinander, nicht statt einander.** Der Betreiber am
           01.09.2026: „nicht jeder hat ein authentik konto" — eben. Wer keins
-          hat, vergibt ein Kennwort wie bisher; wer eins hat, spart es sich und
-          bekommt ein Konto **ohne** Kennwort. Ein ungenutztes Kennwort ist das,
+          hat, vergibt ein Passwort wie bisher; wer eins hat, spart es sich und
+          bekommt ein Konto **ohne** Passwort. Ein ungenutztes Passwort ist das,
           welches schwach ist. */}
       {anbieter.length > 0 && (
         <div className="mt-5 flex flex-col gap-2">

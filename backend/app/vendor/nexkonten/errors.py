@@ -40,6 +40,21 @@ CODES = (
     "email_link_invalid",
     "email_link_expired",
     "no_pending_email",
+    # since 0.3.0: second factor, passkeys, sessions, pictures
+    "code_wrong",
+    "enrolment_expired",
+    "sign_in_expired",
+    "factor_missing",
+    "factor_required",
+    "passkeys_off",
+    "passkey_invalid",
+    "passkey_expired",
+    "passkey_exists",
+    "too_many_passkeys",
+    "too_many_attempts",
+    "avatar_too_large",
+    "avatar_not_a_picture",
+    "avatars_busy",
 )
 
 

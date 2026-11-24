@@ -354,7 +354,7 @@ export function Postausgang() {
               () =>
                 api.aendern('/api/einstellungen/postausgang', {
                   ...f,
-                  // ⚠️ Leer heißt „unverändert", nicht „kein Kennwort" — sonst
+                  // ⚠️ Leer heißt „unverändert", nicht „kein Passwort" — sonst
                   // verliert den Zugang, wer nur den Absendernamen ändert.
                   passwort: passwort ? passwort : null,
                 }),

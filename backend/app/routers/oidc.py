@@ -209,7 +209,7 @@ async def einladung_starten(slug: str, eingabe: EinladungIn, request: Request, d
 
     ⚠️ **POST, nicht GET mit dem Schluessel in der Adresse.** Eine Adresse landet im Protokoll des Servers und jedes
     Proxys davor; der Schluessel oeffnet ein Konto. Zurueck kommt nur, wohin der Browser jetzt soll, und das
-    Anlauf-Cookie, in dem die Einladung signiert mitreist. Dieselbe Bremse wie beim Annehmen mit Kennwort.
+    Anlauf-Cookie, in dem die Einladung signiert mitreist. Dieselbe Bremse wie beim Annehmen mit Passwort.
     """
     wache = anmeldebremse.torwaechter(request, "einladung", eingabe.schluessel[:12])
     try:

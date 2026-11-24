@@ -24,7 +24,7 @@ from app.services import protokoll
         'A001 LOGIN contact@example.org "sehr-geheim"',
         "AUTH PLAIN AGNvbnRhY3QAZ2VoZWlt",
         "password=sehr-geheim",
-        "Kennwort: sehr-geheim",
+        "Passwort: sehr-geheim",
         "token = abc123def",
     ],
 )

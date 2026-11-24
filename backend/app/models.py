@@ -115,12 +115,12 @@ class Benutzer(Base):
     #: des ersten Kontos - wer nexmail aufsetzt, muss dafuer nichts wissen.
     ist_betreiber: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    #: Wohin ein Ruecksetz-Link geht, wenn dieser Mensch sein Kennwort
+    #: Wohin ein Ruecksetz-Link geht, wenn dieser Mensch sein Passwort
     #: vergessen hat. **Nicht** eines seiner Postfaecher: Die Adresse fuer
     #: Kontosachen bleibt getrennt und wird ausdruecklich gesetzt.
     #:
     #: ⚠️ **Leer heisst: kein Weg zurueck.** Wer sie nie eintraegt, kommt nach
-    #: einem vergessenen Kennwort nicht mehr hinein — und merkt das erst im
+    #: einem vergessenen Passwort nicht mehr hinein — und merkt das erst im
     #: Ernstfall. Deshalb traegt eine Einladung sie gleich mit ein, und die
     #: Sicherheitsseite sagt deutlich, wenn keine dasteht.
     kontaktadresse: Mapped[str] = mapped_column(String(320), default="")
@@ -299,7 +299,7 @@ class Kennwortruecksetzung(Base):
     """Ein ausgesprochener Ruecksetz-Link, den noch niemand benutzt hat.
 
     ⚠️ **Der Schluessel liegt nur als Hash da.** Er steht in einer Mail und
-    setzt ein Kennwort — das ist ein Passwort, kein Datensatz-Merkmal.
+    setzt ein Passwort — das ist ein Passwort, kein Datensatz-Merkmal.
     Dieselbe Regel wie bei der Einladung und den Wiederherstellungscodes.
 
     ⚠️ **Kurze Gueltigkeit, kuerzer als bei einer Einladung.** Eine Einladung
@@ -424,7 +424,7 @@ class Sitzung(Base):
     #: ``browser`` oder ``geraet`` (die iPhone-App).
     #: ⚠️ **Ein Gerät ist eine Sitzung, kein eigener Schlüssel.** So steht es
     #: von selbst in der Geräteliste, und „überall abmelden" und das Zurücksetzen
-    #: des Kennworts trennen es, ohne dass jemand daran denken muss. Die Art
+    #: des Passworts trennen es, ohne dass jemand daran denken muss. Die Art
     #: trennt die beiden Türen: Ein Cookie öffnet nur ``browser``, die
     #: Kopfzeile unter ``/api/app/1`` nur ``geraet`` (``deps._sitzung``).
     art: Mapped[str] = mapped_column(String(10), default="browser", server_default="browser")
@@ -432,7 +432,7 @@ class Sitzung(Base):
     #: Wohin Meldungen an dieses Gerät gehen: das Ticket des Push-Relays und der
     #: öffentliche X25519-Schlüssel des Geräts. Leer heißt: keine Meldungen.
     #: ⚠️ **An der Sitzung, damit sie mit dem Gerät gehen.** Trennen, „überall
-    #: abmelden" und das Zurücksetzen des Kennworts löschen die Zeile.
+    #: abmelden" und das Zurücksetzen des Passworts löschen die Zeile.
     #: ⚠️ **Im Klartext, wie ``PushAnmeldung``.** Das Ticket ist ohne den Relay
     #: wertlos, der Schlüssel ohne das Gerät. Ins Protokoll gehört beides nicht,
     #: und eine Sicherung trägt keine Sitzungen (``sicherung._schlank_machen``).
@@ -2084,7 +2084,7 @@ class KiVorgang(Base):
 
     ⚠️ **Der Rumpf liegt verschlüsselt**, mit dem Datenschlüssel und dem
     Kontext ``benutzer:<id>:ki-vorgang`` — dieselbe Behandlung wie ein
-    Postfach-Kennwort. Er enthält den Text einer Mail, und eine zweite,
+    Postfach-Passwort. Er enthält den Text einer Mail, und eine zweite,
     dauerhafte Kopie davon im Klartext wäre schlechter als gar keine Liste.
     Der Preis steht dabei: **durchsuchen lässt sich das nicht.** AES-GCM salzt
     jeden Vorgang, ein ``LIKE`` findet nichts. Gelesen wird die Liste ohnehin am Stück und in der Reihenfolge der Zeit.

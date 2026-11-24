@@ -1,4 +1,4 @@
-"""Kennwort vergessen — die zweite Tür neben der Anmeldung.
+"""Passwort vergessen — die zweite Tür neben der Anmeldung.
 
 ⚠️ **Wer sie schlecht baut, hebt die Anmeldung auf.** Ein Rücksetz-Link, der zu
 lange gilt, zu leicht zu raten ist oder verrät, welche Namen es gibt, ist ein
@@ -298,7 +298,7 @@ def test_eine_eingeloeste_einladung_traegt_die_adresse_ein(klient, zweiter_klien
 
 def test_der_betreiber_faengt_ohne_adresse_an(klient, db):
     """⚠️ **Und das ist der wunde Punkt.** Die Ersteinrichtung fragt nur nach
-    Name und Kennwort; wer sie durchläuft, hat keinen Weg zurück, bis er die
+    Name und Passwort; wer sie durchläuft, hat keinen Weg zurück, bis er die
     Adresse selbst einträgt. Deshalb sagt die Sicherheitsseite es."""
     einrichten(klient)
     assert db.query(Benutzer).one().kontaktadresse == ""

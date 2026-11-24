@@ -30,6 +30,9 @@ class Legacy:
     fixed_names: dict[str, str] = field(default_factory=dict)
     #: Sign-ins through a provider that worked before, as ``(subject, works)`` (``provider_sign_in``).
     provider_logins: list[tuple[str, bool]] = field(default_factory=list)
+    #: Second factors the older version set up (since 0.3.0), as ``(username, seed, codes)``: the base32 seed of the
+    #: authenticator app and the recovery codes it showed, in the form the person would type them. Both keep working.
+    factors: list[tuple[str, str, list[str]]] = field(default_factory=list)
 
 
 def password() -> str:
@@ -106,8 +109,9 @@ class StandardAdapter:
         """APP: something of the account that may sign it in: ``"browser"`` a browser session, ``"waiting"`` a
         sign-in that waits for its second factor, ``"known_browser"`` the mark a browser keeps after signing in as the
         account (``login.authenticate``'s ``known_browser``: signed, random per account), ``"device"`` a paired
-        device (or a calendar program's password, an API key, a passkey: what the app has). Returns what
-        ``session_alive`` needs."""
+        device (or a calendar program's password, an API key, a passkey: what the app has), ``"program"`` (since
+        0.3.0) a calendar or address book program's password or an API key, what stays on "sign out everywhere"
+        (None where the app has none). Returns what ``session_alive`` needs."""
         raise NotImplementedError("APP: open_session")
 
     def session_alive(self, handle: Any) -> bool:
@@ -128,6 +132,12 @@ class StandardAdapter:
         provider only with its link, blocked, second factor, an address two accounts share, an open invitation), then
         the app's own start with its migration; see ``Legacy``. Replaces what ``start`` made."""
         raise NotImplementedError("APP: legacy")
+
+    def switch(self, name: str, on: bool) -> None:
+        """APP (since 0.3.0): set an operator's switch as the app's settings page does: ``"factor_required"``
+        (second factor for everybody, off in a new installation) or ``"passkeys_allowed"`` (on in a new
+        installation)."""
+        raise NotImplementedError("APP: switch")
 
     def oidc_store(self) -> AbstractContextManager[Any]:
         """APP: the app's store for the OIDC module (``nexoidc.Store``: ``clean_name``, ``name_taken``,
@@ -157,6 +167,19 @@ class StandardAdapter:
 
 def konten_package(adapter: Any) -> ModuleType:
     package = importlib.import_module(adapter.package)
-    for name in ("common", "names", "login", "setup", "invites", "profiles", "resets", "pictures"):
+    for name in (
+        "common",
+        "names",
+        "login",
+        "setup",
+        "invites",
+        "profiles",
+        "resets",
+        "pictures",
+        "factor",
+        "sessions",
+        "avatars",
+        "passkeys",
+    ):
         importlib.import_module(f"{adapter.package}.{name}")
     return package

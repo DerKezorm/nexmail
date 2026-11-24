@@ -413,7 +413,7 @@ def test_password_sign_in_switches_off_only_with_an_active_provider_and_the_oper
     assert abgewiesen.status_code == 401 and abgewiesen.json()["detail"] == "anmeldung_falsch"
     selbst = browser().post("/api/auth/anmelden", json={"benutzername": BETREIBER, "passwort": PASSWORT})
     assert selbst.status_code == 200
-    # Eine Einladung nimmt dann kein Kennwort an.
+    # Eine Einladung nimmt dann kein Passwort an.
     with SessionLocal() as db:
         _, schluessel = einladungsdienst.aussprechen(db, benutzername="neu", adresse="neu@example.com")
     assert browser().get(f"/api/einladung/{schluessel}").json()["passwort"] is False
@@ -642,7 +642,7 @@ def test_with_password_sign_in_off_a_member_gets_the_answer_of_a_wrong_password(
 
 def test_guessing_invitation_keys_is_braked(betreiber, sso):
     """Der Schluessel einer Einladung oeffnet ein Konto; wer ihn rät, wird nach zehn Fehlversuchen aufgehalten (dieselbe
-    Bremse wie beim Annehmen mit Kennwort)."""
+    Bremse wie beim Annehmen mit Passwort)."""
     anbieter_anlegen(betreiber, sso)
     schluessel = "falscher-schluessel-1234"
     for _ in range(anmeldebremse.SPERRE_AB_VERSUCH):

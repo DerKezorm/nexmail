@@ -176,6 +176,9 @@ MAIL_USERNAME_CHANGED = "username_changed"
 #: To the old address after a change or removal: ``to`` is the old address, ``new_hint`` the new one shortened
 #: (``m***@example.com``), "" when the address was taken away.
 MAIL_EMAIL_CHANGED = "email_changed"
+#: Since 0.3.0: the operator took every second factor of the account away; a browser signed in for the first time.
+MAIL_FACTOR_RESET = "factor_reset"
+MAIL_NEW_SIGN_IN = "new_sign_in"
 
 
 @dataclass(frozen=True)

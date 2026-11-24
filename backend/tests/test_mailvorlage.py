@@ -61,7 +61,7 @@ def _mail_bauen(gefangen, html: str | None = None):
             else mailvorlage.rahmen(
                 ueberschrift="Hallo Anna",
                 absaetze=["Ein Satz."],
-                knopf=("Kennwort vergeben", "https://mail.example/einladung/abc"),
+                knopf=("Passwort vergeben", "https://mail.example/einladung/abc"),
                 fusszeile="Der Link gilt 7 Tage.",
             ),
         )

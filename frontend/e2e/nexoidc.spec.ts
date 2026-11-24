@@ -46,13 +46,13 @@ test('33: sign-in through the provider button ends in a session', async ({ page,
   expect(angelegt.ok(), await angelegt.text()).toBe(true)
   await naechstePerson({ sub: 'betreiber-33', preferred_username: 'jemand-anderes', email: 'betreiber@example.com' })
 
-  // Verknüpfen unter Einstellungen → Sicherheit: das Kennwort noch einmal, dann zum Anbieter und zurück.
+  // Verknüpfen unter Einstellungen → Sicherheit: das Passwort noch einmal, dann zum Anbieter und zurück.
   await page.goto('/konto/sicherheit')
   const zeile = page.getByTestId('anmeldeanbieter-konto').getByRole('listitem').filter({ hasText: 'Stand-in' })
   await expect(zeile).toContainText('Nicht verknüpft')
   await zeile.getByRole('button', { name: 'Verknüpfen' }).click()
   const fenster = page.getByRole('dialog')
-  await fenster.getByLabel('Kennwort').fill(PASSWORT)
+  await fenster.getByLabel('Passwort').fill(PASSWORT)
   await fenster.getByRole('button', { name: 'Verknüpfen' }).click()
   // Zurück, über die Seite, die einmal durchreicht: Die Rückkehr sah die Sitzung trotz SameSite=strict.
   await page.waitForURL((url) => url.port === '8496' && !url.pathname.startsWith('/api/'))
@@ -84,7 +84,7 @@ test('33: sign-in through the provider button ends in a session', async ({ page,
   expect((await fremder.request.get('/api/auth/ich')).status()).toBe(401)
   await fremd.close()
 
-  // Wieder lösen: Das Kennwort bleibt der Weg.
+  // Wieder lösen: Das Passwort bleibt der Weg.
   await page.goto('/konto/sicherheit')
   await zeile.getByRole('button', { name: 'Lösen' }).click()
   await expect(zeile).toContainText('Nicht verknüpft')

@@ -182,7 +182,7 @@ export interface Ich {
   /** Ob Logos der Absenderdomains geholt werden (Darstellung → Bilder).
    *  Die Bildadresse trägt den Stand, damit Umschalten ohne F5 wirkt. */
   absenderlogos: boolean
-  /** Ob es ein Kennwort gibt. Ein Konto aus OIDC hat keins. */
+  /** Ob es ein Passwort gibt. Ein Konto aus OIDC hat keins. */
   hat_kennwort?: boolean
   /** Die laufende Version. Die `package.json` kennt sie nicht, nur der Server. */
   version: string

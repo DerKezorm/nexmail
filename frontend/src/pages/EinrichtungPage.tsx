@@ -72,7 +72,7 @@ export function EinrichtungPage({ modus, aufModus, aufFertig }: Props) {
   // Der eine Satz, der den gesperrten Knopf erklärt, in der Reihenfolge der Felder: Er zeigt immer auf das nächste
   // fehlende und springt nicht hin und her.
   const grund = !code.trim()
-    ? t('account.setupCodeHint')
+    ? t('einrichtung.grund_code')
     : !anzeigename.trim()
       ? t('account.error.display_name_empty')
       : usernameProblem(benutzername)

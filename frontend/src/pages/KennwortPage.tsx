@@ -1,4 +1,4 @@
-/* Kennwort vergessen — die beiden Seiten dazu.
+/* Passwort vergessen — die beiden Seiten dazu.
  *
  * ⚠️ **Die Antwort ist immer dieselbe.** Ob es den Namen gibt, ob dort eine
  * Adresse hinterlegt ist, ob der Postausgang läuft: Hier steht danach genau
@@ -6,7 +6,7 @@
  * kann, kann Namen durchprobieren.
  *
  * ⚠️ **Der Weg hierher steht auf der Anmeldeseite, nicht im Menü.** Wer sein
- * Kennwort vergessen hat, kommt nicht bis ins Menü.
+ * Passwort vergessen hat, kommt nicht bis ins Menü.
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -104,7 +104,7 @@ export function VergessenPage({
   )
 }
 
-/** Schritt 2: das neue Kennwort setzen. */
+/** Schritt 2: das neue Passwort setzen. */
 export function KennwortNeuPage({
   schluessel,
   modus,
@@ -185,7 +185,7 @@ export function KennwortNeuPage({
           autoComplete="new-password"
           onChange={(e) => setPasswort(e.target.value)}
         />
-        {/* ⚠️ Ein Tippfehler im neuen Kennwort sperrt aus, und zwar sofort —
+        {/* ⚠️ Ein Tippfehler im neuen Passwort sperrt aus, und zwar sofort —
             man ist ja gerade dabei, sich auszusperren. Deshalb zweimal. */}
         <Input
           type="password"

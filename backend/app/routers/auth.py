@@ -82,8 +82,8 @@ class Ich(BaseModel):
     #: fuer die ganze Installation sperren, und dann darf der Knopf nicht
     #: dastehen.
     ki_aktiv: bool = False
-    #: Ob es ein Kennwort gibt. Ein Konto aus OIDC hat keins; dort steht der
-    #: Knopf „Kennwort ändern" nicht, weil er nach dem bisherigen fragt.
+    #: Ob es ein Passwort gibt. Ein Konto aus OIDC hat keins; dort steht der
+    #: Knopf „Passwort ändern" nicht, weil er nach dem bisherigen fragt.
     hat_kennwort: bool = True
     #: Ob die Liste Logos der Absenderdomains holt. Reist am ``ich`` mit wie
     #: ``ki_aktiv``: Die Bildadresse traegt den Stand, und wer umschaltet,
@@ -429,12 +429,12 @@ def passwort_aendern(
     aktuelle: AktiveSitzung,
     db: DbSession,
 ) -> Wechselergebnis:
-    """Das eigene Kennwort ändern.
+    """Das eigene Passwort ändern.
 
-    ⚠️ **Mit Bremse.** Ohne sie wäre das die bequemste Stelle, ein Kennwort zu
+    ⚠️ **Mit Bremse.** Ohne sie wäre das die bequemste Stelle, ein Passwort zu
     erraten: Man ist schon angemeldet, und jeder Versuch verrät, ob er stimmte.
 
-    ⚠️ **Danach fliegen die anderen Geräte hinaus.** Wer sein Kennwort ändert,
+    ⚠️ **Danach fliegen die anderen Geräte hinaus.** Wer sein Passwort ändert,
     tut das meist, weil er jemanden im Verdacht hat. Ein Wechsel, nach dem der
     andere angemeldet bleibt, hilft nicht. Das eigene Gerät bleibt drin —
     sonst wirft sich der Betreiber gerade selbst hinaus.
@@ -532,9 +532,9 @@ def zwei_faktor_bestaetigen(
 def zwei_faktor_aus(
     eingabe: MitKennwort, person: AngemeldeterBenutzer, request: Request, db: DbSession
 ) -> None:
-    """Den zweiten Faktor abschalten - nur mit dem Kennwort.
+    """Den zweiten Faktor abschalten - nur mit dem Passwort.
 
-    ⚠️ **Das Kennwort noch einmal, obwohl man angemeldet ist.** Sonst genuegt
+    ⚠️ **Das Passwort noch einmal, obwohl man angemeldet ist.** Sonst genuegt
     ein unbeaufsichtigter Bildschirm, um den zweiten Faktor zu entfernen - und
     danach ist er weg, ohne dass jemand etwas merkt. Dieselbe Bremse wie an der
     Anmeldung haengt daran.

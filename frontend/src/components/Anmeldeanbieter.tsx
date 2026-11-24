@@ -3,11 +3,11 @@
  * Je aktivem Anbieter eine Zeile mit Zustand und „Verknüpfen“ oder „Lösen“. Wortlaute nur aus dem Anmeldemodul
  * (`oidc.account.*`), Fehler über `oidcErrorKey`, nie die rohe Kennung.
  *
- * ⚠️ **Verknüpfen fragt das Kennwort noch einmal**: ein POST mit Sitzung und Kennwort, kein Link. Die
+ * ⚠️ **Verknüpfen fragt das Passwort noch einmal**: ein POST mit Sitzung und Passwort, kein Link. Die
  * Antwort nennt die Adresse beim Anbieter; der Browser geht dorthin, und die Rückkehr landet wieder hier
  * (`lib/kontorueckweg.ts`).
  *
- * ⚠️ **Lösen geht nicht, wenn es der einzige Weg herein ist** (kein Kennwort, letzte Verknüpfung): Der Knopf fehlt,
+ * ⚠️ **Lösen geht nicht, wenn es der einzige Weg herein ist** (kein Passwort, letzte Verknüpfung): Der Knopf fehlt,
  * und der Satz `oidc.account.only` sagt warum. Der Server lehnt es ohnehin ab (`oidc_only_account`).
  */
 import { useCallback, useEffect, useState } from 'react'

@@ -182,7 +182,7 @@ export function Profil({
           <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
             <Input
               label={t('account.username')}
-              hint={umbenannt ? t('account.formerUsername') : t('account.usernameHint')}
+              hint={umbenannt ? t('account.formerUsername') : t('profil.benutzername_hinweis')}
               value={person.benutzername}
               maxLength={USERNAME_MAX}
               readOnly
@@ -194,6 +194,7 @@ export function Profil({
           <Input
             type="email"
             label={t('account.email')}
+            hint={t('account.emailHint')}
             placeholder="name@example.com"
             value={adresse}
             maxLength={EMAIL_MAX}
@@ -238,8 +239,6 @@ export function Profil({
           {t('profil.rolle', {
             rolle: person.ist_betreiber ? t('profil.rolle_betreiber') : t('profil.rolle_benutzer'),
           })}
-          {' · '}
-          {t('account.emailHint')}
         </p>
 
         {!person.kontaktadresse && (

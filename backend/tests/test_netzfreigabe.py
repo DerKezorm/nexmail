@@ -139,7 +139,7 @@ def test_nur_der_betreiber_legt_den_schalter_um(klient, zweiter_klient, db):
 
 
 def test_die_oeffentliche_adresse_aendert_nur_der_betreiber(klient, zweiter_klient, db):
-    """⚠️ Aus ihr entsteht der Link in der Mail „Kennwort vergessen". Wer sie
+    """⚠️ Aus ihr entsteht der Link in der Mail „Passwort vergessen". Wer sie
     umbiegen darf, lenkt den Rücksetz-Link des Betreibers auf einen fremden
     Server."""
     einrichten(klient)
