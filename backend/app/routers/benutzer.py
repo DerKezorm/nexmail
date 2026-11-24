@@ -492,3 +492,36 @@ def passwort_link(
             raise MeldungHttp.aus(fehler, status.HTTP_502_BAD_GATEWAY) from fehler
         return Passwortlink(an=ergebnis.mail.to, laeuft_ab=ergebnis.expires_at)
     return Passwortlink(link=kontenpost.link(db, f"/kennwort/{ergebnis.token}"), laeuft_ab=ergebnis.expires_at)
+
+
+@router.post("/{benutzer_id}/zweiter-faktor-zuruecksetzen", response_model=BenutzerZeile)
+def zweiten_faktor_zuruecksetzen(
+    benutzer_id: str,
+    eingabe: MitPasswort,
+    ich: Betreiber,
+    sitzung: AktiveSitzung,
+    request: Request,
+    db: DbSession,
+) -> BenutzerZeile:
+    """„Zweiten Faktor zuruecksetzen“ (Kontenmodul Teil 2): Authenticator-App, Wiederherstellungscodes und Passkeys
+    des Kontos fallen weg, seine Browser-Anmeldungen enden; mit Adresse hoert es davon. Fuer jemanden, dessen Telefon
+    weg ist. Mit dem eigenen Passwort des Betreibers; fuer sich selbst nicht (``use_account_page``)."""
+    from ..vendor.nexkonten import factor
+
+    wache = _handeln(request, ich, "betreiber-handelt")
+    try:
+        mail = factor.operator_reset(
+            kontenstore.store_fuer(db),
+            benutzer_id,
+            actor_id=ich.id,
+            password=eingabe.passwort,
+            actor_confirmed=_bestaetigt(ich, sitzung),
+        )
+    except nexkonten.AccountError as fehler:
+        raise _abgelehnt(fehler, wache) from fehler
+    wache.geschafft()
+    if mail is not None and kontenpost.mail_moeglich(db):
+        kontenpost.senden(db, mail)
+    person = db.get(Benutzer, benutzer_id)
+    db.refresh(person)
+    return _zeile(db, person)

@@ -485,3 +485,42 @@ def test_ein_abgelehnter_empfaenger_sagt_warum(klient, monkeypatch):
     assert "Recipient address rejected" in antwort.json()["werte"]["grund"]
     # Und keine Leiche in der Liste.
     assert klient.get("/api/benutzer").json()["einladungen"] == []
+
+
+# --- Zweiten Faktor zuruecksetzen (Kontenmodul Teil 2) ------------------- #
+
+
+def test_der_betreiber_setzt_den_zweiten_faktor_zurueck(klient, zweiter_klient, db):
+    """Fuer jemanden, dessen Telefon weg ist: Authenticator, Codes und Passkeys fallen weg, die Anmeldungen enden;
+    danach meldet sich die Person mit dem Passwort allein an."""
+    from app.models import Wiederherstellungscode
+
+    einrichten(klient)
+    person, geheimnis = zweiten_benutzer_anlegen(db)
+    db.add(Wiederherstellungscode(benutzer_id=person.id, code_hash="x"))
+    db.commit()
+    anmelden(zweiter_klient, "zweiter", "auch-geheim-456", geheimnis)
+    assert zweiter_klient.get("/api/auth/ich").status_code == 200
+
+    falsch = klient.post(f"/api/benutzer/{person.id}/zweiter-faktor-zuruecksetzen", json={"passwort": "falsch-falsch"})
+    assert falsch.status_code == 401 and falsch.json()["detail"] == "kennwort_falsch", falsch.text
+    db.expire_all()
+    assert db.get(Benutzer, person.id).totp_bestaetigt
+
+    antwort = klient.post(f"/api/benutzer/{person.id}/zweiter-faktor-zuruecksetzen", json={"passwort": PASSWORT})
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json()["zwei_faktor_aktiv"] is False
+    db.expire_all()
+    assert not db.get(Benutzer, person.id).totp_geheimnis
+    assert db.query(Wiederherstellungscode).filter_by(benutzer_id=person.id).count() == 0
+    assert zweiter_klient.get("/api/auth/ich").status_code == 401
+
+    wieder = zweiter_klient.post("/api/auth/anmelden", json={"benutzername": "zweiter", "passwort": "auch-geheim-456"})
+    assert wieder.status_code == 200 and wieder.json()["schritt"] == "fertig", wieder.text
+
+
+def test_den_eigenen_zweiten_faktor_setzt_niemand_hier_zurueck(klient, db):
+    einrichten(klient)
+    ich = db.query(Benutzer).filter(Benutzer.ist_betreiber.is_(True)).one()
+    antwort = klient.post(f"/api/benutzer/{ich.id}/zweiter-faktor-zuruecksetzen", json={"passwort": PASSWORT})
+    assert antwort.status_code == 409 and antwort.json()["detail"] == "use_account_page", antwort.text

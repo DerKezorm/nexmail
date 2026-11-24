@@ -18,6 +18,7 @@ import {
   Mail,
   Pencil,
   ShieldCheck,
+  ShieldOff,
   Sparkles,
   SparklesIcon,
   Trash2,
@@ -193,6 +194,20 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
     const kennwort = await eigenesPasswort(titel)
     if (kennwort === null) return
     await handeln(() => api.aendern(`/api/benutzer/${p.id}/${feld}`, { [feld]: neu, passwort: kennwort }))
+  }
+
+  /** „Zweiten Faktor zurücksetzen“ (Kontenmodul Teil 2): für jemanden, dessen Telefon weg ist. */
+  async function faktorZuruecksetzen(p: BenutzerZeile) {
+    const ja = await fragen({
+      titel: t('account.factorReset'),
+      text: t('account.factorResetHint'),
+      knopf: t('aktion.weiter'),
+      gefaehrlich: true,
+    })
+    if (ja !== true) return
+    const kennwort = await eigenesPasswort(t('account.factorReset'))
+    if (kennwort === null) return
+    await handeln(() => api.senden(`/api/benutzer/${p.id}/zweiter-faktor-zuruecksetzen`, { passwort: kennwort }))
   }
 
   async function adresseEntfernen(p: BenutzerZeile) {
@@ -385,6 +400,13 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
                   icon={<AtSign />}
                   label={`${t('account.emailRemove')}: ${p.anzeigename || p.benutzername}`}
                   onClick={() => void adresseEntfernen(p)}
+                />
+              )}
+              {p.zwei_faktor_aktiv && !p.ist_betreiber && (
+                <IconButton
+                  icon={<ShieldOff />}
+                  label={`${t('account.factorReset')}: ${p.anzeigename || p.benutzername}`}
+                  onClick={() => void faktorZuruecksetzen(p)}
                 />
               )}
               {!p.ist_betreiber && (
