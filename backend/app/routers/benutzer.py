@@ -494,10 +494,15 @@ def passwort_link(
     return Passwortlink(link=kontenpost.link(db, f"/kennwort/{ergebnis.token}"), laeuft_ab=ergebnis.expires_at)
 
 
+class FaktorZuruecksetzen(MitPasswort):
+    #: „Gekoppelte Geraete auch trennen“ (konten 0.3.1), ab Werk an: Ein verlorenes Handy ist sonst noch angemeldet.
+    geraete_trennen: bool = True
+
+
 @router.post("/{benutzer_id}/zweiter-faktor-zuruecksetzen", response_model=BenutzerZeile)
 def zweiten_faktor_zuruecksetzen(
     benutzer_id: str,
-    eingabe: MitPasswort,
+    eingabe: FaktorZuruecksetzen,
     ich: Betreiber,
     sitzung: AktiveSitzung,
     request: Request,
@@ -516,6 +521,7 @@ def zweiten_faktor_zuruecksetzen(
             actor_id=ich.id,
             password=eingabe.passwort,
             actor_confirmed=_bestaetigt(ich, sitzung),
+            disconnect_devices=eingabe.geraete_trennen,
         )
     except nexkonten.AccountError as fehler:
         raise _abgelehnt(fehler, wache) from fehler

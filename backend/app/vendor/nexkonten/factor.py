@@ -12,6 +12,11 @@ letters (most apps) or in capitals (one app) is recognised too, whatever the cou
 Setting up keeps the new seed in memory for ten minutes and stores it only once a code confirmed it; nothing
 unconfirmed is ever a factor. The sign-in that waits for the code is in memory for five minutes and five attempts.
 
+Every change of a factor is confirmed: with the password (or a fresh sign-in at the provider for an account without one,
+``actor_confirmed`` from the app), also when an account replaces its authenticator; wrong passwords there are braked
+like sign-ins (``confirmed``). Only the very first factor of an account in a session that can only set one up needs
+nothing more (the app passes ``actor_confirmed``).
+
 Nobody must have a second factor unless the operator says so (``FactorStore.factor_required``, off by default); then
 the last factor of an account cannot be taken away by its owner, and ``common.next_step`` sends an account without
 one to set one up first.
@@ -30,7 +35,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import quote
 
-from . import common
+from . import brake, common
 from .common import log
 from .errors import AccountError
 from .model import (
@@ -38,6 +43,7 @@ from .model import (
     SECOND_FACTOR_ACTIVE,
     SECOND_FACTOR_NONE,
     SECOND_FACTOR_REQUIRED,
+    Account,
     AccountId,
     Mail,
     Store,
@@ -51,6 +57,8 @@ SEED_BYTES = 20
 ENROLMENT_SECONDS = 600
 PENDING_SECONDS = 300
 MAX_ATTEMPTS = 5
+#: Waiting sign-ins per account at the same time (two browsers, or one that asked twice); the oldest goes.
+WAITING_PER_ACCOUNT = 3
 RECOVERY_CODES = 10
 RECOVERY_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
 RECOVERY_LENGTH = 10
@@ -153,6 +161,31 @@ def state(store: AppStore, account_id: AccountId) -> str:
     return SECOND_FACTOR_REQUIRED if store.factor_required() else SECOND_FACTOR_NONE
 
 
+# --- Confirming a change -------------------------------------------------------------------------------------------
+
+
+def too_many_attempts(wait: float) -> AccountError:
+    return AccountError(
+        "too_many_attempts", "Too many attempts. Wait a moment.", 429, retry_after=max(1, int(wait + 0.999))
+    )
+
+
+def confirmed(
+    store: Store, account: Account, password: str, actor_confirmed: bool, *, without_password: bool
+) -> None:
+    """``common.confirm`` behind the brake: a wrong password here counts at the account (``confirm:<id>``, five free)
+    as a sign-in would, so that a session cannot guess the password through these pages."""
+    if actor_confirmed or not account.has_password:
+        common.confirm(store, account, password, actor_confirmed, without_password=without_password)
+        return
+    keys = (f"confirm:{account.id}",)
+    wait = brake.BRAKE.claim(keys)
+    if wait > 0:
+        raise too_many_attempts(wait)
+    common.confirm(store, account, password, actor_confirmed, without_password=without_password)
+    brake.BRAKE.succeeded(keys)
+
+
 # --- Setting up -------------------------------------------------------------------------------------------------------
 
 
@@ -186,9 +219,10 @@ def confirm_totp(
     store: AppStore, account_id: AccountId, code: str, *, password: str = "", actor_confirmed: bool = False
 ) -> Confirmed:
     """The code of the new seed confirms it: from now on it counts. Confirmed with the password (or by the app), except
-    in a session that can only set up a factor (the app passes ``actor_confirmed``)."""
+    in a session that can only set up a factor (the app passes ``actor_confirmed``). Replacing an authenticator that
+    is set up already needs the password, or a fresh sign-in for an account without one, like taking it away."""
     account = common.account_or_404(store, account_id)
-    common.confirm(store, account, password, actor_confirmed, without_password=False)
+    confirmed(store, account, password, actor_confirmed, without_password=has_factor(store, account.id))
     with _enrolments_lock:
         held = _enrolments.get(account.id)
     if held is None or held[1] < time.monotonic():
@@ -215,7 +249,7 @@ def new_codes(
 ) -> list[str]:
     """Ten new recovery codes; the old ones stop counting."""
     account = common.account_or_404(store, account_id)
-    common.confirm(store, account, password, actor_confirmed, without_password=True)
+    confirmed(store, account, password, actor_confirmed, without_password=True)
     if not has_factor(store, account.id):
         raise AccountError("factor_missing", "Set up a second factor first.", 409)
     codes = new_recovery_codes()
@@ -240,7 +274,7 @@ def disable_totp(
 ) -> None:
     """The owner takes the time-based code away (not the last factor where one is required)."""
     account = common.account_or_404(store, account_id)
-    common.confirm(store, account, password, actor_confirmed, without_password=True)
+    confirmed(store, account, password, actor_confirmed, without_password=True)
     _last_factor_guard(store, account.id, removing_totp=True, removing_passkey=False)
     store.set_totp(account.id, None)
     if not store.passkeys_of(account.id):
@@ -250,19 +284,41 @@ def disable_totp(
 
 
 def operator_reset(
-    store: AppStore, account_id: AccountId, *, actor_id: AccountId, password: str = "", actor_confirmed: bool = False
+    store: AppStore,
+    account_id: AccountId,
+    *,
+    actor_id: AccountId,
+    password: str = "",
+    actor_confirmed: bool = False,
+    disconnect_devices: bool = True,
 ) -> Mail | None:
     """The operator takes every factor of another account away (time-based code, recovery codes, passkeys): its
-    owner lost the phone. Every session of the account ends; a confirmed address hears of it."""
+    owner lost the phone. Every browser session and waiting sign-in of the account ends, and with
+    ``disconnect_devices`` (on by default; the page asks "Disconnect the devices too") its paired devices too: the lost
+    phone may be one of them. A confirmed address hears of it."""
     if account_id == actor_id:
         raise AccountError("use_account_page", "Change your own second factor in your profile.", 409)
+    keys = (f"confirm:{actor_id}",)
+    if not actor_confirmed:
+        wait = brake.BRAKE.claim(keys)
+        if wait > 0:
+            raise too_many_attempts(wait)
     target, actor = common.acting(
         store, account_id, actor_id, password, confirm_self=True, actor_confirmed=actor_confirmed
     )
+    if not actor_confirmed:
+        brake.BRAKE.succeeded(keys)
     store.set_totp(target.id, None)
     store.set_recovery(target.id, [])
     store.remove_passkeys(target.id)
     store.end_sessions(target.id)
+    if disconnect_devices:
+        everywhere = getattr(store, "end_everywhere", None)
+        if everywhere is not None:
+            everywhere(target.id, None)
+        else:
+            store.revoke_access(target.id)
+    drop_waiting(target.id)
     store.commit()
     log().warning("Second factor reset name=%s by=%s", target.username, actor.username)
     if target.email and target.email_confirmed:
@@ -328,14 +384,25 @@ def _key(token: str) -> str:
 
 def start_waiting(account_id: AccountId, *, remember: bool = True, provider_checked: bool = False) -> str:
     """After the password (or a provider that does not check the factor): the token of the waiting sign-in, for a
-    cookie of five minutes. One waiting sign-in per account; a new one replaces the one before."""
+    cookie of five minutes. Up to three per account at the same time, the oldest goes: a stranger who knows the
+    password cannot throw the owner's own waiting sign-in out with one of his own."""
     token = secrets.token_urlsafe(32)
     now = time.monotonic()
     with _waiting_lock:
-        for key in [key for key, held in _waiting.items() if held.account_id == account_id or held.until < now]:
+        for key in [key for key, held in _waiting.items() if held.until < now]:
+            _waiting.pop(key, None)
+        mine = [key for key, held in _waiting.items() if held.account_id == account_id]
+        for key in mine[: max(0, len(mine) - WAITING_PER_ACCOUNT + 1)]:
             _waiting.pop(key, None)
         _waiting[_key(token)] = _Waiting(account_id, remember, provider_checked, now + PENDING_SECONDS)
     return token
+
+
+def drop_waiting(account_id: AccountId) -> None:
+    """Every waiting sign-in of the account ends (new password, reset, block)."""
+    with _waiting_lock:
+        for key in [key for key, held in _waiting.items() if held.account_id == account_id]:
+            _waiting.pop(key, None)
 
 
 def waiting_account(token: str) -> AccountId | None:
@@ -345,12 +412,18 @@ def waiting_account(token: str) -> AccountId | None:
 
 
 def finish_waiting(store: AppStore, token: str, typed: str) -> Waited:
-    """The code for a waiting sign-in. Five wrong codes end it (the password is asked again); a blocked account is
-    refused here too."""
+    """The code for a waiting sign-in. Each attempt is counted before its code is checked, under the lock: five codes
+    at most, also for many requests at the same moment; then it ends (the password is asked again). A blocked account
+    is refused here too."""
     key = _key(token)
     with _waiting_lock:
         held = _waiting.get(key)
-    if held is None or held.until < time.monotonic():
+        if held is not None and (held.until < time.monotonic() or held.attempts >= MAX_ATTEMPTS):
+            _waiting.pop(key, None)
+            held = None
+        if held is not None:
+            held.attempts += 1
+    if held is None:
         raise AccountError("sign_in_expired", "That took too long. Sign in again.", 401)
     account = store.get_account(held.account_id)
     if account is None or account.blocked:
@@ -361,7 +434,6 @@ def finish_waiting(store: AppStore, token: str, typed: str) -> Waited:
         method = check_code(store, held.account_id, typed)
     except AccountError:
         with _waiting_lock:
-            held.attempts += 1
             if held.attempts >= MAX_ATTEMPTS:
                 _waiting.pop(key, None)
         raise

@@ -27,7 +27,14 @@ from datetime import UTC, datetime, timedelta
 from . import model2
 from .common import utcnow
 from .model import MAIL_NEW_SIGN_IN, Account, AccountId, Mail
-from .model2 import KIND_DEVICE, STAGE_FULL, STAGE_SETUP, Session, SessionStore
+from .model2 import (
+    KIND_BROWSER,
+    KIND_DEVICE,
+    STAGE_FULL,
+    STAGE_SETUP,
+    Session,
+    SessionStore,
+)
 
 REMEMBER_DAYS = 30
 BROWSER_HOURS = 12
@@ -111,19 +118,20 @@ def _aware(moment: datetime) -> datetime:
 
 
 def current(store: SessionStore, token: str) -> Session | None:
-    """The session of a cookie, or None (unknown, ended, run out). A remembered session slides: its end moves to 30
-    days from now, written at most every five minutes. Whether the account may still use it (blocked, deleted) is
-    the app's check, with ``account_out``."""
+    """The session of a cookie, or None (unknown, ended, run out, or not a session at all: a waiting sign-in never
+    counts here, whatever its row says). A remembered session slides: its end moves to 30 days from now; every
+    session's last use is written, both at most every five minutes. Whether the account may still use it (blocked,
+    deleted) is the app's check, with ``account_out``; the stage (``STAGE_SETUP``) too."""
     if not token:
         return None
     session = store.session_by_hash(hash_token(token))
     now = utcnow()
-    if session is None or _aware(session.expires_at) <= now:
+    if session is None or session.kind not in (KIND_BROWSER, KIND_DEVICE) or _aware(session.expires_at) <= now:
         return None
     seen = _aware(session.last_seen_at) if session.last_seen_at else None
-    stale = seen is None or (now - seen).total_seconds() > TOUCH_SECONDS
-    if session.remember and session.stage == STAGE_FULL and stale:
-        store.touch_session(session.uid, now, now + timedelta(days=REMEMBER_DAYS))
+    if seen is None or (now - seen).total_seconds() > TOUCH_SECONDS:
+        slides = session.remember and session.stage == STAGE_FULL
+        store.touch_session(session.uid, now, now + timedelta(days=REMEMBER_DAYS) if slides else session.expires_at)
     return session
 
 

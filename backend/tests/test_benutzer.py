@@ -514,6 +514,9 @@ def test_der_betreiber_setzt_den_zweiten_faktor_zurueck(klient, zweiter_klient, 
     assert not db.get(Benutzer, person.id).totp_geheimnis
     assert db.query(Wiederherstellungscode).filter_by(benutzer_id=person.id).count() == 0
     assert zweiter_klient.get("/api/auth/ich").status_code == 401
+    from app.models import Sitzung
+
+    assert db.query(Sitzung).filter_by(benutzer_id=person.id).count() == 0
 
     wieder = zweiter_klient.post("/api/auth/anmelden", json={"benutzername": "zweiter", "passwort": "auch-geheim-456"})
     assert wieder.status_code == 200 and wieder.json()["schritt"] == "fertig", wieder.text

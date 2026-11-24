@@ -43,5 +43,7 @@
   "test": {
     "subject": "Courriel de test de {{app}}",
     "body": "Si vous lisez ceci, {{app}} peut envoyer des courriels."
-  }
+  },
+  "browser_on": "{{browser}} sous {{system}}",
+  "browser_unknown": "un navigateur inconnu"
 }

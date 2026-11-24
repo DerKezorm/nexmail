@@ -129,3 +129,13 @@ def test_the_test_mail_goes_out_at_once_or_tells_why_not(app: Any, post: Any, se
     with app.store() as store:
         status = store.mail_status()
     assert status.last_error == "mail_auth_refused" and status.last_ok_at is not None
+
+
+def test_a_server_that_says_later_is_tried_again(app: Any, post: Any, server: Any) -> None:
+    _configure(app, post)
+    _queue(app, post)
+    server.fail.append(smtplib.SMTPRecipientsRefused({"kim@example.org": (450, b"4.2.0 Greylisted, try again later")}))
+    now = post.common.utcnow()
+    assert _run(app, post, now) == 0
+    assert _run(app, post, now + timedelta(minutes=post.outbox.RETRY_MINUTES[0])) == 1
+    assert [mail["To"] for mail in server.sent] == ["kim@example.org"]

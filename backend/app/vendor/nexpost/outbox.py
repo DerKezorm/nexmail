@@ -1,7 +1,8 @@
 """The outbox: a mail is queued in the request and sent by a worker, again after 1, 5, 15, 60 and 180 minutes when the
 mail server could not take it; then it is given up. A refusal that another try would not change (recipient or sender
-refused, wrong user or password, no address) is given up at once. The operator's page shows the last mail that went
-out and the last error (``MailStatus``).
+refused, wrong user or password, no address) is given up at once, unless the server said "later" (4xx). Whatever
+else goes wrong with one mail counts as a failed try of that mail: the next ones still go. The operator's page
+shows the last mail that went out and the last error (``MailStatus``).
 
 The test mail goes out at once, outside the outbox, and tells its error.
 """
@@ -11,9 +12,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from .common import log, utcnow
-from .errors import FINAL, MailError
+from .errors import MailError, is_final
 from .letters import compose, language_for
-from .model import Letter, MailStatus, Store
+from .model import Letter, MailSettings, MailStatus, Store
 from .send import deliver
 
 #: Minutes after the first, second … failure.
@@ -21,6 +22,17 @@ RETRY_MINUTES = (1, 5, 15, 60, 180)
 #: How long a worker holds a row it took.
 LEASE_SECONDS = 120
 BATCH = 20
+
+
+def _deliver(settings: MailSettings, letter: Letter) -> None:
+    """``deliver``, and whatever else breaks counts as ``mail_failed``: one broken mail never stops the outbox, and
+    the page shows a reason instead of a 500."""
+    try:
+        deliver(settings, letter)
+    except MailError:
+        raise
+    except Exception as error:  # one broken mail must not stop the outbox
+        raise MailError("mail_failed", f"The mail did not go out ({error.__class__.__name__}).") from error
 
 
 def queue(store: Store, letter: Letter) -> int | str:
@@ -49,10 +61,10 @@ def run_once(store: Store, now: datetime | None = None) -> int:
             continue
         store.commit()
         try:
-            deliver(settings, item.letter)
+            _deliver(settings, item.letter)
         except MailError as error:
             attempts = item.attempts + 1
-            final = error.code in FINAL or attempts > len(RETRY_MINUTES)
+            final = is_final(error) or attempts > len(RETRY_MINUTES)
             next_at = None if final else moment + timedelta(minutes=RETRY_MINUTES[attempts - 1])
             store.mark_failed(item.id, attempts, next_at, error.code + (f": {error.detail}" if error.detail else ""))
             _note(store, ok=False, error=error.code)
@@ -77,7 +89,7 @@ def test_mail(store: Store, to: str, *, language: str = "en") -> None:
     settings = store.mail_settings()
     letter = compose("test", to, language=language_for(language), values={})
     try:
-        deliver(settings, letter)
+        _deliver(settings, letter)
     except MailError as error:
         if error.code != "mail_off":
             _note(store, ok=False, error=error.code)

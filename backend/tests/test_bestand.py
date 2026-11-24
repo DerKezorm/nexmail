@@ -97,12 +97,10 @@ def _schema(datei: Path) -> tuple[dict[str, set[str]], dict[str, int]]:
     return spalten, zahlen
 
 
-@pytest.fixture
-def bestand():
-    """The 0.33.0 database in place of the fresh one, then the start of the running version.
-
-    Gives back what the old database had (columns per table, rows per counted table), read before the start.
-    """
+def _laden(*zusatz: tuple[str, tuple]) -> tuple[dict[str, set[str]], dict[str, int]]:
+    """The 0.33.0 database in place of the fresh one, then the start of the running version. ``zusatz``: rows that
+    0.33.0 itself writes in the same columns but the fixture does not hold (a picture, a half sign-in), written
+    before the start like 0.33.0 would have."""
     engine.dispose()
     ziel = get_settings().db_path
     for rest in ("", "-wal", "-shm"):
@@ -112,6 +110,8 @@ def bestand():
         verbindung.executescript(gzip.decompress(dump_datei().read_bytes()).decode("utf-8"))
         verbindung.execute("UPDATE sitzung SET gueltig_bis = datetime('now', '+30 days')")
         verbindung.execute("UPDATE einladung SET laeuft_ab = datetime('now', '+7 days') WHERE eingeloest IS NULL")
+        for befehl, werte in zusatz:
+            verbindung.execute(befehl, werte)
         verbindung.commit()
     finally:
         verbindung.close()
@@ -119,6 +119,15 @@ def bestand():
     init_db()
     anmeldebremse.zuruecksetzen()
     return vorher
+
+
+@pytest.fixture
+def bestand():
+    """The 0.33.0 database in place of the fresh one, then the start of the running version.
+
+    Gives back what the old database had (columns per table, rows per counted table), read before the start.
+    """
+    return _laden()
 
 
 @pytest.fixture
@@ -446,3 +455,120 @@ def test_a_shared_address_never_signs_in(bestand, post, konto):
     assert antwort.status_code == 401
     browser().post("/api/auth/kennwort-vergessen", json={"benutzername": konto["adresse"]})
     assert post == []
+
+
+# --- Part 2 of the account module: second factor, sessions, pictures, system mail -----------------------------------
+#
+# What 0.33.0 had of these must hold after the update: the authenticator apps and codes people set up, the browsers
+# and iPhones that are signed in, the pictures, the mail server of the operator. New is only what the draft decided
+# (pictures for every signed-in account, a letter instead of initials, "stay signed in", the lock at the account).
+
+
+def _konto_id(konto: dict) -> str:
+    from app.models import Benutzer
+
+    with SessionLocal() as db:
+        return db.query(Benutzer).filter(Benutzer.benutzername == _name(konto)).one().id
+
+
+@pytest.mark.parametrize("konto", MIT_FAKTOR, ids=_name)
+def test_the_authenticator_of_0_33_0_is_the_seed_of_the_module(bestand, konto):
+    """The module reads the sealed seed of 0.33.0 as it is: the app on the phone keeps its entry."""
+    from app.services import konten_store
+
+    with SessionLocal() as db:
+        store = konten_store.store_fuer(db)
+        assert store.totp_seed(_konto_id(konto)) == totp_geheimnis(konto["zweiter_faktor"])
+        assert store.second_factor(_konto_id(konto)) == "active"
+
+
+def test_browser_sessions_of_0_33_0_are_remembered_and_full(bestand):
+    """0.33.0 kept every session for 30 days, sliding: that is "stay signed in", and so they stay."""
+    from app.models import Sitzung
+
+    with SessionLocal() as db:
+        zeilen = db.query(Sitzung).all()
+        assert zeilen and all(z.merken for z in zeilen)
+        assert all(z.stufe == "full" for z in zeilen if z.bestaetigt)
+
+
+def test_a_half_sign_in_of_0_33_0_is_discarded_and_never_a_session():
+    """Password right, code still missing: such a row must never count as a full session (konten 0.3.1). The start
+    drops it; the owner types the password again. Full sessions stay."""
+    from app.models import Sitzung
+
+    mona = next(k for k in MIT_FAKTOR if k.get("geraet"))
+    _laden(
+        (
+            "INSERT INTO sitzung (id, benutzer_id, token_hash, bestaetigt, geraet, adresse, art, angelegt,"
+            " zuletzt_gesehen, gueltig_bis) SELECT 'halb', id, ?, 0, 'testclient', '', 'browser', datetime('now'),"
+            " datetime('now'), datetime('now', '+5 minutes') FROM benutzer WHERE benutzername = ?",
+            ("a" * 64, _name(mona)),
+        ),
+    )
+    with SessionLocal() as db:
+        assert db.get(Sitzung, "halb") is None
+        assert db.query(Sitzung).filter(Sitzung.bestaetigt.is_(False)).count() == 0
+        assert db.query(Sitzung).count() > 0
+
+
+def test_a_profile_picture_of_0_33_0_still_shows_and_now_to_every_signed_in_account():
+    bild = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+    erika = next(k for k in KONTEN if k.get("sitzung"))
+    jonas = next(k for k in MIT_PASSWORT if k["benutzername"] == "jonas")
+    _laden(
+        (
+            "UPDATE benutzer SET profilbild = ?, profilbild_am = datetime('now') WHERE benutzername = ?",
+            (bild, _name(jonas)),
+        ),
+    )
+    klient = browser()
+    from app.services.sitzung import COOKIE_NAME
+
+    klient.cookies.set(COOKIE_NAME, erika["sitzung"])
+    antwort = klient.get(f"/api/auth/profilbild/{_konto_id(jonas)}")
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.content == bild
+    assert browser().get(f"/api/auth/profilbild/{_konto_id(jonas)}").status_code == 401
+
+
+def test_the_mail_server_of_0_33_0_sends_the_system_mails(bestand, monkeypatch):
+    """The operator's settings, written by the code of 0.33.0 (``systempost.schreiben`` is unchanged since), are what
+    the mail module sends with: server, port, security, user, password, sender and its name."""
+    from app.services import post_store
+
+    with SessionLocal() as db:
+        systempost.schreiben(
+            db,
+            systempost.Postausgang(
+                server="smtp.example.com",
+                port=465,
+                sicherheit="ssl",
+                benutzer="nexmail",
+                absender="nexmail@example.com",
+                absendername="Haus Beispiel",
+            ),
+            "geheim-smtp",
+        )
+    with SessionLocal() as db:
+        einstellungen = post_store.PostStore(db).mail_settings()
+    assert (einstellungen.host, einstellungen.port, einstellungen.security) == ("smtp.example.com", 465, "tls")
+    assert (einstellungen.user, einstellungen.password) == ("nexmail", "geheim-smtp")
+    assert (einstellungen.sender, einstellungen.sender_name) == ("nexmail@example.com", "Haus Beispiel")
+
+
+def test_the_operator_resets_a_lost_phone_and_the_paired_iphone_goes(bestand):
+    """Part 2: the operator takes the second factor of an account whose phone is gone; the paired iPhone is
+    disconnected too (on by default), and the owner signs in with the password alone."""
+    betreiber = next(k for k in KONTEN if k.get("betreiber"))
+    mona = next(k for k in MIT_FAKTOR if k.get("geraet"))
+    klient = browser()
+    mit_passwort(klient, betreiber)
+    antwort = klient.post(
+        f"/api/benutzer/{_konto_id(mona)}/zweiter-faktor-zuruecksetzen", json={"passwort": betreiber["passwort"]}
+    )
+    assert antwort.status_code == 200, antwort.text
+    iphone = browser().get("/api/app/1/me", headers={"Authorization": f"Bearer {mona['geraet']}"})
+    assert iphone.status_code == 401
+    wieder = browser().post("/api/auth/anmelden", json={"benutzername": _name(mona), "passwort": mona["passwort"]})
+    assert wieder.status_code == 200 and wieder.json()["schritt"] == "fertig", wieder.text

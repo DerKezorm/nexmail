@@ -116,6 +116,11 @@ def http(fehler: AccountError, status_code: int | None = None) -> MeldungHttp:
         # ``passwort_zu_kurz`` nannte die Zahl ``min``; beide stehen da, damit alte und neue Saetze passen.
         werte.setdefault("min", werte["minimum"])
     # 422 heisst bei nexmail „Pydantic hat abgelehnt“; eine Regel des Moduls war bisher 400 (``benutzername_ungueltig``).
+    if fehler.code == "too_many_attempts":
+        # konten 0.3.1: Auch Sicherheitsseiten bremsen (falsches Passwort beim Bestaetigen). Dieselbe Antwort wie
+        # nexmails eigene Bremse: 429 ``zu_viele_versuche`` mit ``Retry-After``; die Oberflaeche kennt sie.
+        warten = int(werte.get("retry_after") or 1)
+        return MeldungHttp(429, "zu_viele_versuche", werte, headers={"Retry-After": str(warten)})
     status = status_code or (400 if fehler.status == 422 else fehler.status)
     return MeldungHttp(status, fehler.public_code, werte)
 

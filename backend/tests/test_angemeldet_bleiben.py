@@ -98,7 +98,8 @@ def test_neue_anmeldung_meldet_nur_unbekannte_browser(klient, db, post):
     assert _anmelden(fremd).status_code == 200
     assert [an for an, *_ in post] == ["betreiber@example.com"]
     betreff, text = post[0][1], post[0][2]
-    assert betreff and "testclient" in text.lower()
+    # Der User-Agent des Testklienten ist kein bekannter Browser: Die Mail sagt das, ohne seinen Text zu zeigen.
+    assert betreff and "testclient" not in text.lower()
 
     # Derselbe Browser ein zweites Mal: bekannt, keine Mail.
     assert _anmelden(fremd).status_code == 200
@@ -141,3 +142,16 @@ class _OhneBremse:
 
     def geschafft(self) -> None:
         pass
+
+
+def test_der_bekannte_browser_kommt_auch_an_der_bremse_vorbei(klient, db):
+    """konten 0.3.1: Wer fremd das Passwort durchprobiert, fuellt den Topf des Kontos; der Besitzer an seinem Rechner
+    hat einen eigenen."""
+    einrichten(klient)
+    fremd = _neuer_browser()
+    for _ in range(anmeldebremse.SPERRE_AB_VERSUCH):
+        for zaehler in anmeldebremse._zaehler.values():
+            zaehler.frei_ab = 0
+        fremd.post("/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": "falsch-falsch"})
+    assert _anmelden(_neuer_browser()).status_code == 429
+    assert _anmelden(klient).status_code == 200

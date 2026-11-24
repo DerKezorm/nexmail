@@ -17,18 +17,28 @@ CODES = (
     "mail_settings_invalid",
 )
 
-#: Mails that will not go through on another try: given up at once.
+#: Mails that will not go through on another try: given up at once, unless the server said "later" (a 4xx reply:
+#: greylisting 450, 451, a temporary failure of the login 454).
 FINAL = ("mail_recipient_refused", "mail_address_invalid", "mail_sender_refused", "mail_auth_refused")
 
 
+def is_final(error: MailError) -> bool:
+    """Whether another try cannot help."""
+    return error.code in FINAL and not 400 <= error.smtp_code < 500
+
+
 class MailError(Exception):
-    def __init__(self, code: str, message: str, *, detail: str = "", status: int = 502) -> None:
+    def __init__(
+        self, code: str, message: str, *, detail: str = "", status: int = 502, smtp_code: int = 0
+    ) -> None:
         if code not in CODES:
             raise ValueError(f"unknown mail error code {code!r}")
         super().__init__(message)
         self.code = code
         self.message = message
         self.detail = detail
+        #: The mail server's reply code where it gave one (``450``, ``550``); 0 otherwise.
+        self.smtp_code = smtp_code
         self.status = (
             409
             if code == "mail_off"

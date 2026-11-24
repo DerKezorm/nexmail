@@ -1,12 +1,20 @@
 """The sign-in brake in memory, and the sender's address behind a proxy.
 
 Every app runs one worker, so the brake lives in its memory (a restart forgets it; the lock of an account after ten
-wrong passwords is in the database, ``Store.is_locked``). An attempt is checked and counted in one step (``claim``):
-many attempts at once cannot all pass before the first failure is counted.
+wrong passwords is in the database, ``Store.is_locked``). An attempt is checked and counted in one step under one lock
+(``claim``): many attempts at once cannot all pass before the first failure is counted.
 
 Counts as ``login.attempt_key`` gives them, two per attempt: the sender (30 free) and the account or what was typed
 (5 free). After the free ones each further failure waits longer: 5 seconds, doubled each time, at most 15 minutes. A
-count is forgotten an hour after its last failure; at most 50 000 counts are kept.
+count lives one hour from its first failure (also when failures keep coming), unless a wait still runs.
+
+A right attempt (``succeeded``) takes back what it counted: the account's count starts anew, and the sender's loses
+the one failure ``claim`` counted for it, so that a family behind one address never fills the sender's count with
+right passwords. A browser that knows the account (``sessions.is_known``) is braked at the sender only
+(``known_browser=True``): a stranger who types the name of the owner never brakes the owner's own browser.
+
+At most 50 000 counts are kept; when full, the ones whose hour is over go first, then senders and typed text before
+accounts, the least recently failed first.
 
 The sender's address: behind proxies the app trusts (``<APP>_TRUSTED_PROXIES``, CIDR) the rightmost hop of
 ``X-Forwarded-For`` that is not one of them; IPv6 counts per /64. Without trusted proxies the peer of the connection.
@@ -25,13 +33,23 @@ FIRST_WAIT = 5.0
 LONGEST_WAIT = 15 * 60.0
 FORGET_AFTER = 3600.0
 MAX_COUNTS = 50_000
+SENDER = "sender:"
 
 
 @dataclass
 class _Count:
     failures: int = 0
+    start: float = 0.0
     last: float = 0.0
     blocked_until: float = 0.0
+
+    def over(self, moment: float) -> bool:
+        """The hour of this count is over and no wait runs."""
+        return moment - self.start > FORGET_AFTER and moment >= self.blocked_until
+
+
+def _kept(keys: tuple[str, ...] | list[str], known_browser: bool) -> list[str]:
+    return [key for key in keys if key.startswith(SENDER)] if known_browser else list(keys)
 
 
 @dataclass
@@ -44,59 +62,86 @@ class Brake:
     def _free(self, key: str) -> int:
         return FREE.get(key.partition(":")[0], FREE_OTHER)
 
-    def _sweep(self, now: float) -> None:
+    def _sweep(self, moment: float) -> None:
         if len(self.counts) < MAX_COUNTS:
             return
-        for key in [key for key, count in self.counts.items() if now - count.last > FORGET_AFTER]:
+        for key in [key for key, count in self.counts.items() if count.over(moment)]:
             self.counts.pop(key, None)
-        while len(self.counts) >= MAX_COUNTS:
-            self.counts.pop(next(iter(self.counts)))
+        if len(self.counts) < MAX_COUNTS:
+            return
+        # Accounts are kept longest: a sender with many names must not push the count of an account out.
+        order = sorted(self.counts, key=lambda key: (key.startswith("account:"), self.counts[key].last))
+        for key in order[: len(self.counts) - MAX_COUNTS + 1]:
+            self.counts.pop(key, None)
 
-    def wait(self, keys: tuple[str, ...] | list[str], now: float | None = None) -> float:
+    def _wait_locked(self, keys: list[str], moment: float) -> float:
+        waits = [
+            count.blocked_until - moment
+            for key in keys
+            if (count := self.counts.get(key)) is not None and not count.over(moment)
+        ]
+        return max([0.0, *waits])
+
+    def _failed_locked(self, keys: list[str], moment: float) -> float:
+        self._sweep(moment)
+        longest = 0.0
+        for key in keys:
+            count = self.counts.get(key)
+            if count is None or count.over(moment):
+                count = self.counts[key] = _Count(start=moment)
+            count.failures += 1
+            count.last = moment
+            over = count.failures - self._free(key)
+            if over > 0:
+                wait = min(FIRST_WAIT * 2 ** (over - 1), LONGEST_WAIT)
+                count.blocked_until = max(count.blocked_until, moment + wait)
+                longest = max(longest, wait)
+        return longest
+
+    def wait(
+        self, keys: tuple[str, ...] | list[str], now: float | None = None, *, known_browser: bool = False
+    ) -> float:
         """Seconds to wait before the next attempt may run (0: it may), without counting."""
         moment = time.monotonic() if now is None else now
         with self.lock:
-            waits = [
-                count.blocked_until - moment
-                for key in keys
-                if (count := self.counts.get(key)) is not None and moment - count.last <= FORGET_AFTER
-            ]
-        return max([0.0, *waits])
+            return self._wait_locked(_kept(keys, known_browser), moment)
 
-    def failed(self, keys: tuple[str, ...] | list[str], now: float | None = None) -> float:
+    def failed(
+        self, keys: tuple[str, ...] | list[str], now: float | None = None, *, known_browser: bool = False
+    ) -> float:
         """Count a failure at every key; the longest wait that follows."""
         moment = time.monotonic() if now is None else now
-        longest = 0.0
         with self.lock:
-            self._sweep(moment)
-            for key in keys:
-                count = self.counts.get(key)
-                if count is None or moment - count.last > FORGET_AFTER:
-                    count = self.counts[key] = _Count()
-                count.failures += 1
-                count.last = moment
-                over = count.failures - self._free(key)
-                if over > 0:
-                    wait = min(FIRST_WAIT * 2 ** (over - 1), LONGEST_WAIT)
-                    count.blocked_until = moment + wait
-                    longest = max(longest, wait)
-        return longest
+            return self._failed_locked(_kept(keys, known_browser), moment)
 
-    def claim(self, keys: tuple[str, ...] | list[str], now: float | None = None) -> float:
+    def claim(
+        self, keys: tuple[str, ...] | list[str], now: float | None = None, *, known_browser: bool = False
+    ) -> float:
         """Check and count in one step: the wait when the attempt must not run (nothing counted then), else 0 and
         the attempt counted as a failure until ``succeeded``."""
         moment = time.monotonic() if now is None else now
-        waiting = self.wait(keys, moment)
-        if waiting > 0:
-            return waiting
-        self.failed(keys, moment)
-        return 0.0
+        kept = _kept(keys, known_browser)
+        with self.lock:
+            waiting = self._wait_locked(kept, moment)
+            if waiting > 0:
+                return waiting
+            self._failed_locked(kept, moment)
+            return 0.0
 
     def succeeded(self, keys: tuple[str, ...] | list[str]) -> None:
-        """The attempt was right: its account's count starts anew (the sender's stays, it may try others)."""
+        """The attempt was right: the account's count starts anew; the sender's loses the failure ``claim`` counted."""
         with self.lock:
             for key in keys:
-                if not key.startswith("sender:"):
+                if not key.startswith(SENDER):
+                    self.counts.pop(key, None)
+                    continue
+                count = self.counts.get(key)
+                if count is None:
+                    continue
+                count.failures = max(0, count.failures - 1)
+                if count.failures <= self._free(key):
+                    count.blocked_until = 0.0
+                if count.failures == 0:
                     self.counts.pop(key, None)
 
     def forget(self) -> None:
@@ -127,7 +172,8 @@ def _counted(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str:
 
 
 def client_address(peer: str, forwarded_for: str, trusted: str | list[str]) -> str:
-    """The sender as the brake counts it."""
+    """The sender as the brake counts it. A hop that is no address counts as itself (``hop:<text>``, cut short), never
+    as the proxy before it: otherwise one sender with a broken header would brake everybody behind that proxy."""
     networks = _networks(trusted)
     try:
         current = ipaddress.ip_address((peer or "").strip())
@@ -139,7 +185,7 @@ def client_address(peer: str, forwarded_for: str, trusted: str | list[str]) -> s
         try:
             address = ipaddress.ip_address(hop)
         except ValueError:
-            return _counted(current)
+            return "hop:" + "".join(char for char in hop if char.isprintable())[:64]
         if not any(address in network for network in networks):
             return _counted(address)
         current = address

@@ -67,6 +67,7 @@
     "factorRequiredSwitch": "Exiger un second facteur de tous",
     "factorReset": "Réinitialiser le second facteur",
     "factorResetHint": "Retire l'application d'authentification, les codes de récupération et les clés d'accès de ce compte et le déconnecte partout.",
+    "factorResetDevices": "Dissocier aussi les appareils associés (sinon un téléphone perdu reste connecté)",
     "passkeys": "Clés d'accès",
     "passkeysHint": "Connectez-vous avec votre empreinte, votre visage ou le code de l'appareil, sans mot de passe.",
     "passkeyAdd": "Ajouter une clé d'accès",

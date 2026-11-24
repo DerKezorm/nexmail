@@ -26,6 +26,30 @@ _PART = r"[^@\s<>,;\x00-\x1f\x7f-\x9f\"]+"
 _ADDRESS = re.compile(rf"{_PART}@{_PART}\.{_PART}")
 #: Kinds that carry a link (a button in HTML, a line of its own in text).
 WITH_LINK = ("invite", "reset", "confirm_email")
+#: What a browser's User-Agent may name in a mail, the first that fits (order matters: Edge and Opera say Chrome too,
+#: Chrome says Safari). Nothing else of the header ever reaches a mail.
+BROWSERS = (
+    ("Edg/", "Edge"),
+    ("EdgiOS/", "Edge"),
+    ("OPR/", "Opera"),
+    ("SamsungBrowser/", "Samsung Internet"),
+    ("Vivaldi/", "Vivaldi"),
+    ("Firefox/", "Firefox"),
+    ("FxiOS/", "Firefox"),
+    ("CriOS/", "Chrome"),
+    ("Chrome/", "Chrome"),
+    ("Safari/", "Safari"),
+)
+SYSTEMS = (
+    ("iPhone", "iPhone"),
+    ("iPad", "iPad"),
+    ("Android", "Android"),
+    ("CrOS", "ChromeOS"),
+    ("Windows", "Windows"),
+    ("Macintosh", "macOS"),
+    ("Mac OS X", "macOS"),
+    ("Linux", "Linux"),
+)
 
 
 def one_line(value: object, limit: int = 200) -> str:
@@ -103,6 +127,18 @@ def _html(language: str, heading: str, paragraphs: list[str], link: str, action:
     )
 
 
+def describe_browser(agent: str, language: str) -> str:
+    """"Firefox on Linux" from a raw User-Agent: only the names above, never a word of the header itself (a header
+    is anybody's text: "please confirm at https://..." must not reach a mail)."""
+    text = (agent or "")[:512]
+    browser = next((name for mark, name in BROWSERS if mark in text), "")
+    system = next((name for mark, name in SYSTEMS if mark in text), "")
+    language = language if language in LANGUAGES else "en"
+    if not browser or not system:
+        return browser or system or _text(language, "browser_unknown")
+    return _fill(_text(language, "browser_on"), {"browser": browser, "system": system})
+
+
 def compose(kind: str, to: str, *, language: str, values: dict[str, object], link: str = "") -> Letter:
     """A letter of one of the module's kinds (``invite``, ``reset``, ``confirm_email``, ``email_changed``,
     ``email_removed``, ``username_changed``, ``factor_reset``, ``new_sign_in``, ``test``). ``values`` fills the
@@ -130,7 +166,8 @@ def from_account_mail(
 ) -> Letter:
     """A letter for a ``Mail`` of nexkonten (read by its fields, the modules import nothing from each other):
     ``kind``, ``to``, ``username``, ``display_name``, ``hours``, ``new_hint``. ``link`` the app built from the token;
-    ``days`` for an invitation; ``where`` the browser of a new sign-in."""
+    ``days`` for an invitation; ``where`` the raw User-Agent of a new sign-in (the module names the browser and the
+    system from it, nothing else)."""
     kind = str(getattr(mail, "kind", ""))
     if kind == "email_changed" and not getattr(mail, "new_hint", ""):
         kind = "email_removed"
@@ -140,7 +177,7 @@ def from_account_mail(
         "username": getattr(mail, "username", ""),
         "hint": getattr(mail, "new_hint", ""),
         "by": by,
-        "where": where,
+        "where": describe_browser(where, language) if kind == "new_sign_in" else "",
         "valid": validity(language if language in LANGUAGES else "en", hours=hours, days=days) if hours or days else "",
     }
     return compose(kind, str(getattr(mail, "to", "")), language=language, values=values, link=link)

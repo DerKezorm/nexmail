@@ -67,6 +67,7 @@
     "factorRequiredSwitch": "Require a second factor of everybody",
     "factorReset": "Reset the second factor",
     "factorResetHint": "Removes this account's authenticator app, recovery codes and passkeys and signs it out everywhere.",
+    "factorResetDevices": "Disconnect the paired devices too (a lost phone stays signed in otherwise)",
     "passkeys": "Passkeys",
     "passkeysHint": "Sign in with your fingerprint, face or the device's PIN, without a password.",
     "passkeyAdd": "Add a passkey",

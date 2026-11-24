@@ -33,8 +33,23 @@ def doppelte_namen(engine: Engine) -> list[str]:
         ]
 
 
+def halbe_sitzungen_verwerfen(engine: Engine) -> int:
+    """⚠️ **Halbe Sitzungen gelten nie als volle** (konten 0.3.1). Eine Anmeldung, bei der das Passwort stimmte und der
+    Code noch fehlt (``bestaetigt = 0``), bekam mit der neuen Spalte ``stufe`` die Vorgabe ``full``. nexmail selbst
+    liest sie zwar nur ueber ``bestaetigt``, aber eine Zeile, die nach „voll“ aussieht, ist eine Falle fuer jeden
+    spaeteren Leser. Sie lebt ohnehin nur Minuten: Beim Start fallen alle weg, wer mitten im zweiten Schritt war,
+    tippt das Passwort noch einmal."""
+    with engine.begin() as verbindung:
+        weg = verbindung.execute(text("DELETE FROM sitzung WHERE bestaetigt = 0")).rowcount or 0
+    if weg:
+        logger.info("%s unfinished sign-in(s) were discarded at start.", weg)
+    return int(weg)
+
+
 def laufen(engine: Engine) -> list[str]:
-    """Legt den Index an, wenn es keine Doppel gibt; gibt die Doppel zurueck (leer: alles da)."""
+    """Legt den Index an, wenn es keine Doppel gibt; gibt die Doppel zurueck (leer: alles da). Verwirft vorher die
+    halben Sitzungen (``halbe_sitzungen_verwerfen``)."""
+    halbe_sitzungen_verwerfen(engine)
     with engine.connect() as verbindung:
         da = verbindung.execute(
             text("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = :n"), {"n": INDEX}

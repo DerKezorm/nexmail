@@ -35,6 +35,7 @@ def test_a_picture_is_kept_as_a_square_webp_and_every_signed_in_account_sees_it(
         assert (picture.format, picture.size) == ("WEBP", (256, 256))
     assert delivered.data == data and not delivered.not_modified
     assert delivered.headers["Content-Type"] == "image/webp" and "immutable" in delivered.headers["Cache-Control"]
+    assert delivered.headers["X-Content-Type-Options"] == "nosniff"
     assert again.not_modified and again.data == b""
 
 

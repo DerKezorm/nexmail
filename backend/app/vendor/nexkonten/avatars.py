@@ -158,7 +158,12 @@ def deliver(store: PictureStore, viewer: Account | None, owner: Account | None, 
     tag = etag(data)
     # A picture of an older version may be a PNG or JPEG: it keeps its own type until the person sets a new one.
     kind = kind_of(data[:64]) or "webp"
-    headers = {"Content-Type": f"image/{kind}", "Cache-Control": "private, max-age=31536000, immutable", "ETag": tag}
+    headers = {
+        "Content-Type": f"image/{kind}",
+        "Cache-Control": "private, max-age=31536000, immutable",
+        "ETag": tag,
+        "X-Content-Type-Options": "nosniff",
+    }
     if if_none_match and tag in [part.strip() for part in if_none_match.split(",")]:
         return Delivery(b"", headers, not_modified=True)
     return Delivery(data, headers)

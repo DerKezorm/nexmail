@@ -1,5 +1,6 @@
-"""Passkeys through the app's store: added and signing in without a password, each answer counting once, the count
-only moving forward, the operator's switch, a blocked account, and the last factor where one is required."""
+"""Passkeys through the app's store: added (confirmed with the password, begun and finished in two requests) and
+signing in without a password, each answer counting once, the count only moving forward, the operator's switch, a
+blocked account, and the last factor where one is required."""
 
 from __future__ import annotations
 
@@ -12,6 +13,8 @@ from konten_contract import password
 from webauthn_device import Device
 
 PUBLIC_URL = "https://app.example.com"
+#: The password of the accounts here, made at run time.
+SECRET = password()
 
 
 def _where(konten: Any) -> Any:
@@ -19,10 +22,12 @@ def _where(konten: Any) -> Any:
 
 
 def _register(app: Any, konten: Any, account_id: Any, name: str = "Phone") -> tuple[Device, Any]:
+    """As a browser does it: the options in one request, the answer in the next."""
     where = _where(konten)
     device = Device(where.origin, where.rp_id)
     with app.store() as store:
-        token, options = konten.passkeys.begin_register(store, account_id, where, app_name="nexapp")
+        token, options = konten.passkeys.begin_register(store, account_id, where, app_name="nexapp", password=SECRET)
+    with app.store() as store:
         key = konten.passkeys.finish_register(store, account_id, token, device.create(options), where, name=name)
     return device, key
 
@@ -43,11 +48,44 @@ def _refused(konten: Any, call: Any, code: str) -> None:
 def test_the_party_is_the_public_address_of_the_app(konten: Any) -> None:
     where = konten.passkeys.party("https://Notes.Example.com:8443/app")
     assert (where.rp_id, where.origin) == ("notes.example.com", "https://notes.example.com:8443")
+    local = konten.passkeys.party("http://localhost:5173")
+    assert (local.rp_id, local.origin) == ("localhost", "http://localhost:5173")
     _refused(konten, lambda: konten.passkeys.party("notes.example.com"), "passkeys_off")
+    _refused(konten, lambda: konten.passkeys.party("http://notes.example.com"), "passkeys_off")
+
+
+def test_adding_a_passkey_is_confirmed_with_the_password(app: Any, konten: Any) -> None:
+    alex = app.seed("alex", password=SECRET)
+    where = _where(konten)
+    with app.store() as store:
+        for given in ("", password()):
+            _refused(
+                konten,
+                lambda: konten.passkeys.begin_register(store, alex, where, app_name="x", password=given),  # noqa: B023
+                "wrong_password",
+            )
+        token, _ = konten.passkeys.begin_register(store, alex, where, app_name="x", actor_confirmed=True)
+    assert token
+    provider_only = app.seed("viaprovider")
+    with app.store() as store:
+        _refused(
+            konten,
+            lambda: konten.passkeys.begin_register(store, provider_only, where, app_name="x"),
+            "fresh_sign_in_needed",
+        )
+
+
+def test_the_user_handle_stays_from_the_first_request_to_the_sign_in(app: Any, konten: Any) -> None:
+    """Begun in one request and finished in another: the handle the browser keeps is the one the store keeps."""
+    alex = app.seed("alex", password=SECRET)
+    device, _ = _register(app, konten, alex)
+    with app.store() as store:
+        assert store.user_handle(alex) == device.user_handle
+    assert _sign_in(app, konten, device).id == alex
 
 
 def test_a_passkey_is_added_and_signs_in_without_a_password(app: Any, konten: Any) -> None:
-    alex = app.seed("alex", password=password())
+    alex = app.seed("alex", password=SECRET)
     device, key = _register(app, konten, alex, name="  Phone\nof Alex  ")
     assert key.name == "Phone of Alex" and key.sign_count == 0
     with app.store() as store:
@@ -66,17 +104,17 @@ def test_a_passkey_is_added_and_signs_in_without_a_password(app: Any, konten: An
 
 
 def test_the_same_passkey_is_not_added_twice_and_handles_differ_per_account(app: Any, konten: Any) -> None:
-    alex = app.seed("alex", password=password())
-    kim = app.seed("kim", password=password())
+    alex = app.seed("alex", password=SECRET)
+    kim = app.seed("kim", password=SECRET)
     device, _ = _register(app, konten, alex)
     where = _where(konten)
     with app.store() as store:
-        token, options = konten.passkeys.begin_register(store, alex, where, app_name="nexapp")
+        token, options = konten.passkeys.begin_register(store, alex, where, app_name="nexapp", password=SECRET)
         assert device.credential_id != b"" and konten.passkeys.options_json(options)["excludeCredentials"]
         answer = device.create(options)
         _refused(konten, lambda: konten.passkeys.finish_register(store, alex, token, answer, where), "passkey_exists")
         assert store.user_handle(alex) != store.user_handle(kim)
-        token, options = konten.passkeys.begin_register(store, alex, where, app_name="nexapp")
+        token, options = konten.passkeys.begin_register(store, alex, where, app_name="nexapp", password=SECRET)
         _refused(
             konten,
             lambda: konten.passkeys.finish_register(
@@ -87,7 +125,7 @@ def test_the_same_passkey_is_not_added_twice_and_handles_differ_per_account(app:
 
 
 def test_an_answer_counts_once_and_a_count_that_does_not_move_is_refused(app: Any, konten: Any) -> None:
-    alex = app.seed("alex", password=password())
+    alex = app.seed("alex", password=SECRET)
     device, _ = _register(app, konten, alex)
     where = _where(konten)
     with app.store() as store:
@@ -105,8 +143,8 @@ def test_an_answer_counts_once_and_a_count_that_does_not_move_is_refused(app: An
 
 
 def test_a_wrong_origin_an_unknown_passkey_or_another_accounts_handle_is_refused(app: Any, konten: Any) -> None:
-    alex = app.seed("alex", password=password())
-    kim = app.seed("kim", password=password())
+    alex = app.seed("alex", password=SECRET)
+    kim = app.seed("kim", password=SECRET)
     device, _ = _register(app, konten, alex)
     _register(app, konten, kim)
     _refused(konten, lambda: _sign_in(app, konten, device, origin="https://app.example.org"), "passkey_invalid")
@@ -119,7 +157,7 @@ def test_a_wrong_origin_an_unknown_passkey_or_another_accounts_handle_is_refused
 
 
 def test_the_operator_turns_passkeys_off_and_none_signs_in_but_none_is_deleted(app: Any, konten: Any) -> None:
-    alex = app.seed("alex", password=password())
+    alex = app.seed("alex", password=SECRET)
     device, _ = _register(app, konten, alex)
     with app.store() as store:
         assert store.passkeys_allowed() is True
@@ -127,14 +165,18 @@ def test_the_operator_turns_passkeys_off_and_none_signs_in_but_none_is_deleted(a
     where = _where(konten)
     with app.store() as store:
         _refused(konten, lambda: konten.passkeys.begin_sign_in(store, where), "passkeys_off")
-        _refused(konten, lambda: konten.passkeys.begin_register(store, alex, where, app_name="x"), "passkeys_off")
+        _refused(
+            konten,
+            lambda: konten.passkeys.begin_register(store, alex, where, app_name="x", password=SECRET),
+            "passkeys_off",
+        )
         assert len(store.passkeys_of(alex)) == 1
     app.switch("passkeys_allowed", True)
     assert _sign_in(app, konten, device).id == alex
 
 
 def test_a_blocked_account_hears_so_only_after_a_valid_answer(app: Any, konten: Any) -> None:
-    gone = app.seed("gone", password=password(), blocked=True)
+    gone = app.seed("gone", password=SECRET, blocked=True)
     where = _where(konten)
     device = Device(where.origin, where.rp_id)
     with app.store() as store:
@@ -156,7 +198,7 @@ def test_a_blocked_account_hears_so_only_after_a_valid_answer(app: Any, konten: 
 
 
 def test_the_last_factor_stays_where_the_operator_requires_one(app: Any, konten: Any) -> None:
-    secret = password()
+    secret = SECRET
     alex = app.seed("alex", password=secret)
     _, first = _register(app, konten, alex)
     app.switch("factor_required", True)
@@ -172,7 +214,7 @@ def test_the_last_factor_stays_where_the_operator_requires_one(app: Any, konten:
 
 def test_the_operators_reset_takes_the_passkeys_too(app: Any, konten: Any, operator: tuple[Any, str]) -> None:
     boss, boss_secret = operator
-    alex = app.seed("alex", password=password())
+    alex = app.seed("alex", password=SECRET)
     device, _ = _register(app, konten, alex)
     with app.store() as store:
         assert konten.factor.operator_reset(store, alex, actor_id=boss, password=boss_secret) is None

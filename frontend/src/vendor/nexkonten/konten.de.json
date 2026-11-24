@@ -67,6 +67,7 @@
     "factorRequiredSwitch": "Zweiten Faktor für alle verlangen",
     "factorReset": "Zweiten Faktor zurücksetzen",
     "factorResetHint": "Entfernt Authenticator-App, Wiederherstellungscodes und Passkeys dieses Kontos und meldet es überall ab.",
+    "factorResetDevices": "Gekoppelte Geräte auch trennen (ein verlorenes Handy ist sonst noch angemeldet)",
     "passkeys": "Passkeys",
     "passkeysHint": "Anmelden mit Fingerabdruck, Gesicht oder der PIN des Geräts, ohne Passwort.",
     "passkeyAdd": "Passkey hinzufügen",

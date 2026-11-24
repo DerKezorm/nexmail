@@ -43,5 +43,7 @@
   "test": {
     "subject": "Test mail from {{app}}",
     "body": "If you read this, {{app}} can send mail."
-  }
+  },
+  "browser_on": "{{browser}} on {{system}}",
+  "browser_unknown": "an unknown browser"
 }

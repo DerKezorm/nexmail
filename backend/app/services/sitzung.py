@@ -322,12 +322,9 @@ def angemeldet(db: Session, benutzer: Benutzer, request: Request, response: Resp
     db.commit()
     if bescheid is None or not kontenpost.mail_moeglich(db):
         return
-    wo = " · ".join(
-        teil
-        for teil in (_geraet(request)[:120], anmeldebremse.adresse_von(request), utcnow().strftime("%Y-%m-%d %H:%M UTC"))
-        if teil
-    )
+    # post 0.1.1: der rohe User-Agent; das Mailmodul macht daraus „Firefox auf Linux“ und laesst kein Wort der
+    # Kopfzeile selbst in die Mail (eine Kopfzeile ist fremder Text).
     try:
-        kontenpost.senden(db, bescheid, where=wo)
+        kontenpost.senden(db, bescheid, where=_geraet(request))
     except Exception as fehler:  # noqa: BLE001 - die Anmeldung gilt, auch wenn der Bescheid nicht hinausgeht
         logger.warning("The new sign-in mail could not be queued: %r", getattr(fehler, "kennung", fehler))

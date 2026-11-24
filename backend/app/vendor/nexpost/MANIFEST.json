@@ -1,21 +1,21 @@
 {
   "files": {
-    "backend/app/vendor/nexpost/__init__.py": "sha256-lS9vBncU/uBggrE3LPTxgU7CiDh2+ysGgZjGEi8muvY=",
+    "backend/app/vendor/nexpost/__init__.py": "sha256-dLUzMm0Lln5tzSyEL8igQcFjrva7v9YBrUerCydaEHM=",
     "backend/app/vendor/nexpost/common.py": "sha256-jzdIvoos7ytL25avFuKepuKBeQ1ANcm1LCgN5zsWKS8=",
     "backend/app/vendor/nexpost/config.py": "sha256-oSTOKnQecdDXUV3IUMz9xpNIJ85eCIUkumBE85hBU1g=",
-    "backend/app/vendor/nexpost/errors.py": "sha256-OnqwKbzdJQ+TmYg6ZwOBKLbsb3Ud2stSCSIhQOazaFc=",
-    "backend/app/vendor/nexpost/letters.py": "sha256-JMssyd5yFb6GoUtO3Gs/eviPGH/XX5IBQcikDSzlsJg=",
+    "backend/app/vendor/nexpost/errors.py": "sha256-At29rWVLLHyPYPtb2dPOKKr2RliqSTu++vZLC8n35jY=",
+    "backend/app/vendor/nexpost/letters.py": "sha256-4c2A+UoStxcWHjcBMtXVeWPmpHk1SDNbUBgLUYiXgGo=",
     "backend/app/vendor/nexpost/model.py": "sha256-I9S5xu6sINxjPdZYNb3+hcCM48yu+N57ZuVWYLYW9U8=",
-    "backend/app/vendor/nexpost/outbox.py": "sha256-FpFdtJ8jkxiHk/J5VawLQsCTvmG9u4cPWoAKBsH5rSk=",
-    "backend/app/vendor/nexpost/send.py": "sha256-iLBSvIrvNwpjCkOLFBDB1hSZKkrJZ8jGgca5j39px6Q=",
+    "backend/app/vendor/nexpost/outbox.py": "sha256-FZyH8iPyeqzlqxZiLcQgf2xpqiwchxhEzenI3Vbuht0=",
+    "backend/app/vendor/nexpost/send.py": "sha256-hOfNcEZ35jzWt+3JAckVN1ef1BhiZ/jP+zjhx57wZAI=",
     "backend/app/vendor/nexpost/settings.py": "sha256-4hbN6wgyWHrOPBJ0Zh/bBxoUPLNBwzRO74UG6i/pX8k=",
-    "backend/app/vendor/nexpost/texts/mail.de.json": "sha256-HF1rDurjmIE+lSS5hxs1yCnXypiyoMan3s0EMH1wq/s=",
-    "backend/app/vendor/nexpost/texts/mail.en.json": "sha256-WKsfhv37iNw5uZmcHlgTtKAYoOisftgLiCsHVcu21C4=",
-    "backend/app/vendor/nexpost/texts/mail.fr.json": "sha256-hPIg8gE1exlEdzoLI8cbeQmRTJ7vMGgJKO01Ks0tuFU=",
+    "backend/app/vendor/nexpost/texts/mail.de.json": "sha256-i8+QUAjfFVGhI0ipCSMdlMQCUQ+ncvI6Zatrxu5Y+Fw=",
+    "backend/app/vendor/nexpost/texts/mail.en.json": "sha256-Tg+RaozDty/lJnYfS3hhj55szlRccOZ9mH5S4NoSM50=",
+    "backend/app/vendor/nexpost/texts/mail.fr.json": "sha256-PA1IBnIjHUZw8LhlwZ7PlwWEQJohqdq3FbY/sDnfSuc=",
     "backend/tests/nexpost/conftest.py": "sha256-lQApaasIy+B3m8CpcG27Z6gNk8suOoYYBq16rp/01Y8=",
     "backend/tests/nexpost/post_contract.py": "sha256-11cVxqtag46ZVsoH6cXhUmtOH9MGz2NgMMj/cv7Q7qI=",
     "backend/tests/nexpost/test_nexpost_existing.py": "sha256-0t7rpb5OhAYMQU5n1Zvkj9D00EIawY5x3axI9ap7EQY=",
-    "backend/tests/nexpost/test_nexpost_outbox.py": "sha256-ZuDLoHi15N9tLOpgV0x9MffZvGnFQJX1M3CdvT98NVk=",
+    "backend/tests/nexpost/test_nexpost_outbox.py": "sha256-butLQ8E8coyy9t0D0KeNIA/KjGa8SPf9Y2WfVB/GDbM=",
     "backend/tests/nexpost/test_nexpost_settings.py": "sha256-AkTTf0y8b9o7Ri04szIiHG3IBJ5b9+0pdEa++O09id4=",
     "backend/tests/nexpost/test_nexpost_vendored.py": "sha256-j885s5jarT/l1ceSKgQYGzKVVjNbBCIZ3mXXyPW20J4=",
     "frontend/src/vendor/nexpost/post.de.json": "sha256-2JO8nLBRc+VC+ADsdyPSQ3F/Y/v5U1z6DhwtQrIKu0c=",
@@ -26,5 +26,5 @@
   "module": "post",
   "requires": {},
   "vendor_path": "backend/app/vendor/nexpost",
-  "version": "0.1.0"
+  "version": "0.1.1"
 }

@@ -130,10 +130,19 @@ class Adapter(StandardAdapter):
 
     def open_session(self, account_id: Any, kind: str = "browser") -> Any:
         """``browser`` a signed-in browser, ``waiting`` a browser waiting for the code of its second factor (also
-        ``art = browser``, not confirmed), ``device`` the paired iPhone app. nexmail keeps no mark of a known
-        browser: it has no lock at the account that such a mark would get past."""
+        ``art = browser``, not confirmed), ``device`` the paired iPhone app, ``known_browser`` the mark in the cookie
+        ``nexmail_bekannt`` (``services/sitzung.bekannt_merken``): a tuple of account and cookie, no row."""
         if kind == "known_browser":
-            pytest.skip("nexmail does not keep the mark of a known browser yet (konten 0.3.0 part 2, to wire in)")
+            from app.db import SessionLocal
+            from app.services import konten_store
+            from app.services import sitzung as sitzungsdienst
+            from app.vendor.nexkonten import sessions
+
+            with SessionLocal() as db:
+                store = konten_store.store_fuer(db)
+                marke = sessions.mark(sitzungsdienst._markengeheimnis(), store.device_key(account_id))
+                db.commit()
+            return ("bekannt", str(account_id), sessions.add_mark("", marke))
         if kind == "program":
             return None
         from app.db import SessionLocal
@@ -169,6 +178,17 @@ class Adapter(StandardAdapter):
             return False
         from app.db import SessionLocal
         from app.models import Sitzung
+
+        if isinstance(handle, tuple):
+            from app.models import Benutzer
+            from app.services import sitzung as sitzungsdienst
+            from app.vendor.nexkonten import sessions
+
+            _, konto, cookie = handle
+            with SessionLocal() as db:
+                zeile = db.get(Benutzer, konto)
+                schluessel = zeile.geraete_schluessel if zeile is not None else ""
+            return bool(schluessel) and sessions.is_known(cookie, sitzungsdienst._markengeheimnis(), schluessel)
 
         with SessionLocal() as db:
             return db.get(Sitzung, handle) is not None

@@ -205,3 +205,48 @@ def test_the_authenticator_apps_and_codes_of_the_older_version_keep_working(app:
                 assert konten.factor.check_code(store, account.id, code) == "recovery"
             with app.store() as store:
                 _refused(konten, lambda: konten.factor.check_code(store, account.id, code), "code_wrong")  # noqa: B023
+
+
+def test_the_operators_reset_disconnects_paired_devices_unless_asked_not_to(
+    app: Any, konten: Any, operator: tuple[Any, str]
+) -> None:
+    boss, boss_secret = operator
+    alex = app.seed("alex", password=password())
+    kim = app.seed("kim", password=password())
+    for target, disconnect in ((alex, True), (kim, False)):
+        device = app.open_session(target, "device")
+        with app.store() as store:
+            phone = konten.sessions.start(store, target, cookie_name="s", secure=True, kind=konten.model2.KIND_DEVICE)
+            store.commit()
+        with app.store() as store:
+            konten.factor.operator_reset(
+                store, target, actor_id=boss, password=boss_secret, disconnect_devices=disconnect
+            )
+        with app.store() as store:
+            alive = konten.sessions.current(store, phone.token) is not None
+        assert alive is (not disconnect) and app.session_alive(device) is (not disconnect)
+
+
+def test_a_new_password_ends_the_waiting_sign_ins(app: Any, konten: Any) -> None:
+    alex = app.seed("alex", email="alex@example.com", password=password())
+    waiting = konten.factor.start_waiting(alex)
+    with app.store() as store:
+        token = konten.resets.forgot(store, "alex").token
+        konten.resets.use_reset(store, token, password())
+    assert konten.factor.waiting_account(waiting) is None
+
+
+def test_an_account_without_a_password_replaces_its_authenticator_only_after_a_fresh_sign_in(
+    app: Any, konten: Any
+) -> None:
+    viaprovider = app.seed("viaprovider")
+    with app.store() as store:
+        store.set_totp(viaprovider, konten.factor.new_seed())
+        store.commit()
+    with app.store() as store:
+        enrolment = konten.factor.begin_totp(store, viaprovider, issuer=ISSUER)
+        code = konten.factor.code_at(enrolment.seed, time.time())
+        _refused(konten, lambda: konten.factor.confirm_totp(store, viaprovider, code), "fresh_sign_in_needed")
+        konten.factor.confirm_totp(store, viaprovider, code, actor_confirmed=True)
+    with app.store() as store:
+        assert store.totp_seed(viaprovider) == enrolment.seed

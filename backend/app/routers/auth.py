@@ -130,6 +130,13 @@ def bremsschluessel(store, eingetippt: str, request: Request) -> str:
     return konto_oder_eingabe
 
 
+def _markenhash(request: Request) -> str:
+    """Kurz und ohne Inhalt: der Topf eines bekannten Browsers an der Bremse."""
+    import hashlib
+
+    return hashlib.sha256(request.cookies.get(sitzungsdienst.BEKANNT_COOKIE, "").encode("utf-8")).hexdigest()[:16]
+
+
 def _konto_schluessel(person: Benutzer) -> str:
     """Der Bremsschluessel eines angemeldeten Kontos, derselbe wie beim Anmelden."""
     return f"account:{person.id}"
@@ -148,19 +155,25 @@ def anmelden(
     Passwort, eine Adresse, die zwei Konten haben, ein Konto nur ueber Anbieter.
     """
     store = kontenstore.store_fuer(db)
-    wache = anmeldebremse.torwaechter(request, "anmelden", bremsschluessel(store, eingabe.benutzername, request))
+    gemeint = nexkonten.login.resolve_login(store, eingabe.benutzername)
+    # Ein Browser, den das Konto kennt, ist von der Kontosperre ausgenommen (Teil 2): Wer die Sperre ausloest,
+    # sperrt so nicht den Besitzer an seinem eigenen Rechner aus. Dasselbe an der Bremse (konten 0.3.1: „bekannter
+    # Browser zaehlt nur am Absender“): Er zaehlt in einem Topf fuer sich statt im Topf des Kontos.
+    vertraut = gemeint.id if gemeint is not None and sitzungsdienst.bekannt(request, store, gemeint.id) else None
+    topf = (
+        f"known:{gemeint.id}:{_markenhash(request)}"
+        if vertraut is not None
+        else bremsschluessel(store, eingabe.benutzername, request)
+    )
+    wache = anmeldebremse.torwaechter(request, "anmelden", topf)
 
     # ⚠️ **„Anmeldung mit Passwort" aus** (Verwaltung → Anmeldung): Nur die Anbieter lassen herein. Der Betreiber
     # kommt immer mit seinem Passwort hinein, sonst stuende er vor der Tuer, sobald der Anbieter ausfaellt. Die
     # Antwort ist dieselbe wie bei einem falschen Passwort und dauert genauso lange.
-    gemeint = nexkonten.login.resolve_login(store, eingabe.benutzername)
     if gemeint is not None and not gemeint.operator and not passwort_anmeldung_an(db):
         store.check_password(None, eingabe.passwort)
         wache.fehlgeschlagen()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="anmeldung_falsch")
-    # Ein Browser, den das Konto kennt, ist von der Kontosperre ausgenommen (Teil 2): Wer die Sperre ausloest,
-    # sperrt so nicht den Besitzer an seinem eigenen Rechner aus.
-    vertraut = gemeint.id if gemeint is not None and sitzungsdienst.bekannt(request, store, gemeint.id) else None
     try:
         konto = nexkonten.login.authenticate(store, eingabe.benutzername, eingabe.passwort, known_browser=vertraut)
     except nexkonten.AccountError as fehler:

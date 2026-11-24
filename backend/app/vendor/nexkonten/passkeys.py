@@ -2,8 +2,13 @@
 
 Built on ``webauthn`` (3.0.1) as nexpaper and nexdiary do: a key that lives on the device (discoverable), user
 verification required, signing in without a username (the browser offers whichever passkey of this site it holds).
-The relying party is the public address of the app: its host is the ``rp_id``, its origin the one the browser must
-report. Challenges live five minutes in memory and count once. The sign count only moves forward (``claim_counter``).
+The relying party is the public address of the app: its host is the ``rp_id``, its origin (with its port) the one the
+browser must report; https, or http on ``localhost`` only (browsers offer passkeys nowhere else). Challenges live five
+minutes in memory and count once. The sign count only moves forward (``claim_counter``).
+
+The challenges never lock anybody out: a sign-in (nobody signed in yet) holds at most 20 open ones per sender, the
+sender's oldest goes for a new one, and when the memory is full the oldest of all go; adding a passkey keeps three per
+account apart from them. Adding a passkey is confirmed with the password (or a fresh sign-in, ``actor_confirmed``).
 
 The operator turns passkeys on or off for the server (``PasskeyStore.passkeys_allowed``, on by default); off, no new
 passkey is added and none signs in, but none is deleted.
@@ -17,6 +22,7 @@ import json
 import secrets
 import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urlsplit
@@ -35,7 +41,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
-from . import common
+from . import common, factor
 from .common import log
 from .errors import AccountError
 from .model import Account, AccountId, Store
@@ -44,8 +50,13 @@ from .model2 import FactorStore, Passkey, PasskeyStore
 CHALLENGE_SECONDS = 300
 MAX_PASSKEYS = 10
 NAME_MAX = 60
-#: Open sign-in challenges at most (a sender cannot fill the memory).
+#: Open sign-in challenges at most; past that the oldest go.
 MAX_OPEN = 5000
+#: Open sign-in challenges per sender; past that the sender's oldest goes.
+PER_SENDER = 20
+#: Open challenges for adding a passkey, per account.
+PER_ACCOUNT = 3
+LOCALHOST = "localhost"
 
 
 class AppStore(Store, FactorStore, PasskeyStore, Protocol):
@@ -66,29 +77,51 @@ def party(public_url: str) -> Party:
     host = (parts.hostname or "").lower()
     if not host or parts.scheme not in ("http", "https"):
         raise AccountError("passkeys_off", "Passkeys need the public address of the app.", 409)
+    if parts.scheme != "https" and host != LOCALHOST:
+        raise AccountError("passkeys_off", "Passkeys need the app on https (or localhost).", 409)
     return Party(host, f"{parts.scheme}://{parts.netloc.lower()}")
 
 
-_challenges: dict[str, tuple[bytes, AccountId | None, float]] = {}
+@dataclass
+class _Held:
+    challenge: bytes
+    owner: str
+    until: float
+
+
 _lock = threading.Lock()
+#: Sign-ins by token, oldest first; ``owner`` is the sender.
+_sign_ins: OrderedDict[str, _Held] = OrderedDict()
+#: Additions by token, oldest first; ``owner`` is the account.
+_adds: OrderedDict[str, _Held] = OrderedDict()
 
 
-def _keep(key: str, challenge: bytes, account_id: AccountId | None) -> None:
+def _drop_expired(table: OrderedDict[str, _Held], now: float) -> None:
+    while table:
+        key, held = next(iter(table.items()))
+        if held.until >= now:
+            return
+        table.pop(key, None)
+
+
+def _keep(table: OrderedDict[str, _Held], key: str, held: _Held, per_owner: int) -> None:
     now = time.monotonic()
     with _lock:
-        for old in [old for old, held in _challenges.items() if held[2] < now]:
-            _challenges.pop(old, None)
-        if len(_challenges) >= MAX_OPEN:
-            raise AccountError("too_many_attempts", "Too many open sign-ins. Try again in a moment.", 429)
-        _challenges[key] = (challenge, account_id, now + CHALLENGE_SECONDS)
+        _drop_expired(table, now)
+        mine = [old for old, entry in table.items() if entry.owner == held.owner]
+        for old in mine[: max(0, len(mine) - per_owner + 1)]:
+            table.pop(old, None)
+        while len(table) >= MAX_OPEN:
+            table.popitem(last=False)
+        table[key] = held
 
 
-def _take(key: str) -> tuple[bytes, AccountId | None] | None:
+def _take(table: OrderedDict[str, _Held], key: str) -> _Held | None:
     with _lock:
-        held = _challenges.pop(key, None)
-    if held is None or held[2] < time.monotonic():
+        held = table.pop(key, None)
+    if held is None or held.until < time.monotonic():
         return None
-    return held[0], held[1]
+    return held
 
 
 def _allowed(store: AppStore) -> None:
@@ -102,20 +135,38 @@ def clean_name(name: str) -> str:
     return text[:NAME_MAX] or "Passkey"
 
 
-def begin_register(store: AppStore, account_id: AccountId, where: Party, *, app_name: str) -> tuple[str, str]:
-    """A new passkey for the signed-in account: the token for the browser's cookie and the options (JSON)."""
+def _too_many() -> AccountError:
+    return AccountError("too_many_passkeys", f"At most {MAX_PASSKEYS} passkeys per account.", 409)
+
+
+def begin_register(
+    store: AppStore,
+    account_id: AccountId,
+    where: Party,
+    *,
+    app_name: str,
+    password: str = "",
+    actor_confirmed: bool = False,
+) -> tuple[str, str]:
+    """A new passkey for the signed-in account, confirmed with its password (or a fresh sign-in at the provider for an
+    account without one, or by the app: ``actor_confirmed``, as in a session that can only set up a factor): the token
+    for the browser's cookie and the options (JSON). The account's user handle is stored here and committed, so that
+    ``finish_register`` in another request finds the same."""
     _allowed(store)
     account = common.account_or_404(store, account_id)
+    factor.confirmed(store, account, password, actor_confirmed, without_password=True)
     keys = store.passkeys_of(account.id)
     if len(keys) >= MAX_PASSKEYS:
-        raise AccountError("too_many_passkeys", f"At most {MAX_PASSKEYS} passkeys per account.", 409)
+        raise _too_many()
+    handle = store.user_handle(account.id)
+    store.commit()
     token = secrets.token_urlsafe(32)
     challenge = secrets.token_bytes(32)
-    _keep("add:" + token, challenge, account.id)
+    _keep(_adds, token, _Held(challenge, str(account.id), time.monotonic() + CHALLENGE_SECONDS), PER_ACCOUNT)
     options = generate_registration_options(
         rp_id=where.rp_id,
         rp_name=app_name,
-        user_id=store.user_handle(account.id),
+        user_id=handle,
         user_name=account.username,
         user_display_name=account.display_name or account.username,
         challenge=challenge,
@@ -134,14 +185,16 @@ def finish_register(
 ) -> Passkey:
     """The browser's answer to ``begin_register``: the new passkey, stored."""
     _allowed(store)
-    held = _take("add:" + (token or ""))
-    if held is None or held[1] != account_id:
+    held = _take(_adds, token or "")
+    if held is None or held.owner != str(account_id):
         raise AccountError("passkey_expired", "That took too long. Start again.", 410)
     account = common.account_or_404(store, account_id)
+    if len(store.passkeys_of(account.id)) >= MAX_PASSKEYS:
+        raise _too_many()
     try:
         verified = verify_registration_response(
             credential=credential,
-            expected_challenge=held[0],
+            expected_challenge=held.challenge,
             expected_rp_id=where.rp_id,
             expected_origin=where.origin,
             require_user_verification=True,
@@ -166,12 +219,13 @@ def finish_register(
     return passkey
 
 
-def begin_sign_in(store: AppStore, where: Party) -> tuple[str, str]:
-    """A sign-in with a passkey and nothing else: the token for the browser's cookie and the options (JSON)."""
+def begin_sign_in(store: AppStore, where: Party, *, sender: str = "") -> tuple[str, str]:
+    """A sign-in with a passkey and nothing else: the token for the browser's cookie and the options (JSON).
+    ``sender`` is the address as the brake counts it (``brake.client_address``): at most 20 open sign-ins per sender."""
     _allowed(store)
     token = secrets.token_urlsafe(32)
     challenge = secrets.token_bytes(32)
-    _keep("in:" + token, challenge, None)
+    _keep(_sign_ins, token, _Held(challenge, sender, time.monotonic() + CHALLENGE_SECONDS), PER_SENDER)
     options = generate_authentication_options(
         rp_id=where.rp_id,
         challenge=challenge,
@@ -203,7 +257,7 @@ def finish_sign_in(store: AppStore, token: str, credential: dict[str, Any], wher
     """The account whose passkey answered. The challenge counts once, whatever the answer; a blocked account hears so
     only after a valid answer. The app starts the session (a passkey is both factors: no code is asked)."""
     _allowed(store)
-    held = _take("in:" + (token or ""))
+    held = _take(_sign_ins, token or "")
     if held is None:
         raise AccountError("passkey_expired", "That took too long. Start again.", 410)
     credential_id = _credential_id(credential)
@@ -225,7 +279,7 @@ def finish_sign_in(store: AppStore, token: str, credential: dict[str, Any], wher
     try:
         verified = verify_authentication_response(
             credential=credential,
-            expected_challenge=held[0],
+            expected_challenge=held.challenge,
             expected_rp_id=where.rp_id,
             expected_origin=where.origin,
             credential_public_key=key.public_key,
@@ -250,7 +304,7 @@ def remove(
 ) -> bool:
     """The owner removes one of their passkeys (not the last factor where one is required)."""
     account = common.account_or_404(store, account_id)
-    common.confirm(store, account, password, actor_confirmed, without_password=True)
+    factor.confirmed(store, account, password, actor_confirmed, without_password=True)
     if store.factor_required() and not store.totp_seed(account.id) and len(store.passkeys_of(account.id)) <= 1:
         raise AccountError("factor_required", "A second factor is required here; set up another one first.", 409)
     removed = store.remove_passkey(account.id, uid)
@@ -276,4 +330,5 @@ def options_json(options: str) -> dict[str, Any]:
 def forget() -> None:
     """Tests: no open challenge left."""
     with _lock:
-        _challenges.clear()
+        _sign_ins.clear()
+        _adds.clear()

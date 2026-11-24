@@ -203,11 +203,18 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
       text: t('account.factorResetHint'),
       knopf: t('aktion.weiter'),
       gefaehrlich: true,
+      // konten 0.3.1: ab Werk an, ein verlorenes Handy ist sonst noch angemeldet.
+      haken: { beschriftung: t('account.factorResetDevices'), vorgabe: true },
     })
-    if (ja !== true) return
+    if (typeof ja !== 'object' || ja === null || !ja.ja) return
     const kennwort = await eigenesPasswort(t('account.factorReset'))
     if (kennwort === null) return
-    await handeln(() => api.senden(`/api/benutzer/${p.id}/zweiter-faktor-zuruecksetzen`, { passwort: kennwort }))
+    await handeln(() =>
+      api.senden(`/api/benutzer/${p.id}/zweiter-faktor-zuruecksetzen`, {
+        passwort: kennwort,
+        geraete_trennen: ja.haken,
+      }),
+    )
   }
 
   async function adresseEntfernen(p: BenutzerZeile) {

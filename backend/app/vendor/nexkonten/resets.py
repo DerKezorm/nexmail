@@ -28,7 +28,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from . import common
+from . import common, factor
 from .common import expired, log, new_token, next_step, reload, tell, utcnow
 from .errors import AccountError
 from .login import resolve_login
@@ -222,7 +222,11 @@ def use_reset(store: Store, token: str, password: str, *, password_login: bool =
         raise _invalid()
     store.set_password(account.id, password)
     store.end_sessions(account.id)
+    renew = getattr(store, "renew_device_key", None)  # part 2: known-browser marks of the account lose their worth
+    if renew is not None:
+        renew(account.id)
     store.commit()
+    factor.drop_waiting(account.id)
     log().warning("Password set through a link name=%s origin=%s", account.username, reset.origin)
     tell(store, Event(EVENT_PASSWORD_SET, account.id, details={"origin": reset.origin}))
     account = reload(store, account.id)

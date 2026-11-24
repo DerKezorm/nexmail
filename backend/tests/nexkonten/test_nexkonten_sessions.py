@@ -167,3 +167,18 @@ def test_a_known_browser_mark_names_no_account_and_a_new_device_key_voids_it(app
     with app.store() as store:
         assert store.device_key(alex) != key
         assert konten.sessions.is_known(cookie, secret, store.device_key(alex)) is False
+
+
+def test_a_waiting_sign_in_is_never_a_session_and_every_session_notes_its_last_use(app: Any, konten: Any) -> None:
+    alex = app.seed("alex", password=password())
+    waiting = _start(app, konten, alex, kind=konten.model2.KIND_WAITING)
+    assert _current(app, konten, waiting.token) is None
+    short = _start(app, konten, alex, remember=False)
+    now = datetime.now(UTC)
+    with app.store() as store:
+        store.touch_session(short.session.uid, now - timedelta(hours=1), now + timedelta(hours=2))
+        store.commit()
+    assert _current(app, konten, short.token) is not None
+    with app.store() as store:
+        seen = store.session_by_hash(konten.sessions.hash_token(short.token))
+    assert _near(seen.last_seen_at, now) and _near(seen.expires_at, now + timedelta(hours=2))
