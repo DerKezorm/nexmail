@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import shutil
 import sqlite3
+import warnings
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
@@ -241,7 +242,11 @@ def _fehlende_indizes() -> list[str]:
     for tabelle in Base.metadata.sorted_tables:
         if tabelle.name not in vorhandene_tabellen:
             continue  # Die legt create_all samt ihren Indizes an.
-        da = {i["name"] for i in pruefer.get_indexes(tabelle.name)}
+        with warnings.catch_warnings():
+            # ⚠️ Der Index auf ``lower(benutzername)`` (Kontenmodul) ist ein Ausdrucksindex; SQLAlchemy kann ihn nicht
+            # lesen und warnt bei jedem Start. Er steht nicht im Modell, hier wird er nicht gebraucht.
+            warnings.filterwarnings("ignore", message="Skipped unsupported reflection of expression-based index")
+            da = {i["name"] for i in pruefer.get_indexes(tabelle.name)}
         for index in tabelle.indexes:
             if index.name in da:
                 continue
@@ -381,6 +386,11 @@ def init_db() -> None:
 
     with SessionLocal() as db:
         _dek_laden(db)
+
+    # Das Kontenmodul: der eindeutige Index auf den kleingeschriebenen Benutzernamen, erst nach dem Zaehlen.
+    from .services import konten_wanderung
+
+    konten_wanderung.laufen(engine)
 
     # Die Anmeldung ueber Anbieter: Liste von 0.21 nachziehen, und was 0.21 nach
     # einem Rueckweg geaendert hat. Braucht den Datenschluessel (Geheimnisse).

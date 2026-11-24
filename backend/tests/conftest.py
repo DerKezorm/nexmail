@@ -30,6 +30,9 @@ os.environ["NEXMAIL_CLIENT_IP"] = ""
 # Verbindungen aufmacht, waere die unangenehmste Sorte Flackern: Er schlaegt
 # irgendwo zu, wo niemand ihn erwartet.
 os.environ["NEXMAIL_TAKT_SEKUNDEN"] = "0"
+#: Der Einrichtungscode der Tests (Kontenmodul): fest, damit ``einrichten`` ihn kennt.
+EINRICHTUNGSCODE = "test-einrichtung-code"
+os.environ["NEXMAIL_SETUP_TOKEN"] = EINRICHTUNGSCODE
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
@@ -142,6 +145,14 @@ def frische_datenbank():
     engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+def anbieterbild_sofort(monkeypatch):
+    """Das Bild vom Anmeldeanbieter holt der Server in einem eigenen Faden; in Tests sofort und in derselben Runde."""
+    from app.services import konten_store
+
+    monkeypatch.setattr(konten_store, "BILD_IM_FADEN", False)
+
+
 @pytest.fixture
 def db():
     with SessionLocal() as sitzung:
@@ -164,8 +175,13 @@ def zweiter_klient():
 # --- Hilfen ------------------------------------------------------------- #
 
 
-def einrichten(klient: TestClient, benutzername: str = "betreiber", passwort: str = "sehr-geheim-123"):
-    """Erstes Konto anlegen. Danach ist man angemeldet.
+def einrichten(
+    klient: TestClient,
+    benutzername: str = "betreiber",
+    passwort: str = "sehr-geheim-123",
+    anzeigename: str = "",
+):
+    """Erstes Konto anlegen, mit Einrichtungscode und Anzeigenamen (Kontenmodul). Danach ist man angemeldet.
 
     ⚠️ **Ohne zweiten Faktor** — seit dem 01.09.2026 ist er eine Wahl, keine
     Pflicht, und die Ersteinrichtung erzwingt ihn nicht mehr. Wer ihn im Test
@@ -173,7 +189,12 @@ def einrichten(klient: TestClient, benutzername: str = "betreiber", passwort: st
     """
     antwort = klient.post(
         "/api/setup/konto",
-        json={"benutzername": benutzername, "passwort": passwort},
+        json={
+            "benutzername": benutzername,
+            "passwort": passwort,
+            "anzeigename": anzeigename or benutzername.capitalize(),
+            "einrichtungscode": EINRICHTUNGSCODE,
+        },
     )
     assert antwort.status_code == 201, antwort.text
     return antwort.json()
@@ -227,6 +248,7 @@ __all__ = [
     "anmelden",
     "zwei_faktor_an",
     "crypto",
+    "EINRICHTUNGSCODE",
     "einrichten",
     "zweiten_benutzer_anlegen",
 ]

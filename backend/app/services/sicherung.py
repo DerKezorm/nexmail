@@ -434,10 +434,14 @@ def wiederherstellen(
     # Den Daten-Schlüssel neu laden - der alte gehört zu einer Datenbank, die
     # es nicht mehr gibt.
     crypto.dek_setzen(None)
-    from ..db import SessionLocal, _dek_laden
+    from ..db import SessionLocal, init_db
+
+    # ⚠️ **Die Schemapflege laeuft auch nach dem Einspielen**, nicht erst beim naechsten Start: Eine Sicherung einer
+    # aelteren Fassung kennt die Spalten des Kontenmoduls nicht, und die erste Anmeldung liefe gegen „no such
+    # column“. ``init_db`` laedt dabei auch den Daten-Schluessel neu.
+    init_db()
 
     with SessionLocal() as db:
-        _dek_laden(db)
 
         # ⚠️ **Erst hier, nicht in der Kopie im Archiv.** Die Entscheidung
         # faellt beim Einspielen, nicht beim Sichern - dasselbe Archiv kann

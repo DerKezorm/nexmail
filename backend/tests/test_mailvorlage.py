@@ -194,8 +194,9 @@ def test_ohne_logodatei_geht_die_mail_trotzdem(klient, gefangen, monkeypatch):
 
 
 def test_die_einladungsmail_traegt_knopf_und_logo(klient, gefangen):
-    """Der ganze Weg: Was ``einladung.verschicken`` baut, nicht nur die Vorlage."""
+    """Der ganze Weg: Was ``kontenpost.einladung_senden`` baut, nicht nur die Vorlage."""
     from app.services import einladung as einladungsdienst
+    from app.services import kontenpost
 
     einrichten(klient)
     with SessionLocal() as db:
@@ -205,10 +206,8 @@ def test_die_einladungsmail_traegt_knopf_und_logo(klient, gefangen):
             systempost.Postausgang(server="s.example", absender="nexmail@example.com"),
             "geheim",
         )
-        gebot, schluessel = einladungsdienst.aussprechen(
-            db, benutzername="anna", adresse="anna@example.com", anzeigename="Anna"
-        )
-        einladungsdienst.verschicken(db, gebot, schluessel, "https://mail.example")
+        gebot, schluessel = einladungsdienst.aussprechen(db, adresse="anna@example.com", anzeigename="Anna")
+        kontenpost.einladung_senden(db, gebot, schluessel, 7)
 
     mail = message_from_bytes(gefangen[0])
     html = next(
@@ -216,6 +215,6 @@ def test_die_einladungsmail_traegt_knopf_und_logo(klient, gefangen):
     ).get_payload(decode=True).decode()
 
     assert f"https://mail.example/einladung/{schluessel}" in html
-    assert "Kennwort vergeben" in html
+    assert "Konto anlegen" in html
     assert 'src="cid:' in html
     assert "image/png" in [t.get_content_type() for t in mail.walk()]

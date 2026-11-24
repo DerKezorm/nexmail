@@ -64,7 +64,12 @@ class Adapter(StandardAdapter):
         self._client_ip = get_settings().client_ip
         get_settings().client_ip = "direct"
         made = self.browser().post(
-            "/api/setup/konto", json={"benutzername": OPERATOR, "passwort": self.password_for(OPERATOR)}
+            "/api/setup/konto", json={
+                "benutzername": OPERATOR,
+                "passwort": self.password_for(OPERATOR),
+                "anzeigename": OPERATOR.capitalize(),
+                "einrichtungscode": get_settings().setup_token,
+            }
         )
         assert made.status_code == 201, made.text
 

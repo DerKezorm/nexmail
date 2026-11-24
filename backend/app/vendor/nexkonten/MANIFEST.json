@@ -1,0 +1,38 @@
+{
+  "files": {
+    "backend/app/vendor/nexkonten/__init__.py": "sha256-Hu/VEiQkFZiM1vrlvsDFEpjKbYDgCUyytsikaLpzi3Q=",
+    "backend/app/vendor/nexkonten/common.py": "sha256-l7lqq6jdpw0nJWMtcsbArusulN+vXsmzTtWKi+kEdx0=",
+    "backend/app/vendor/nexkonten/config.py": "sha256-WVjJTEUiVVuNwpkX8t6dvuXERgVOjSwYRRYlJGNxo3s=",
+    "backend/app/vendor/nexkonten/errors.py": "sha256-6uFYCx4Grk4h0GO0AiOEzT/SVOBZvgzPL6WNP0cE25M=",
+    "backend/app/vendor/nexkonten/invites.py": "sha256-P0Oos060F+1boRM+NeGb8G2gAYP33JlTxmArKFLFIH0=",
+    "backend/app/vendor/nexkonten/login.py": "sha256-yjwFXg3xxS6j96K3/rq8dvVaV+DV8Gd7C8iqnmoKat4=",
+    "backend/app/vendor/nexkonten/model.py": "sha256-lJQhdepbYxwS7kWXVloeBOUqptWcyDxbpUK21KK2/Aw=",
+    "backend/app/vendor/nexkonten/names.py": "sha256-fEL9DU36GUm4dPvdrn5ia60BmXSbWNDKXkaP2CGs1uA=",
+    "backend/app/vendor/nexkonten/pictures.py": "sha256-5ZbROaSYKti8Md5UKihA1zlaYXWdXCWfV/n4yT3/HHQ=",
+    "backend/app/vendor/nexkonten/profiles.py": "sha256-I8OIYtJcdZzGzCNDLZGO5203mjA/8KQFV3e3gkamLOE=",
+    "backend/app/vendor/nexkonten/resets.py": "sha256-Hrs53VsQF6IX8uslaeIWuwq4aLakKQhqE6gjH53BmV0=",
+    "backend/app/vendor/nexkonten/setup.py": "sha256-eiimOq/cB5IzHQUUy4xKydIKhqZUfueCrGwsE27QEO8=",
+    "backend/tests/nexkonten/conftest.py": "sha256-ZfiXk6sWlZCF6kn224YUXs0upUNE9sT6JbipTEIfS4s=",
+    "backend/tests/nexkonten/konten_contract.py": "sha256-T3Fm4ABd+NQhcRXjt/gaphV+mkWXszofquzmXDl4Uq4=",
+    "backend/tests/nexkonten/test_nexkonten_existing.py": "sha256-gkgykenFbzEPU58MtlfXMZlEpuybkh5uujnRyGXKPtE=",
+    "backend/tests/nexkonten/test_nexkonten_invite.py": "sha256-scbJ3RN2/6tmh+S8onLio5R1IMjTGxdTLe4TP8i0l9g=",
+    "backend/tests/nexkonten/test_nexkonten_login.py": "sha256-oSuUbexCe/tRGQWOoK8XI7BqGEpXwDn6nEYgxZ3I6HQ=",
+    "backend/tests/nexkonten/test_nexkonten_picture.py": "sha256-z5PIjmWUzL8sAe+7LVOaEOWVlcXvDIYsKNi6ygHHTD0=",
+    "backend/tests/nexkonten/test_nexkonten_profile.py": "sha256-7kqJGO7tTWav2X/mvt50agUxcPQKK8G/s+P0UtCkzfY=",
+    "backend/tests/nexkonten/test_nexkonten_reset.py": "sha256-BPVsmi56qI5zxRZA3WmVSjt1CFJdhl+6g9d47OvB+zw=",
+    "backend/tests/nexkonten/test_nexkonten_setup.py": "sha256-5dPpzjQI2KY6e/uGsw6qgC79wnvA85C70DF9Wqh+NY4=",
+    "backend/tests/nexkonten/test_nexkonten_store.py": "sha256-E7HrrFXmpwMSQoejWCwXP+eSVTbVPO6ppE+9/QDTLOg=",
+    "backend/tests/nexkonten/test_nexkonten_vendored.py": "sha256-6X/Zu0wcCmqjt46UbLUtjwvo8Bx06LrZuMbyPFumtb0=",
+    "frontend/src/vendor/nexkonten/konten.de.json": "sha256-VO5zbZmWoVIbXAI81a98RWLvhmrO8b2MuiyI8+AbrFw=",
+    "frontend/src/vendor/nexkonten/konten.en.json": "sha256-yZpsyHEPxhN2RKdydkjP8XSUg1KLWWQnSgIPJ834yIw=",
+    "frontend/src/vendor/nexkonten/konten.fr.json": "sha256-rsgkC4T1eYRNXFmBzSk6YNMSzYrrrD2XwXl6krAXZfQ=",
+    "frontend/src/vendor/nexkonten/konten.ts": "sha256-SoXiEuQLpBto6R3YsdcNugqlITDvNu4K1zA6Ly0mtiI="
+  },
+  "module": "konten",
+  "requires": {
+    "httpx": "0.28.1",
+    "pillow": ">=12.0.0"
+  },
+  "vendor_path": "backend/app/vendor/nexkonten",
+  "version": "0.2.0"
+}

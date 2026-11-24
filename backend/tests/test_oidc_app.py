@@ -656,9 +656,10 @@ def test_guessing_invitation_keys_is_braked(betreiber, sso):
     assert gesperrt.status_code == 429 and gesperrt.json()["detail"] == "zu_viele_versuche"
 
 
-def test_a_new_account_takes_no_contact_address_from_the_provider(betreiber, sso):
-    """Die Adresse vom Anbieter steht hoechstens zur Anzeige an der Verknuepfung; als Kontaktadresse (Ziel von
-    „Kennwort vergessen") gilt nur, was der Betreiber in einer Einladung eintrug."""
+def test_a_new_account_takes_the_providers_address_but_it_does_not_count(betreiber, sso):
+    """Kontenmodul: Ein Konto ohne Einladung (``auto_create``) nimmt die Adresse des Anbieters, wenn kein anderes
+    Konto sie hat, mit Herkunft „Anbieter“; sie **zaehlt nicht** (weder Anmelden noch Passwort vergessen), bis der
+    Mensch sie bestaetigt. Anbieter melden Adressen unzuverlaessig. Zum Zuordnen dient sie nie."""
     anbieter_anlegen(betreiber, sso, auto_create=True)
     sso.person = {"sub": "p-neu", "preferred_username": "neu", "email": "fremd@example.com"}
     klient = browser()
@@ -666,7 +667,11 @@ def test_a_new_account_takes_no_contact_address_from_the_provider(betreiber, sso
     assert wer(klient) == "neu"
     with SessionLocal() as db:
         person = db.scalar(select(Benutzer).where(Benutzer.benutzername == "neu"))
-        assert person.kontaktadresse == ""
+        assert (person.kontaktadresse, person.kontaktadresse_zaehlt, person.kontaktadresse_herkunft) == (
+            "fremd@example.com",
+            False,
+            "provider",
+        )
         assert db.scalar(select(OidcVerknuepfung.email).where(OidcVerknuepfung.subject == "p-neu")) == "fremd@example.com"
 
 

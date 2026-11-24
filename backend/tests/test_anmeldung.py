@@ -13,6 +13,7 @@ import pytest
 
 from app.services import anmeldebremse
 from conftest import (
+    EINRICHTUNGSCODE,
     aktueller_code,
     anmelden,
     einrichten,
@@ -193,7 +194,13 @@ def test_ohne_zweiten_faktor_kommt_man_direkt_hinein(klient):
     im eigenen Netz aufsetzt.
     """
     antwort = klient.post(
-        "/api/setup/konto", json={"benutzername": "betreiber", "passwort": PASSWORT}
+        "/api/setup/konto",
+        json={
+            "benutzername": "betreiber",
+            "passwort": PASSWORT,
+            "anzeigename": "Betrieb",
+            "einrichtungscode": EINRICHTUNGSCODE,
+        },
     )
     assert antwort.status_code == 201, antwort.text
     # Schon angemeldet, ohne Zwischenschritt.
@@ -306,10 +313,31 @@ def test_notausgang_ueberspringt_den_faktor(klient, monkeypatch):
     assert klient.get("/api/auth/ich").status_code == 200
 
 
-@pytest.mark.parametrize("zu_kurz", ["", "kurz", "neunzeich"])
+@pytest.mark.parametrize("zu_kurz", ["", "kurz", "neunzeich", "elf-zeichen"])
 def test_passwortlaenge_wird_geprueft(klient, zu_kurz):
-    antwort = klient.post("/api/setup/konto", json={"benutzername": "betreiber", "passwort": zu_kurz})
-    assert antwort.status_code in (400, 422)
+    """Neue Passwoerter brauchen 12 Zeichen (Kontenmodul); die Kennung bleibt die alte."""
+    antwort = klient.post(
+        "/api/setup/konto",
+        json={
+            "benutzername": "betreiber",
+            "passwort": zu_kurz,
+            "anzeigename": "Betrieb",
+            "einrichtungscode": EINRICHTUNGSCODE,
+        },
+    )
+    assert antwort.status_code == 400
+    assert antwort.json()["detail"] == "passwort_zu_kurz"
+
+
+def test_ohne_einrichtungscode_entsteht_kein_konto(klient):
+    """Der Einrichtungscode steht im Protokoll oder in ``NEXMAIL_SETUP_TOKEN``; ohne ihn entsteht nichts."""
+    for code in ("", "falsch-falsch"):
+        antwort = klient.post(
+            "/api/setup/konto",
+            json={"benutzername": "betreiber", "passwort": PASSWORT, "anzeigename": "Betrieb", "einrichtungscode": code},
+        )
+        assert antwort.status_code == 403 and antwort.json()["detail"] == "setup_code_wrong"
+    assert klient.get("/api/setup/status").json()["eingerichtet"] is False
 
 
 def test_totp_geheimnis_liegt_verschluesselt_in_der_datenbank(klient, db):

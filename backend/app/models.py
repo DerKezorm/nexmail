@@ -124,6 +124,21 @@ class Benutzer(Base):
     #: Ernstfall. Deshalb traegt eine Einladung sie gleich mit ein, und die
     #: Sicherheitsseite sagt deutlich, wenn keine dasteht.
     kontaktadresse: Mapped[str] = mapped_column(String(320), default="")
+    #: Seit dem Kontenmodul (``vendor/nexkonten``) zwei Angaben zur Adresse: ob sie **zaehlt** (Anmelden mit der
+    #: Adresse, Passwort vergessen, Mitteilungen) und ob sie **per Link bewiesen** ist.
+    #:
+    #: ⚠️ **Vorgabe in der Tabelle: zaehlt, nicht bewiesen.** Jede Adresse von vor dem Modul kam aus einer Einladung
+    #: oder vom Menschen selbst; sie gilt weiter (Entwurf, „Bestand“ Regel 2). Die Vorgabe steht in der Tabelle,
+    #: damit auch die Vorfassung nach einem Rueckweg Konten anlegen kann.
+    kontaktadresse_zaehlt: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    kontaktadresse_bewiesen: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    #: ``""`` die eigene, ``provider`` eine, die einem Anmeldeanbieter folgt. nexmail uebernahm bisher nie eine.
+    kontaktadresse_herkunft: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    #: Die Sprache des Kontos (``de``, ``en``), ``""`` heisst: die des Browsers. Reist mit auf jedes Geraet.
+    sprache: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    #: Nach einem neuen Passwort ueber einen Link: wer den Link machte (``self``, ``operator``, ``server``). Solange
+    #: gesetzt, zeigt die Oberflaeche nach der Anmeldung „Diese Geraete haben noch Zugriff“; ``""`` nichts.
+    neues_passwort: Mapped[str] = mapped_column(String(16), default="", server_default="")
 
     # --- Der KI-Dienst dieses Menschen ---------------------------------- #
     #
@@ -249,6 +264,8 @@ class Benutzer(Base):
     #: Wann es gesetzt wurde; steht in der Bildadresse (``?v=``), damit ein
     #: neues Bild eine neue Adresse hat und das alte nicht aus dem Speicher kommt.
     profilbild_am: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+    #: ``""`` ein eigenes Bild (auch jedes von vor dem Kontenmodul), ``provider`` eines vom Anmeldeanbieter.
+    profilbild_herkunft: Mapped[str] = mapped_column(String(16), default="", server_default="")
 
     #: Die Reihenfolge der Postfachgruppen-Reiter, als JSON-Liste der
     #: Schlagworte (klein geschrieben verglichen). Leer heißt: wie die
@@ -305,6 +322,44 @@ class Kennwortruecksetzung(Base):
     laeuft_ab: Mapped[datetime] = mapped_column(UtcDateTime)
     #: Wann er benutzt wurde. ``None`` heisst: noch offen.
     eingeloest: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    #: Wer den Link machte: ``self`` (selbst angefordert, alle von vor dem Kontenmodul), ``operator`` (der Betreiber
+    #: unter Konten, ``angelegt_von``) oder ``server`` (der Notfallbefehl im Container).
+    herkunft: Mapped[str] = mapped_column(String(16), default="self", server_default="self")
+    angelegt_von: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
+
+
+class FruehererName(Base):
+    """Ein Benutzername, den ein Konto frueher trug, oder der eines endgueltig entfernten Kontos.
+
+    ⚠️ **Fuer immer belegt** (Entwurf, Entscheidung „Alte Benutzernamen“): Niemand bekommt den Namen eines anderen
+    und damit dessen Erwaehnungen oder Erinnerungen. Anmelden geht mit einem frueheren Namen nie.
+
+    ⚠️ **Die Spalte heisst ``konto``, nicht ``benutzer_id``.** ``benutzer.entfernen`` leert jede Tabelle mit
+    ``benutzer_id``; diese Zeilen muessen das Entfernen ueberleben (``konto`` wird dann ``""``).
+    """
+
+    __tablename__ = "frueherer_name"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    konto: Mapped[str] = mapped_column(String(32), default="", index=True)
+    benutzername: Mapped[str] = mapped_column(String(64), index=True)
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Adresswechsel(Base):
+    """Eine neue Adresse, die auf ihren Bestaetigungslink wartet (nur mit Systempostausgang). Bis dahin gilt die
+    bisherige. Der Schluessel liegt nur als Hash da, wie bei Einladung und Ruecksetz-Link."""
+
+    __tablename__ = "adresswechsel"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    adresse: Mapped[str] = mapped_column(String(320))
+    schluessel_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    laeuft_ab: Mapped[datetime] = mapped_column(UtcDateTime)
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
 class Wiederherstellungscode(Base):
@@ -1265,18 +1320,18 @@ class Einladung(Base):
     Datenbank liest, darf damit nichts anfangen koennen. Dieselbe Regel wie
     bei den Wiederherstellungscodes.
 
-    ⚠️ **Der Benutzername wird hier schon festgelegt** und beim Einloesen noch
-    einmal geprueft: Zwischen Einladung und Annahme koennen Wochen liegen, und
-    in der Zeit kann jemand anderes ihn belegt haben.
+    ⚠️ **Seit dem Kontenmodul legt der Betreiber keinen Benutzernamen mehr fest**; ``benutzername`` bleibt dann
+    leer, und der Eingeladene waehlt ihn selbst. Offene Einladungen von vorher behalten ihren Namen als Vorbelegung
+    (Entwurf, „Bestand“ Regel 7). ``adresse`` ist freiwillig geworden.
     """
 
     __tablename__ = "einladung"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
     schluessel_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
-    benutzername: Mapped[str] = mapped_column(String(64))
+    benutzername: Mapped[str] = mapped_column(String(64), default="")
     anzeigename: Mapped[str] = mapped_column(String(120), default="")
-    #: Wohin die Einladung ging. Nur zum Wiedererkennen in der Liste.
+    #: Wohin die Einladung ging; leer, wenn der Betreiber den Link selbst weitergibt.
     adresse: Mapped[str] = mapped_column(String(320), default="")
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     laeuft_ab: Mapped[datetime] = mapped_column(UtcDateTime)

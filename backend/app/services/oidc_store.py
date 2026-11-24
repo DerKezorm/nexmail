@@ -16,8 +16,6 @@ Schreibweise, solange er derselbe bleibt. Einzelheiten in ``models.OidcAnbieter`
 
 from __future__ import annotations
 
-import re
-
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -33,12 +31,9 @@ from ..vendor.nexoidc.model import (
     ProviderValues,
     secret_context,
 )
+from ..vendor import nexkonten
 from . import einladung as einladungsdienst
-
-#: Zeichen wie ``benutzer.BENUTZERNAME_MUSTER``. Kuerzer als drei darf ein Name vom Anbieter sein ("jo"): Die
-#: Untergrenze gilt fuer selbst gewaehlte Namen, sonst hiesse jede kurze Identitaet "user-2", "user-3".
-NAME_MIN, NAME_MAX = 1, 64
-_NICHT_IM_NAMEN = re.compile(r"[^A-Za-z0-9._-]+")
+from .konten_store import KontenStore, adresse_folgt_dem_anbieter, bild_vom_anbieter
 
 
 def alter_kontext(anbieter_id: str) -> str:
@@ -299,6 +294,13 @@ class SqlStore:
             .where(OidcVerknuepfung.anbieter_id == anbieter.id, OidcVerknuepfung.subject == subject)
             .values(zuletzt_benutzt=utcnow(), email=(email or "")[:300])
         )
+        konto = self.db.scalar(
+            select(OidcVerknuepfung.benutzer_id).where(
+                OidcVerknuepfung.anbieter_id == anbieter.id, OidcVerknuepfung.subject == subject
+            )
+        )
+        if konto and email:
+            adresse_folgt_dem_anbieter(self.db, konto, email)
 
     # --- Konten ----------------------------------------------------------------------------------------------------
     def account_state(self, account_id: int) -> AccountState | None:
@@ -315,31 +317,61 @@ class SqlStore:
         )
 
     def clean_name(self, raw: str) -> str:
-        """nexmails Namensregeln (Buchstaben, Ziffern, ``.``, ``_``, ``-``); "" wenn nichts Brauchbares bleibt."""
-        cleaned = _NICHT_IM_NAMEN.sub("-", raw.strip())
-        cleaned = re.sub(r"-{2,}", "-", cleaned).strip("-._")[:NAME_MAX].rstrip("-._")
-        return cleaned if len(cleaned) >= NAME_MIN else ""
+        """Seit ``oidc`` 1.1.0 die Namensregeln des Kontenmoduls (gleich in jeder App): klein, ``a-z 0-9 . _ -``,
+        erstes Zeichen Buchstabe oder Ziffer; "" wenn nichts Brauchbares bleibt."""
+        return nexkonten.names.clean_username(raw)
 
     def name_taken(self, name: str) -> bool:
-        return (
-            self.db.scalar(select(Benutzer.id).where(func.lower(Benutzer.benutzername) == name.strip().lower()))
-            is not None
-        )
+        """Belegt: ein anderes Konto hat den Namen jetzt oder hatte ihn, er gehoerte einem entfernten Konto, oder er
+        ist ein fremder Anzeigename (Kontenmodul)."""
+        return nexkonten.names.username_taken(KontenStore(self.db), name)
 
-    def create_account(self, name: str, *, invite: Invite | None, email: str | None) -> int:
-        """Ein Konto ohne Passwort. Aus einer Einladung uebernimmt es Anzeigenamen und Adresse, die der Betreiber
-        eingetragen hat (wie beim Annehmen mit Kennwort); die Adresse vom Anbieter fasst es nicht an."""
+    def create_account(
+        self, name: str, *, invite: Invite | None, email: str | None, display_name: str = "", picture: str = ""
+    ) -> int:
+        """Ein Konto ohne Passwort, aus einer Einladung (nexmail laesst niemanden ohne herein).
+
+        - **Anzeigename:** der des Anbieters (Claim ``name``), sonst der der Einladung, sonst leer; einer, den ein
+          anderes Konto zeigt, bleibt leer (eindeutig, Kontenmodul).
+        - **Adresse:** die der Einladung (sie zaehlt, der Betreiber hat sie eingetragen); ohne eine die des Anbieters,
+          wenn kein anderes Konto sie hat, dann mit Herkunft „Anbieter“ und ohne zu zaehlen (Anbieter melden
+          Adressen unzuverlaessig). Zum Zuordnen dient sie nie.
+        - **Bild:** kommt ueber ``provider_picture``, nicht hier."""
+        store = KontenStore(self.db)
         einladung = self.db.get(Einladung, invite.id) if invite is not None else None
+        anzeigename = nexkonten.names.provider_display_name(store, display_name)
+        if not anzeigename and einladung is not None:
+            anzeigename = nexkonten.names.provider_display_name(store, einladung.anzeigename or "")
+        adresse, zaehlt, herkunft = "", True, ""
+        if einladung is not None and einladung.adresse:
+            adresse = einladung.adresse
+        elif email:
+            try:
+                kandidat = nexkonten.names.clean_email(email)
+            except nexkonten.AccountError:
+                kandidat = ""
+            if kandidat and not nexkonten.names.email_taken(store, kandidat):
+                adresse, zaehlt, herkunft = kandidat, False, nexkonten.EMAIL_PROVIDER
         person = Benutzer(
             benutzername=name,
-            anzeigename=(einladung.anzeigename if einladung is not None else "") or name,
+            anzeigename=anzeigename,
             passwort_hash="",
-            kontaktadresse=einladung.adresse if einladung is not None else "",
+            kontaktadresse=adresse,
+            kontaktadresse_zaehlt=zaehlt,
+            kontaktadresse_herkunft=herkunft,
             wasneu_gesehen=__version__,
         )
         self.db.add(person)
         self.db.flush()
         return self.konto_nummer(person)
+
+    def provider_picture(self, account_id: int, picture: str, issuer: str) -> None:
+        """Nach jeder Anmeldung ueber einen Anbieter mit Bild: Ein Konto **ohne** Bild bekommt seins, in einem
+        eigenen Faden (holen dauert bis zu fuenf Sekunden). Ein eigenes Bild wird nie ersetzt."""
+        person = self.konto(account_id)
+        if person is None or person.profilbild_am is not None:
+            return
+        bild_vom_anbieter(person.id, picture, issuer)
 
     # --- Einladungen -----------------------------------------------------------------------------------------------
     def find_invite(self, key: str) -> Invite | None:

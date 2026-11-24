@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     # benutzbar. Beim Start wird er laut protokolliert.
     zwei_faktor_aus: bool = False
 
+    # --- Ersteinrichtung ----------------------------------------------------
+    #
+    # Der Einrichtungscode des ersten Kontos (``NEXMAIL_SETUP_TOKEN``). Leer: nexmail macht bei jedem Start einen und
+    # schreibt ihn ins Protokoll, solange es kein Konto gibt. Ein laufendes nexmail fragt nie danach.
+    setup_token: str = ""
+
     # --- Der Takt -----------------------------------------------------------
 
     # Wie oft nexmail von selbst nach neuer Post sieht (Sekunden).

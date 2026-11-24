@@ -7,8 +7,12 @@ account could sign in before: username and password (any case), second factor an
 browser session, a paired iPhone, an API key, an open invitation, a forgotten password.
 
 ⚠️ **Nothing here may be adapted to make a new version pass.** A red test means: an installation that runs 0.33.0
-today loses a way in after the update. Change the code, not the test. The only thing that is allowed to change is
-the list at the end (``NACH_DEM_UMBAU``): ways in that 0.33.0 did not have and that the account module adds.
+today loses a way in after the update. Change the code, not the test. What may grow is the part at the end: ways in
+that 0.33.0 did not have and that the account module added (sign-in and a forgotten password by address).
+
+⚠️ **One change to the harness with the account module:** a link by mail is offered only where a system outbox is
+filled in. The fixture of 0.33.0 has none (0.33.0 tried to send anyway and failed in silence), so ``post`` fills it in
+for the tests that need a mail server; what is asserted stayed the same.
 
 ⚠️ **The fixture ages.** Sessions run out after 30 days and invitations after 7; loading pushes those two dates into
 the future, and nothing else is touched before the start.
@@ -135,13 +139,17 @@ def anbieter():
 
 
 @pytest.fixture
-def post(monkeypatch):
-    """System mail goes into a list instead of out (the fixture has no mail server)."""
+def post(bestand, monkeypatch):
+    """A mail server as the installation would have it: the system outbox is filled in (the fixture of 0.33.0 has
+    none, and since the account module a link by mail is offered only with one), and what goes out lands in a list."""
     gesendet: list[dict] = []
 
     def senden(db, an, betreff, text, html=""):  # noqa: ARG001
         gesendet.append({"an": an, "betreff": betreff, "text": text})
 
+    with SessionLocal() as db:
+        einstellung_schreiben(db, systempost.S_SERVER, "smtp.example.com")
+        einstellung_schreiben(db, systempost.S_ABSENDER, "nexmail@example.com")
     monkeypatch.setattr(systempost, "senden", senden)
     return gesendet
 
@@ -410,26 +418,21 @@ def test_forgot_password_without_an_address_still_sends_nothing_and_says_the_sam
     assert post == []
 
 
-# --- After the change (account module): ways in that 0.33.0 did not have -------------------------------------------
+# --- Since the account module: ways in that 0.33.0 did not have ----------------------------------------------------
 #
-# ⚠️ **Strict xfail.** They fail today because 0.33.0 only knows the username. The day the module is wired in they
-# pass, strict turns that into a red test, and whoever wired it removes the marker. Until then they say what the
-# plan promises for the Bestand (rules 2 and 3 of the draft).
-
-NACH_DEM_UMBAU = pytest.mark.xfail(strict=True, reason="sign-in by email comes with the account module")
+# Rules 2 and 3 of the draft: an address of 0.33.0 counts (signing in, a forgotten password) as long as no other
+# account has it; one that two accounts share opens neither.
 
 
-@NACH_DEM_UMBAU
 @pytest.mark.parametrize("konto", EINDEUTIGE_ADRESSE, ids=_name)
-def test_after_the_change_a_unique_contact_address_signs_in(bestand, konto):
+def test_a_unique_contact_address_signs_in(bestand, konto):
     klient = browser()
     mit_passwort(klient, konto, eingabe=konto["adresse"].upper())
     assert ich(klient)["benutzername"] == _name(konto)
 
 
-@NACH_DEM_UMBAU
 @pytest.mark.parametrize("konto", EINDEUTIGE_ADRESSE, ids=_name)
-def test_after_the_change_forgot_password_takes_a_unique_address(bestand, post, konto):
+def test_forgot_password_takes_a_unique_address(bestand, post, konto):
     browser().post("/api/auth/kennwort-vergessen", json={"benutzername": konto["adresse"]})
     assert [m["an"].lower() for m in post] == [konto["adresse"].lower()]
 

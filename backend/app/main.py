@@ -168,18 +168,30 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
     ),
     "/api/auth/wiederherstellung": "Wie /api/auth/code, nur mit einem Wiederherstellungscode.",
     "/api/auth/kennwort-vergessen": (
-        "Wer sein Kennwort vergessen hat, kann sich nicht anmelden — das ist "
+        "Wer sein Passwort vergessen hat, kann sich nicht anmelden — das ist "
         "der ganze Anlass. Die Adresse antwortet deshalb IMMER gleich (202, "
-        "derselbe Rumpf), egal ob es den Namen gibt, ob dort eine "
-        "Kontaktadresse steht oder ob der Postausgang laeuft: Ein sichtbarer "
-        "Unterschied waere eine Namensliste. Die Anmeldebremse zaehlt je "
-        "Benutzernamen mit, sonst schickt eine Maschine tausend Mails los."
+        "derselbe Rumpf, dieselbe Zeit: gesucht wird nach der Antwort), egal "
+        "ob es das Konto gibt oder dort eine Adresse steht: Ein sichtbarer "
+        "Unterschied waere eine Namensliste. GET sagt nur, ob ein Link per "
+        "Mail ueberhaupt hinaus kann (Postausgang). Die Anmeldebremse zaehlt "
+        "am Konto mit, sonst schickt eine Maschine tausend Mails los."
     ),
     "/api/auth/kennwort-neu": (
-        "Der Link aus der Mail IST der Nachweis; wer angemeldet waere, "
-        "braeuchte ihn nicht. Der Schluessel hat 256 Bit und liegt nur als "
-        "Hash da, gilt zwei Stunden und genau einmal — und die Bremse haengt "
-        "auch hier davor."
+        "Der Link aus der Mail (oder vom Betreiber, oder vom Notfallbefehl) IST "
+        "der Nachweis; wer angemeldet waere, braeuchte ihn nicht. Der Schluessel "
+        "hat 256 Bit und liegt nur als Hash da, gilt eine Stunde (selbst "
+        "angefordert) bzw. 1, 7 oder 30 Tage (Betreiber) und genau einmal — und "
+        "die Bremse haengt auch hier davor."
+    ),
+    "/api/auth/kennwort-neu/{schluessel}": (
+        "Dieselbe Seite fragt vorher, fuer wen der Link gilt; verbraucht nichts. "
+        "Wer ihn nicht hat, erfaehrt nichts (dieselbe Kennung fuer unbekannt und "
+        "abgelaufen), die Bremse haengt davor."
+    ),
+    "/api/auth/adresse/{schluessel}": (
+        "Der Link, der eine neue Adresse bestaetigt, kommt per Mail und muss "
+        "auch auf einem Geraet gehen, auf dem niemand angemeldet ist. 256 Bit, "
+        "nur als Hash gespeichert, 24 Stunden, einmal; die Bremse haengt davor."
     ),
     "/api/auth/einrichtung": (
         "Zeigt den QR-Code, solange der zweite Faktor unbestätigt ist. Hängt "
@@ -260,6 +272,12 @@ async def lebenslauf(_: FastAPI):
     protokolldienst.einrichten()
 
     init_db()
+    # Ohne Konto: der Einrichtungscode ins Protokoll, bei jedem Start (Kontenmodul).
+    from .services import konten_store
+    from .vendor import nexkonten
+
+    with SessionLocal() as db:
+        nexkonten.setup.announce_setup(konten_store.store_fuer(db))
     # Den TLS-Kontext des Anmeldemoduls einmal ausserhalb der Ereignisschleife lesen.
     await nexoidc.warm()
 

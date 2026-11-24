@@ -215,7 +215,12 @@ def test_linking_under_a_sub_path_bounces_to_the_address_with_the_prefix(netz, u
     fake = netz.add(__import__("oidc_fakes").FakeProvider())
     with TestClient(BasisPfadMiddleware(app, VORBAU), base_url="http://testserver", follow_redirects=False) as c:
         eingerichtet = c.post(
-            f"{VORBAU}/api/setup/konto", json={"benutzername": BETREIBER, "passwort": PASSWORT}
+            f"{VORBAU}/api/setup/konto", json={
+                "benutzername": BETREIBER,
+                "passwort": PASSWORT,
+                "anzeigename": "Betrieb",
+                "einrichtungscode": get_settings().setup_token,
+            }
         )
         assert eingerichtet.status_code == 201, eingerichtet.text
         angelegt = c.post(

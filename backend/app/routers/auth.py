@@ -13,8 +13,9 @@ ausser dem zweiten Schritt nichts aufrufen kann.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from .. import __version__
@@ -25,13 +26,13 @@ from ..services import anmeldebremse
 from ..services import benutzer as benutzerdienst
 from ..services import kidienst
 from ..services import profilbild as profilbilddienst
-from ..services import ruecksetzung as ruecksetzdienst
+from ..services import konten_store as kontenstore
+from ..services import kontenpost
 from ..services import sitzung as sitzungsdienst
 from ..services import zwei_faktor
-from ..db import einstellung_lesen
 from ..meldung import MeldungHttp
 from ..models import Benutzer, utcnow
-from .einstellungen import SCHLUESSEL_OEFFENTLICHE_ADRESSE
+from ..vendor import nexkonten
 
 logger = logging.getLogger("nexmail.auth")
 
@@ -39,8 +40,10 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 class Anmeldung(BaseModel):
-    benutzername: str = Field(min_length=1, max_length=64)
-    passwort: str = Field(min_length=1, max_length=200)
+    #: „Benutzername oder E-Mail“. ⚠️ **Der Feldname bleibt** (Passwortmanager, Skripte); 254 Zeichen, weil eine
+    #: lange Adresse sonst 422 statt „stimmt nicht“ bekaeme.
+    benutzername: str = Field(min_length=1, max_length=nexkonten.names.EMAIL_MAX)
+    passwort: str = Field(min_length=1, max_length=300)
 
 
 class Codeeingabe(BaseModel):
@@ -103,37 +106,61 @@ class Ich(BaseModel):
     profilbild: str | None = None
     #: Die eigene Reihenfolge der Postfachgruppen-Reiter (siehe ``models``).
     gruppen_reihenfolge: list[str] = []
+    #: Seit dem Kontenmodul: ob die Adresse zaehlt, welche auf ihren Link wartet, die Sprache des Kontos (``""``:
+    #: die des Browsers), und nach einem neuen Passwort ueber einen Link, wer ihn machte (``self``, ``operator``,
+    #: ``server``; ``""``: nichts zu zeigen).
+    kontaktadresse_zaehlt: bool = True
+    kontaktadresse_wartet: str = ""
+    sprache: str = ""
+    neues_passwort: str = ""
+
+
+def bremsschluessel(store, eingetippt: str, request: Request) -> str:
+    """Woran die Bremse zaehlt: am Konto, egal ob Name oder Adresse getippt wurde (ein Konto, ein Zaehler), sonst am
+    Absender. ⚠️ **Ohne ``NEXMAIL_CLIENT_IP`` kennt nexmail keinen Absender**; dann zaehlt eine unbekannte Eingabe
+    an sich selbst, wie bisher, statt alle unbekannten Eingaben in einen Topf zu werfen."""
+    absender = anmeldebremse.adresse_von(request)
+    schluessel = nexkonten.login.attempt_key(store, eingetippt, absender)
+    if schluessel.startswith("sender:") and not absender:
+        return "eingabe:" + (eingetippt or "").strip().lower()[:254]
+    return schluessel
+
+
+def _konto_schluessel(person: Benutzer) -> str:
+    """Der Bremsschluessel eines angemeldeten Kontos, derselbe wie beim Anmelden."""
+    return f"account:{person.id}"
 
 
 @router.post("/anmelden", response_model=Schritt)
 def anmelden(
     eingabe: Anmeldung, request: Request, response: Response, db: DbSession
 ) -> Schritt:
-    """Schritt eins: das Passwort.
+    """Schritt eins: „Benutzername oder E-Mail“ und das Passwort (Kontenmodul).
 
-    Bei Erfolg entsteht eine **halbe** Sitzung. Sie laeuft nach wenigen
+    Bei Erfolg entsteht eine **halbe** Sitzung, wenn das Konto einen zweiten Faktor hat. Sie laeuft nach wenigen
     Minuten ab und darf nur den zweiten Schritt aufrufen.
+
+    ⚠️ **Jede Ablehnung ist dieselbe** (``anmeldung_falsch``, gleich lang gerechnet): kein Konto, falsches
+    Passwort, eine Adresse, die zwei Konten haben, ein Konto nur ueber Anbieter.
     """
-    wache = anmeldebremse.torwaechter(request, "anmelden", eingabe.benutzername)
+    store = kontenstore.store_fuer(db)
+    wache = anmeldebremse.torwaechter(request, "anmelden", bremsschluessel(store, eingabe.benutzername, request))
 
-    person = benutzerdienst.finden(db, eingabe.benutzername)
-    # ⚠️ **„Anmeldung mit Passwort" aus** (Verwaltung → Anmeldung): Nur die
-    # Anbieter lassen herein. Der Betreiber kommt immer mit seinem Passwort
-    # hinein, sonst stuende er vor der Tuer, sobald der Anbieter ausfaellt.
-    # Die Antwort kommt VOR der Passwortpruefung und ist dieselbe wie bei einem
-    # falschen Passwort: Sonst bestaetigte sie einem Fremden, dass ein
-    # geratenes Passwort stimmt.
-    passwort_gesperrt = (
-        person is not None and not person.ist_betreiber and not passwort_anmeldung_an(db)
-    )
-    if person is None or passwort_gesperrt or not benutzerdienst.passwort_stimmt(person, eingabe.passwort):
+    # ⚠️ **„Anmeldung mit Passwort" aus** (Verwaltung → Anmeldung): Nur die Anbieter lassen herein. Der Betreiber
+    # kommt immer mit seinem Passwort hinein, sonst stuende er vor der Tuer, sobald der Anbieter ausfaellt. Die
+    # Antwort ist dieselbe wie bei einem falschen Passwort und dauert genauso lange.
+    gemeint = nexkonten.login.resolve_login(store, eingabe.benutzername)
+    if gemeint is not None and not gemeint.operator and not passwort_anmeldung_an(db):
+        store.check_password(None, eingabe.passwort)
         wache.fehlgeschlagen()
-        # Dieselbe Antwort fuer "kein solches Konto" und "falsches Passwort".
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="anmeldung_falsch",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="anmeldung_falsch")
+    try:
+        konto = nexkonten.login.authenticate(store, eingabe.benutzername, eingabe.passwort)
+    except nexkonten.AccountError as fehler:
+        wache.fehlgeschlagen()
+        raise kontenstore.http(fehler, status.HTTP_401_UNAUTHORIZED) from fehler
 
+    person = db.get(Benutzer, str(konto.id))
     wache.geschafft()
     benutzerdienst.hash_auffrischen(db, person, eingabe.passwort)
 
@@ -141,21 +168,17 @@ def anmelden(
     # gedacht fuer den Fall, dass Telefon und Wiederherstellungscodes weg sind.
     if get_settings().zwei_faktor_aus:
         sitzungsdienst.anlegen(db, person, request, response, bestaetigt=True)
+        nexkonten.login.succeeded(store, person.id)
         logger.warning("Signed in with the second factor disabled (NEXMAIL_ZWEI_FAKTOR_AUS).")
         return Schritt(schritt="fertig")
 
     # ⚠️ **Der zweite Faktor ist eine Wahl, keine Pflicht:** Wer nexmail rein
-    # lokal betreibt, braucht ihn nicht.
-    #
-    # Wer ihn nicht eingeschaltet hat, kommt hier durch. Eingeschaltet wird er
-    # unter Einstellungen → Sicherheit, nicht mitten in der Anmeldung: Ein
+    # lokal betreibt, braucht ihn nicht. Eingeschaltet wird er unter
+    # Einstellungen → Sicherheit, nicht mitten in der Anmeldung: Ein
     # Assistent, den man nicht abbrechen kann, ist keine Wahl.
-    #
-    # ⚠️ Was das kostet, steht in der Oberflaeche: Solange er aus ist, haengen
-    # alle Postfaecher dieses Benutzers an einem Passwort. Wer nexmail ins
-    # Internet stellt, sollte ihn einschalten.
     if not person.totp_bestaetigt:
         sitzungsdienst.anlegen(db, person, request, response, bestaetigt=True)
+        nexkonten.login.succeeded(store, person.id)
         return Schritt(schritt="fertig")
 
     sitzungsdienst.anlegen(db, person, request, response, bestaetigt=False)
@@ -193,7 +216,7 @@ def code_pruefen(
     das Cookie fuer diesen Schritt hat jeder, der das Passwort kennt.
     """
     person = sitzung.benutzer
-    wache = anmeldebremse.torwaechter(request, "code", person.benutzername)
+    wache = anmeldebremse.torwaechter(request, "code", _konto_schluessel(person))
 
     if not zwei_faktor.code_pruefen(db, person, eingabe.code.strip()):
         wache.fehlgeschlagen()
@@ -207,6 +230,7 @@ def code_pruefen(
 
     wache.geschafft()
     sitzungsdienst.bestaetigen(db, sitzung, request, response)
+    nexkonten.login.succeeded(kontenstore.store_fuer(db), person.id)
     return Schritt(schritt="fertig")
 
 
@@ -220,7 +244,7 @@ def wiederherstellung(
     genauso - sonst waere dies die bequemere Tuer zum Durchprobieren.
     """
     person = sitzung.benutzer
-    wache = anmeldebremse.torwaechter(request, "wiederherstellung", person.benutzername)
+    wache = anmeldebremse.torwaechter(request, "wiederherstellung", _konto_schluessel(person))
 
     if not zwei_faktor.code_einloesen(db, person, eingabe.code.strip()):
         wache.fehlgeschlagen()
@@ -230,63 +254,157 @@ def wiederherstellung(
 
     wache.geschafft()
     sitzungsdienst.bestaetigen(db, sitzung, request, response)
+    nexkonten.login.succeeded(kontenstore.store_fuer(db), person.id)
     logger.warning("A user signed in with a recovery code.")
     return Schritt(schritt="fertig")
 
 
 class Vergessen(BaseModel):
-    benutzername: str = Field(min_length=1, max_length=64)
+    #: „Benutzername oder E-Mail“; der Feldname bleibt.
+    benutzername: str = Field(min_length=1, max_length=nexkonten.names.EMAIL_MAX)
 
 
 class NeuesKennwort(BaseModel):
     schluessel: str = Field(min_length=1, max_length=200)
-    passwort: str = Field(min_length=1, max_length=200)
+    passwort: str = Field(min_length=1, max_length=300)
+
+
+class VergessenStand(BaseModel):
+    #: Ob ein Link per Mail hinaus kann. Ohne: „Der Betreiber kann dir unter Konten einen Link erstellen …“.
+    per_mail: bool
+
+
+def _per_mail(db) -> bool:
+    return kontenpost.mail_moeglich(db) and passwort_anmeldung_an(db)
+
+
+@router.get("/kennwort-vergessen", response_model=VergessenStand)
+def kennwort_vergessen_stand(db: DbSession) -> VergessenStand:
+    """Ob die Seite das Formular zeigt oder den Satz ueber den Betreiber. Sagt nichts ueber ein Konto."""
+    return VergessenStand(per_mail=_per_mail(db))
 
 
 @router.post("/kennwort-vergessen", status_code=status.HTTP_202_ACCEPTED)
 def kennwort_vergessen(
-    eingabe: Vergessen, request: Request, db: DbSession
+    eingabe: Vergessen, request: Request, background: BackgroundTasks, db: DbSession
 ) -> Response:
-    """Einen Ruecksetz-Link anfordern.
+    """Einen Link fuer ein neues Passwort anfordern, mit Benutzername oder E-Mail (Kontenmodul).
 
-    ⚠️ **Immer 202, immer derselbe Text.** Ob es den Namen gibt, ob dort eine
-    Kontaktadresse steht, ob der Postausgang laeuft: Nach aussen sieht alles
-    gleich aus. Wer hier einen Unterschied sehen kann, kann Namen
-    durchprobieren — und eine Namensliste ist der halbe Einbruch.
+    ⚠️ **Immer 202, immer derselbe Rumpf, immer gleich schnell.** Gesucht, angelegt und verschickt wird erst nach
+    der Antwort (``forgot_in_background``). Eine Adresse, die zwei Konten haben, findet keines; mit dem Benutzernamen
+    geht der Link trotzdem an die eigene Adresse.
 
-    ⚠️ **Die Bremse zaehlt trotzdem.** Ohne sie schickt eine Maschine tausend
-    Mails los, und der Postausgang landet auf einer Sperrliste.
+    ⚠️ **Die Bremse zaehlt trotzdem**, am Konto oder an der Eingabe. Ohne sie schickt eine Maschine tausend Mails
+    los, und der Postausgang landet auf einer Sperrliste.
     """
-    wache = anmeldebremse.torwaechter(request, "vergessen", eingabe.benutzername.strip())
+    store = kontenstore.store_fuer(db)
+    wache = anmeldebremse.torwaechter(request, "vergessen", bremsschluessel(store, eingabe.benutzername, request))
     wache.fehlgeschlagen()
 
-    adresse_der_app = einstellung_lesen(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE)
-    if adresse_der_app:
-        ruecksetzdienst.anfordern(db, eingabe.benutzername, adresse_der_app)
-    else:
-        logger.warning("A password reset was requested, but no public address is configured.")
+    if not _per_mail(db):
+        logger.info("A password link was asked for, but there is no system mail, public address or password sign-in.")
+        return Response(status_code=status.HTTP_202_ACCEPTED)
 
+    def senden(mail: nexkonten.Mail) -> None:
+        from ..db import SessionLocal
+
+        with SessionLocal() as eigene:
+            kontenpost.senden(eigene, mail)
+
+    nexkonten.resets.forgot_in_background(
+        eingabe.benutzername,
+        open_store=kontenstore.eigener_store,
+        send=senden,
+        later=background.add_task,
+    )
     return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+class LinkStand(BaseModel):
+    benutzername: str
+    min_passwort: int = nexkonten.names.PASSWORD_MIN
+
+
+@router.get("/kennwort-neu/{schluessel}", response_model=LinkStand)
+def kennwort_neu_stand(schluessel: str, request: Request, db: DbSession) -> LinkStand:
+    """Fuer wen der Link gilt; verbraucht nichts. ``ruecksetzung_ungueltig`` fuer alles, was nicht gilt."""
+    wache = anmeldebremse.torwaechter(request, "kennwort-neu", "-")
+    try:
+        konto = nexkonten.resets.reset_state(
+            kontenstore.store_fuer(db), schluessel, password_login=passwort_anmeldung_an(db)
+        )
+    except nexkonten.AccountError as fehler:
+        wache.fehlgeschlagen()
+        raise kontenstore.http(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    return LinkStand(benutzername=konto.username)
 
 
 @router.post("/kennwort-neu", status_code=status.HTTP_204_NO_CONTENT)
 def kennwort_neu(eingabe: NeuesKennwort, request: Request, db: DbSession) -> Response:
-    """Das neue Kennwort setzen.
+    """Das neue Passwort setzen (Kontenmodul).
 
-    ⚠️ **Auch hier die Bremse.** Der Schluessel hat 256 Bit, aber eine Tuer
-    ohne Bremse laedt zum Probieren ein, und Probieren kostet uns Rechenzeit.
+    ⚠️ **Browser-Anmeldungen und angefangene Anmeldungen enden; die iPhone-App und API-Schluessel bleiben**
+    (Entwurf, Entscheidung „Neues Passwort“). Was noch Zugriff hat, zeigt die Oberflaeche nach der naechsten
+    Anmeldung mit „Alle trennen“ (``/api/auth/zugaenge``).
+
+    ⚠️ **204 wie bisher**, ohne Rumpf: Wer diese Adresse heute aufruft, rechnet damit.
     """
     wache = anmeldebremse.torwaechter(request, "kennwort-neu", "-")
     try:
-        ruecksetzdienst.einloesen(db, eingabe.schluessel, eingabe.passwort)
-    except ruecksetzdienst.RuecksetzFehler as fehler:
-        wache.fehlgeschlagen()
-        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
-    except benutzerdienst.BenutzerFehler as fehler:
-        # Ein zu kurzes Kennwort ist kein Fehlversuch an der Tuer.
-        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+        nexkonten.resets.use_reset(
+            kontenstore.store_fuer(db), eingabe.schluessel, eingabe.passwort, password_login=passwort_anmeldung_an(db)
+        )
+    except nexkonten.AccountError as fehler:
+        if fehler.code in ("reset_invalid", "reset_expired"):
+            wache.fehlgeschlagen()
+        # Ein zu kurzes Passwort ist kein Fehlversuch an der Tuer, und es verbraucht den Link nicht.
+        raise kontenstore.http(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     wache.geschafft()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class Zugang(BaseModel):
+    id: str
+    #: ``device`` (die iPhone-App) oder ``api_key``.
+    art: str
+    name: str
+    zuletzt: datetime | None = None
+
+
+class Zugaenge(BaseModel):
+    #: Wer den Link machte (``self``, ``operator``, ``server``), ``""`` ohne neues Passwort.
+    herkunft: str
+    zugaenge: list[Zugang]
+
+
+@router.get("/zugaenge", response_model=Zugaenge)
+def zugaenge(person: AngemeldeterBenutzer, db: DbSession) -> Zugaenge:
+    """„Diese Geraete haben noch Zugriff“: was ein neues Passwort nicht beendet hat."""
+    liste = kontenstore.store_fuer(db).list_access(person.id)
+    return Zugaenge(
+        herkunft=person.neues_passwort or "",
+        zugaenge=[Zugang(id=str(z.id), art=z.kind, name=z.label, zuletzt=z.last_used_at) for z in liste],
+    )
+
+
+class Getrennt(BaseModel):
+    getrennt: int
+
+
+@router.post("/zugaenge/trennen", response_model=Getrennt)
+def zugaenge_trennen(person: AngemeldeterBenutzer, db: DbSession) -> Getrennt:
+    """„Alle trennen“: jedes Geraet und jeder API-Schluessel des eigenen Kontos. Der Hinweis ist danach erledigt."""
+    anzahl = nexkonten.resets.disconnect_all(kontenstore.store_fuer(db), person.id)
+    person.neues_passwort = ""
+    db.commit()
+    return Getrennt(getrennt=anzahl)
+
+
+@router.post("/zugaenge/gesehen", status_code=status.HTTP_204_NO_CONTENT)
+def zugaenge_gesehen(person: AngemeldeterBenutzer, db: DbSession) -> None:
+    """Der Hinweis nach einem neuen Passwort ist gelesen; die Zugaenge bleiben."""
+    person.neues_passwort = ""
+    db.commit()
 
 
 @router.post("/abmelden", status_code=status.HTTP_204_NO_CONTENT)
@@ -323,7 +441,7 @@ def passwort_aendern(
     sonst wirft sich der Betreiber gerade selbst hinaus.
     """
     # ``torwaechter`` sperrt selbst mit 429, wenn zu oft angeklopft wurde.
-    wache = anmeldebremse.torwaechter(request, "passwort", person.benutzername)
+    wache = anmeldebremse.torwaechter(request, "passwort", _konto_schluessel(person))
     try:
         benutzerdienst.passwort_aendern(db, person, wunsch.altes, wunsch.neues)
     except benutzerdienst.BenutzerFehler as fehler:
@@ -396,7 +514,7 @@ def zwei_faktor_bestaetigen(
             detail="qr_code_fehlt",
         )
 
-    wache = anmeldebremse.torwaechter(request, "code", person.benutzername)
+    wache = anmeldebremse.torwaechter(request, "code", _konto_schluessel(person))
     if not zwei_faktor.code_pruefen(db, person, eingabe.code.strip()):
         wache.fehlgeschlagen()
         raise HTTPException(
@@ -422,7 +540,7 @@ def zwei_faktor_aus(
     danach ist er weg, ohne dass jemand etwas merkt. Dieselbe Bremse wie an der
     Anmeldung haengt daran.
     """
-    wache = anmeldebremse.torwaechter(request, "zwei-faktor-aus", person.benutzername)
+    wache = anmeldebremse.torwaechter(request, "zwei-faktor-aus", _konto_schluessel(person))
     if not benutzerdienst.passwort_stimmt(person, eingabe.passwort):
         wache.fehlgeschlagen()
         raise HTTPException(
@@ -456,6 +574,10 @@ def ich(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
         wasneu_gesehen=person.wasneu_gesehen,
         profilbild=person.profilbild_am.isoformat() if person.profilbild_am else None,
         gruppen_reihenfolge=_reihenfolge_lesen(person.gruppen_reihenfolge),
+        kontaktadresse_zaehlt=bool(person.kontaktadresse_zaehlt) if person.kontaktadresse else True,
+        kontaktadresse_wartet=kontenstore.store_fuer(db).get_account(person.id).pending_email,
+        sprache=person.sprache or "",
+        neues_passwort=person.neues_passwort or "",
     )
 
 
@@ -483,64 +605,214 @@ def wasneu_gesehen(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
     return ich(person, db)
 
 
+#: Wie lange eine Anmeldung als „frisch“ gilt: Ein Konto ohne Passwort bestaetigt eine neue Adresse mit einer
+#: frischen Anmeldung beim Anbieter statt mit einem Passwort (Entwurf, Entscheidung „Adresse aendern“).
+FRISCH_MINUTEN = 5
+
+
+def _frisch(sitzung) -> bool:
+    from datetime import timedelta
+
+    angelegt = sitzung.angelegt if sitzung.angelegt.tzinfo else sitzung.angelegt.replace(tzinfo=utcnow().tzinfo)
+    return utcnow() - angelegt <= timedelta(minutes=FRISCH_MINUTEN)
+
+
+def _bestaetigt(person: Benutzer, sitzung) -> bool:
+    """``actor_confirmed`` fuer das Modul: nur ein Konto **ohne** Passwort, frisch angemeldet. Mit Passwort prueft
+    das Modul selbst."""
+    return not person.passwort_hash and _frisch(sitzung)
+
+
+def _mail_versuchen(db, mail: nexkonten.Mail | None) -> None:
+    """Eine Mail des Moduls, die nicht ueber die Antwort entscheidet (Bescheid an die alte Adresse, neuer Name)."""
+    if mail is None:
+        return
+    try:
+        kontenpost.senden(db, mail)
+    except Exception as fehler:  # noqa: BLE001 - ein Bescheid darf nichts umwerfen, was schon gilt
+        logger.warning("An account mail could not be sent: %r", getattr(fehler, "kennung", fehler))
+
+
+def _adresse_aendern(db, person: Benutzer, sitzung, adresse: str, passwort: str) -> None:
+    """Die eigene Adresse ueber das Modul: nur mit Passwort (ohne Passwort: frisch angemeldet). Mit Postausgang
+    wartet die neue auf ihren Link, ohne gilt sie sofort. ``""`` entfernt sie."""
+    store = kontenstore.store_fuer(db)
+    mit_mail = kontenpost.mail_moeglich(db)
+    ergebnis = nexkonten.profiles.change_email(
+        store, person.id, adresse, password=passwort, actor_confirmed=_bestaetigt(person, sitzung), mail=mit_mail
+    )
+    if ergebnis.mail is not None:
+        try:
+            kontenpost.senden(db, ergebnis.mail)
+        except Exception as fehler:  # noqa: BLE001
+            # Ohne Mail wartet die Adresse auf einen Link, den niemand hat: zuruecknehmen und sagen, warum.
+            nexkonten.profiles.withdraw_email_change(store, person.id)
+            raise MeldungHttp(status.HTTP_502_BAD_GATEWAY, getattr(fehler, "kennung", "post_fehler")) from fehler
+    _mail_versuchen(db, ergebnis.notice)
+    db.expire(person)
+
+
 class Kontaktadresse(BaseModel):
     #: Leer heisst: entfernen. Das ist erlaubt und wird nicht wegdiskutiert —
     #: aber die Oberflaeche sagt, was es kostet.
     adresse: str = Field(default="", max_length=320)
+    #: Seit dem Kontenmodul verlangt: das eigene Passwort (Entwurf, Entscheidung „Adresse aendern“).
+    passwort: str = Field(default="", max_length=300)
 
 
 @router.put("/ich/kontaktadresse", response_model=Ich)
 def kontaktadresse_setzen(
-    eingabe: Kontaktadresse, person: AngemeldeterBenutzer, db: DbSession
+    eingabe: Kontaktadresse, request: Request, person: AngemeldeterBenutzer, sitzung: AktiveSitzung, db: DbSession
 ) -> Ich:
-    """Die Adresse fuer Kontosachen setzen oder entfernen.
+    """Die eigene Adresse setzen oder entfernen.
 
-    ⚠️ **Ohne sie gibt es keinen Weg zurueck.** Sie ist ausdruecklich **nicht**
-    eines der eingerichteten Postfaecher. Wer sie
-    leer laesst, kommt nach einem vergessenen Kennwort nicht mehr hinein.
+    ⚠️ **Ohne sie gibt es keinen Weg zurueck**, wenn der Betreiber keinen Link erstellt. Sie ist ausdruecklich
+    **nicht** eines der eingerichteten Postfaecher.
 
-    ⚠️ **Kein Kennwort davor, und das ist eine Abwaegung.** Wer eine fremde
-    Sitzung uebernommen hat, koennte die Adresse auf sich umbiegen und sich
-    danach das Kennwort schicken lassen. Dagegen steht: Wer eine Sitzung hat,
-    liest ohnehin alles mit. Die Bremse davor waere Theater, das Kennwort
-    dagegen eine echte Huerde — deshalb steht es dort, wo es zaehlt: beim
-    Aendern des Kennworts und beim Abschalten des zweiten Faktors.
+    ⚠️ **Nur mit Passwort** (seit dem Kontenmodul; vorher ohne, als Abwaegung). Wer eine fremde Sitzung uebernommen
+    hat, koennte sonst die Adresse umbiegen und sich danach das Passwort schicken lassen. Dieselbe Bremse wie am
+    Anmelden haengt davor.
     """
-    adresse = eingabe.adresse.strip()
-    if adresse and "@" not in adresse:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="adresse_ungueltig"
-        )
-    person.kontaktadresse = adresse
-    db.commit()
-    logger.info("A user set their contact address (empty=%s).", not adresse)
+    wache = anmeldebremse.torwaechter(request, "adresse", _konto_schluessel(person))
+    try:
+        _adresse_aendern(db, person, sitzung, eingabe.adresse.strip(), eingabe.passwort)
+    except nexkonten.AccountError as fehler:
+        if fehler.code == "wrong_password":
+            wache.fehlgeschlagen()
+        raise kontenstore.http(fehler) from fehler
+    wache.geschafft()
+    logger.info("A user changed their address (empty=%s).", not eingabe.adresse.strip())
     return ich(person, db)
 
 
 class Profil(BaseModel):
-    #: Leer heisst: der Benutzername, wie beim Anlegen.
-    anzeigename: str = Field(default="", max_length=120)
-    #: Die Adresse fuer Kontosachen (siehe ``kontaktadresse_setzen``).
-    kontaktadresse: str = Field(default="", max_length=320)
+    #: Leer heisst: es wird der Benutzername gezeigt (seit dem Kontenmodul bleibt das Feld dann leer).
+    anzeigename: str = Field(default="", max_length=200)
+    #: Die eigene Adresse; ist sie anders als bisher, verlangt das ``passwort``.
+    kontaktadresse: str | None = Field(default=None, max_length=320)
+    passwort: str = Field(default="", max_length=300)
 
 
 @router.put("/ich/profil", response_model=Ich)
-def profil_setzen(eingabe: Profil, person: AngemeldeterBenutzer, db: DbSession) -> Ich:
-    """Name und Mailadresse aus den Einstellungen → Profil, in einem Zug.
+def profil_setzen(
+    eingabe: Profil, request: Request, person: AngemeldeterBenutzer, sitzung: AktiveSitzung, db: DbSession
+) -> Ich:
+    """Anzeigename und Adresse aus den Einstellungen → Profil, in einem Zug.
 
-    ⚠️ **Dieselben Regeln wie die beiden Wege einzeln:** Ein leerer Name wird
-    zum Benutzernamen (``benutzer.anlegen``), eine Adresse braucht ein ``@``
-    und darf leer sein (``kontaktadresse_setzen``). Erst wenn beides passt,
-    wird geschrieben, sonst bliebe der Name geaendert und die Adresse nicht.
+    ⚠️ **Erst pruefen, dann schreiben:** Der Anzeigename wird vorher geprueft (eindeutig), die Adresse geaendert
+    (mit Passwort), erst dann der Name gesetzt. Sonst bliebe der Name geaendert und die Adresse nicht.
     """
-    adresse = eingabe.kontaktadresse.strip()
-    if adresse and "@" not in adresse:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="adresse_ungueltig")
-    person.anzeigename = eingabe.anzeigename.strip() or person.benutzername
-    person.kontaktadresse = adresse
-    db.commit()
+    store = kontenstore.store_fuer(db)
+    try:
+        nexkonten.names.check_display_name(store, eingabe.anzeigename, person.id, required=False)
+        adresse = (eingabe.kontaktadresse if eingabe.kontaktadresse is not None else person.kontaktadresse).strip()
+        if not nexkonten.names.same_address(adresse, person.kontaktadresse) and (adresse or person.kontaktadresse):
+            wache = anmeldebremse.torwaechter(request, "adresse", _konto_schluessel(person))
+            try:
+                _adresse_aendern(db, person, sitzung, adresse, eingabe.passwort)
+            except nexkonten.AccountError as fehler:
+                if fehler.code == "wrong_password":
+                    wache.fehlgeschlagen()
+                raise
+            wache.geschafft()
+        nexkonten.profiles.change_display_name(store, person.id, eingabe.anzeigename, actor_id=person.id)
+    except nexkonten.AccountError as fehler:
+        raise kontenstore.http(fehler) from fehler
+    db.expire(person)
     logger.info("A user changed their profile.")
     return ich(person, db)
+
+
+class NeuerName(BaseModel):
+    benutzername: str = Field(min_length=1, max_length=200)
+    passwort: str = Field(default="", max_length=300)
+
+
+@router.put("/ich/benutzername", response_model=Ich)
+def benutzername_aendern(
+    eingabe: NeuerName, request: Request, person: AngemeldeterBenutzer, db: DbSession
+) -> Ich:
+    """Den eigenen Benutzernamen aendern (Kontenmodul): nach den Regeln, nur wenn ihn kein Konto hat oder hatte, mit
+    dem Passwort (ein Konto ohne Passwort ohne). Gilt sofort; Sitzungen, Geraete und Schluessel bleiben, sie haengen
+    an der Kennung. Der alte Name bleibt fuer dieses Konto reserviert; anmelden geht nur mit dem neuen."""
+    wache = anmeldebremse.torwaechter(request, "benutzername", _konto_schluessel(person))
+    try:
+        mail = nexkonten.profiles.change_username(
+            kontenstore.store_fuer(db), person.id, eingabe.benutzername, actor_id=person.id, password=eingabe.passwort
+        )
+    except nexkonten.AccountError as fehler:
+        if fehler.code == "wrong_password":
+            wache.fehlgeschlagen()
+        raise kontenstore.http(fehler) from fehler
+    wache.geschafft()
+    _mail_versuchen(db, mail if kontenpost.mail_moeglich(db) else None)
+    db.expire(person)
+    return ich(person, db)
+
+
+class Sprache(BaseModel):
+    #: ``de``, ``en``; ``""`` heisst: die des Browsers.
+    sprache: str = Field(default="", max_length=35)
+
+
+@router.put("/ich/sprache", response_model=Ich)
+def sprache_setzen(eingabe: Sprache, person: AngemeldeterBenutzer, db: DbSession) -> Ich:
+    """Die Sprache des Kontos; sie reist mit auf jedes Geraet."""
+    nexkonten.profiles.change_language(kontenstore.store_fuer(db), person.id, eingabe.sprache)
+    db.expire(person)
+    return ich(person, db)
+
+
+@router.post("/ich/kontaktadresse/nochmal", response_model=Ich)
+def adresslink_nochmal(request: Request, person: AngemeldeterBenutzer, db: DbSession) -> Ich:
+    """„Link nochmal schicken“ fuer die Adresse, die auf ihren Link wartet."""
+    anmeldebremse.torwaechter(request, "adresslink", _konto_schluessel(person)).fehlgeschlagen()
+    try:
+        mail = nexkonten.profiles.resend_email_link(kontenstore.store_fuer(db), person.id)
+    except nexkonten.AccountError as fehler:
+        raise kontenstore.http(fehler) from fehler
+    try:
+        kontenpost.senden(db, mail)
+    except Exception as fehler:  # noqa: BLE001
+        raise MeldungHttp(status.HTTP_502_BAD_GATEWAY, getattr(fehler, "kennung", "post_fehler")) from fehler
+    return ich(person, db)
+
+
+@router.delete("/ich/kontaktadresse/wartend", response_model=Ich)
+def adresswechsel_zuruecknehmen(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
+    """Die Adresse, die auf ihren Link wartet, zuruecknehmen; die bisherige gilt weiter."""
+    nexkonten.profiles.withdraw_email_change(kontenstore.store_fuer(db), person.id)
+    return ich(person, db)
+
+
+class AdressLink(BaseModel):
+    adresse: str
+
+
+@router.get("/adresse/{schluessel}", response_model=AdressLink)
+def adresslink_stand(schluessel: str, request: Request, db: DbSession) -> AdressLink:
+    """Welche Adresse der Link bestaetigt; verbraucht nichts. Ohne Anmeldung: Der Link kommt per Mail."""
+    wache = anmeldebremse.torwaechter(request, "adresse-link", "-")
+    try:
+        wechsel = nexkonten.profiles.email_change_state(kontenstore.store_fuer(db), schluessel)
+    except nexkonten.AccountError as fehler:
+        wache.fehlgeschlagen()
+        raise kontenstore.http(fehler) from fehler
+    return AdressLink(adresse=wechsel.address)
+
+
+@router.post("/adresse/{schluessel}", response_model=AdressLink)
+def adresslink_einloesen(schluessel: str, request: Request, db: DbSession) -> AdressLink:
+    """Die Adresse des Links gilt ab jetzt und ist bewiesen; die alte hoert davon."""
+    wache = anmeldebremse.torwaechter(request, "adresse-link", "-")
+    store = kontenstore.store_fuer(db)
+    try:
+        ergebnis = nexkonten.profiles.confirm_email(store, schluessel)
+    except nexkonten.AccountError as fehler:
+        wache.fehlgeschlagen()
+        raise kontenstore.http(fehler) from fehler
+    _mail_versuchen(db, ergebnis.notice)
+    return AdressLink(adresse=ergebnis.account.email)
 
 
 @router.put("/ich/profilbild", response_model=Ich)

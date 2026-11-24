@@ -74,7 +74,12 @@ def test_die_anwendung_bleibt_unter_dem_vorbau_bedienbar(hinter_proxy):
     """Der ganze Weg: einrichten, angemeldet bleiben — alles mit Vorbau."""
     angelegt = hinter_proxy.post(
         "/nexmail/api/setup/konto",
-        json={"benutzername": "betreiber", "passwort": "sehr-geheim-123"},
+        json={
+            "benutzername": "betreiber",
+            "passwort": "sehr-geheim-123",
+            "anzeigename": "Betrieb",
+            "einrichtungscode": __import__("os").environ["NEXMAIL_SETUP_TOKEN"],
+        },
     )
     assert angelegt.status_code == 201, angelegt.text
     assert hinter_proxy.get("/nexmail/api/auth/ich").status_code == 200

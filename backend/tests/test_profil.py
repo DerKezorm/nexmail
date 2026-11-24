@@ -25,29 +25,53 @@ def _bild(art: str = "PNG", breite: int = 400, hoehe: int = 200, exif: bytes | N
 
 
 def test_profil_setzt_name_und_adresse(klient, db):
+    """Die Adresse nur mit Passwort (Kontenmodul); ohne Postausgang gilt sie sofort und zaehlt."""
     einrichten(klient)
+    ohne = klient.put(
+        "/api/auth/ich/profil", json={"anzeigename": "Anna Lena", "kontaktadresse": "m@example.com"}
+    )
+    assert ohne.status_code == 401 and ohne.json()["detail"] == "kennwort_falsch"
     antwort = klient.put(
-        "/api/auth/ich/profil", json={"anzeigename": "  Anna Lena  ", "kontaktadresse": "m@example.com"}
+        "/api/auth/ich/profil",
+        json={"anzeigename": "  Anna Lena  ", "kontaktadresse": "m@example.com", "passwort": "sehr-geheim-123"},
     )
     assert antwort.status_code == 200, antwort.text
     assert antwort.json()["anzeigename"] == "Anna Lena"
     assert antwort.json()["kontaktadresse"] == "m@example.com"
+    assert antwort.json()["kontaktadresse_zaehlt"] is True
     person = db.query(Benutzer).one()
     assert (person.anzeigename, person.kontaktadresse) == ("Anna Lena", "m@example.com")
 
 
-def test_leerer_name_wird_zum_benutzernamen(klient):
+def test_nur_der_name_braucht_kein_passwort(klient):
+    einrichten(klient)
+    antwort = klient.put("/api/auth/ich/profil", json={"anzeigename": "Neu"})
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json()["anzeigename"] == "Neu"
+
+
+def test_leerer_name_bleibt_leer_und_zeigt_den_benutzernamen(klient):
+    """Seit dem Kontenmodul bleibt ein leerer Anzeigename leer; gezeigt wird der Benutzername."""
     einrichten(klient, "betreiber")
     antwort = klient.put("/api/auth/ich/profil", json={"anzeigename": "   ", "kontaktadresse": ""})
     assert antwort.status_code == 200
-    assert antwort.json()["anzeigename"] == "betreiber"
+    assert antwort.json()["anzeigename"] == ""
+
+
+def test_ein_fremder_anzeigename_wird_abgewiesen(klient, db):
+    einrichten(klient)
+    zweiten_benutzer_anlegen(db, "zweiter")
+    for belegt in ("Zweiter", "ZWEITER"):
+        antwort = klient.put("/api/auth/ich/profil", json={"anzeigename": belegt})
+        assert antwort.status_code == 409 and antwort.json()["detail"] == "display_name_taken"
 
 
 def test_falsche_adresse_aendert_auch_den_namen_nicht(klient, db):
     einrichten(klient)
     vorher = db.query(Benutzer).one().anzeigename
     antwort = klient.put(
-        "/api/auth/ich/profil", json={"anzeigename": "Neu", "kontaktadresse": "keine-adresse"}
+        "/api/auth/ich/profil",
+        json={"anzeigename": "Neu", "kontaktadresse": "keine-adresse", "passwort": "sehr-geheim-123"},
     )
     assert antwort.status_code == 400
     assert antwort.json()["detail"] == "adresse_ungueltig"

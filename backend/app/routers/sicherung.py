@@ -221,15 +221,34 @@ async def pruefen_angemeldet(
     return await _pruefen(request, datei, passwort)
 
 
+def _einrichtungscode_pruefen(request: Request, db, code: str) -> None:
+    """⚠️ **Vor der Einrichtung schuetzt der Einrichtungscode auch diesen Weg** (Kontenmodul): Wer eine Sicherung
+    einspielt, ist danach Betreiber, mit den Konten darin. Ohne Code waere der Code an der Einrichtung Zierde. 404,
+    sobald es ein Konto gibt, wie bisher."""
+    from ..services import anmeldebremse
+    from ..services import konten_store as kontenstore
+    from ..vendor import nexkonten
+
+    if hat_benutzer(db):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    wache = anmeldebremse.torwaechter(request, "einrichtung", "-")
+    try:
+        nexkonten.setup.check_code(kontenstore.store_fuer(db), code)
+    except nexkonten.AccountError as fehler:
+        wache.fehlgeschlagen()
+        raise kontenstore.http(fehler) from fehler
+    wache.geschafft()
+
+
 @router.post("/pruefen-vor-einrichtung", response_model=Befund)
 async def pruefen_vor_einrichtung(
     request: Request,
     db: DbSession,
     datei: UploadFile = File(...),
     passwort: str = Form(...),
+    einrichtungscode: str = Form(""),
 ) -> Befund:
-    if hat_benutzer(db):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    _einrichtungscode_pruefen(request, db, einrichtungscode)
     return await _pruefen(request, datei, passwort)
 
 
@@ -262,14 +281,15 @@ async def einspielen_angemeldet(
 
 @router.post("/einspielen-vor-einrichtung", response_model=Ergebnis)
 async def einspielen_vor_einrichtung(
+    request: Request,
     db: DbSession,
     datei: UploadFile = File(...),
     passwort: str = Form(...),
     adresse: str = Form(""),
+    einrichtungscode: str = Form(""),
 ) -> Ergebnis:
-    """Eine Sicherung auf einer frischen Installation einspielen."""
-    if hat_benutzer(db):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    """Eine Sicherung auf einer frischen Installation einspielen, mit dem Einrichtungscode."""
+    _einrichtungscode_pruefen(request, db, einrichtungscode)
     # Die eigene Sitzung schließen, bevor die Datei darunter ausgetauscht wird.
     db.close()
     return await _einspielen(datei, passwort, adresse or None)

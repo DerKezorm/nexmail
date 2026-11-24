@@ -28,10 +28,12 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from ..deps import DbSession
+from ..models import Benutzer
 from ..services import anmeldebremse
-from ..services import einladung as einladungsdienst
+from ..services import konten_store as kontenstore
+from ..services import kontenpost
 from ..services import sitzung as sitzungsdienst
-from ..meldung import MeldungHttp
+from ..vendor import nexkonten
 from .oidc import passwort_anmeldung_an
 
 logger = logging.getLogger("nexmail.einladung")
@@ -40,38 +42,41 @@ router = APIRouter(prefix="/api/einladung", tags=["einladung"])
 
 
 class Vorschau(BaseModel):
+    #: ⚠️ **Der Benutzername ist jetzt ein Vorschlag**: der Name einer Einladung von vorher (sie behaelt ihn), sonst
+    #: einer aus dem Anzeigenamen. Feldname wie bisher.
     benutzername: str
     anzeigename: str
-    #: Ob ein Kennwort hier hereinführt. Aus („Anmeldung mit Passwort“ in der
-    #: Verwaltung): nur „Weiter mit …“ über einen Anbieter.
+    #: Die Adresse der Einladung, vorbelegt; aendert der Eingeladene sie, gilt die neue erst nach ihrem Link.
+    kontaktadresse: str = ""
+    #: Ob ein Passwort hier hereinfuehrt. Aus („Anmeldung mit Passwort“ in der
+    #: Verwaltung): nur „Weiter mit …“ ueber einen Anbieter.
     passwort: bool = True
+    min_passwort: int = nexkonten.names.PASSWORD_MIN
 
 
 class Annahme(BaseModel):
-    passwort: str = Field(min_length=1, max_length=200)
+    passwort: str = Field(min_length=1, max_length=300)
+    #: ⚠️ **Fehlen alle drei, kommt die Anfrage von einer Oberflaeche von vorher** (nur das Passwort): Dann gilt der
+    #: Benutzername der Einladung, ihr Anzeigename und ihre Adresse (``older_request`` im Modul).
+    anzeigename: str | None = Field(default=None, max_length=200)
+    benutzername: str | None = Field(default=None, max_length=200)
+    kontaktadresse: str | None = Field(default=None, max_length=320)
 
 
 @router.get("/{schluessel}", response_model=Vorschau)
 def ansehen(schluessel: str, request: Request, db: DbSession) -> Vorschau:
-    """Wen die Einladung meint — damit auf der Seite ein Name steht.
-
-    ⚠️ Hier kommt **kein** Konto zustande und kein Cookie. Die Seite braucht
-    nur den Benutzernamen, damit der Eingeladene weiss, wofuer er ein Kennwort
-    vergibt.
-    """
+    """Was die Seite vorbelegt. ⚠️ Hier kommt **kein** Konto zustande und kein Cookie."""
     wache = anmeldebremse.torwaechter(request, "einladung", schluessel[:12])
-
-    einladung = einladungsdienst.finden(db, schluessel)
-    if einladung is None:
+    try:
+        form = nexkonten.invites.invite_form(kontenstore.store_fuer(db), schluessel)
+    except nexkonten.AccountError as fehler:
         wache.fehlgeschlagen()
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="einladung_abgelaufen",
-        )
+        raise kontenstore.http(fehler, status.HTTP_404_NOT_FOUND) from fehler
     wache.geschafft()
     return Vorschau(
-        benutzername=einladung.benutzername,
-        anzeigename=einladung.anzeigename,
+        benutzername=form.username,
+        anzeigename=form.display_name,
+        kontaktadresse=form.email,
         passwort=passwort_anmeldung_an(db),
     )
 
@@ -84,26 +89,45 @@ def annehmen(
     response: Response,
     db: DbSession,
 ) -> dict[str, str]:
-    """Kennwort vergeben — und damit ist man drin.
+    """Konto anlegen — und damit ist man drin.
 
-    ⚠️ **Ohne zweiten Faktor**, und das ist Absicht: Er ist eine Wahl, die
-    jeder fuer sich unter Einstellungen → Sicherheit trifft. Ein Assistent, aus
-    dem man ohne Telefon nicht herauskommt, waere die schlechteste erste
-    Minute, die nexmail einem neuen Benutzer machen kann.
+    ⚠️ **Ohne zweiten Faktor**, und das ist Absicht: Er ist eine Wahl, die jeder fuer sich unter Einstellungen →
+    Sicherheit trifft.
     """
     wache = anmeldebremse.torwaechter(request, "einladung", schluessel[:12])
     if not passwort_anmeldung_an(db):
-        # Ein Kennwort, mit dem man sich danach nicht anmelden kann, waere eine Falle.
+        # Ein Passwort, mit dem man sich danach nicht anmelden kann, waere eine Falle.
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="passwort_anmeldung_aus")
+    store = kontenstore.store_fuer(db)
+    alt = eingabe.anzeigename is None and eingabe.benutzername is None and eingabe.kontaktadresse is None
     try:
-        neuer = einladungsdienst.einloesen(db, schluessel, eingabe.passwort)
-    except einladungsdienst.EinladungsFehler as fehler:
-        wache.fehlgeschlagen()
-        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
-    except Exception as fehler:  # Passwortregeln
-        wache.fehlgeschlagen()
-        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+        form = nexkonten.invites.invite_form(store, schluessel)
+        ergebnis = nexkonten.invites.accept_invite(
+            store,
+            schluessel,
+            display_name=eingabe.anzeigename if eingabe.anzeigename is not None else form.display_name,
+            username=eingabe.benutzername if eingabe.benutzername is not None else form.username,
+            email=eingabe.kontaktadresse if eingabe.kontaktadresse is not None else form.email,
+            password=eingabe.passwort,
+            language=request.headers.get("accept-language", "").split(",")[0].split(";")[0],
+            mail=kontenpost.mail_moeglich(db),
+            older_request=alt,
+        )
+    except nexkonten.AccountError as fehler:
+        if fehler.code in ("invite_invalid", "invite_expired"):
+            wache.fehlgeschlagen()
+            # 400 wie vor dem Kontenmodul; die Seite davor (GET) antwortet 404.
+            raise kontenstore.http(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+        raise kontenstore.http(fehler) from fehler
     wache.geschafft()
 
+    if ergebnis.mail is not None:
+        try:
+            kontenpost.senden(db, ergebnis.mail)
+        except Exception as fehler:  # noqa: BLE001 - das Konto steht; die Adresse wartet, der Link geht nochmal
+            logger.warning("The confirmation mail of a new account could not be sent: %r", fehler)
+
+    neuer = db.get(Benutzer, str(ergebnis.account.id))
     sitzungsdienst.anlegen(db, neuer, request, response, bestaetigt=True)
+    logger.info("An invitation was redeemed.")
     return {"benutzername": neuer.benutzername}

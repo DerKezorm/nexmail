@@ -35,9 +35,10 @@ logger = logging.getLogger("nexmail.benutzer")
 #: das beim naechsten Anmelden auf.
 _hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1, hash_len=32, salt_len=16, type=Type.ID)
 
-#: Mindestlaenge. Bewusst keine Regeln ueber Sonderzeichen: Sie erzeugen
-#: nachweislich schlechtere Passwoerter ("Passwort1!"), nicht bessere.
-MIN_LAENGE = 10
+#: Mindestlaenge fuer **neu gesetzte** Passwoerter, wie im Kontenmodul. Bewusst keine Regeln ueber Sonderzeichen:
+#: Sie erzeugen nachweislich schlechtere Passwoerter ("Passwort1!"), nicht bessere. ⚠️ Passwoerter von vorher mit 10
+#: oder 11 Zeichen gelten weiter; beim Anmelden wird die Laenge nie gefragt.
+MIN_LAENGE = 12
 
 BENUTZERNAME_MUSTER = re.compile(r"^[A-Za-z0-9._-]{3,64}$")
 
@@ -74,6 +75,15 @@ def passwort_stimmt(benutzer: Benutzer, passwort: str) -> bool:
         return _hasher.verify(benutzer.passwort_hash, passwort)
     except (VerifyMismatchError, InvalidHashError):
         return False
+
+
+def passwort_prueft_schein(hash_wert: str, passwort: str) -> None:
+    """Rechnet wie eine echte Pruefung und vergisst das Ergebnis: fuer ein Konto, das es nicht gibt oder das kein
+    Passwort hat, damit die Antwortzeit weder Namen noch Adressen verraet."""
+    try:
+        _hasher.verify(hash_wert, passwort)
+    except (VerifyMismatchError, InvalidHashError):
+        pass
 
 
 def hash_auffrischen(db: Session, benutzer: Benutzer, passwort: str) -> None:
@@ -201,9 +211,16 @@ def entfernen(db: Session, person: Benutzer) -> None:
     ⚠️ **Auf dem Mailserver bleibt alles unberuehrt.** nexmail vergisst; es
     loescht keine fremde Post. Das steht auch in der Rueckfrage.
     """
-    from ..models import Base
+    from sqlalchemy import update
+
+    from ..models import Base, FruehererName
 
     ich = person.id
+
+    # ⚠️ **Der Name bleibt fuer immer belegt**, auch die frueheren Namen des Kontos (Entwurf, „Alte
+    # Benutzernamen“): Wer spaeter so heisst, erbt sonst Erwaehnungen und Erinnerungen eines anderen.
+    db.execute(update(FruehererName).where(FruehererName.konto == ich).values(konto=""))
+    db.add(FruehererName(konto="", benutzername=person.benutzername))
 
     # ⚠️ **Erst die Tabellen, dann der Mensch.** Andersherum stellt SQLAlchemy
     # seine Kaskade auf Sitzungen und Codes zusammen, findet die Zeilen beim

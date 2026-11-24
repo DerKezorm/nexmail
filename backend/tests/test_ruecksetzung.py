@@ -16,7 +16,6 @@ from app.models import Benutzer, Kennwortruecksetzung, Sitzung
 from app.routers.einstellungen import SCHLUESSEL_OEFFENTLICHE_ADRESSE
 from app.services import anmeldebremse
 from app.services import benutzer as benutzerdienst
-from app.services import ruecksetzung as dienst
 from app.services import systempost
 from conftest import einrichten
 
@@ -36,6 +35,10 @@ def welt(klient, db, monkeypatch):
     person = db.query(Benutzer).one()
     person.kontaktadresse = "wer@example.org"
     einstellung_schreiben(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE, "https://mail.example.com")
+    # Ein Postausgang ist eingetragen (verschickt wird unten in eine Liste): Ohne ihn bietet nexmail den Weg per Mail
+    # gar nicht an (Kontenmodul).
+    einstellung_schreiben(db, systempost.S_SERVER, "smtp.example.com")
+    einstellung_schreiben(db, systempost.S_ABSENDER, "nexmail@example.com")
     db.commit()
 
     post: list[dict] = []
@@ -108,7 +111,7 @@ def test_ein_zweiter_link_macht_den_ersten_ungueltig(klient, db, welt):
     klient.post("/api/auth/kennwort-vergessen", json={"benutzername": "betreiber"})
 
     assert db.query(Kennwortruecksetzung).count() == 1
-    assert dienst.finden(db, erster) is None
+    assert klient.get(f"/api/auth/kennwort-neu/{erster}").status_code == 400
 
 
 def test_ein_kaputter_postausgang_verraet_nichts(klient, db, welt, monkeypatch):
@@ -142,11 +145,17 @@ def test_der_link_setzt_das_kennwort(klient, db, welt):
     assert not benutzerdienst.passwort_stimmt(person, KENNWORT)
 
 
-def test_alle_sitzungen_fliegen_raus(klient, db, welt):
+def test_alle_browser_sitzungen_fliegen_raus_die_iphone_app_bleibt(klient, db, welt):
     """⚠️ Wer zurücksetzt, tut es oft, weil jemand anders hineingekommen ist.
-    Bliebe dessen Sitzung stehen, hätte das Zurücksetzen nichts geändert."""
+    Bliebe dessen Sitzung stehen, hätte das Zurücksetzen nichts geändert.
+
+    ⚠️ **Seit dem Kontenmodul bleibt die iPhone-App angemeldet** (Entwurf, Entscheidung „Neues Passwort“); nach der
+    nächsten Anmeldung steht sie unter „Diese Geräte haben noch Zugriff“ mit „Alle trennen“."""
+    from app.services import sitzung as sitzungsdienst
+
     person, post = welt
-    assert db.query(Sitzung).count() >= 1
+    geraet = sitzungsdienst.geraet_anlegen(db, person, "iPhone", "")
+    assert db.query(Sitzung).filter(Sitzung.art == "browser").count() >= 1
 
     klient.post("/api/auth/kennwort-vergessen", json={"benutzername": "betreiber"})
     klient.post(
@@ -154,7 +163,20 @@ def test_alle_sitzungen_fliegen_raus(klient, db, welt):
         json={"schluessel": _schluessel_aus(post[0]["text"]), "passwort": "ganz-neu-4711"},
     )
 
-    assert db.query(Sitzung).count() == 0
+    db.expire_all()
+    assert db.query(Sitzung).filter(Sitzung.art == "browser").count() == 0
+    assert db.query(Sitzung).filter(Sitzung.art == "geraet").count() == 1
+    assert klient.get("/api/app/1/me", headers={"Authorization": f"Bearer {geraet}"}).status_code in (200, 403)
+
+    anmeldebremse.zuruecksetzen()
+    klient.post("/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": "ganz-neu-4711"})
+    zugaenge = klient.get("/api/auth/zugaenge").json()
+    assert zugaenge["herkunft"] == "self" and [z["art"] for z in zugaenge["zugaenge"]] == ["device"]
+    assert klient.get("/api/auth/ich").json()["neues_passwort"] == "self"
+    assert klient.post("/api/auth/zugaenge/trennen").json() == {"getrennt": 1}
+    db.expire_all()
+    assert db.query(Sitzung).filter(Sitzung.art == "geraet").count() == 0
+    assert klient.get("/api/auth/ich").json()["neues_passwort"] == ""
 
 
 def test_ein_verbrauchter_link_geht_nicht_zweimal(klient, db, welt):
@@ -256,16 +278,22 @@ def test_die_bremse_zaehlt_mit(klient, db, welt):
 # einmal mit Adresse und einmal ohne.
 
 
-def test_eine_eingeloeste_einladung_traegt_die_adresse_ein(klient, db):
+def test_eine_eingeloeste_einladung_traegt_die_adresse_ein(klient, zweiter_klient, db):
+    from datetime import datetime, timedelta, timezone
+
     from app.services import einladung as einladungsdienst
 
     einrichten(klient)
-    einladung, schluessel = einladungsdienst.aussprechen(
-        db, benutzername="neuer", adresse="neuer@example.org"
+    _, schluessel = einladungsdienst.aussprechen(
+        db, adresse="neuer@example.org", anzeigename="Neu", laeuft_ab=datetime.now(timezone.utc) + timedelta(days=7)
     )
-    person = einladungsdienst.einloesen(db, schluessel, "ganz-neu-4711")
-
-    assert person.kontaktadresse == "neuer@example.org"
+    antwort = zweiter_klient.post(
+        f"/api/einladung/{schluessel}",
+        json={"passwort": "ganz-neu-4711", "anzeigename": "Neu", "benutzername": "neuer"},
+    )
+    assert antwort.status_code == 201, antwort.text
+    person = db.query(Benutzer).filter(Benutzer.benutzername == "neuer").one()
+    assert person.kontaktadresse == "neuer@example.org" and person.kontaktadresse_zaehlt
 
 
 def test_der_betreiber_faengt_ohne_adresse_an(klient, db):
@@ -284,18 +312,23 @@ def test_der_betreiber_faengt_ohne_adresse_an(klient, db):
 def test_die_kontaktadresse_laesst_sich_setzen_und_leeren(klient, db):
     einrichten(klient)
 
-    gesetzt = klient.put("/api/auth/ich/kontaktadresse", json={"adresse": " neu@example.org "})
+    # Seit dem Kontenmodul nur mit Passwort; ohne Postausgang gilt die neue sofort.
+    ohne = klient.put("/api/auth/ich/kontaktadresse", json={"adresse": "neu@example.org"})
+    assert ohne.status_code == 401 and ohne.json()["detail"] == "kennwort_falsch"
+    gesetzt = klient.put(
+        "/api/auth/ich/kontaktadresse", json={"adresse": " neu@example.org ", "passwort": KENNWORT}
+    )
     assert gesetzt.status_code == 200, gesetzt.text
     assert gesetzt.json()["kontaktadresse"] == "neu@example.org"
     assert klient.get("/api/auth/ich").json()["kontaktadresse"] == "neu@example.org"
 
-    geleert = klient.put("/api/auth/ich/kontaktadresse", json={"adresse": ""})
+    geleert = klient.put("/api/auth/ich/kontaktadresse", json={"adresse": "", "passwort": KENNWORT})
     assert geleert.status_code == 200, geleert.text
     assert geleert.json()["kontaktadresse"] == ""
 
 
 def test_eine_kontaktadresse_ohne_at_wird_abgelehnt(klient, db):
     einrichten(klient)
-    antwort = klient.put("/api/auth/ich/kontaktadresse", json={"adresse": "keine-adresse"})
+    antwort = klient.put("/api/auth/ich/kontaktadresse", json={"adresse": "keine-adresse", "passwort": KENNWORT})
     assert antwort.status_code == 400
     assert antwort.json()["detail"] == "adresse_ungueltig"

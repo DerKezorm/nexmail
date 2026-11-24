@@ -14,22 +14,17 @@ from __future__ import annotations
 import hashlib
 import logging
 import secrets
-from html import escape
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Benutzer, Einladung
-from . import benutzer as benutzerdienst
-from . import mailvorlage, systempost
+from ..models import Einladung
 from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.einladung")
 
-#: ⚠️ **Nicht laenger.** Eine Einladung, die einen Monat gilt, liegt einen
-#: Monat lang in einem Postfach, das vielleicht nicht mehr nur dem Eingeladenen
-#: gehoert. Wer sie verpasst, bekommt eine neue — das kostet einen Klick.
+#: Ab Werk; der Betreiber waehlt 1, 7 oder 30 Tage (``nexkonten.invites.INVITE_DAYS``).
 GUELTIG_TAGE = 7
 
 
@@ -66,33 +61,36 @@ def abgelaufen(einladung: Einladung) -> bool:
 
 
 def aussprechen(
-    db: Session, *, benutzername: str, adresse: str, anzeigename: str = ""
+    db: Session,
+    *,
+    adresse: str = "",
+    anzeigename: str = "",
+    laeuft_ab: datetime | None = None,
+    benutzername: str = "",
 ) -> tuple[Einladung, str]:
-    """Eine Einladung anlegen. Gibt den Klartext-Schluessel **einmal** zurueck."""
-    benutzername = benutzername.strip()
-    benutzerdienst.benutzername_pruefen(benutzername)
+    """Eine Einladung anlegen, mit Werten, die das Kontenmodul schon geprueft hat (``invites.invite_values``).
+    Gibt den Klartext-Schluessel **einmal** zurueck.
 
-    if benutzerdienst.finden(db, benutzername) is not None:
-        raise EinladungsFehler("benutzername_vergeben")
+    ⚠️ **Kein Benutzername mehr** (Kontenmodul): Den waehlt der Eingeladene selbst. ``benutzername`` gibt es nur noch
+    fuer Tests, die eine offene Einladung von vorher nachstellen.
+    """
+    from datetime import timedelta
 
-    adresse = adresse.strip()
-    if "@" not in adresse:
-        raise EinladungsFehler("adresse_ungueltig")
-
-    # ⚠️ Eine offene Einladung auf denselben Namen wird ersetzt, nicht
-    # verdoppelt: Sonst gelten zwei Links fuer dasselbe Konto, und der aeltere
-    # bleibt gueltig, obwohl der Betreiber gerade einen neuen verschickt hat.
-    for alte in offene(db):
-        if alte.benutzername.lower() == benutzername.lower():
-            db.delete(alte)
+    laeuft_ab = laeuft_ab or _jetzt() + timedelta(days=GUELTIG_TAGE)
+    # ⚠️ Eine offene Einladung an dieselbe Adresse wird ersetzt, nicht verdoppelt: Sonst gelten zwei Links fuer
+    # denselben Menschen, und der aeltere bleibt gueltig, obwohl der Betreiber gerade einen neuen verschickt hat.
+    if adresse:
+        for alte in offene(db):
+            if (alte.adresse or "").lower() == adresse.lower():
+                db.delete(alte)
 
     schluessel = secrets.token_urlsafe(32)
     einladung = Einladung(
         schluessel_hash=_hash(schluessel),
         benutzername=benutzername,
-        anzeigename=anzeigename.strip() or benutzername,
+        anzeigename=anzeigename,
         adresse=adresse,
-        laeuft_ab=_jetzt() + timedelta(days=GUELTIG_TAGE),
+        laeuft_ab=laeuft_ab,
     )
     db.add(einladung)
     db.commit()
@@ -107,79 +105,3 @@ def finden(db: Session, schluessel: str) -> Einladung | None:
     if zeile is None or zeile.eingeloest is not None or abgelaufen(zeile):
         return None
     return zeile
-
-
-def einloesen(db: Session, schluessel: str, passwort: str) -> Benutzer:
-    """Die Einladung annehmen und daraus ein Konto machen."""
-    einladung = finden(db, schluessel)
-    if einladung is None:
-        raise EinladungsFehler(
-            "einladung_abgelaufen_tage", tage=GUELTIG_TAGE
-        )
-
-    # ⚠️ **Der Name wird hier noch einmal geprueft.** Zwischen Einladung und
-    # Annahme koennen Tage liegen; in der Zeit kann ihn jemand anders belegt
-    # haben. Ohne diese Pruefung scheitert das Anlegen mit einer Meldung, die
-    # dem Eingeladenen nichts sagt.
-    if benutzerdienst.finden(db, einladung.benutzername) is not None:
-        raise EinladungsFehler(
-            "benutzername_inzwischen_vergeben"
-        )
-
-    neuer = benutzerdienst.anlegen(
-        db,
-        einladung.benutzername,
-        passwort,
-        anzeigename=einladung.anzeigename,
-    )
-    # ⚠️ **Die Adresse der Einladung wird die Adresse fuer Kontosachen.** Sonst
-    # haette ein eingeladener Mensch von Anfang an keinen Weg zurueck, obwohl
-    # der Betreiber seine Adresse gerade eingetippt hat. Aendern kann er sie
-    # danach unter „Sicherheit".
-    neuer.kontaktadresse = einladung.adresse
-    einladung.eingeloest = _jetzt()
-    db.commit()
-    logger.info("An invitation was redeemed.")
-    return neuer
-
-
-def verschicken(db: Session, einladung: Einladung, schluessel: str, adresse_der_app: str) -> None:
-    """Die Einladungsmail senden. Wirft ``systempost.PostFehler``.
-
-    ⚠️ **Text und HTML, nicht entweder-oder.** Der Textteil steht zuerst und
-    traegt denselben Link wie der Knopf: Wer einen Nur-Text-Client benutzt,
-    einen Bildblocker hat oder vorlesen laesst, haette sonst eine Einladung
-    ohne Weg hinein.
-
-    ⚠️ **Das Logo haengt an der Mail** (``cid:``), es wird nicht von einem
-    Server geholt. Ein nachgeladenes Bild waere ein Zaehlpixel — und nexmail
-    klinkt genau solche in fremder Post aus.
-    """
-    link = f"{adresse_der_app.rstrip('/')}/einladung/{schluessel}"
-
-    text = (
-        f"Hallo {einladung.anzeigename},\n\n"
-        "du wurdest zu nexmail eingeladen — einem selbstgehosteten "
-        "E-Mail-Client.\n\n"
-        f"Dein Benutzername: {einladung.benutzername}\n\n"
-        "Über diesen Link vergibst du dein Kennwort:\n"
-        f"{link}\n\n"
-        f"Der Link gilt {GUELTIG_TAGE} Tage.\n\n"
-        "Wenn du damit nichts anfangen kannst, ignoriere diese Mail.\n"
-    )
-
-    html = mailvorlage.rahmen(
-        ueberschrift=f"Hallo {escape(einladung.anzeigename)}",
-        absaetze=[
-            "du wurdest zu <strong>nexmail</strong> eingeladen — einem "
-            "selbstgehosteten E-Mail-Client.",
-            f"Dein Benutzername ist <strong>{escape(einladung.benutzername)}</strong>. "
-            "Über den Knopf vergibst du dein Kennwort.",
-        ],
-        knopf=("Kennwort vergeben", link),
-        fusszeile=(
-            f"Der Link gilt {GUELTIG_TAGE} Tage. Wenn du damit nichts anfangen "
-            "kannst, ignoriere diese Mail — es passiert dann nichts."
-        ),
-    )
-    systempost.senden(db, einladung.adresse, "Deine Einladung zu nexmail", text, html)

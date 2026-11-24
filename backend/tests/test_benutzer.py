@@ -34,17 +34,8 @@ def postausgang(monkeypatch, klient):
         versandt.append((an, betreff, text, html))
 
     monkeypatch.setattr(systempost, "senden", merken)
-    # Die Einladung ruft ihn ueber ihr eigenes Modul auf.
-    from app.services import einladung as einladungsdienst
-
-    monkeypatch.setattr(einladungsdienst.systempost, "senden", merken)
     monkeypatch.setattr(
-        systempost, "lesen", lambda db: systempost.Postausgang(server="s.example", absender="a@b.example")
-    )
-    monkeypatch.setattr(
-        einladungsdienst.systempost,
-        "lesen",
-        lambda db: systempost.Postausgang(server="s.example", absender="a@b.example"),
+        systempost, "lesen", lambda db: systempost.Postausgang(server="s.example", absender="a@example.com")
     )
     with SessionLocal() as db:
         einstellung_schreiben(db, "oeffentliche_adresse", "https://mail.example")
@@ -122,7 +113,7 @@ def test_einladen_verschickt_eine_mail_mit_link(klient, postausgang):
     assert "https://mail.example/einladung/" in text
     # ⚠️ Der Benutzername gehoert hinein — sonst weiss der Eingeladene beim
     # ersten Anmelden nicht, wer er ist.
-    assert "anna" in text
+    assert "Anna" in text
 
 
 def test_der_schluessel_liegt_nur_als_hash_da(klient, postausgang, db):
@@ -149,12 +140,13 @@ def test_gescheiterter_versand_laesst_keine_leiche_zurueck(klient, monkeypatch):
     with SessionLocal() as db:
         einstellung_schreiben(db, "oeffentliche_adresse", "https://mail.example")
 
-    from app.services import einladung as einladungsdienst
-
     def scheitern(db, an, betreff, text, html=""):
         raise systempost.PostFehler("Der Postausgang ist nicht erreichbar.")
 
-    monkeypatch.setattr(einladungsdienst.systempost, "senden", scheitern)
+    monkeypatch.setattr(systempost, "senden", scheitern)
+    monkeypatch.setattr(
+        systempost, "lesen", lambda db: systempost.Postausgang(server="s.example", absender="a@example.com")
+    )
 
     antwort = klient.post(
         "/api/benutzer/einladungen",
@@ -164,13 +156,39 @@ def test_gescheiterter_versand_laesst_keine_leiche_zurueck(klient, monkeypatch):
     assert klient.get("/api/benutzer").json()["einladungen"] == []
 
 
-def test_ein_belegter_name_wird_abgewiesen(klient, postausgang):
+def test_der_betreiber_gibt_keinen_benutzernamen_mehr_vor(klient, postausgang):
+    """Kontenmodul: Der Eingeladene waehlt seinen Namen selbst. Ein Skript, das noch einen schickt, scheitert nicht;
+    der Name wird nicht genommen."""
     einrichten(klient)
     antwort = klient.post(
         "/api/benutzer/einladungen",
-        json={"benutzername": "betreiber", "adresse": "wer@example.com"},
+        json={"benutzername": "betreiber", "adresse": "wer@example.com", "anzeigename": "Wer"},
     )
-    assert antwort.status_code == 400
+    assert antwort.status_code == 201, antwort.text
+    assert antwort.json()["benutzername"] == ""
+    schluessel = _schluessel_aus(postausgang[0][2])
+    assert klient.get(f"/api/einladung/{schluessel}").json()["benutzername"] == "wer"
+
+
+def test_eine_adresse_eines_kontos_wird_nicht_eingeladen(klient):
+    einrichten(klient)
+    with SessionLocal() as db:
+        einstellung_schreiben(db, "oeffentliche_adresse", "https://mail.example")
+    assert klient.put(
+        "/api/auth/ich/kontaktadresse", json={"adresse": "chef@example.com", "passwort": "sehr-geheim-123"}
+    ).status_code == 200
+    antwort = klient.post("/api/benutzer/einladungen", json={"adresse": "CHEF@example.com"})
+    assert antwort.status_code == 409 and antwort.json()["detail"] == "email_taken"
+
+
+def test_ohne_adresse_kommt_der_link_zum_weitergeben(klient, postausgang):
+    einrichten(klient)
+    antwort = klient.post("/api/benutzer/einladungen", json={"anzeigename": "Gast", "tage": 30})
+    assert antwort.status_code == 201, antwort.text
+    assert antwort.json()["link"].startswith("https://mail.example/einladung/")
+    assert postausgang == []
+    falsch = klient.post("/api/benutzer/einladungen", json={"anzeigename": "Gast2", "tage": 3})
+    assert falsch.status_code == 400 and falsch.json()["detail"] == "invalid_days"
 
 
 def test_zweimal_einladen_ersetzt_den_alten_link(klient, postausgang, db):
@@ -209,7 +227,13 @@ def test_annehmen_macht_ein_konto_und_meldet_an(klient, zweiter_klient, postausg
 
     vorschau = zweiter_klient.get(f"/api/einladung/{schluessel}")
     assert vorschau.status_code == 200
-    assert vorschau.json() == {"benutzername": "anna", "anzeigename": "Anna", "passwort": True}
+    assert vorschau.json() == {
+        "benutzername": "anna",
+        "anzeigename": "Anna",
+        "kontaktadresse": "anna@example.com",
+        "passwort": True,
+        "min_passwort": 12,
+    }
 
     fertig = zweiter_klient.post(
         f"/api/einladung/{schluessel}", json={"passwort": "annas-kennwort-1"}
