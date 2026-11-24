@@ -1,0 +1,143 @@
+"""„Angemeldet bleiben“, bekannte Browser und die Mail „Neue Anmeldung“ (Kontenmodul Teil 2)."""
+
+from __future__ import annotations
+
+from datetime import timedelta
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.db import SessionLocal, einstellung_schreiben
+from app.main import app
+from app.models import Benutzer, Sitzung, utcnow
+from app.services import anmeldebremse, systempost
+from app.services import sitzung as sitzungsdienst
+from conftest import einrichten
+
+PASSWORT = "sehr-geheim-123"
+
+
+@pytest.fixture(autouse=True)
+def freie_bremse():
+    anmeldebremse.zuruecksetzen()
+    yield
+    anmeldebremse.zuruecksetzen()
+
+
+@pytest.fixture
+def post(monkeypatch):
+    versandt: list[tuple[str, str, str, str]] = []
+    monkeypatch.setattr(systempost, "senden", lambda db, an, betreff, text, html="": versandt.append((an, betreff, text, html)))
+    monkeypatch.setattr(
+        systempost, "lesen", lambda db: systempost.Postausgang(server="s.example", absender="a@example.com")
+    )
+    with SessionLocal() as db:
+        einstellung_schreiben(db, "oeffentliche_adresse", "https://mail.example")
+    return versandt
+
+
+def _neuer_browser() -> TestClient:
+    return TestClient(app)
+
+
+def _anmelden(klient: TestClient, bleiben: bool | None = None, passwort: str = PASSWORT):
+    daten = {"benutzername": "betreiber", "passwort": passwort}
+    if bleiben is not None:
+        daten["angemeldet_bleiben"] = bleiben
+    return klient.post("/api/auth/anmelden", json=daten)
+
+
+def _sitzungscookie(antwort) -> str:
+    for zeile in antwort.headers.get_list("set-cookie"):
+        if zeile.startswith(sitzungsdienst.COOKIE_NAME + "="):
+            return zeile
+    raise AssertionError("kein Sitzungscookie")
+
+
+def _adresse_bestaetigt(db) -> None:
+    ich = db.query(Benutzer).one()
+    ich.kontaktadresse = "betreiber@example.com"
+    ich.kontaktadresse_zaehlt = True
+    db.commit()
+
+
+def test_angemeldet_bleiben_ist_ab_werk_an_und_gleitet(klient, db):
+    einrichten(klient)
+    antwort = _anmelden(_neuer_browser())
+    assert antwort.status_code == 200, antwort.text
+    cookie = _sitzungscookie(antwort).lower()
+    assert f"max-age={400 * 86400}" in cookie
+    neueste = db.query(Sitzung).order_by(Sitzung.angelegt.desc()).first()
+    assert neueste.merken
+    assert neueste.gueltig_bis - utcnow() > timedelta(days=29)
+
+
+def test_ohne_angemeldet_bleiben_endet_die_sitzung_mit_dem_browser(klient, db):
+    einrichten(klient)
+    browser = _neuer_browser()
+    antwort = _anmelden(browser, bleiben=False)
+    assert antwort.status_code == 200, antwort.text
+    assert "max-age" not in _sitzungscookie(antwort).lower()
+    sitzung = db.query(Sitzung).filter(Sitzung.merken.is_(False)).one()
+    assert timedelta(hours=11) < sitzung.gueltig_bis - utcnow() <= timedelta(hours=12)
+
+    # Sie gleitet nicht: auch nach langer Arbeit spaetestens nach 12 Stunden Schluss.
+    sitzung.zuletzt_gesehen = utcnow() - timedelta(hours=2)
+    ende = sitzung.gueltig_bis
+    db.commit()
+    assert browser.get("/api/auth/ich").status_code == 200
+    db.expire_all()
+    assert db.get(Sitzung, sitzung.id).gueltig_bis == ende
+
+
+def test_neue_anmeldung_meldet_nur_unbekannte_browser(klient, db, post):
+    einrichten(klient)
+    _adresse_bestaetigt(db)
+
+    fremd = _neuer_browser()
+    assert _anmelden(fremd).status_code == 200
+    assert [an for an, *_ in post] == ["betreiber@example.com"]
+    betreff, text = post[0][1], post[0][2]
+    assert betreff and "testclient" in text.lower()
+
+    # Derselbe Browser ein zweites Mal: bekannt, keine Mail.
+    assert _anmelden(fremd).status_code == 200
+    assert len(post) == 1
+
+    # Abgeschaltet im Profil: auch ein neuer Browser bleibt still.
+    assert klient.put("/api/auth/ich/neue-anmeldung", json={"an": False}).json()["mail_neue_anmeldung"] is False
+    assert _anmelden(_neuer_browser()).status_code == 200
+    assert len(post) == 1
+
+
+def test_ein_browser_von_vor_dem_update_wird_still_bekannt(klient, db, post):
+    """Wer schon angemeldet war, bekommt beim naechsten Anmelden am eigenen Rechner keine Mail."""
+    einrichten(klient)
+    _adresse_bestaetigt(db)
+    klient.cookies.delete(sitzungsdienst.BEKANNT_COOKIE)
+    assert klient.get("/api/auth/ich").status_code == 200
+    assert klient.cookies.get(sitzungsdienst.BEKANNT_COOKIE)
+    assert _anmelden(klient).status_code == 200
+    assert post == []
+
+
+def test_der_bekannte_browser_ist_von_der_kontosperre_ausgenommen(klient, db, monkeypatch):
+    einrichten(klient)
+    # Die Bremse ist ein eigener Riegel; hier geht es um die Sperre am Konto.
+    monkeypatch.setattr(anmeldebremse, "torwaechter", lambda *a, **k: _OhneBremse())
+
+    fremd = _neuer_browser()
+    for _ in range(10):
+        assert _anmelden(fremd, passwort="falsch-falsch").status_code == 401
+    db.expire_all()
+    assert db.query(Benutzer).one().gesperrt_bis is not None
+    assert _anmelden(_neuer_browser()).status_code == 401
+    assert _anmelden(klient).status_code == 200
+
+
+class _OhneBremse:
+    def fehlgeschlagen(self) -> None:
+        pass
+
+    def geschafft(self) -> None:
+        pass

@@ -140,5 +140,6 @@ def annehmen(
 
     neuer = db.get(Benutzer, str(ergebnis.account.id))
     sitzungsdienst.anlegen(db, neuer, request, response, bestaetigt=True)
+    sitzungsdienst.angemeldet(db, neuer, request, response, mail=False)
     logger.info("An invitation was redeemed.")
     return {"benutzername": neuer.benutzername}

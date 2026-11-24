@@ -16,7 +16,7 @@ import type { Ich } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Oauthzugaenge } from '../components/Oauthzugaenge'
 import { Anmeldeanbieter } from '../components/Anmeldeanbieter'
-import { Badge, Button, Dialog, IconButton, Input } from '../ds'
+import { Badge, Button, Dialog, IconButton, Input, Switch } from '../ds'
 import { ZweiterFaktor } from '../components/ZweiterFaktor'
 import { servermeldung } from '../lib/servermeldung'
 
@@ -352,6 +352,15 @@ export function Sicherheit({
             ))}
           </ul>
         )}
+
+        {/* Kontenmodul Teil 2: eine Mail, wenn sich jemand aus einem Browser anmeldet, den nexmail für dieses Konto
+            noch nicht kennt. Ab Werk an; geht nur an eine bestätigte Adresse. */}
+        <Switch
+          label={t('account.newSignInMail')}
+          description={t('account.newSignInMailHint')}
+          checked={ich?.mail_neue_anmeldung ?? true}
+          onCheckedChange={(an) => void mit(() => api.aendern('/api/auth/ich/neue-anmeldung', { an }))}
+        />
 
         <div>
           <Button

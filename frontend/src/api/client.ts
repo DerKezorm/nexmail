@@ -199,6 +199,8 @@ export interface Ich {
   kontaktadresse_wartet?: string
   sprache?: string
   neues_passwort?: string
+  /** Kontenmodul Teil 2: die Mail „Neue Anmeldung“, im Profil abschaltbar. */
+  mail_neue_anmeldung?: boolean
 }
 
 export interface Schritt {

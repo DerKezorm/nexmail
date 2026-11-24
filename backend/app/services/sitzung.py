@@ -23,11 +23,19 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import Benutzer, Sitzung, utcnow
+from ..vendor.nexkonten import sessions as kontensitzungen
 from . import anmeldebremse
 
 logger = logging.getLogger("nexmail.sitzung")
 
 COOKIE_NAME = "nexmail_sitzung"
+
+#: Das Cookie „bekannter Browser“ (Kontenmodul Teil 2): bis zu fuenf Marken, je Konto eine, signiert ueber den
+#: Geraeteschluessel des Kontos. Ein neues Passwort macht alle Marken des Kontos wertlos.
+BEKANNT_COOKIE = "nexmail_bekannt"
+
+#: „Angemeldet bleiben“ aus: Die Sitzung endet mit dem Browser, spaetestens nach 12 Stunden (Entwurf, Teil 2).
+BROWSER_STUNDEN = kontensitzungen.BROWSER_HOURS
 
 
 def cookie_pfad() -> str:
@@ -74,6 +82,30 @@ def _geraet(request: Request) -> str:
     return (request.headers.get("user-agent") or "")[:200]
 
 
+def _volle_dauer(merken: bool) -> timedelta:
+    """Wie lange eine volle Sitzung gilt: gemerkt ``sitzung_tage`` (30, gleitend), sonst 12 Stunden fest."""
+    return timedelta(days=get_settings().sitzung_tage) if merken else timedelta(hours=BROWSER_STUNDEN)
+
+
+def _cookie_setzen(request: Request, response: Response, token: str, max_age: int | None) -> None:
+    """``max_age=None``: ein Cookie, das mit dem Browser endet („Angemeldet bleiben“ aus)."""
+    response.set_cookie(
+        COOKIE_NAME,
+        token,
+        max_age=max_age,
+        httponly=True,
+        samesite="strict",
+        secure=_secure(request),
+        path=cookie_pfad(),
+    )
+
+
+def _volles_cookie(merken: bool) -> int | None:
+    """Gemerkt lebt das Cookie 400 Tage (wie im Kontenmodul): Die Sitzung gleitet im Server, und ein Cookie, das
+    nach 30 Tagen ab der Anmeldung verfaellt, schnitte das Gleiten ab. Ohne Merken endet es mit dem Browser."""
+    return kontensitzungen.REMEMBER_COOKIE_DAYS * 86400 if merken else None
+
+
 def anlegen(
     db: Session,
     benutzer: Benutzer,
@@ -81,20 +113,19 @@ def anlegen(
     response: Response,
     *,
     bestaetigt: bool,
+    merken: bool = True,
 ) -> Sitzung:
     """Eine Sitzung anlegen und das Cookie setzen.
 
     ``bestaetigt=False`` heisst: Das Passwort stimmte, der zweite Faktor fehlt
     noch. Eine solche Sitzung darf ausschliesslich den zweiten Schritt
-    aufrufen - siehe ``deps.angemeldet``.
+    aufrufen - siehe ``deps.angemeldet``. ``merken`` ist „Angemeldet bleiben“
+    (Kontenmodul Teil 2, ab Werk an); eine halbe Sitzung traegt es bis zum
+    zweiten Schritt.
     """
     einstellungen = get_settings()
     token = secrets.token_urlsafe(48)
-    dauer = (
-        timedelta(days=einstellungen.sitzung_tage)
-        if bestaetigt
-        else timedelta(minutes=einstellungen.zwei_faktor_minuten)
-    )
+    dauer = _volle_dauer(merken) if bestaetigt else timedelta(minutes=einstellungen.zwei_faktor_minuten)
 
     sitzung = Sitzung(
         benutzer_id=benutzer.id,
@@ -103,27 +134,22 @@ def anlegen(
         geraet=_geraet(request),
         adresse=anmeldebremse.adresse_von(request),
         gueltig_bis=utcnow() + dauer,
+        merken=merken,
     )
     db.add(sitzung)
     db.commit()
 
-    response.set_cookie(
-        COOKIE_NAME,
-        token,
-        max_age=int(dauer.total_seconds()),
-        httponly=True,
-        samesite="strict",
-        secure=_secure(request),
-        path=cookie_pfad(),
+    _cookie_setzen(
+        request, response, token, _volles_cookie(merken) if bestaetigt else int(dauer.total_seconds())
     )
     return sitzung
 
 
 def bestaetigen(db: Session, sitzung: Sitzung, request: Request, response: Response) -> None:
     """Aus dem Zwischenschritt eine vollwertige Sitzung machen."""
-    dauer = timedelta(days=get_settings().sitzung_tage)
+    merken = bool(sitzung.merken)
     sitzung.bestaetigt = True
-    sitzung.gueltig_bis = utcnow() + dauer
+    sitzung.gueltig_bis = utcnow() + _volle_dauer(merken)
     db.commit()
 
     # Der Browser bekommt dasselbe Token mit neuer Laufzeit. Ein Tausch waere
@@ -131,15 +157,7 @@ def bestaetigen(db: Session, sitzung: Sitzung, request: Request, response: Respo
     # "angekommen" die Anmeldung verlieren.
     token = request.cookies.get(COOKIE_NAME, "")
     if token:
-        response.set_cookie(
-            COOKIE_NAME,
-            token,
-            max_age=int(dauer.total_seconds()),
-            httponly=True,
-            samesite="strict",
-            secure=_secure(request),
-            path=cookie_pfad(),
-        )
+        _cookie_setzen(request, response, token, _volles_cookie(merken))
 
 
 def holen(db: Session, request: Request) -> Sitzung | None:
@@ -163,8 +181,9 @@ def holen(db: Session, request: Request) -> Sitzung | None:
 
     # Gleitende Verlaengerung, aber nur einmal je Stunde: Sonst schriebe jede
     # einzelne Anfrage in die Datenbank, und bei einem Mail-Client sind das
-    # viele.
-    if sitzung.bestaetigt and (utcnow() - sitzung.zuletzt_gesehen) > timedelta(hours=1):
+    # viele. ⚠️ **Nur gemerkte Sitzungen gleiten**; ohne „Angemeldet bleiben“
+    # ist nach 12 Stunden Schluss, egal wie viel gearbeitet wurde.
+    if sitzung.bestaetigt and sitzung.merken and (utcnow() - sitzung.zuletzt_gesehen) > timedelta(hours=1):
         sitzung.zuletzt_gesehen = utcnow()
         sitzung.gueltig_bis = utcnow() + timedelta(days=get_settings().sitzung_tage)
         db.commit()
@@ -251,3 +270,64 @@ def aufraeumen(db: Session) -> int:
     if abgelaufen:
         db.commit()
     return len(abgelaufen)
+
+
+# --- Bekannter Browser (Kontenmodul Teil 2) ------------------------------------------------------------------------
+
+
+def _markengeheimnis() -> bytes:
+    """Abgeleitet vom Serverschluessel, mit eigenem Zweck: dieselbe Marke taugt nirgends sonst."""
+    return hashlib.sha256(b"nexmail-known-browser:" + get_settings().resolved_secret_key().encode("utf-8")).digest()
+
+
+def bekannt(request: Request, store, konto_id: str) -> bool:
+    """Ob dieser Browser eine gueltige Marke fuer das Konto traegt. Er ist dann von der Kontosperre ausgenommen, und
+    die Mail „Neue Anmeldung“ bleibt aus."""
+    zeile = store.db.get(Benutzer, str(konto_id))
+    if zeile is None or not zeile.geraete_schluessel:
+        return False
+    return kontensitzungen.is_known(
+        request.cookies.get(BEKANNT_COOKIE, ""), _markengeheimnis(), zeile.geraete_schluessel
+    )
+
+
+def bekannt_merken(request: Request, response: Response, store, konto_id: str) -> None:
+    """Dem Browser eine Marke fuer das Konto geben (die neueste zuerst, hoechstens fuenf). Der Aufrufer committet."""
+    marke = kontensitzungen.mark(_markengeheimnis(), store.device_key(konto_id))
+    response.set_cookie(
+        BEKANNT_COOKIE,
+        kontensitzungen.add_mark(request.cookies.get(BEKANNT_COOKIE, ""), marke),
+        max_age=kontensitzungen.MARK_COOKIE_DAYS * 86400,
+        httponly=True,
+        samesite="strict",
+        secure=_secure(request),
+        path=cookie_pfad(),
+    )
+
+
+def angemeldet(db: Session, benutzer: Benutzer, request: Request, response: Response, *, mail: bool = True) -> None:
+    """Nach jeder **vollen** Anmeldung im Browser (Passwort, Code, Anbieter): kennt nexmail den Browser fuer dieses
+    Konto noch nicht, geht die Mail „Neue Anmeldung“ an die bestaetigte Adresse (abschaltbar im Profil); danach traegt
+    der Browser die Marke. ``mail=False`` beim Anlegen eines Kontos: Dort ist jeder Browser neu."""
+    from . import konten_store, kontenpost
+
+    store = konten_store.store_fuer(db)
+    war_bekannt = bekannt(request, store, benutzer.id)
+    bescheid = None
+    if mail and not war_bekannt:
+        bescheid = kontensitzungen.new_sign_in(
+            store.get_account(benutzer.id), known=False, wanted=bool(benutzer.mail_neue_anmeldung)
+        )
+    bekannt_merken(request, response, store, benutzer.id)
+    db.commit()
+    if bescheid is None or not kontenpost.mail_moeglich(db):
+        return
+    wo = " · ".join(
+        teil
+        for teil in (_geraet(request)[:120], anmeldebremse.adresse_von(request), utcnow().strftime("%Y-%m-%d %H:%M UTC"))
+        if teil
+    )
+    try:
+        kontenpost.senden(db, bescheid, where=wo)
+    except Exception as fehler:  # noqa: BLE001 - die Anmeldung gilt, auch wenn der Bescheid nicht hinausgeht
+        logger.warning("The new sign-in mail could not be queued: %r", getattr(fehler, "kennung", fehler))

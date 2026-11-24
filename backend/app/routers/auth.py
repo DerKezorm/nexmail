@@ -45,6 +45,9 @@ class Anmeldung(BaseModel):
     #: lange Adresse sonst 422 statt „stimmt nicht“ bekaeme.
     benutzername: str = Field(min_length=1, max_length=nexkonten.names.EMAIL_MAX)
     passwort: str = Field(min_length=1, max_length=300)
+    #: „Angemeldet bleiben“ (Kontenmodul Teil 2), ab Werk an: 30 Tage, gleitend. Aus: Die Sitzung endet mit dem
+    #: Browser, spaetestens nach 12 Stunden. Fehlt das Feld (Skripte, alte Oberflaeche), gilt an wie bisher.
+    angemeldet_bleiben: bool = True
 
 
 class Codeeingabe(BaseModel):
@@ -114,6 +117,8 @@ class Ich(BaseModel):
     kontaktadresse_wartet: str = ""
     sprache: str = ""
     neues_passwort: str = ""
+    #: Die Mail „Neue Anmeldung“ (Teil 2), je Person im Profil abschaltbar.
+    mail_neue_anmeldung: bool = True
 
 
 def bremsschluessel(store, eingetippt: str, request: Request) -> str:
@@ -153,8 +158,11 @@ def anmelden(
         store.check_password(None, eingabe.passwort)
         wache.fehlgeschlagen()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="anmeldung_falsch")
+    # Ein Browser, den das Konto kennt, ist von der Kontosperre ausgenommen (Teil 2): Wer die Sperre ausloest,
+    # sperrt so nicht den Besitzer an seinem eigenen Rechner aus.
+    vertraut = gemeint.id if gemeint is not None and sitzungsdienst.bekannt(request, store, gemeint.id) else None
     try:
-        konto = nexkonten.login.authenticate(store, eingabe.benutzername, eingabe.passwort)
+        konto = nexkonten.login.authenticate(store, eingabe.benutzername, eingabe.passwort, known_browser=vertraut)
     except nexkonten.AccountError as fehler:
         wache.fehlgeschlagen()
         raise kontenstore.http(fehler, status.HTTP_401_UNAUTHORIZED) from fehler
@@ -165,9 +173,11 @@ def anmelden(
 
     # ⚠️ Der Nothammer. Er ueberspringt den zweiten Faktor vollstaendig -
     # gedacht fuer den Fall, dass Telefon und Wiederherstellungscodes weg sind.
+    merken = eingabe.angemeldet_bleiben
     if get_settings().zwei_faktor_aus:
-        sitzungsdienst.anlegen(db, person, request, response, bestaetigt=True)
+        sitzungsdienst.anlegen(db, person, request, response, bestaetigt=True, merken=merken)
         nexkonten.login.succeeded(store, person.id)
+        sitzungsdienst.angemeldet(db, person, request, response)
         logger.warning("Signed in with the second factor disabled (NEXMAIL_ZWEI_FAKTOR_AUS).")
         return Schritt(schritt="fertig")
 
@@ -176,11 +186,12 @@ def anmelden(
     # Einstellungen → Sicherheit, nicht mitten in der Anmeldung: Ein
     # Assistent, den man nicht abbrechen kann, ist keine Wahl.
     if not person.totp_bestaetigt:
-        sitzungsdienst.anlegen(db, person, request, response, bestaetigt=True)
+        sitzungsdienst.anlegen(db, person, request, response, bestaetigt=True, merken=merken)
         nexkonten.login.succeeded(store, person.id)
+        sitzungsdienst.angemeldet(db, person, request, response)
         return Schritt(schritt="fertig")
 
-    sitzungsdienst.anlegen(db, person, request, response, bestaetigt=False)
+    sitzungsdienst.anlegen(db, person, request, response, bestaetigt=False, merken=merken)
     return Schritt(schritt="code")
 
 
@@ -230,6 +241,7 @@ def code_pruefen(
     wache.geschafft()
     sitzungsdienst.bestaetigen(db, sitzung, request, response)
     nexkonten.login.succeeded(kontenstore.store_fuer(db), person.id)
+    sitzungsdienst.angemeldet(db, person, request, response)
     return Schritt(schritt="fertig")
 
 
@@ -254,6 +266,7 @@ def wiederherstellung(
     wache.geschafft()
     sitzungsdienst.bestaetigen(db, sitzung, request, response)
     nexkonten.login.succeeded(kontenstore.store_fuer(db), person.id)
+    sitzungsdienst.angemeldet(db, person, request, response)
     logger.warning("A user signed in with a recovery code.")
     return Schritt(schritt="fertig")
 
@@ -555,7 +568,19 @@ def zwei_faktor_aus(
 
 
 @router.get("/ich", response_model=Ich)
-def ich(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
+def ich_holen(person: AngemeldeterBenutzer, request: Request, response: Response, db: DbSession) -> Ich:
+    """Wer angemeldet ist. ⚠️ **Nebenbei die Marke „bekannter Browser“** fuer einen Browser, der schon vor dem Update
+    angemeldet war: Sonst bekaeme jeder nach dem Update beim naechsten Anmelden am eigenen Rechner die Mail „Neue
+    Anmeldung“. Nur mit dem Sitzungscookie, ein gekoppeltes iPhone braucht keine Marke."""
+    if request.cookies.get(sitzungsdienst.COOKIE_NAME):
+        store = kontenstore.store_fuer(db)
+        if not sitzungsdienst.bekannt(request, store, person.id):
+            sitzungsdienst.bekannt_merken(request, response, store, person.id)
+            db.commit()
+    return ich(person, db)
+
+
+def ich(person: Benutzer, db) -> Ich:
     return Ich(
         id=person.id,
         benutzername=person.benutzername,
@@ -577,6 +602,7 @@ def ich(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
         kontaktadresse_wartet=kontenstore.store_fuer(db).get_account(person.id).pending_email,
         sprache=person.sprache or "",
         neues_passwort=person.neues_passwort or "",
+        mail_neue_anmeldung=bool(person.mail_neue_anmeldung),
     )
 
 
@@ -746,6 +772,18 @@ def benutzername_aendern(
     wache.geschafft()
     _mail_versuchen(db, mail if kontenpost.mail_moeglich(db) else None)
     db.expire(person)
+    return ich(person, db)
+
+
+class Schalter(BaseModel):
+    an: bool
+
+
+@router.put("/ich/neue-anmeldung", response_model=Ich)
+def neue_anmeldung_setzen(eingabe: Schalter, person: AngemeldeterBenutzer, db: DbSession) -> Ich:
+    """„Mail bei neuer Anmeldung“ an oder aus (Kontenmodul Teil 2, ab Werk an)."""
+    person.mail_neue_anmeldung = eingabe.an
+    db.commit()
     return ich(person, db)
 
 

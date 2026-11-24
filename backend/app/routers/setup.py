@@ -111,6 +111,7 @@ def konto_anlegen(
 
     neuer = db.get(Benutzer, str(ergebnis.account.id))
     sitzungsdienst.anlegen(db, neuer, request, response, bestaetigt=True)
+    sitzungsdienst.angemeldet(db, neuer, request, response, mail=False)
     logger.info("Initial setup completed: the operator account was created.")
 
     return KontoAntwort(benutzername=neuer.benutzername)

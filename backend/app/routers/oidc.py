@@ -263,6 +263,7 @@ async def _zurueck(slug: str, request: Request, db: Session) -> Response:
         return antwort
     antwort = _weiter(flow.arrived(arrival))
     sitzungsdienst.anlegen(db, person, request, antwort, bestaetigt=True)
+    sitzungsdienst.angemeldet(db, person, request, antwort)
     return antwort
 
 

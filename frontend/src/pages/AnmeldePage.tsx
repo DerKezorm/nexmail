@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next'
 import { KeyRound } from 'lucide-react'
 import { appPfad } from '../lib/basis'
 import { Torbogen } from '../components/Torbogen'
-import { Button, Input } from '../ds'
+import { Button, Checkbox, Input } from '../ds'
 import { Meldung } from './EinrichtungPage'
 import { ApiFehler, api } from '../api/client'
 import { servermeldung } from '../lib/servermeldung'
@@ -40,6 +40,9 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
   )
   const [benutzername, setBenutzername] = useState('')
   const [passwort, setPasswort] = useState('')
+  // „Angemeldet bleiben“ (Kontenmodul Teil 2), ab Werk an: 30 Tage, gleitend. Aus: Schluss mit dem Browser,
+  // spätestens nach 12 Stunden.
+  const [bleiben, setBleiben] = useState(true)
   const [code, setCode] = useState('')
   const [fehler, setFehler] = useState('')
   const [laeuft, setLaeuft] = useState(false)
@@ -132,6 +135,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
               api.senden<Schritt>('/api/auth/anmelden', {
                 benutzername: benutzername.trim(),
                 passwort,
+                angemeldet_bleiben: bleiben,
               }),
             )
           }}
@@ -153,6 +157,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
             autoComplete="current-password"
             onChange={(e) => setPasswort(e.target.value)}
           />
+          <Checkbox label={t('account.stayIn')} checked={bleiben} onCheckedChange={setBleiben} />
           {fehler && <Meldung text={fehler} />}
           <Button
             type="submit"
