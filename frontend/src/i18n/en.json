@@ -271,21 +271,22 @@
   },
   "einladung": {
     "titel": "Welcome, {{name}}",
-    "untertitel": "Choose a password for the username {{name}}.",
+    "untertitel": "Create your nexmail account.",
     "loslegen": "Get started",
     "ungueltig_titel": "This invitation is no longer valid",
     "ungueltig_fallback": "Ask the operator for a new invitation.",
-    "zur_anmeldung": "Go to sign-in"
+    "zur_anmeldung": "Go to sign-in",
+    "titel_ohne_name": "Welcome"
   },
   "einrichtung": {
     "titel": "Set up nexmail",
-    "untertitel": "One account to sign in with. It is yours, and nexmail asks for this exactly once.",
+    "untertitel": "The first account, the one you sign in with. It is yours, and nexmail asks for it exactly once.",
     "benutzername": "User name",
     "benutzername_hinweis": "3 to 64 characters: letters, digits, dot, underscore, hyphen.",
     "anzeigename": "Display name",
     "anzeigename_optional": "Optional. Leave empty to use the user name.",
     "passwort": "Password",
-    "passwort_hinweis": "At least 10 characters. No rules about special characters: they demonstrably produce worse passwords, not better ones.",
+    "passwort_hinweis": "At least 12 characters. No rules about special characters: they make provably worse passwords, not better ones.",
     "passwort_wiederholen": "Repeat password",
     "passwort_ungleich": "The two entries do not match.",
     "weiter": "Continue",
@@ -691,11 +692,13 @@
     "setzen": "Set password",
     "stimmt_nicht": "The two do not match.",
     "vergessen_gesendet": "If that account exists and has an address stored, the link is on its way. It is valid for two hours.",
-    "vergessen_hinweis": "Enter your username. If an address is stored for that account, a link goes there.",
+    "vergessen_hinweis": "Enter your username or your email. If your account has an address, a link goes there.",
     "vergessen_link": "Forgot your password?",
     "vergessen_titel": "Forgotten password",
     "wiederholen": "Once more",
-    "zur_anmeldung": "Back to sign in"
+    "zur_anmeldung": "Back to sign in",
+    "gesetzt": "Your new password is set. Sign in with it now.",
+    "neu_fuer": "For the account {{name}}."
   },
   "ki": {
     "fehlgeschlagen": "Failed",
@@ -1557,7 +1560,7 @@
     "altes_kennwort_falsch": "The current password is wrong.",
     "anhang_unlesbar": "One attachment cannot be read.",
     "anhang_zu_gross": "“{{name}}” is larger than {{max_mb}} MB.",
-    "anmeldung_falsch": "Username or password is wrong.",
+    "anmeldung_falsch": "Username, email or password is wrong.",
     "archiv_keine_datenbank": "The file in the archive is not a nexmail database.",
     "archiv_ohne_datenbank": "The archive has no database in it.",
     "archiv_ohne_passwort": "An archive without a password would not be a backup.",
@@ -1593,8 +1596,8 @@
     "aufgabe_ohne_mail": "The message of this task is no longer there.",
     "bedingung_ohne_wert": "A condition without a value matches nothing.",
     "benutzername_inzwischen_vergeben": "That username has been taken in the meantime. The operator has to invite again.",
-    "benutzername_ungueltig": "A username is 3 to 64 characters: letters, digits, dot, underscore and hyphen.",
-    "benutzername_vergeben": "That username already exists.",
+    "benutzername_ungueltig": "2 to 64 characters: a to z, digits, dot, hyphen, underscore.",
+    "benutzername_vergeben": "Someone has this username already.",
     "betreiber_an_sich_selbst": "You are the operator already.",
     "betreiber_entfernen": "The operator cannot be removed.",
     "caldav_abfrage_gescheitert": "The calendar server refused the query.",
@@ -1616,7 +1619,7 @@
     "datei_leer": "The file is empty.",
     "datenschluessel_fehlt": "The data key is not loaded.",
     "einfuhr_nur_in_eigenen_kalender": "Importing only works into a calendar that lives in nexmail. For a connected calendar the events would have to reach the provider first, and nexmail cannot do that yet.",
-    "einladung_abgelaufen": "That invitation is no longer valid. Ask for a new one.",
+    "einladung_abgelaufen": "This invitation has been used already or is not valid any more.",
     "einladung_abgelaufen_tage": "That invitation is no longer valid. Ask for a new one: it expired after {{tage}} days or has already been used.",
     "einladung_absender_unbekannt": "“{{adresse}}” does not belong to any of your mailboxes.",
     "einladung_ohne_absender": "The invitation has no sender address.",
@@ -1750,7 +1753,7 @@
     "regel_ohne_bedingung": "A rule without a condition would match every message.",
     "rolle_ohne_ordner": "This mailbox has no folder for “{{rolle}}”. Right-click the folder you want and choose “Use as”.",
     "ruecksetzpunkt_weg": "That restore point is gone.",
-    "ruecksetzung_ungueltig": "This link is no longer valid. It lasts {{stunden}} hours and works once. Request a new one.",
+    "ruecksetzung_ungueltig": "This link has been used already or is not valid any more.",
     "schlagwort_farbe_unbekannt": "There is no such colour.",
     "schlagwort_name_leer": "The label needs a name.",
     "schlagwort_name_vergeben": "That label already exists.",
@@ -2158,7 +2161,7 @@
     "einladen_geht_nicht": "Inviting is not possible yet",
     "einladung_abschicken": "Send invitation",
     "einladung_adresse": "Email address",
-    "einladung_adresse_hinweis": "Where the invitation goes: a mailbox they already have.",
+    "einladung_adresse_hinweis": "Optional. With a system outbox the link goes there, otherwise you pass it on yourself.",
     "einladung_anzeigename": "Display name",
     "einladung_benutzername": "Username",
     "einladung_benutzername_hinweis": "They sign in with this. It cannot be changed later.",
@@ -2166,7 +2169,7 @@
     "einladung_zuruecknehmen_text": "The link for “{{name}}” will stop working. You can invite again at any time.",
     "gilt_bis": "Valid until {{wann}}",
     "gilt_fuer_alle": "These values apply to the whole application, not just to you.",
-    "kein_postausgang": "nexmail has no outgoing mail server of its own, so it cannot send the invitation. It is under Settings → Server → Mail.",
+    "kein_postausgang": "Without a system outbox no mail goes out. You can still invite: the link is shown to pass on, and so is a link for a new password.",
     "keine_adresse": "No public address is set. The link in the invitation would lead nowhere. It is under Settings → Server → General.",
     "ki": "AI services for all users",
     "ki_erlauben": "Allow",
@@ -2203,7 +2206,8 @@
     "zeitzone_hinweis": "IANA name, e.g. Europe/Berlin. Applies to every user. Empty means the browser’s.",
     "webhook_mailtext": "Message text in webhooks",
     "webhook_mailtext_erlauben": "Allow text",
-    "webhook_mailtext_hinweis": "Off by default. Once allowed, every user of this installation can have the text of their messages sent to an address of their choice, if they turn it on for their webhook."
+    "webhook_mailtext_hinweis": "Off by default. Once allowed, every user of this installation can have the text of their messages sent to an address of their choice, if they turn it on for their webhook.",
+    "einladung_ohne_namen": "Invitation without an address"
   },
   "wiedervorlage": {
     "menue": "Snooze",
@@ -2246,7 +2250,10 @@
     "sprache": "Language",
     "sprache_hinweis": "Applies in this browser.",
     "abmelden_titel": "Sign out",
-    "abmelden_text": "Ends your session in this browser. Your mail stays as it is."
+    "abmelden_text": "Ends your session in this browser. Your mail stays as it is.",
+    "neues_passwort_titel": "New password",
+    "zugang_geraet": "iPhone app",
+    "zugang_schluessel": "API key"
   },
   "nextime": {
     "satz": "All your calendars from nextime in nexmail's calendar, without adding each one. Invitations from mails go there.",
@@ -2303,5 +2310,10 @@
     "weitere_hinweis": "nexmail only uses the nextasks connection made first. Tasks made from mails through this one stay in nexmail. Disconnect it when you no longer need it.",
     "auswahl_titel": "Lists nexmail uses",
     "auswahl_hinweis": "Lists without a tick appear nowhere in nexmail: not under tasks, not in “New task” and not in “Turn into task”. Nothing changes in nextasks."
+  },
+  "adresse": {
+    "titel": "Confirm your address",
+    "bestaetigen": "Confirm address",
+    "weiter": "Go to nexmail"
   }
 }

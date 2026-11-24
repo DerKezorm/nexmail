@@ -18,6 +18,7 @@ import { ApiFehler, api } from '../api/client'
 import { servermeldung } from '../lib/servermeldung'
 import type { Einrichtung, Schritt } from '../api/client'
 import { oidcErrorKey } from '../vendor/nexoidc/oidc'
+import { EMAIL_MAX } from '../vendor/nexkonten/konten'
 
 type Lage = 'passwort' | 'code' | 'wiederherstellung' | 'einrichten'
 
@@ -136,15 +137,17 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
           }}
           className="flex flex-col gap-4"
         >
+          {/* Kontenmodul: „Benutzername oder E-Mail“; der Feldname zum Server bleibt `benutzername`. */}
           <Input
-            label={t('anmeldung.benutzername')}
+            label={t('account.login')}
             value={benutzername}
             autoFocus
             autoComplete="username"
+            maxLength={EMAIL_MAX}
             onChange={(e) => setBenutzername(e.target.value)}
           />
           <Input
-            label={t('anmeldung.passwort')}
+            label={t('account.password')}
             type="password"
             value={passwort}
             autoComplete="current-password"
@@ -168,7 +171,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
             onClick={aufVergessen}
             className="mx-auto text-[13px] text-fg-3 underline underline-offset-2 hover:text-fg-1"
           >
-            {t('kennwort.vergessen_link')}
+            {t('account.forgot')}
           </button>
         </form>
         )}

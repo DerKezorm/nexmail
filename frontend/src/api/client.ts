@@ -154,6 +154,9 @@ export const api = {
 export interface Stand {
   eingerichtet: boolean
   zwei_faktor_aus: boolean
+  /** Ob die Einrichtung den Einrichtungscode verlangt (ohne Konto immer). */
+  code_noetig?: boolean
+  min_passwort?: number
 }
 
 export interface Ich {
@@ -190,6 +193,12 @@ export interface Ich {
   profilbild?: string | null
   /** Die eigene Reihenfolge der Postfachgruppen-Reiter; leer = wie die Postfächer. */
   gruppen_reihenfolge?: string[]
+  /** Kontenmodul: ob die Adresse zählt, welche auf ihren Link wartet, die Sprache des Kontos ("" die des Browsers),
+   *  und nach einem neuen Passwort über einen Link, wer ihn machte ("" nichts zu zeigen). */
+  kontaktadresse_zaehlt?: boolean
+  kontaktadresse_wartet?: string
+  sprache?: string
+  neues_passwort?: string
 }
 
 export interface Schritt {

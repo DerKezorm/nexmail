@@ -1,24 +1,23 @@
-/* Einstellungen → Profil, wie in nexnotes: Bild, Name, Mailadresse, Sprache,
- * und darunter „Abmelden".
+/* Einstellungen → Profil, wie in nexnotes: Bild, Anzeigename, Benutzername, E-Mail, Sprache, darunter klein die
+ * Rolle, und „Abmelden" (Kontenmodul, `SCREENS.profile`).
  *
- * ⚠️ **Die Mailadresse ist die Adresse für Kontosachen** (`kontaktadresse`),
- * nicht eines der Postfächer. Bis 0.30 stand sie oben unter Sicherheit; dort
- * hat nexnotes sie nicht, und wer beide Apps kennt, sucht sie im Profil.
- * ⚠️ **Ohne sie gibt es keinen Weg zurück** nach einem vergessenen Kennwort.
- * Deshalb steht die Warnung direkt unter dem Feld, sobald sie leer ist.
+ * ⚠️ **Die E-Mail ist die Adresse des Kontos** (`kontaktadresse`), nicht eines der Postfächer. Ändern nur mit dem
+ * Passwort; mit Postausgang gilt die neue erst nach ihrem Link, bis dahin die alte.
+ * ⚠️ **Ohne sie gibt es keinen Weg zurück** nach einem vergessenen Passwort, außer über den Betreiber. Deshalb steht
+ * die Warnung direkt unter dem Feld, sobald sie leer ist.
  *
- * ⚠️ **Die Sprache gilt in diesem Browser**, anders als in nexnotes, wo sie am
- * Konto hängt. nexmail merkt sie seit jeher im Browser (`i18n/index.ts`); der
- * Hinweis sagt das, sonst wirkt sie am zweiten Gerät kaputt.
+ * ⚠️ **Die Sprache hängt seit dem Kontenmodul am Konto** und reist mit auf jedes Gerät (wie nexnotes).
  */
 import { LogOut, ShieldAlert, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, type Ich } from '../../api/client'
 import { Profilbild } from '../../components/Profilbild'
+import { useNachfrage } from '../../components/Nachfrage'
 import { Button, Input, Select } from '../../ds'
 import { SPRACHEN, spracheSetzen, type Sprachcode } from '../../i18n'
 import { servermeldung } from '../../lib/servermeldung'
+import { DISPLAY_NAME_MAX, EMAIL_MAX, USERNAME_MAX } from '../../vendor/nexkonten/konten'
 import { Karte } from './Karte'
 
 export function Profil({
@@ -31,7 +30,9 @@ export function Profil({
   aufAbmelden: () => void
 }) {
   const { t, i18n } = useTranslation()
+  const { fragen, fenster: nachfrage } = useNachfrage()
   const [name, setName] = useState(ich?.anzeigename ?? '')
+  const [umbenannt, setUmbenannt] = useState(false)
   const [adresse, setAdresse] = useState(ich?.kontaktadresse ?? '')
   const [laeuft, setLaeuft] = useState(false)
   const [fehler, setFehler] = useState('')
@@ -64,6 +65,50 @@ export function Profil({
 
   const unveraendert =
     name.trim() === person.anzeigename && adresse.trim() === (person.kontaktadresse ?? '')
+  const adresseNeu = adresse.trim().toLowerCase() !== (person.kontaktadresse ?? '').toLowerCase()
+
+  /** Das eigene Passwort, wo das Konto eins hat (Kontenmodul: Adresse und Benutzername nur damit). Ohne Passwort
+   *  (nur über einen Anbieter): nichts zu fragen, der Server verlangt dann eine frische Anmeldung beim Anbieter. */
+  async function passwortFragen(): Promise<string | null> {
+    if (person.hat_kennwort === false) return ''
+    const antwort = await fragen({
+      titel: t('account.confirmWithPassword'),
+      eingabe: { beschriftung: t('account.password'), typ: 'password' },
+      knopf: t('aktion.speichern'),
+    })
+    return typeof antwort === 'string' && antwort ? antwort : null
+  }
+
+  async function speichern() {
+    const passwort = adresseNeu ? await passwortFragen() : ''
+    if (passwort === null) return
+    await tun(
+      () =>
+        api.aendern('/api/auth/ich/profil', {
+          anzeigename: name.trim(),
+          kontaktadresse: adresse.trim(),
+          passwort,
+        }),
+      t('profil.gespeichert'),
+    )
+  }
+
+  async function benutzernameAendern() {
+    const neu = await fragen({
+      titel: t('account.username'),
+      text: t('account.usernameRules'),
+      eingabe: { beschriftung: t('account.username'), vorgabe: person.benutzername },
+      knopf: t('aktion.weiter'),
+    })
+    if (typeof neu !== 'string' || !neu || neu === person.benutzername) return
+    const passwort = await passwortFragen()
+    if (passwort === null) return
+    await tun(
+      () => api.aendern('/api/auth/ich/benutzername', { benutzername: neu, passwort }),
+      t('account.usernameChanged', { username: neu.trim().toLowerCase() }),
+    )
+    setUmbenannt(true)
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -116,38 +161,77 @@ export function Profil({
           </div>
         </div>
 
+        {/* Felder und Reihenfolge aus dem Kontenmodul (`SCREENS.profile`): Anzeigename, Benutzername, E-Mail,
+            Sprache. Der Benutzername ändert sich für sich (mit Passwort), die beiden anderen mit „Speichern“. */}
         <form
-          className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+          className="flex flex-col gap-3"
           onSubmit={(e) => {
             e.preventDefault()
-            void tun(
-              () =>
-                api.aendern('/api/auth/ich/profil', {
-                  anzeigename: name.trim(),
-                  kontaktadresse: adresse.trim(),
-                }),
-              t('profil.gespeichert'),
-            )
+            void speichern()
           }}
         >
           <Input
-            label={t('profil.name')}
+            label={t('account.displayName')}
+            hint={t('account.displayNameHint')}
             value={name}
-            maxLength={120}
+            maxLength={DISPLAY_NAME_MAX}
             autoComplete="name"
+            placeholder={person.benutzername}
             onChange={(e) => setName(e.target.value)}
           />
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+            <Input
+              label={t('account.username')}
+              hint={umbenannt ? t('account.formerUsername') : t('account.usernameHint')}
+              value={person.benutzername}
+              maxLength={USERNAME_MAX}
+              readOnly
+            />
+            <Button type="button" disabled={laeuft} onClick={() => void benutzernameAendern()}>
+              {t('aktion.bearbeiten')}
+            </Button>
+          </div>
           <Input
             type="email"
-            label={t('profil.mail')}
+            label={t('account.email')}
             placeholder="name@example.com"
             value={adresse}
+            maxLength={EMAIL_MAX}
             autoComplete="email"
             onChange={(e) => setAdresse(e.target.value)}
           />
-          <Button type="submit" variant="primary" disabled={laeuft || unveraendert}>
-            {t('aktion.speichern')}
-          </Button>
+          {/* Eine neue Adresse, die auf ihren Link wartet: bis dahin gilt die bisherige. */}
+          {person.kontaktadresse_wartet && (
+            <div className="flex flex-wrap items-center gap-2 text-[12px] text-fg-3">
+              <span className="flex-1">{t('account.emailPending', { email: person.kontaktadresse_wartet })}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={laeuft}
+                onClick={() =>
+                  void tun(
+                    () => api.senden('/api/auth/ich/kontaktadresse/nochmal', {}),
+                    t('account.emailConfirmSent', { email: person.kontaktadresse_wartet }),
+                  )
+                }
+              >
+                {t('account.emailResend')}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={laeuft}
+                onClick={() => void tun(() => api.loeschen('/api/auth/ich/kontaktadresse/wartend'), t('profil.gespeichert'))}
+              >
+                {t('account.emailWithdraw')}
+              </Button>
+            </div>
+          )}
+          <div>
+            <Button type="submit" variant="primary" disabled={laeuft || unveraendert}>
+              {t('aktion.speichern')}
+            </Button>
+          </div>
         </form>
 
         <p className="mb-0 text-[12px] text-fg-3">
@@ -155,7 +239,7 @@ export function Profil({
             rolle: person.ist_betreiber ? t('profil.rolle_betreiber') : t('profil.rolle_benutzer'),
           })}
           {' · '}
-          {t('sicherheit.kontaktadresse_hinweis')}
+          {t('account.emailHint')}
         </p>
 
         {!person.kontaktadresse && (
@@ -166,10 +250,14 @@ export function Profil({
         )}
 
         <Select
-          label={t('profil.sprache')}
-          hint={t('profil.sprache_hinweis')}
+          label={t('account.language')}
           value={i18n.language}
-          onChange={(e) => void spracheSetzen(e.target.value as Sprachcode)}
+          onChange={(e) => {
+            const code = e.target.value as Sprachcode
+            void spracheSetzen(code)
+            // Am Konto gemerkt, damit sie auf jedem Gerät gilt; scheitert das, bleibt sie in diesem Browser.
+            void api.aendern('/api/auth/ich/sprache', { sprache: code }).then(() => ichNeuLaden?.(), () => undefined)
+          }}
           options={SPRACHEN.map((s) => ({ value: s.code, label: s.name }))}
         />
       </Karte>
@@ -181,6 +269,7 @@ export function Profil({
           </Button>
         </div>
       </Karte>
+      {nachfrage}
     </div>
   )
 }

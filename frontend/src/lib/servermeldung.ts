@@ -17,6 +17,21 @@
 import i18next from 'i18next'
 import { ApiFehler } from '../api/client'
 import { oidcErrorKey, oidcFormErrorKey } from '../vendor/nexoidc/oidc'
+import { accountErrorKey } from '../vendor/nexkonten/konten'
+
+/** nexmails alte Kennungen zurück auf die des Kontenmoduls (der Server sendet die alten, `ALTE_KENNUNGEN` in
+ *  `services/konten_store.py`); die meisten haben schon einen eigenen Satz unter `serverfehler`. */
+export const ALTE_KENNUNGEN: Readonly<Record<string, string>> = {
+  anmeldung_falsch: 'wrong_credentials',
+  benutzername_vergeben: 'username_taken',
+  benutzername_ungueltig: 'username_invalid',
+  passwort_zu_kurz: 'password_too_short',
+  adresse_ungueltig: 'email_invalid',
+  kennwort_falsch: 'wrong_password',
+  einladung_abgelaufen: 'invite_invalid',
+  ruecksetzung_ungueltig: 'reset_invalid',
+  benutzer_nicht_gefunden: 'not_found',
+}
 
 /* ⚠️ **Auch ein Wert kann eine Kennung sein.** `rolle_ohne_ordner` nennt die
    Rolle, und die heißt im Server `papierkorb`. Bis 0.17.0 stand sie so im
@@ -49,6 +64,11 @@ export function servermeldung(fehler: unknown, rueckfall?: string): string {
      stehen in dessen Wortlauten (`oidc.error.*`, `oidc.formError.*`), nicht unter `serverfehler`. */
   const modul = oidcFormErrorKey(kennung) ?? oidcErrorKey(kennung)
   if (modul) return i18next.t(modul)
+
+  /* Das Kontenmodul nennt seine Kennungen (`display_name_taken`, `setup_code_wrong` …); die Sätze stehen in seinen
+     Wortlauten (`account.*`). */
+  const konto = accountErrorKey(kennung, ALTE_KENNUNGEN)
+  if (konto !== 'account.error.unknown') return i18next.t(konto, fehler.werte ?? {})
 
   /* ⚠️ **Eine unbekannte Kennung ist ein Fehler bei uns, kein Betriebsfall.**
      Sie kommt nur vor, wenn der Server etwas nennt, das im Katalog fehlt —

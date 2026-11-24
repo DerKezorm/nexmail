@@ -17,10 +17,23 @@ import { Torbogen } from '../components/Torbogen'
 import { Button, Input } from '../ds'
 import { Meldung } from './EinrichtungPage'
 import { servermeldung } from '../lib/servermeldung'
+import {
+  DISPLAY_NAME_MAX,
+  EMAIL_MAX,
+  PASSWORD_MIN,
+  USERNAME_MAX,
+  followUsername,
+  suggestUsername,
+  usernameProblem,
+} from '../vendor/nexkonten/konten'
 
 interface Vorschau {
+  /** Vorschlag, oder der Name einer Einladung von vorher (sie behält ihn). */
   benutzername: string
   anzeigename: string
+  /** Die Adresse der Einladung, vorbelegt. */
+  kontaktadresse?: string
+  min_passwort?: number
   /** Aus („Anmeldung mit Passwort“ in der Verwaltung): nur „Weiter mit …“. */
   passwort?: boolean
 }
@@ -39,6 +52,10 @@ export function EinladungPage({
   const { t } = useTranslation()
   const [vorschau, setVorschau] = useState<Vorschau | null>(null)
   const [hinfaellig, setHinfaellig] = useState('')
+  const [anzeigename, setAnzeigename] = useState('')
+  const [name, setName] = useState({ touched: false, username: '' })
+  const benutzername = followUsername(name, anzeigename)
+  const [adresse, setAdresse] = useState('')
   const [passwort, setPasswort] = useState('')
   const [wiederholung, setWiederholung] = useState('')
   const [fehler, setFehler] = useState('')
@@ -78,7 +95,13 @@ export function EinladungPage({
 
   const holen = useCallback(async () => {
     try {
-      setVorschau(await api.holen<Vorschau>(`/api/einladung/${encodeURIComponent(schluessel)}`))
+      const v = await api.holen<Vorschau>(`/api/einladung/${encodeURIComponent(schluessel)}`)
+      setVorschau(v)
+      setAnzeigename(v.anzeigename)
+      setAdresse(v.kontaktadresse ?? '')
+      /* Ein Name, den der Server anders vorschlägt als der Anzeigename ergäbe (der einer Einladung von vorher, oder
+         ein nummerierter), bleibt stehen; sonst folgt er dem Anzeigenamen. */
+      setName({ touched: v.benutzername !== suggestUsername(v.anzeigename), username: v.benutzername })
     } catch (f) {
       setHinfaellig(
         servermeldung(f, t('einladung.ungueltig_fallback')),
@@ -94,12 +117,17 @@ export function EinladungPage({
     e.preventDefault()
     setFehler('')
     if (passwort !== wiederholung) {
-      setFehler(t('einrichtung.passwort_ungleich'))
+      setFehler(t('account.passwordMismatch'))
       return
     }
     setLaeuft(true)
     try {
-      await api.senden(`/api/einladung/${encodeURIComponent(schluessel)}`, { passwort })
+      await api.senden(`/api/einladung/${encodeURIComponent(schluessel)}`, {
+        anzeigename: anzeigename.trim(),
+        benutzername: benutzername.trim(),
+        kontaktadresse: adresse.trim(),
+        passwort,
+      })
       // ⚠️ Die Adresse aufräumen, bevor die App startet: Sonst steht der
       // Schlüssel weiter im Verlauf des Browsers und im Verlaufsspeicher.
       // ⚠️ Mit Vorbau — sonst springt der Browser aus der Anwendung heraus
@@ -142,36 +170,68 @@ export function EinladungPage({
   /* ⚠️ Dieselben Sätze wie in der Ersteinrichtung — und dieselben Schlüssel.
      Beim ersten Anlauf standen hier drei erfundene Namen, und die Oberfläche
      zeigte roh „einrichtung.grund_passwort". */
-  const grund = !passwort
-    ? t('einrichtung.grund_kennwort')
-    : passwort.length < 10
-      ? t('einrichtung.grund_kennwort_lang', { fehlen: 10 - passwort.length })
-      : passwort !== wiederholung
-        ? t('einrichtung.passwort_ungleich')
-        : ''
+  const mindestens = vorschau.min_passwort ?? PASSWORD_MIN
+  const grund = !anzeigename.trim()
+    ? t('account.error.display_name_empty')
+    : usernameProblem(benutzername)
+      ? t('account.usernameRules')
+      : passwort.length < mindestens
+        ? t('einrichtung.grund_kennwort_lang', { fehlen: mindestens - passwort.length })
+        : passwort !== wiederholung
+          ? t('account.passwordMismatch')
+          : ''
 
   return (
     <Torbogen
       marke="nexmail"
-      titel={t('einladung.titel', { name: vorschau.anzeigename })}
-      untertitel={t('einladung.untertitel', { name: vorschau.benutzername })}
+      titel={vorschau.anzeigename ? t('einladung.titel', { name: vorschau.anzeigename }) : t('einladung.titel_ohne_name')}
+      untertitel={t('einladung.untertitel')}
       modus={modus}
       aufModus={aufModus}
     >
       {vorschau.passwort !== false && (
+      /* Felder und Reihenfolge aus dem Kontenmodul (`SCREENS.invite`): wie die Einrichtung, ohne Code. */
       <form onSubmit={annehmen} className="flex flex-col gap-4">
         <Input
-          label={t('einrichtung.passwort')}
+          label={t('account.displayName')}
+          hint={t('account.displayNameHint')}
+          value={anzeigename}
+          autoComplete="name"
+          maxLength={DISPLAY_NAME_MAX}
+          onChange={(e) => setAnzeigename(e.target.value)}
+        />
+        <Input
+          label={t('account.username')}
+          hint={t('account.usernameHint')}
+          error={benutzername && usernameProblem(benutzername) ? t('account.usernameRules') : undefined}
+          value={benutzername}
+          autoComplete="username"
+          maxLength={USERNAME_MAX}
+          onChange={(e) => setName({ touched: true, username: e.target.value })}
+        />
+        <Input
+          type="email"
+          label={t('account.email')}
+          hint={t('account.emailHint')}
+          value={adresse}
+          autoComplete="email"
+          maxLength={EMAIL_MAX}
+          onChange={(e) => setAdresse(e.target.value)}
+        />
+        <Input
+          label={t('account.newPassword')}
+          hint={t('account.passwordRules', { minimum: mindestens })}
           type="password"
           autoComplete="new-password"
           value={passwort}
           onChange={(e) => setPasswort(e.target.value)}
         />
         <Input
-          label={t('einrichtung.passwort_wiederholen')}
+          label={t('account.passwordRepeat')}
           type="password"
           autoComplete="new-password"
           value={wiederholung}
+          error={wiederholung && passwort !== wiederholung ? t('account.passwordMismatch') : undefined}
           onChange={(e) => setWiederholung(e.target.value)}
         />
 
@@ -203,7 +263,7 @@ export function EinladungPage({
           {vorschau.passwort !== false && (
             <div className="mb-3 flex items-center gap-3 text-[12px] text-fg-4" aria-hidden>
               <span className="h-px flex-1 bg-line-subtle" />
-              {t('oidc.login.or')}
+              {t('account.or')}
               <span className="h-px flex-1 bg-line-subtle" />
             </div>
           )}

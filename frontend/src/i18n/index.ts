@@ -23,6 +23,7 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import { oidcVariables, oidcWording, type OidcWording } from '../vendor/nexoidc/oidc'
+import { kontenVariables } from '../vendor/nexkonten/konten'
 
 export const SPRACHEN = [
   { code: 'de', name: 'Deutsch' },
@@ -38,8 +39,10 @@ const GEMERKT = 'nexmail.sprache'
    Bau kann dann nicht mehr sehen, welche es wirklich gibt, und ein Tippfehler
    fällt erst zur Laufzeit auf. */
 const LADER: Record<Sprachcode, () => Promise<{ default: object }>> = {
-  de: () => mitAnmeldung(import('./de.json'), import('../vendor/nexoidc/oidc.de.json')),
-  en: () => mitAnmeldung(import('./en.json'), import('../vendor/nexoidc/oidc.en.json')),
+  de: () =>
+    mitAnmeldung(import('./de.json'), import('../vendor/nexoidc/oidc.de.json'), import('../vendor/nexkonten/konten.de.json')),
+  en: () =>
+    mitAnmeldung(import('./en.json'), import('../vendor/nexoidc/oidc.en.json'), import('../vendor/nexkonten/konten.en.json')),
 }
 
 /* ⚠️ **Die Wortlaute der Anmeldung über Anbieter kommen aus dem gemeinsamen Modul** (`vendor/nexoidc`): in jeder nex-App dieselben Sätze unter `oidc.*`, eingemischt über
@@ -47,9 +50,19 @@ const LADER: Record<Sprachcode, () => Promise<{ default: object }>> = {
 async function mitAnmeldung(
   eigen: Promise<{ default: object }>,
   modul: Promise<{ default: OidcWording }>,
+  konten: Promise<{ default: object }>,
 ): Promise<{ default: object }> {
-  const [app, oidc] = await Promise.all([eigen, modul])
-  return { default: { ...app.default, ...oidcWording(oidc.default, { singleAccount: false, invitations: true }) } }
+  const [app, oidc, kontenmodul] = await Promise.all([eigen, modul, konten])
+  /* ⚠️ **Auch die Wortlaute des Kontenmoduls kommen aus dem Modul** (`vendor/nexkonten`, Namensraum `account`):
+     Anmelden, Einrichten, Einladung, Profil und Passwort vergessen sagen in jeder nex-App dasselbe. nexmails eigene
+     Dateien tragen keinen Schlüssel `account`. */
+  return {
+    default: {
+      ...app.default,
+      ...oidcWording(oidc.default, { singleAccount: false, invitations: true }),
+      ...kontenmodul.default,
+    },
+  }
 }
 
 /** Die Texte einer Sprache, wie sie in i18next landen (samt den Wortlauten der Anmeldung). Auch für Tests. */
@@ -65,8 +78,12 @@ export const GRUNDEINSTELLUNG = {
      auf der schnellen Prüfebene hält ohnehin fest, dass beide Sprachen
      dieselben Einträge kennen. */
   fallbackLng: false as const,
-  // `{{app}}` und `{{slug}}` in den Wortlauten des Anmeldemoduls.
-  interpolation: { escapeValue: false, defaultVariables: oidcVariables('nexmail') },
+  // `{{app}}` und `{{slug}}` in den Wortlauten des Anmeldemoduls, `{{setupTokenEnv}}` und `{{minimum}}` in denen des
+  // Kontenmoduls.
+  interpolation: {
+    escapeValue: false,
+    defaultVariables: { ...oidcVariables('nexmail'), ...kontenVariables('nexmail') },
+  },
 }
 
 function startsprache(): Sprachcode {
@@ -103,6 +120,14 @@ export async function spracheHochfahren(): Promise<void> {
     ...GRUNDEINSTELLUNG,
   })
   document.documentElement.lang = code
+}
+
+/** Die Sprache des Kontos (seit dem Kontenmodul am Konto, wie in nexnotes): nach der Anmeldung übernommen, wenn sie
+ *  gesetzt ist und eine ist, die nexmail kann. */
+export async function kontoSprache(code: string | undefined): Promise<void> {
+  const kurz = (code ?? '').slice(0, 2)
+  if (!SPRACHEN.some((s) => s.code === kurz) || i18n.language === kurz) return
+  await spracheSetzen(kurz as Sprachcode)
 }
 
 export async function spracheSetzen(code: Sprachcode): Promise<void> {

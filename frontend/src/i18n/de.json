@@ -66,7 +66,7 @@
   },
   "anmeldung": {
     "titel": "Anmelden",
-    "passwort": "Kennwort",
+    "passwort": "Passwort",
     "benutzername": "Benutzername",
     "weiter": "Weiter",
     "code_titel": "Zweiter Faktor",
@@ -90,7 +90,7 @@
     "ordnen": "„{{name}}“ verschieben (Pfeiltasten hoch und runter)",
     "verknuepfung_loesen": "Verknüpfung lösen",
     "verknuepfung_loesen_mit": "Verknüpfung von {{wer}} mit {{name}} lösen",
-    "verknuepfung_loesen_text": "{{wer}} meldet sich danach nicht mehr über {{name}} an. Dein Kennwort bestätigt es."
+    "verknuepfung_loesen_text": "{{wer}} meldet sich danach nicht mehr über {{name}} an. Dein Passwort bestätigt es."
   },
   "todoapps": {
     "einleitung": "Verbinde deine Todo-App, dann landet „Zu Aufgabe machen“ auf Wunsch dort. Erledigst du die Aufgabe in der App, sieht nexmail das nach ein paar Minuten auch.",
@@ -271,22 +271,23 @@
   },
   "einladung": {
     "titel": "Willkommen, {{name}}",
-    "untertitel": "Vergib ein Kennwort für den Benutzernamen {{name}}.",
+    "untertitel": "Leg dein Konto für nexmail an.",
     "loslegen": "Loslegen",
     "ungueltig_titel": "Diese Einladung gilt nicht mehr",
     "ungueltig_fallback": "Bitte den Betreiber um eine neue Einladung.",
-    "zur_anmeldung": "Zur Anmeldung"
+    "zur_anmeldung": "Zur Anmeldung",
+    "titel_ohne_name": "Willkommen"
   },
   "einrichtung": {
     "titel": "nexmail einrichten",
-    "untertitel": "Ein Konto, mit dem du dich anmeldest. Es gehört dir, und nexmail fragt danach genau einmal.",
+    "untertitel": "Das erste Konto, mit dem du dich anmeldest. Es gehört dir, und nexmail fragt danach genau einmal.",
     "benutzername": "Benutzername",
     "benutzername_hinweis": "3 bis 64 Zeichen: Buchstaben, Ziffern, Punkt, Unterstrich, Bindestrich.",
     "anzeigename": "Angezeigter Name",
     "anzeigename_optional": "Optional. Leer lassen übernimmt den Benutzernamen.",
-    "passwort": "Kennwort",
-    "passwort_hinweis": "Mindestens 10 Zeichen. Keine Regeln über Sonderzeichen, denn die erzeugen nachweislich schlechtere Kennwörter, nicht bessere.",
-    "passwort_wiederholen": "Kennwort wiederholen",
+    "passwort": "Passwort",
+    "passwort_hinweis": "Mindestens 12 Zeichen. Keine Regeln über Sonderzeichen, denn die erzeugen nachweislich schlechtere Passwörter, nicht bessere.",
+    "passwort_wiederholen": "Passwort wiederholen",
     "passwort_ungleich": "Die beiden Eingaben stimmen nicht überein.",
     "weiter": "Weiter",
     "geheimnis_abtippen": "Oder von Hand eintragen",
@@ -302,7 +303,7 @@
     "warnung_text": "Ohne App und ohne diese Codes kommst du nicht mehr an deine Postfächer. Ein Notausgang existiert (NEXMAIL_ZWEI_FAKTOR_AUS in der compose-Datei), aber er setzt Zugriff auf den Server voraus.",
     "grund_benutzername": "Es fehlt noch ein Benutzername.",
     "grund_kennwort": "Noch {{fehlen}} Zeichen.",
-    "grund_kennwort_lang": "Das Kennwort braucht noch {{fehlen}} Zeichen."
+    "grund_kennwort_lang": "Das Passwort braucht noch {{fehlen}} Zeichen."
   },
   "einstellungen": {
     "aufgaben": "Aufgaben",
@@ -333,7 +334,7 @@
       },
       "sicherheit": {
         "titel": "Sicherheit",
-        "text": "Kennwort, zweiter Faktor, Anmeldung über Anbieter und angemeldete Geräte."
+        "text": "Passwort, zweiter Faktor, Anmeldung über Anbieter und angemeldete Geräte."
       },
       "darstellung": {
         "titel": "Darstellung",
@@ -686,16 +687,18 @@
   },
   "kennwort": {
     "link_anfordern": "Link anfordern",
-    "neu_titel": "Neues Kennwort vergeben",
-    "neues": "Neues Kennwort",
-    "setzen": "Kennwort setzen",
+    "neu_titel": "Neues Passwort vergeben",
+    "neues": "Neues Passwort",
+    "setzen": "Passwort setzen",
     "stimmt_nicht": "Die beiden stimmen nicht überein.",
     "vergessen_gesendet": "Wenn es dieses Konto gibt und eine Adresse dafür hinterlegt ist, ist der Link unterwegs. Er gilt zwei Stunden.",
-    "vergessen_hinweis": "Gib deinen Benutzernamen ein. Wenn zu diesem Konto eine Adresse hinterlegt ist, geht ein Link dorthin.",
-    "vergessen_link": "Kennwort vergessen?",
-    "vergessen_titel": "Kennwort vergessen",
+    "vergessen_hinweis": "Gib deinen Benutzernamen oder deine E-Mail ein. Wenn zu deinem Konto eine Adresse hinterlegt ist, geht ein Link dorthin.",
+    "vergessen_link": "Passwort vergessen?",
+    "vergessen_titel": "Passwort vergessen",
     "wiederholen": "Noch einmal",
-    "zur_anmeldung": "Zurück zur Anmeldung"
+    "zur_anmeldung": "Zurück zur Anmeldung",
+    "gesetzt": "Das neue Passwort gilt. Melde dich jetzt damit an.",
+    "neu_fuer": "Für das Konto {{name}}."
   },
   "ki": {
     "fehlgeschlagen": "Fehlgeschlagen",
@@ -1554,10 +1557,10 @@
     "alias_adresse_ungueltig": "„{{adresse}}“ ist keine gültige E-Mail-Adresse.",
     "alias_unbekannt": "„{{adresse}}“ gehört nicht zu diesem Postfach. Trage die Adresse erst unter den Absenderadressen ein.",
     "alias_zu_viele": "Mehr als {{max}} Absenderadressen je Postfach gehen nicht.",
-    "altes_kennwort_falsch": "Das bisherige Kennwort stimmt nicht.",
+    "altes_kennwort_falsch": "Das bisherige Passwort stimmt nicht.",
     "anhang_unlesbar": "Ein Anhang ist unlesbar.",
     "anhang_zu_gross": "„{{name}}“ ist größer als {{max_mb}} MB.",
-    "anmeldung_falsch": "Benutzername oder Passwort stimmt nicht.",
+    "anmeldung_falsch": "Benutzername, E-Mail oder Passwort stimmt nicht.",
     "archiv_keine_datenbank": "Die Datei im Archiv ist keine nexmail-Datenbank.",
     "archiv_ohne_datenbank": "Im Archiv fehlt die Datenbank.",
     "archiv_ohne_passwort": "Ein Archiv ohne Passwort wäre keine Sicherung.",
@@ -1593,8 +1596,8 @@
     "aufgabe_ohne_mail": "Die Mail zu dieser Aufgabe ist nicht mehr da.",
     "bedingung_ohne_wert": "Eine Bedingung ohne Wert trifft auf nichts zu.",
     "benutzername_inzwischen_vergeben": "Dieser Benutzername ist inzwischen vergeben. Der Betreiber muss neu einladen.",
-    "benutzername_ungueltig": "Der Benutzername darf 3 bis 64 Zeichen haben: Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich.",
-    "benutzername_vergeben": "Diesen Benutzernamen gibt es schon.",
+    "benutzername_ungueltig": "2 bis 64 Zeichen: a bis z, Ziffern, Punkt, Bindestrich, Unterstrich.",
+    "benutzername_vergeben": "Diesen Benutzernamen hat schon jemand.",
     "betreiber_an_sich_selbst": "Du bist schon Betreiber.",
     "betreiber_entfernen": "Der Betreiber lässt sich nicht entfernen.",
     "caldav_abfrage_gescheitert": "Der Kalenderserver hat die Abfrage abgelehnt.",
@@ -1616,7 +1619,7 @@
     "datei_leer": "Die Datei ist leer.",
     "datenschluessel_fehlt": "Der Daten-Schlüssel ist nicht geladen.",
     "einfuhr_nur_in_eigenen_kalender": "Einspielen geht nur in einen Kalender, der in nexmail lebt. Bei einem verbundenen Kalender müssten die Termine erst zum Anbieter, und das kann nexmail noch nicht.",
-    "einladung_abgelaufen": "Diese Einladung gilt nicht mehr. Bitte um eine neue.",
+    "einladung_abgelaufen": "Diese Einladung ist schon benutzt oder gilt nicht mehr.",
     "einladung_abgelaufen_tage": "Diese Einladung gilt nicht mehr. Bitte um eine neue: Sie ist nach {{tage}} Tagen abgelaufen oder wurde schon benutzt.",
     "einladung_absender_unbekannt": "„{{adresse}}“ gehört zu keinem deiner Postfächer.",
     "einladung_ohne_absender": "Für die Einladung fehlt die Absenderadresse.",
@@ -1651,8 +1654,8 @@
     "kein_geraet_angemeldet": "Auf diesem Konto ist kein Gerät für Benachrichtigungen angemeldet.",
     "kein_rueckweg": "Für diesen Zug gibt es keinen Rückweg.",
     "keine_ics_datei": "Das sieht nicht nach einer .ics-Datei aus.",
-    "kennwort_falsch": "Das Kennwort stimmt nicht.",
-    "kennwort_unveraendert": "Das neue Kennwort ist dasselbe wie das bisherige.",
+    "kennwort_falsch": "Das Passwort stimmt nicht.",
+    "kennwort_unveraendert": "Das neue Passwort ist dasselbe wie das bisherige.",
     "ki_adresse_fehlt": "Es fehlt die Adresse des Dienstes.",
     "ki_adresse_nicht_gefunden": "Unter dieser Adresse antwortet nichts. Prüfe, ob der Pfad stimmt.",
     "ki_adresse_ungueltig": "Das ist keine brauchbare Adresse. Sie muss mit http:// oder https:// beginnen.",
@@ -1736,7 +1739,7 @@
     "ordner_umbenannt_aber_unsichtbar": "Der Ordner wurde umbenannt, taucht aber nicht in der Ordnerliste des Servers auf. Ein Abgleich sollte ihn nachliefern.",
     "ordner_umbenennen_abgewiesen": "Der Server hat den Ordner nicht umbenannt: {{grund}}",
     "passwort_fehlt": "Ohne Passwort kann sich nexmail nicht anmelden.",
-    "passwort_zu_kurz": "Das Passwort muss mindestens {{min}} Zeichen haben.",
+    "passwort_zu_kurz": "Das Passwort braucht mindestens {{min}} Zeichen.",
     "port_ungueltig": "Der Port liegt außerhalb des Möglichen.",
     "postausgang_abgelehnt": "Der Postausgang hat abgelehnt ({{code}}): {{grund}}",
     "postausgang_anmeldung_abgewiesen": "Der Postausgang hat Benutzername oder Passwort abgewiesen.",
@@ -1750,7 +1753,7 @@
     "regel_ohne_bedingung": "Eine Regel ohne Bedingung würde auf jede Nachricht zutreffen.",
     "rolle_ohne_ordner": "Dieses Postfach hat keinen Ordner für „{{rolle}}“. Klicke mit rechts auf den passenden Ordner und wähle „Verwenden als“.",
     "ruecksetzpunkt_weg": "Dieser Rücksetzpunkt liegt nicht mehr da.",
-    "ruecksetzung_ungueltig": "Dieser Link gilt nicht mehr. Er ist {{stunden}} Stunden gültig und lässt sich nur einmal benutzen. Fordere einen neuen an.",
+    "ruecksetzung_ungueltig": "Dieser Link ist schon benutzt oder gilt nicht mehr.",
     "schlagwort_farbe_unbekannt": "Diese Farbe gibt es nicht.",
     "schlagwort_name_leer": "Das Schlagwort braucht einen Namen.",
     "schlagwort_name_vergeben": "Dieses Schlagwort gibt es schon.",
@@ -1879,29 +1882,29 @@
     "codes_uebrig_one": "{{count}} Wiederherstellungscode übrig",
     "codes_uebrig_other": "{{count}} Wiederherstellungscodes übrig",
     "dieses_geraet": "dieses Gerät",
-    "faktor_aus_frage": "Zum Ausschalten brauchen wir dein Kennwort.",
-    "faktor_aus_warnung": "Danach hängen alle deine Postfächer an deinem Kennwort allein. Wer nexmail aus dem Internet erreichbar hat, sollte ihn anlassen.",
+    "faktor_aus_frage": "Zum Ausschalten brauchen wir dein Passwort.",
+    "faktor_aus_warnung": "Danach hängen alle deine Postfächer an deinem Passwort allein. Wer nexmail aus dem Internet erreichbar hat, sollte ihn anlassen.",
     "faktor_ausschalten": "Zweiten Faktor ausschalten",
     "faktor_einschalten": "Zweiten Faktor einschalten",
-    "faktor_empfehlung": "Ohne zweiten Faktor genügt dein Kennwort, um an alle deine Postfächer zu kommen. Im eigenen Netz ist das vertretbar. Ist nexmail aus dem Internet erreichbar, ist es das nicht.",
+    "faktor_empfehlung": "Ohne zweiten Faktor genügt dein Passwort, um an alle deine Postfächer zu kommen. Im eigenen Netz ist das vertretbar. Ist nexmail aus dem Internet erreichbar, ist es das nicht.",
     "faktor_fertig": "Fertig",
     "faktor_pruefen": "Code prüfen",
     "geraete": "Angemeldete Geräte",
     "kontaktadresse": "Adresse für Kontosachen",
-    "kontaktadresse_fehlt": "Es ist keine Adresse hinterlegt. Ohne sie gibt es keinen Weg zurück, wenn du dein Kennwort vergisst.",
+    "kontaktadresse_fehlt": "Es ist keine Adresse hinterlegt. Ohne sie gibt es keinen Weg zurück, wenn du dein Passwort vergisst.",
     "kontaktadresse_feld": "E-Mail-Adresse",
-    "kontaktadresse_hinweis": "Hierhin geht der Link, wenn du dein Kennwort vergessen hast. Absichtlich nicht eines deiner Postfächer: Du sollst auch dann herankommen, wenn du hier nicht mehr hineinkommst.",
+    "kontaktadresse_hinweis": "Hierhin geht der Link, wenn du dein Passwort vergessen hast. Absichtlich nicht eines deiner Postfächer: Du sollst auch dann herankommen, wenn du hier nicht mehr hineinkommst.",
     "nicht_aktiv": "Nicht eingerichtet.",
     "unbekanntes_geraet": "Unbekanntes Gerät",
     "zwei_faktor": "Zweiter Faktor",
-    "kennwort": "Kennwort",
-    "kennwort_hinweis": "Mit dem bisherigen Kennwort lässt sich hier ein neues setzen.",
-    "kennwort_aendern": "Kennwort ändern",
-    "kennwort_bisher": "Bisheriges Kennwort",
-    "kennwort_neu": "Neues Kennwort",
+    "kennwort": "Passwort",
+    "kennwort_hinweis": "Mit dem bisherigen Passwort lässt sich hier ein neues setzen.",
+    "kennwort_aendern": "Passwort ändern",
+    "kennwort_bisher": "Bisheriges Passwort",
+    "kennwort_neu": "Neues Passwort",
     "kennwort_folge": "Danach sind alle anderen Geräte abgemeldet. Dieses bleibt angemeldet.",
-    "kennwort_geaendert_one": "Kennwort geändert. {{count}} anderes Gerät wurde abgemeldet.",
-    "kennwort_geaendert_other": "Kennwort geändert. {{count}} andere Geräte wurden abgemeldet."
+    "kennwort_geaendert_one": "Passwort geändert. {{count}} anderes Gerät wurde abgemeldet.",
+    "kennwort_geaendert_other": "Passwort geändert. {{count}} andere Geräte wurden abgemeldet."
   },
   "sicherungen": {
     "titel": "Sicherung und Wiederherstellung",
@@ -1952,7 +1955,7 @@
     "schluessel": "Schlüssel",
     "schluessel_dabei": "liegt bei",
     "schluessel_fehlt": "fehlt (gehört in NEXMAIL_SECRET_KEY)",
-    "folgen": "Das ersetzt den gesamten Stand: Benutzer, Postfächer, Kontakte, Regeln. Alle angemeldeten Geräte werden abgemeldet, auch dieses. Danach gilt wieder das Kennwort aus der Sicherung, nicht das jetzige.",
+    "folgen": "Das ersetzt den gesamten Stand: Benutzer, Postfächer, Kontakte, Regeln. Alle angemeldeten Geräte werden abgemeldet, auch dieses. Danach gilt wieder das Passwort aus der Sicherung, nicht das jetzige.",
     "adresse_anders": "Die öffentliche Adresse ist eine andere",
     "adresse_erklaerung": "Aus ihr baut nexmail die Einladungslinks und die Rückkehr-Adresse für die Anmeldung über einen Anbieter. Welche soll gelten?",
     "adresse_neu_folge": "Die Adresse, über die du gerade hier bist. Richtig, wenn nexmail umgezogen ist.",
@@ -1960,7 +1963,7 @@
     "oidc_titel": "Bei diesen Anbietern nachtragen",
     "oidc_text": "Die Rückkehr-Adresse ist beim Anbieter hinterlegt, nicht hier, und nexmail kann sie dort nicht ändern. Ist die Adresse eine andere geworden, muss sie dort so lauten:",
     "fertig_titel": "Eingespielt",
-    "fertig_text": "Der Stand aus der Sicherung ist da. Du bist abgemeldet. Melde dich mit dem Kennwort an, das zu dieser Sicherung gehört. Die Nachrichten holt nexmail danach wieder vom Server.",
+    "fertig_text": "Der Stand aus der Sicherung ist da. Du bist abgemeldet. Melde dich mit dem Passwort an, das zu dieser Sicherung gehört. Die Nachrichten holt nexmail danach wieder vom Server.",
     "zur_anmeldung": "Zur Anmeldung"
   },
   "signaturen": {
@@ -2158,7 +2161,7 @@
     "einladen_geht_nicht": "Einladen geht noch nicht",
     "einladung_abschicken": "Einladung verschicken",
     "einladung_adresse": "E-Mail-Adresse",
-    "einladung_adresse_hinweis": "Dorthin geht die Einladung. Ein Postfach, das die Person schon hat.",
+    "einladung_adresse_hinweis": "Freiwillig. Mit Postausgang geht der Link dorthin, sonst gibst du ihn selbst weiter.",
     "einladung_anzeigename": "Angezeigter Name",
     "einladung_benutzername": "Benutzername",
     "einladung_benutzername_hinweis": "Damit meldet sie sich später an. Ändern geht danach nicht.",
@@ -2166,7 +2169,7 @@
     "einladung_zuruecknehmen_text": "Der Link für „{{name}}“ öffnet danach nichts mehr. Eine neue Einladung ist jederzeit möglich.",
     "gilt_bis": "Gilt bis {{wann}}",
     "gilt_fuer_alle": "Diese Werte gelten für die ganze Anwendung, nicht nur für dich.",
-    "kein_postausgang": "nexmail hat keinen eigenen Postausgang. Ohne ihn kann es die Einladung nicht verschicken. Er steht unter Einstellungen → Server → Mail.",
+    "kein_postausgang": "Ohne Systempostausgang geht keine Mail hinaus. Einladen geht trotzdem: Der Link steht danach zum Weitergeben da, ebenso ein Link für ein neues Passwort.",
     "keine_adresse": "Es ist keine öffentliche Adresse hinterlegt. Der Link in der Einladung führte sonst ins Leere. Sie steht unter Einstellungen → Server → Allgemein.",
     "ki": "KI-Dienste für alle Benutzer",
     "ki_erlauben": "Erlauben",
@@ -2186,7 +2189,7 @@
     "postausgang_absender": "Absenderadresse",
     "postausgang_absendername": "Absendername",
     "postausgang_hinweis": "Darüber verschickt nexmail eigene Post, bisher nur die Einladungen. Das Postfach dafür sollte nicht dein privates sein.",
-    "postausgang_liegt_vor": "Ein Kennwort ist hinterlegt. Leer lassen heißt: unverändert.",
+    "postausgang_liegt_vor": "Ein Passwort ist hinterlegt. Leer lassen heißt: unverändert.",
     "postausgang_probe": "Probemail schicken",
     "postausgang_probe_an": "An welche Adresse?",
     "postausgang_probe_ok": "Die Probemail ist hinaus.",
@@ -2198,12 +2201,13 @@
     "titel": "Verwaltung",
     "uebergeben_frage": "Betreiber an {{wer}} übergeben?",
     "uebergeben_knopf": "Übergeben",
-    "uebergeben_text": "Danach verwaltet {{wer}} nexmail, und du nicht mehr. Du kommst an die Verwaltung nur noch heran, wenn {{wer}} sie dir zurückgibt. Gib zur Bestätigung dein Kennwort ein.",
+    "uebergeben_text": "Danach verwaltet {{wer}} nexmail, und du nicht mehr. Du kommst an die Verwaltung nur noch heran, wenn {{wer}} sie dir zurückgibt. Gib zur Bestätigung dein Passwort ein.",
     "untertitel": "Was der Anwendung gehört und für alle Benutzer gilt.",
     "zeitzone_hinweis": "IANA-Name, z. B. Europe/Berlin. Gilt für alle Benutzer. Leer heißt: die des Browsers.",
     "webhook_mailtext": "Text der Mail an Webhooks",
     "webhook_mailtext_erlauben": "Text erlauben",
-    "webhook_mailtext_hinweis": "Ab Werk aus. Mit der Freigabe kann jeder Benutzer dieser Installation den Text seiner Mails an eine Adresse seiner Wahl schicken lassen, wenn er es an seinem Webhook einschaltet."
+    "webhook_mailtext_hinweis": "Ab Werk aus. Mit der Freigabe kann jeder Benutzer dieser Installation den Text seiner Mails an eine Adresse seiner Wahl schicken lassen, wenn er es an seinem Webhook einschaltet.",
+    "einladung_ohne_namen": "Einladung ohne Adresse"
   },
   "wiedervorlage": {
     "menue": "Wiedervorlage",
@@ -2246,7 +2250,10 @@
     "sprache": "Sprache",
     "sprache_hinweis": "Gilt in diesem Browser.",
     "abmelden_titel": "Abmelden",
-    "abmelden_text": "Beendet deine Sitzung in diesem Browser. Deine Mails bleiben, wie sie sind."
+    "abmelden_text": "Beendet deine Sitzung in diesem Browser. Deine Mails bleiben, wie sie sind.",
+    "neues_passwort_titel": "Neues Passwort",
+    "zugang_geraet": "iPhone-App",
+    "zugang_schluessel": "API-Schlüssel"
   },
   "nextime": {
     "satz": "Alle deine Kalender aus nextime im Kalender von nexmail, ohne jeden einzeln einzubinden. Einladungen aus Mails landen dort.",
@@ -2303,5 +2310,10 @@
     "weitere_hinweis": "nexmail nimmt nur die zuerst verbundene nextasks-Verbindung. Aufgaben, die über diese hier aus Mails entstanden sind, bleiben in nexmail stehen. Trenne sie, wenn du sie nicht mehr brauchst.",
     "auswahl_titel": "Diese Listen nimmt nexmail",
     "auswahl_hinweis": "Nicht angehakte Listen erscheinen nirgends in nexmail: nicht bei den Aufgaben, nicht bei „Neue Aufgabe“ und nicht bei „Zu Aufgabe machen“. In nextasks ändert sich dadurch nichts."
+  },
+  "adresse": {
+    "titel": "Adresse bestätigen",
+    "bestaetigen": "Adresse bestätigen",
+    "weiter": "Weiter zu nexmail"
   }
 }

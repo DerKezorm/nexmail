@@ -17,6 +17,9 @@ import { appPfad, ohneBasis } from './lib/basis'
 import { EinladungPage } from './pages/EinladungPage'
 import { KennwortNeuPage, VergessenPage } from './pages/KennwortPage'
 import { EinrichtungPage } from './pages/EinrichtungPage'
+import { AdressePage } from './pages/AdressePage'
+import { NeuesPasswort } from './components/NeuesPasswort'
+import { kontoSprache } from './i18n'
 import { api } from './api/client'
 import type { Ich, Stand } from './api/client'
 import { useGemerkt } from './lib/haken'
@@ -70,6 +73,18 @@ export default function Start() {
     return treffer ? decodeURIComponent(treffer[1]) : ''
   })
   const [vergessen, setVergessen] = useState(false)
+
+  /* Der Link, der eine neue Adresse bestätigt (Kontenmodul), genauso gelesen: Er muss auch ohne Anmeldung gehen. */
+  const [adressschluessel, setAdressschluessel] = useState(() => {
+    const pfad = ohneBasis(window.location.pathname)
+    const treffer = pfad ? /^\/adresse\/(.+)$/.exec(pfad) : null
+    return treffer ? decodeURIComponent(treffer[1]) : ''
+  })
+
+  /* Die Sprache hängt seit dem Kontenmodul am Konto: nach der Anmeldung übernehmen. */
+  useEffect(() => {
+    void kontoSprache(ich?.sprache)
+  }, [ich?.sprache])
 
   useEffect(() => {
     if (modus === 'light') document.documentElement.setAttribute('data-theme', 'light')
@@ -179,6 +194,21 @@ export default function Start() {
     )
   }
 
+  if (adressschluessel) {
+    return (
+      <AdressePage
+        schluessel={adressschluessel}
+        modus={modus}
+        aufModus={setModus}
+        aufFertig={() => {
+          setAdressschluessel('')
+          window.history.replaceState(null, '', appPfad('/'))
+          void pruefen()
+        }}
+      />
+    )
+  }
+
   if (lage === 'einrichten') {
     return <EinrichtungPage modus={modus} aufModus={setModus} aufFertig={() => void pruefen()} />
   }
@@ -201,14 +231,18 @@ export default function Start() {
   }
 
   return (
-    <App
-      modus={modus}
-      aufModus={setModus}
-      darstellung={wahl}
-      aufDarstellung={setModus}
-      ich={ich}
-      ichNeuLaden={() => void ichNeuLaden()}
-      aufAbmelden={() => void pruefen()}
-    />
+    <>
+      <App
+        modus={modus}
+        aufModus={setModus}
+        darstellung={wahl}
+        aufDarstellung={setModus}
+        ich={ich}
+        ichNeuLaden={() => void ichNeuLaden()}
+        aufAbmelden={() => void pruefen()}
+      />
+      {/* Nach einem neuen Passwort über einen Link, einmal: was noch Zugriff hat, und „Alle trennen“. */}
+      {ich?.neues_passwort && <NeuesPasswort aufErledigt={ichNeuLaden} />}
+    </>
   )
 }

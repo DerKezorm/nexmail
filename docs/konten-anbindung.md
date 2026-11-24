@@ -1,9 +1,47 @@
 # Anbindung des Kontenmoduls (`nexkonten`) an nexmail
 
-Stand 24.11.2026, Zweig `konten`. Vorbereitung, noch nichts angebunden. Maßgeblich sind der Entwurf in nexlore
-(`Development/nexapps/Baupläne/Entwurf Konten, Einrichtung und Anmeldung.md`) und die Schnittstelle des Moduls
-(`bauplaene/konten/SCHNITTSTELLE.md`, Zweig `konten`, Fassung 0.1.0, Commit `fa0b48c`). Wo dieser Plan von beiden
-abweicht oder etwas offen lässt, steht es unter „Offene Fragen“.
+Stand 24.11.2026, Zweig `konten`. **Gebaut** mit `konten` 0.2.1 und `oidc` 1.1.0 (Abschnitt 0); die Abschnitte
+ab 1 sind der Plan der Vorbereitung (gegen `konten` 0.1.0) und bleiben als Begründung stehen. Maßgeblich sind der
+Entwurf in nexlore (`Development/nexapps/Baupläne/Entwurf Konten, Einrichtung und Anmeldung.md`, Tabelle
+„Entscheidungen“) und die Schnittstelle des Moduls (`bauplaene/konten/SCHNITTSTELLE.md`).
+
+## 0. Was gebaut ist
+
+| Teil | Wo |
+|---|---|
+| Module | `backend/app/vendor/nexkonten` (0.2.1), `backend/app/vendor/nexoidc` (1.1.0), Wortlaute und `konten.ts` unter `frontend/src/vendor/nexkonten`; kopiert mit `bauplaene/{konten,oidc}/tools/sync.py copy` |
+| Store | `services/konten_store.py` über `benutzer`, `einladung`, `ruecksetzung`, `adresswechsel`, `frueherer_name`, `einrichtung`, `sitzung`, `api_schluessel` |
+| Wanderung | neue Spalten mit Tabellenvorgabe (`kontaktadresse_zaehlt` 1, `kontaktadresse_bewiesen` 0, `kontaktadresse_herkunft`, `profilbild_herkunft`, `sprache`, `neues_passwort` leer, `ruecksetzung.herkunft` `self`, `ruecksetzung.angelegt_von`, `einladung.gemailt` 1), neue Tabellen (Sicherung davor, weil Tabellen fehlen); der Index auf `lower(benutzername)` erst nach dem Zählen (`services/konten_wanderung.py`). Das Einspielen einer Sicherung läuft danach durch dieselbe Schemapflege |
+| Mails | `services/kontenpost.py` (Einladung, Link für ein neues Passwort, Adresse bestätigen, neuer Benutzername, Bescheid an die alte Adresse), Deutsch oder Englisch nach der Sprache des Kontos |
+| Notfallbefehl | `python -m app.notfall reset-link <name oder e-mail> [--tage 1/7/30]` |
+| Routen | gleiche Feldnamen; neu: `GET /api/auth/kennwort-vergessen`, `GET /api/auth/kennwort-neu/{schluessel}`, `GET/POST /api/auth/adresse/{schluessel}`, `PUT /api/auth/ich/benutzername`, `PUT /api/auth/ich/sprache`, `POST /api/auth/ich/kontaktadresse/nochmal`, `DELETE /api/auth/ich/kontaktadresse/wartend`, `GET /api/auth/zugaenge`, `POST /api/auth/zugaenge/trennen` und `/gesehen`, `PUT /api/benutzer/{id}/benutzername` und `/anzeigename`, `POST /api/benutzer/{id}/passwort-link` und `/kontaktadresse-entfernen` |
+| Oberfläche | Anmelden, Einrichtung, Einladung, Passwort vergessen und neu, Adresse bestätigen (neu, `pages/AdressePage.tsx`), Profil, Benutzerverwaltung, „Diese Geräte haben noch Zugriff“ nach der Anmeldung (`components/NeuesPasswort.tsx`); „Passwort“ statt „Kennwort“ in allen Texten |
+| Tests | Vertrag `tests/nexkonten` (149, 10 übersprungen, s. unten), `tests/nexoidc`, `tests/test_konten_routen.py`, Test „Bestand“ ohne `xfail` |
+
+**Wo das Modul nicht passte** (mit Vorschlag an `bauplaene/konten`):
+
+1. **Vertragstests setzen Dinge voraus, die nexmail nicht hat:** gesperrte Konten (6 Tests), ein verlangter zweiter
+   Faktor (2), die Kennung eines bekannten Browsers (1), mehrfach nutzbare Einladungen (1). Der Adapter überspringt
+   sie mit Grund (`pytest.skip` in `seed`, `open_session`, `make_invite`). Vorschlag: Fähigkeiten im Adapter
+   (`blocking = False`, `required_second_factor = False`, `reusable_invites = False`), die der Vertrag selbst abfragt.
+2. **Vitest-Vorlage `nexkonten.test.ts`:** fragt Pluralschlüssel (`account.days_one`) direkt ab und bekommt das rohe
+   `{{count}}`. In nexmail angepasst wie in `nexoidc.wording.test.ts` (ohne Endung, mit passender Zahl). Vorschlag:
+   so in die Vorlage.
+3. **Bremse ohne Absender:** nexmail kennt den Absender nur mit `NEXMAIL_CLIENT_IP`. Ein Topf `sender:` für alle
+   würde jeden alle aussperren lassen; der Absendertopf zählt deshalb nur mit bekannter Adresse
+   (`anmeldebremse.torwaechter`), der Kontotopf immer. Vorschlag: in `SCHNITTSTELLE.md` sagen, dass ein leerer
+   Absender keinen gemeinsamen Topf ergeben darf.
+4. **Protokollzensur:** nexmail schwärzt im Protokoll das Wort nach „password“/„token“. Zeilen des Moduls wie
+   „Password link made name=…“ oder „give NEXMAIL_SETUP_TOKEN as the setup code“ erscheinen als
+   „Password ***** made …“ bzw. „…TOKEN ***** the setup code“. Vorschlag: Wortlaute ohne diese Wörter direkt vor
+   einem Wert („Link for a new password made …“, „set NEXMAIL_SETUP_TOKEN, then …“).
+5. **`use_reset` gibt `remaining` in der Antwort**, `POST /api/auth/kennwort-neu` antwortet aber seit jeher 204 ohne
+   Rumpf (Bestand). nexmail merkt sich darum die Herkunft am Konto (`neues_passwort`) und zeigt die Liste nach der
+   nächsten Anmeldung, wo „Alle trennen“ ohnehin eine Anmeldung braucht. Vorschlag: das als den gemeinsamen Weg
+   beschreiben.
+6. **Frische Anmeldung beim Anbieter** (Konten ohne Passwort ändern ihre Adresse, Betreiber ohne Passwort): Das Modul
+   lässt offen, was „frisch“ ist; nexmail nimmt eine Sitzung, die höchstens fünf Minuten alt ist (`auth._frisch`).
+   Vorschlag: eine Zahl für alle Apps festlegen.
 
 Grundsatz für nexmail: **Für niemanden, der nexmail heute benutzt, ändert sich etwas, das er nicht selbst anstößt.**
 Jede heutige Anmeldung geht weiter (Test „Bestand“), die Schnittstellen behalten ihre Feldnamen, und die Oberfläche

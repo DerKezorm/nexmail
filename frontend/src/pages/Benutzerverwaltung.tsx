@@ -10,11 +10,26 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Crown, Mail, ShieldCheck, Sparkles, SparklesIcon, Trash2, Unlink, UserPlus } from 'lucide-react'
+import {
+  AlertTriangle,
+  AtSign,
+  Crown,
+  KeyRound,
+  Mail,
+  Pencil,
+  ShieldCheck,
+  Sparkles,
+  SparklesIcon,
+  Trash2,
+  Unlink,
+  UserPen,
+  UserPlus,
+} from 'lucide-react'
 import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
-import { Badge, Button, Dialog, IconButton, Input } from '../ds'
+import { Badge, Button, Dialog, IconButton, Input, Select } from '../ds'
 import { servermeldung } from '../lib/servermeldung'
+import { INVITE_DAYS, INVITE_DAYS_DEFAULT, RESET_DAYS, RESET_DAYS_DEFAULT } from '../vendor/nexkonten/konten'
 
 interface BenutzerZeile {
   id: string
@@ -29,6 +44,10 @@ interface BenutzerZeile {
   nummer: number
   /** Die Anmeldeanbieter, mit denen das Konto verknüpft ist. */
   anbieter: Array<{ id: number; slug: string; label: string }>
+  /** Kontenmodul: die Adresse, ob ein anderes Konto sie auch hat, ob es ein Passwort gibt. */
+  kontaktadresse?: string
+  adresse_doppelt?: boolean
+  hat_kennwort?: boolean
 }
 
 interface EinladungsZeile {
@@ -38,6 +57,8 @@ interface EinladungsZeile {
   adresse: string
   laeuft_ab: string
   abgelaufen: boolean
+  /** Der Link, einmal, wenn er nicht per Mail hinausging. */
+  link?: string
 }
 
 interface Bestand {
@@ -61,6 +82,8 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
   const [bestand, setBestand] = useState<Bestand | null>(null)
   const [fehler, setFehler] = useState('')
   const [einladen, setEinladen] = useState(false)
+  /** Ein Link zum Weitergeben (Einladung oder neues Passwort), einmal gezeigt. */
+  const [weitergeben, setWeitergeben] = useState<{ titel: string; link: string } | null>(null)
 
   const laden = useCallback(async () => {
     try {
@@ -136,6 +159,77 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
     }
   }
 
+  /** Das eigene Passwort des Betreibers vor jeder Änderung an einem fremden Konto (Kontenmodul). */
+  async function eigenesPasswort(titel: string): Promise<string | null> {
+    const kennwort = await fragen({
+      titel,
+      text: t('account.confirmWithPassword'),
+      eingabe: { beschriftung: t('account.password'), typ: 'password' },
+      knopf: t('aktion.weiter'),
+    })
+    return typeof kennwort === 'string' && kennwort ? kennwort : null
+  }
+
+  async function handeln(aufruf: () => Promise<unknown>) {
+    setFehler('')
+    try {
+      await aufruf()
+      await laden()
+      ichNeuLaden?.()
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    }
+  }
+
+  async function namenAendern(p: BenutzerZeile, feld: 'benutzername' | 'anzeigename') {
+    const titel = t(feld === 'benutzername' ? 'account.username' : 'account.displayName')
+    const neu = await fragen({
+      titel,
+      text: feld === 'benutzername' ? t('account.usernameRules') : t('account.displayNameHint'),
+      eingabe: { beschriftung: titel, vorgabe: feld === 'benutzername' ? p.benutzername : p.anzeigename },
+      knopf: t('aktion.weiter'),
+    })
+    if (typeof neu !== 'string' || !neu) return
+    const kennwort = await eigenesPasswort(titel)
+    if (kennwort === null) return
+    await handeln(() => api.aendern(`/api/benutzer/${p.id}/${feld}`, { [feld]: neu, passwort: kennwort }))
+  }
+
+  async function adresseEntfernen(p: BenutzerZeile) {
+    const kennwort = await eigenesPasswort(t('account.emailRemove'))
+    if (kennwort === null) return
+    await handeln(() => api.senden(`/api/benutzer/${p.id}/kontaktadresse-entfernen`, { passwort: kennwort }))
+  }
+
+  /** „Link für ein neues Passwort“: wie lange er gilt, dann das eigene Passwort. Mit Postausgang und Adresse geht er
+   *  per Mail hin, sonst steht er einmal zum Weitergeben da. Der Betreiber setzt nie selbst ein Passwort. */
+  async function passwortLink(p: BenutzerZeile) {
+    const dauer = await fragen({
+      titel: t('account.resetLink'),
+      text: p.anzeigename || p.benutzername,
+      auswahl: {
+        beschriftung: t('account.validFor'),
+        werte: RESET_DAYS.map((tage) => ({ wert: String(tage), text: t('account.days', { count: tage }) })),
+        vorgabe: String(RESET_DAYS_DEFAULT),
+      },
+      knopf: t('aktion.weiter'),
+    })
+    if (!dauer || typeof dauer !== 'object') return
+    const kennwort = await eigenesPasswort(t('account.resetLink'))
+    if (kennwort === null) return
+    setFehler('')
+    try {
+      const antwort = await api.senden<{ link: string; an: string }>(`/api/benutzer/${p.id}/passwort-link`, {
+        passwort: kennwort,
+        tage: Number(dauer.wert),
+      })
+      if (antwort.link) setWeitergeben({ titel: t('account.resetLink'), link: antwort.link })
+      else await fragen({ titel: t('account.resetLink'), text: t('account.resetLinkSent', { email: antwort.an }), knopf: t('aktion.fertig') })
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+    }
+  }
+
   async function entfernen(person: BenutzerZeile) {
     setFehler('')
     let umfang: Umfang | null = null
@@ -176,7 +270,7 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
   async function zuruecknehmen(e: EinladungsZeile) {
     const ja = await fragen({
       titel: t('verwaltung.einladung_zuruecknehmen'),
-      text: t('verwaltung.einladung_zuruecknehmen_text', { name: e.benutzername }),
+      text: t('verwaltung.einladung_zuruecknehmen_text', { name: e.anzeigename || e.adresse || e.benutzername }),
       knopf: t('verwaltung.einladung_zuruecknehmen'),
       gefaehrlich: true,
     })
@@ -187,21 +281,21 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
 
   if (bestand === null) return <div className="h-24" />
 
-  const bereit = bestand.postausgang_da && bestand.adresse_da
+  /* Seit dem Kontenmodul geht eine Einladung auch ohne Postausgang: Der Link steht dann zum Weitergeben da. Ohne
+     öffentliche Adresse gäbe es keinen Link. */
+  const bereit = bestand.adresse_da
 
   return (
     <div className="flex max-w-[720px] flex-col gap-6">
-      {!bereit && (
+      {!(bestand.postausgang_da && bestand.adresse_da) && (
         <div className="flex gap-3 rounded-lg border border-warning/40 bg-warning-soft p-4">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
           <div className="min-w-0">
-            <p className="mb-1 text-[13px] font-medium text-fg-1">
-              {t('verwaltung.einladen_geht_nicht')}
-            </p>
+            {!bestand.adresse_da && (
+              <p className="mb-1 text-[13px] font-medium text-fg-1">{t('verwaltung.einladen_geht_nicht')}</p>
+            )}
             <p className="mb-0 text-[13px] text-fg-2">
-              {!bestand.postausgang_da
-                ? t('verwaltung.kein_postausgang')
-                : t('verwaltung.keine_adresse')}
+              {!bestand.adresse_da ? t('verwaltung.keine_adresse') : t('verwaltung.kein_postausgang')}
             </p>
           </div>
         </div>
@@ -234,7 +328,15 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
                     />
                   )}
                 </div>
-                <p className="mb-0 truncate font-mono text-[12px] text-fg-4">{p.benutzername}</p>
+                <p className="mb-0 truncate text-[12px] text-fg-4">
+                  <span className="font-mono">{p.benutzername}</span>
+                  {p.kontaktadresse ? ` · ${p.kontaktadresse}` : ''}
+                </p>
+                {p.adresse_doppelt && (
+                  <div className="mt-1">
+                    <Badge tone="warning">{t('account.emailDuplicate')}</Badge>
+                  </div>
+                )}
                 {/* Die Anbieter, mit denen das Konto verknüpft ist, als kleine Marken; das Kreuz daneben löst. */}
                 {p.anbieter.length > 0 && (
                   <div className="mt-1 flex flex-wrap items-center gap-1.5" data-testid="konto-anbieter">
@@ -268,6 +370,30 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
                   Der Riegel der Installation steht darüber und ist ab Werk zu —
                   solange der nicht offen ist, ändert dieser Haken nichts, und
                   die Zeile darunter sagt das auch. */}
+              <IconButton
+                icon={<Pencil />}
+                label={`${t('account.username')}: ${p.anzeigename || p.benutzername}`}
+                onClick={() => void namenAendern(p, 'benutzername')}
+              />
+              <IconButton
+                icon={<UserPen />}
+                label={`${t('account.displayName')}: ${p.anzeigename || p.benutzername}`}
+                onClick={() => void namenAendern(p, 'anzeigename')}
+              />
+              {p.kontaktadresse && (
+                <IconButton
+                  icon={<AtSign />}
+                  label={`${t('account.emailRemove')}: ${p.anzeigename || p.benutzername}`}
+                  onClick={() => void adresseEntfernen(p)}
+                />
+              )}
+              {!p.ist_betreiber && (
+                <IconButton
+                  icon={<KeyRound />}
+                  label={`${t('account.resetLink')}: ${p.anzeigename || p.benutzername}`}
+                  onClick={() => void passwortLink(p)}
+                />
+              )}
               <IconButton
                 icon={p.ki_erlaubt ? <Sparkles /> : <SparklesIcon className="opacity-40" />}
                 label={t(p.ki_erlaubt ? 'verwaltung.ki_konto_aus' : 'verwaltung.ki_konto_an', {
@@ -310,7 +436,10 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
               >
                 <Mail aria-hidden className="size-4 shrink-0 text-fg-4" />
                 <div className="min-w-0 flex-1">
-                  <p className="mb-0 truncate text-sm text-fg-1">{e.benutzername}</p>
+                  {/* Neue Einladungen tragen keinen Benutzernamen; Einladungen von vorher zeigen ihren. */}
+                  <p className="mb-0 truncate text-sm text-fg-1">
+                    {e.anzeigename || e.benutzername || e.adresse || t('verwaltung.einladung_ohne_namen')}
+                  </p>
                   <p className="mb-0 truncate font-mono text-[12px] text-fg-4">{e.adresse}</p>
                 </div>
                 {/* ⚠️ Abgelaufene bleiben sichtbar — sonst verschwindet eine
@@ -348,11 +477,28 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
       {einladen && (
         <Einladungsfenster
           aufSchliessen={() => setEinladen(false)}
-          aufFertig={() => {
+          aufFertig={(link) => {
             setEinladen(false)
+            if (link) setWeitergeben({ titel: t('verwaltung.einladen'), link })
             void laden()
           }}
         />
+      )}
+
+      {weitergeben && (
+        <Dialog open title={weitergeben.titel} onClose={() => setWeitergeben(null)}>
+          <div className="flex flex-col gap-4">
+            <Input label={t('account.resetLinkShown')} value={weitergeben.link} readOnly onFocus={(e) => e.target.select()} />
+            <div className="flex gap-2">
+              <Button variant="primary" onClick={() => void navigator.clipboard?.writeText(weitergeben.link)}>
+                {t('aktion.kopieren')}
+              </Button>
+              <Button variant="ghost" onClick={() => setWeitergeben(null)}>
+                {t('aktion.fertig')}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
       )}
 
       {nachfrage}
@@ -365,12 +511,12 @@ function Einladungsfenster({
   aufFertig,
 }: {
   aufSchliessen: () => void
-  aufFertig: () => void
+  aufFertig: (link: string) => void
 }) {
   const { t } = useTranslation()
-  const [benutzername, setBenutzername] = useState('')
   const [adresse, setAdresse] = useState('')
   const [anzeigename, setAnzeigename] = useState('')
+  const [tage, setTage] = useState(String(INVITE_DAYS_DEFAULT))
   const [fehler, setFehler] = useState('')
   const [laeuft, setLaeuft] = useState(false)
 
@@ -378,12 +524,12 @@ function Einladungsfenster({
     setFehler('')
     setLaeuft(true)
     try {
-      await api.senden('/api/benutzer/einladungen', {
-        benutzername: benutzername.trim(),
+      const zeile = await api.senden<EinladungsZeile>('/api/benutzer/einladungen', {
         adresse: adresse.trim(),
         anzeigename: anzeigename.trim(),
+        tage: Number(tage),
       })
-      aufFertig()
+      aufFertig(zeile.link ?? '')
     } catch (f) {
       setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     } finally {
@@ -391,28 +537,31 @@ function Einladungsfenster({
     }
   }
 
+  /* Kontenmodul (`SCREENS.operatorInvite`): E-Mail und Anzeigename, beide freiwillig, dazu wie lange der Link gilt.
+     Einen Benutzernamen legt der Betreiber nicht mehr fest; den wählt der Eingeladene selbst. */
   return (
     <Dialog open title={t('verwaltung.einladen')} onClose={aufSchliessen}>
       <div className="flex flex-col gap-4">
         <Input
-          label={t('verwaltung.einladung_adresse')}
+          type="email"
+          label={t('account.email')}
           hint={t('verwaltung.einladung_adresse_hinweis')}
           placeholder="name@example.com"
           value={adresse}
           onChange={(e) => setAdresse(e.target.value)}
         />
         <Input
-          label={t('verwaltung.einladung_benutzername')}
-          hint={t('verwaltung.einladung_benutzername_hinweis')}
-          value={benutzername}
-          onChange={(e) => setBenutzername(e.target.value)}
-        />
-        <Input
-          label={t('verwaltung.einladung_anzeigename')}
-          placeholder={benutzername}
+          label={t('account.displayName')}
           value={anzeigename}
           onChange={(e) => setAnzeigename(e.target.value)}
         />
+        <Select label={t('account.validFor')} value={tage} onChange={(e) => setTage(e.target.value)}>
+          {INVITE_DAYS.map((d) => (
+            <option key={d} value={String(d)}>
+              {t('account.days', { count: d })}
+            </option>
+          ))}
+        </Select>
 
         {fehler && (
           <p role="alert" className="mb-0 text-[13px] text-danger">
@@ -424,7 +573,7 @@ function Einladungsfenster({
           <Button
             variant="primary"
             loading={laeuft}
-            disabled={!benutzername.trim() || !adresse.includes('@')}
+            disabled={Boolean(adresse.trim()) && !adresse.includes('@')}
             onClick={() => void abschicken()}
           >
             {t('verwaltung.einladung_abschicken')}

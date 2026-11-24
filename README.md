@@ -333,12 +333,22 @@ services:
 docker compose up -d
 ```
 
-Then open `http://<server>:5174`. On first run you set a username and password.
-After that, this route is closed.
+Then open `http://<server>:5174`. On first run you create the operator account:
+display name, username, an optional email address and a password. The page asks
+for a **setup code** first: it is in the server's log (`docker logs nexmail`) at
+every start while there is no account, or you set your own with
+`NEXMAIL_SETUP_TOKEN` (at least 16 characters). The same code is needed to
+restore a backup before the setup. After that, this route is closed and nexmail
+never asks for the code again.
 
-> ⚠️ **Until the first account exists, anyone can create it.** There is no
-> account that could authenticate at that point — it cannot work any other way.
-> Set it up on your home network before you expose it.
+**Locked out?** If the only operator forgot the password and there is no mail
+server for a reset link, make a link on the server itself:
+
+```bash
+docker exec -it nexmail python -m app.notfall reset-link <username or email>
+```
+
+It prints a link that sets a new password, once, valid for a day.
 
 The full compose file with every option and the reasoning behind each one is
 [`docker-compose.yml`](docker-compose.yml) in this repository.
@@ -501,20 +511,29 @@ nexmail does not need one.
 
 ## Several people
 
-Invite them under *Settings → Server → Accounts*. nexmail sends the invitation itself,
-which needs an outgoing mail server of its own under *Settings → Server → Mail* —
-deliberately not the operator's mailbox, so that removing that mailbox does not
-take the invitations with it.
+Invite them under *Settings → Server → Accounts*: an email address and a display
+name, both optional, and how long the link holds (1, 7 or 30 days). The person
+invited picks their own username. With an outgoing mail server of its own under
+*Settings → Server → Mail* nexmail sends the invitation itself — deliberately not
+the operator's mailbox, so that removing that mailbox does not take the
+invitations with it. Without one, nexmail shows the link for you to pass on.
 
 The invitation page offers both ways: set a password, or accept it through a
 provider. Not everyone has an account with your identity provider, and not
 everyone should need a password they will never use.
 
-A forgotten password can be reset through a link sent to the contact address
-stored on the account; the link lasts two hours and signs out every session
-when it is used. The operator role can be handed on to another user, after
-confirming with your own password, so an installation never ends up without
-someone who can administer it.
+People sign in with their username or their email address. Everyone changes their
+own display name, username and address in their profile (username and address
+with their password; a new address counts once its confirmation link was opened,
+when there is a mail server). Old usernames stay reserved for ever.
+
+A forgotten password has two ways back: a link by mail to the account's own
+address (one hour, with a mail server), or a link the operator makes under
+*Accounts* (1, 7 or 30 days), sent by mail or shown to pass on. A new password
+signs out every browser; the iPhone app and API keys keep working, and the next
+sign-in lists them with *Disconnect all*. The operator role can be handed on to
+another user, after confirming with your own password, so an installation never
+ends up without someone who can administer it.
 
 ![Server settings with users and open invitations](docs/screenshots/verwaltung-en.webp)
 

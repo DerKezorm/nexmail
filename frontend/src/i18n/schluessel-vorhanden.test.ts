@@ -31,6 +31,8 @@ import en from './en.json'
 import { oidcWording } from '../vendor/nexoidc/oidc'
 import oidcDe from '../vendor/nexoidc/oidc.de.json'
 import oidcEn from '../vendor/nexoidc/oidc.en.json'
+import kontenDe from '../vendor/nexkonten/konten.de.json'
+import kontenEn from '../vendor/nexkonten/konten.en.json'
 
 /** Alle Knoten, nicht nur die Blätter — `t(..., { returnObjects: true })`
  *  holt ganze Teilbäume. */
@@ -52,8 +54,9 @@ function kennt(menge: Set<string>, schluessel: string): boolean {
 }
 
 /* Die Wortlaute der Anmeldung über Anbieter mischt `i18n/index.ts` aus dem gemeinsamen Modul ein (`oidc.*`). */
-const deutsch = new Set(knoten({ ...de, ...oidcWording(oidcDe, { singleAccount: false, invitations: true }) }))
-const englisch = new Set(knoten({ ...en, ...oidcWording(oidcEn, { singleAccount: false, invitations: true }) }))
+// Wie `i18n/index.ts` sie einmischt: nexmails eigene Wortlaute, die des Anmeldemoduls und die des Kontenmoduls.
+const deutsch = new Set(knoten({ ...de, ...oidcWording(oidcDe, { singleAccount: false, invitations: true }), ...kontenDe }))
+const englisch = new Set(knoten({ ...en, ...oidcWording(oidcEn, { singleAccount: false, invitations: true }), ...kontenEn }))
 
 const DATEIEN = import.meta.glob('../**/*.{ts,tsx}', {
   query: '?raw',

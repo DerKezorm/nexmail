@@ -50,6 +50,11 @@ services:
       # While it is set, nexmail warns on every start in the log.
       NEXMAIL_ZWEI_FAKTOR_AUS: ${NEXMAIL_ZWEI_FAKTOR_AUS:-}
 
+      # The setup code for the first account. Empty: nexmail makes one at every start while there is no account and
+      # writes it to the log (`docker logs nexmail`). Your own needs at least 16 characters. A running installation
+      # never asks for it.
+      NEXMAIL_SETUP_TOKEN: ${NEXMAIL_SETUP_TOKEN:-}
+
       # Sub path behind a reverse proxy, e.g. /nexmail for
       # https://example.org/nexmail/. Empty means: at the root.
       #
