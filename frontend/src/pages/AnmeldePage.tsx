@@ -133,7 +133,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
     setLaeuft(true)
     try {
       const antwort = await aufruf()
-      if (antwort.schritt === 'fertig' && antwort.codes && antwort.codes.length > 0) {
+      if (antwort.schritt === 'fertig' && antwort.weiter === 'show_codes' && antwort.codes?.length) {
         setCodes(antwort.codes)
         setLage('codes')
       } else if (antwort.schritt === 'fertig') aufFertig()

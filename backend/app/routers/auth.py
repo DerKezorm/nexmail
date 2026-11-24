@@ -59,6 +59,9 @@ class Schritt(BaseModel):
     schritt: str
     #: Nach dem Einrichten beim Anmelden: die Wiederherstellungscodes, genau einmal (wie unter Sicherheit).
     codes: list[str] = []
+    #: Was die Seite danach tut, mit dem Wort des Moduls (``Confirmed.next``): ``show_codes`` (erst die Codes, dann
+    #: hinein) oder ``session``.
+    weiter: str = "session"
 
 
 class Einrichtung(BaseModel):
@@ -206,6 +209,7 @@ def anmelden(
 
     if sitzungsdienst.passkey_als_zweiter_schritt(db, person):
         sitzungsdienst.anlegen(db, person, request, response, bestaetigt=False, merken=merken)
+        sitzungsdienst.passkey_warten(request, response, person, merken=merken)
         return Schritt(schritt="passkey")
 
     if not person.totp_bestaetigt:
@@ -268,7 +272,9 @@ def code_pruefen(
     sitzungsdienst.bestaetigen(db, sitzung, request, response)
     nexkonten.login.succeeded(kontenstore.store_fuer(db), person.id)
     sitzungsdienst.angemeldet(db, person, request, response)
-    return Schritt(schritt="fertig", codes=codes)
+    return Schritt(
+        schritt="fertig", codes=codes, weiter=nexkonten.NEXT_SHOW_CODES if codes else nexkonten.NEXT_SESSION
+    )
 
 
 @router.post("/wiederherstellung", response_model=Schritt)
@@ -656,16 +662,11 @@ def wasneu_gesehen(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
     return ich(person, db)
 
 
-#: Wie lange eine Anmeldung als „frisch“ gilt: Ein Konto ohne Passwort bestaetigt eine neue Adresse mit einer
-#: frischen Anmeldung beim Anbieter statt mit einem Passwort (Entwurf, Entscheidung „Adresse aendern“).
-FRISCH_MINUTEN = 5
-
-
 def _frisch(sitzung) -> bool:
-    from datetime import timedelta
-
-    angelegt = sitzung.angelegt if sitzung.angelegt.tzinfo else sitzung.angelegt.replace(tzinfo=utcnow().tzinfo)
-    return utcnow() - angelegt <= timedelta(minutes=FRISCH_MINUTEN)
+    """Eine frische Anmeldung beim Anbieter bestaetigt bei einem Konto ohne Passwort (``common.fresh_sign_in``,
+    hoechstens ``FRESH_SIGN_IN_MINUTES`` alt). Gezaehlt ab dem Anlegen der Sitzung: Bei einem Konto ohne Passwort ist
+    das die Rueckkehr vom Anbieter."""
+    return nexkonten.common.fresh_sign_in(sitzung.angelegt)
 
 
 def _bestaetigt(person: Benutzer, sitzung) -> bool:

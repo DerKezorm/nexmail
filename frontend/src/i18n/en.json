@@ -90,8 +90,7 @@
     "ordnen": "Move “{{name}}” (arrow keys up and down)",
     "verknuepfung_loesen": "Remove link",
     "verknuepfung_loesen_mit": "Remove the link of {{wer}} to {{name}}",
-    "verknuepfung_loesen_text": "{{wer}} will no longer sign in through {{name}}. Your password confirms it.",
-    "faktor_fuer_alle_hinweis": "On: every account without a second factor sets one up at its next sign-in. A passkey counts."
+    "verknuepfung_loesen_text": "{{wer}} will no longer sign in through {{name}}. Your password confirms it."
   },
   "todoapps": {
     "einleitung": "Connect your to-do app, and “Turn into task” can put the task there. When you complete it in the app, nexmail sees that a few minutes later.",
@@ -2254,8 +2253,7 @@
     "abmelden_text": "Ends your session in this browser. Your mail stays as it is.",
     "neues_passwort_titel": "New password",
     "zugang_geraet": "iPhone app",
-    "zugang_schluessel": "API key",
-    "benutzername_hinweis": "You sign in with it."
+    "zugang_schluessel": "API key"
   },
   "nextime": {
     "satz": "All your calendars from nextime in nexmail's calendar, without adding each one. Invitations from mails go there.",

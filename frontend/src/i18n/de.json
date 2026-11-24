@@ -90,8 +90,7 @@
     "ordnen": "„{{name}}“ verschieben (Pfeiltasten hoch und runter)",
     "verknuepfung_loesen": "Verknüpfung lösen",
     "verknuepfung_loesen_mit": "Verknüpfung von {{wer}} mit {{name}} lösen",
-    "verknuepfung_loesen_text": "{{wer}} meldet sich danach nicht mehr über {{name}} an. Dein Passwort bestätigt es.",
-    "faktor_fuer_alle_hinweis": "An: Jedes Konto ohne zweiten Faktor richtet ihn bei der nächsten Anmeldung ein. Ein Passkey zählt."
+    "verknuepfung_loesen_text": "{{wer}} meldet sich danach nicht mehr über {{name}} an. Dein Passwort bestätigt es."
   },
   "todoapps": {
     "einleitung": "Verbinde deine Todo-App, dann landet „Zu Aufgabe machen“ auf Wunsch dort. Erledigst du die Aufgabe in der App, sieht nexmail das nach ein paar Minuten auch.",
@@ -2254,8 +2253,7 @@
     "abmelden_text": "Beendet deine Sitzung in diesem Browser. Deine Mails bleiben, wie sie sind.",
     "neues_passwort_titel": "Neues Passwort",
     "zugang_geraet": "iPhone-App",
-    "zugang_schluessel": "API-Schlüssel",
-    "benutzername_hinweis": "Damit meldest du dich an."
+    "zugang_schluessel": "API-Schlüssel"
   },
   "nextime": {
     "satz": "Alle deine Kalender aus nextime im Kalender von nexmail, ohne jeden einzeln einzubinden. Einladungen aus Mails landen dort.",

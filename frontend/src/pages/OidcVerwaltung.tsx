@@ -312,7 +312,7 @@ function AnmeldungKarte({
           ein (auch nach einem Anbieter). */}
       <Switch
         label={t('account.factorRequiredSwitch')}
-        description={t('anmeldeweg.faktor_fuer_alle_hinweis')}
+        description={t('account.factorRequiredSwitchHint')}
         checked={faktorFuerAlle ?? false}
         disabled={faktorFuerAlle === null}
         onCheckedChange={(an) => void umschalten({ zwei_faktor_fuer_alle: an })}

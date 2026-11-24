@@ -206,6 +206,8 @@ export interface Ich {
 export interface Schritt {
   /** Nach dem Einrichten beim Anmelden: die Wiederherstellungscodes, einmal. */
   codes?: string[]
+  /** Wort des Kontenmoduls (`Confirmed.next`): `show_codes` erst die Codes, sonst `session`. */
+  weiter?: string
   /** "fertig" | "code" | "einrichten" | "passkey" */
   schritt: string
 }

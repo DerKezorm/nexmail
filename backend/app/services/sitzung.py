@@ -330,21 +330,31 @@ def angemeldet(db: Session, benutzer: Benutzer, request: Request, response: Resp
         logger.warning("The new sign-in mail could not be queued: %r", getattr(fehler, "kennung", fehler))
 
 
-def faktor_einrichten(db: Session, benutzer: Benutzer) -> bool:
-    """Ob diese Anmeldung erst einen zweiten Faktor einrichten muss: Der Betreiber verlangt ihn fuer alle
-    (Kontenmodul Teil 2), und das Konto hat noch keinen. Dann liegt ein frisches, unbestaetigtes Geheimnis bereit
-    (ein schon bereitliegendes bleibt, damit ein halb eingescannter QR-Code weiter passt), die Anmeldung wird eine
-    halbe Sitzung, und ``/api/auth/code`` bestaetigt beides zugleich. Mit ``NEXMAIL_ZWEI_FAKTOR_AUS`` nie."""
-    from . import konten_store, zwei_faktor
+def naechster_schritt(db: Session, benutzer: Benutzer) -> str:
+    """Was nach Passwort oder Anbieter kommt: entscheidet das Modul (``common.next_step``, konten 0.3.2) aus
+    ``factor.state``: ``second_factor`` (Code), ``passkey`` (bei „fuer alle verlangen“ ein Passkey statt einer App),
+    ``second_factor_setup`` (verlangt, keiner da), ``session``. ``NEXMAIL_ZWEI_FAKTOR_AUS`` schlaegt alles (nexmails
+    Nothammer, das Modul kennt ihn nicht)."""
+    from ..vendor.nexkonten import NEXT_SESSION, common
+    from . import konten_store
 
-    if benutzer.totp_bestaetigt or get_settings().zwei_faktor_aus:
-        return False
+    if get_settings().zwei_faktor_aus:
+        return NEXT_SESSION
     store = konten_store.store_fuer(db)
-    if not store.factor_required():
-        return False
-    # Ein Passkey zaehlt als zweiter Faktor (Entscheidung 25.11.2026): Er ist dann der zweite Schritt
-    # (``passkey_als_zweiter_schritt``), eine Authenticator-App muss nicht dazu.
-    if store.passkeys_of(benutzer.id):
+    return common.next_step(store, store.get_account(benutzer.id))
+
+
+def faktor_einrichten(db: Session, benutzer: Benutzer) -> bool:
+    """Ob diese Anmeldung erst einen zweiten Faktor einrichten muss (``second_factor_setup``). Dann liegt ein
+    frisches, unbestaetigtes Geheimnis bereit (ein schon bereitliegendes bleibt, damit ein halb eingescannter QR-Code
+    weiter passt), die Anmeldung wird eine halbe Sitzung, und ``/api/auth/code`` bestaetigt beides zugleich.
+
+    ⚠️ **Das Einrichten selbst bleibt nexmails** (``services/zwei_faktor``): Das Geheimnis liegt versiegelt in der
+    Datenbank und ueberlebt einen Neustart; ``factor.begin_totp`` haelt es nur im Speicher."""
+    from ..vendor.nexkonten import NEXT_SECOND_FACTOR_SETUP
+    from . import zwei_faktor
+
+    if naechster_schritt(db, benutzer) != NEXT_SECOND_FACTOR_SETUP:
         return False
     if not benutzer.totp_geheimnis:
         zwei_faktor.geheimnis_speichern(benutzer, zwei_faktor.geheimnis_erzeugen())
@@ -353,15 +363,32 @@ def faktor_einrichten(db: Session, benutzer: Benutzer) -> bool:
 
 
 def passkey_als_zweiter_schritt(db: Session, benutzer: Benutzer) -> bool:
-    """Ob nach dem Passwort (oder dem Anbieter) ein Passkey der zweite Schritt ist: Der Betreiber verlangt einen
-    zweiten Faktor fuer alle, und das Konto hat statt einer Authenticator-App einen Passkey. Ohne den Schalter bleibt
-    der Passkey ein eigener Weg hinein, und das Passwort allein genuegt wie bisher."""
-    from . import konten_store
+    """``passkey``: Der Betreiber verlangt einen zweiten Faktor, das Konto hat statt einer App einen Passkey. Ohne
+    den Schalter ist ein Konto nur mit Passkey ``none``, das Passwort allein genuegt."""
+    from ..vendor.nexkonten import NEXT_PASSKEY
 
-    if benutzer.totp_bestaetigt or get_settings().zwei_faktor_aus:
-        return False
-    store = konten_store.store_fuer(db)
-    return store.factor_required() and bool(store.passkeys_of(benutzer.id))
+    return naechster_schritt(db, benutzer) == NEXT_PASSKEY
+
+
+#: Das Cookie der wartenden Anmeldung im Modul (``factor.start_waiting``), wenn ein Passkey der zweite Schritt ist.
+WARTET_COOKIE = "nexmail_wartet"
+
+
+def passkey_warten(request: Request, response: Response, benutzer: Benutzer, *, merken: bool) -> None:
+    """Die wartende Anmeldung im Modul, die ``factor.finish_waiting_by_passkey`` mit dem Passkey desselben Kontos
+    abschliesst; daneben steht nexmails halbe Sitzung (``bestaetigt=False``), die nie als volle gilt."""
+    from ..vendor.nexkonten import factor
+
+    token = factor.start_waiting(benutzer.id, remember=merken)
+    response.set_cookie(
+        WARTET_COOKIE,
+        token,
+        max_age=get_settings().zwei_faktor_minuten * 60,
+        httponly=True,
+        samesite="strict",
+        secure=_secure(request),
+        path=cookie_pfad(),
+    )
 
 
 def halbe_beenden(db: Session, request: Request) -> None:

@@ -95,6 +95,19 @@ gehört dann zu `localhost`). „Alle anderen Geräte abmelden“ fragt mit dem 
 Geräte, Kalender-Programme, API-Schlüssel und Passkeys bleiben). Der Schalter „Mail bei neuer Anmeldung“ bleibt
 unter Sicherheit.
 
+**Runde 5 (25.11.2026, `konten` 0.3.2):** Was in Runde 4 lokal gelöst war, kommt jetzt aus dem Modul:
+`Store.second_factor` über `factor.state` (ein Konto nur mit Passkey ist ohne Schalter `none`, mit Schalter
+`passkey`), der nächste Schritt über `common.next_step` (`sitzung.naechster_schritt`), der Passkey als zweiter Schritt
+über `factor.start_waiting`/`finish_waiting_by_passkey` (Cookie `nexmail_wartet` neben der halben Sitzung), die
+Geräteliste über `sessions.listing(..., language=)`, `passkeys.party(..., origin=)`, `common.fresh_sign_in`,
+`invites.invite_values(..., public_url=)`, die Wortlaute `account.usernameHintProfile` und
+`account.factorRequiredSwitchHint`; der Vertragsadapter sagt `blocking`, `required_second_factor`,
+`reusable_invites` = False. **Lokal geblieben:** das Einrichten und Prüfen des Authenticators samt
+Wiederherstellungscodes (`services/zwei_faktor`, Geheimnis versiegelt in der Datenbank, überlebt einen Neustart;
+`factor.begin_totp` hält es nur im Speicher), die Antwort trägt dafür das Wort des Moduls (`weiter: "show_codes"`);
+`NEXMAIL_ZWEI_FAKTOR_AUS`; die eigene Sitzungsschicht (Mindestumfang laut `SCHNITTSTELLE.md`); `origin` fällt bei
+einem GET ohne Kopfzeile auf die Adresse der Anfrage zurück.
+
 **Wo das Modul nicht passte (Teil 2):**
 
 7. **Hinweis am Benutzernamen** („Du kannst ihn später im Profil ändern“) steht im Profil selbst falsch. nexmail

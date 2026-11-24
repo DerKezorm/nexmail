@@ -28,7 +28,7 @@ from ..services import anmeldebremse, kontenpost
 from ..services import konten_store as kontenstore
 from ..services import sitzung as sitzungsdienst
 from ..vendor import nexkonten
-from ..vendor.nexkonten import passkeys
+from ..vendor.nexkonten import factor, passkeys
 
 logger = logging.getLogger("nexmail.konten")
 
@@ -44,12 +44,9 @@ def _ort(db, request: Request) -> passkeys.Party:
     (``Origin``, sonst die Adresse der Anfrage): Browser erlauben WebAuthn dort ohne https, und die Seite laeuft beim
     Ausprobieren oft unter einem anderen Port als die eingetragene Adresse. Ein Passkey fuer localhost taugt nirgends
     sonst, deshalb gibt es diesen Weg nur dort."""
-    from urllib.parse import urlsplit
-
+    # ``origin``: die Kopfzeile, bei einem GET ohne sie die Adresse der Anfrage (das Modul nimmt nur localhost).
     seite = request.headers.get("origin") or str(request.base_url).rstrip("/")
-    if (urlsplit(seite).hostname or "").lower() == "localhost":
-        return passkeys.party(seite)
-    return passkeys.party(kontenpost.oeffentliche_adresse(db))
+    return passkeys.party(kontenpost.oeffentliche_adresse(db), origin=seite)
 
 
 def _cookie(request: Request, response: Response, name: str, wert: str) -> None:
@@ -118,9 +115,15 @@ def passkey_anmelden(
     from ..models import Benutzer
 
     person = db.get(Benutzer, str(konto.id))
-    # War der Passkey der zweite Schritt nach dem Passwort, weicht die halbe Sitzung der neuen, vollen.
+    # War der Passkey der zweite Schritt nach dem Passwort (``factor.finish_waiting_by_passkey``), weicht die halbe
+    # Sitzung der neuen, vollen, mit „Angemeldet bleiben“ von dort.
+    merken = eingabe.angemeldet_bleiben
+    gewartet = factor.finish_waiting_by_passkey(request.cookies.get(sitzungsdienst.WARTET_COOKIE, ""), konto.id)
+    if gewartet is not None:
+        merken = gewartet.remember
+    _weg(response, sitzungsdienst.WARTET_COOKIE)
     sitzungsdienst.halbe_beenden(db, request)
-    sitzungsdienst.anlegen(db, person, request, response, bestaetigt=True, merken=eingabe.angemeldet_bleiben)
+    sitzungsdienst.anlegen(db, person, request, response, bestaetigt=True, merken=merken)
     nexkonten.login.succeeded(store, person.id)
     sitzungsdienst.angemeldet(db, person, request, response)
     return {"schritt": "fertig"}

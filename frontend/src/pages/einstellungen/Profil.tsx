@@ -182,7 +182,7 @@ export function Profil({
           <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
             <Input
               label={t('account.username')}
-              hint={umbenannt ? t('account.formerUsername') : t('profil.benutzername_hinweis')}
+              hint={umbenannt ? t('account.formerUsername') : t('account.usernameHintProfile')}
               value={person.benutzername}
               maxLength={USERNAME_MAX}
               readOnly

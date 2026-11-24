@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from ..deps import AktiveSitzung, AngemeldeterBenutzer, DbSession
 from ..services import sitzung as sitzungsdienst
-from ..vendor.nexpost.letters import describe_browser
+from ..vendor.nexkonten import sessions
 
 router = APIRouter(prefix="/api/sitzungen", tags=["sitzungen"])
 
@@ -29,35 +29,26 @@ class Geraet(BaseModel):
     aktuell: bool
 
 
-def anzeige(sitzung, sprache: str) -> str:
-    """Was die Liste von einem Eintrag zeigt. ⚠️ **Nie der rohe User-Agent** (fremder Text, und unlesbar): ein
-    Browser heisst „Firefox auf Linux“ wie in der Mail „Neue Anmeldung“ (``nexpost.letters.describe_browser``). Ein
-    gekoppeltes Geraet traegt den Namen, den die App beim Koppeln gab."""
-    if sitzung.art == "geraet":
-        return sitzung.geraet
-    return describe_browser(sitzung.geraet, sprache)
-
-
 @router.get("", response_model=list[Geraet])
 def liste(
     person: AngemeldeterBenutzer, aktuelle: AktiveSitzung, db: DbSession, sprache: str = ""
 ) -> list[Geraet]:
-    """``sprache``: die der Oberflaeche (``de``, ``en``, ``fr``); sonst die des Kontos."""
-    if sprache[:2] not in ("de", "en", "fr"):
-        from ..services import kontenpost
+    """Ueber ``sessions.listing`` (konten 0.3.2): ein Browser heisst „Firefox auf Linux“, nie der rohe User-Agent; ein
+    gekoppeltes Geraet behaelt seinen Namen. ``sprache``: die der Oberflaeche, sonst die des Kontos."""
+    from ..services import konten_store, kontenpost
 
+    if sprache[:2] not in ("de", "en", "fr"):
         sprache = kontenpost._sprache(db, person.id)
     return [
         Geraet(
-            id=s.id,
-            geraet=anzeige(s, sprache[:2]),
-            adresse=s.adresse,
-            angelegt=s.angelegt,
-            zuletzt_gesehen=s.zuletzt_gesehen,
-            aktuell=s.id == aktuelle.id,
+            id=str(e["uid"]),
+            geraet=str(e["label"]),
+            adresse=str(e["address"]),
+            angelegt=e["created_at"],
+            zuletzt_gesehen=e["last_seen_at"] or e["created_at"],
+            aktuell=bool(e["current"]),
         )
-        for s in sorted(person.sitzungen, key=lambda s: s.zuletzt_gesehen, reverse=True)
-        if s.bestaetigt
+        for e in sessions.listing(konten_store.store_fuer(db), person.id, aktuelle.id, language=sprache[:2])
     ]
 
 

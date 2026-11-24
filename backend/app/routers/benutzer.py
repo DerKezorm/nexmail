@@ -171,7 +171,10 @@ def einladen(eingabe: Einladen, _: Betreiber, db: DbSession) -> EinladungsZeile:
     store = kontenstore.store_fuer(db)
     try:
         adresse, anzeigename = nexkonten.invites.invite_values(
-            store, email=eingabe.adresse, display_name=eingabe.anzeigename
+            store,
+            email=eingabe.adresse,
+            display_name=eingabe.anzeigename,
+            public_url=kontenpost.oeffentliche_adresse(db),
         )
         laeuft_ab = nexkonten.invites.invite_expires_at(eingabe.tage)
     except nexkonten.AccountError as fehler:
