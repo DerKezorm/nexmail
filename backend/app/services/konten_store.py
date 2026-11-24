@@ -37,7 +37,9 @@ from ..models import (
     Einrichtung,
     FruehererName,
     Kennwortruecksetzung,
+    Passkey,
     Sitzung,
+    Wiederherstellungscode,
     utcnow,
 )
 from ..vendor import nexkonten
@@ -55,7 +57,20 @@ from ..vendor.nexkonten import (
     Taken,
     names,
 )
+from ..vendor.nexkonten.model2 import (
+    KIND_BROWSER,
+    KIND_DEVICE,
+    KIND_WAITING,
+    STAGE_FULL,
+)
+from ..vendor.nexkonten.model2 import Passkey as PasskeyDaten
+from ..vendor.nexkonten.model2 import Session as SitzungDaten
 from . import benutzer as benutzerdienst
+
+#: Die Schalter des Betreibers (Teil 2): „Zweiten Faktor fuer alle verlangen“ (ab Werk aus) und „Passkeys erlaubt“
+#: (ab Werk an). nexmail hatte keinen Pflichtschalter; der zweite Faktor war schon vorher eine Wahl.
+SCHALTER_FAKTOR_FUER_ALLE = "zwei_faktor_fuer_alle"
+SCHALTER_PASSKEYS = "passkeys_erlaubt"
 
 logger = logging.getLogger("nexmail.konten")
 
@@ -130,6 +145,10 @@ def _hash(token: str) -> str:
 
     return hashlib.sha256(token.encode()).hexdigest()
 
+
+#: Die Kontosperre (Teil 2, Entwurf: „10 Fehlversuche, 15 Minuten, ueberall“).
+SPERRE_NACH = 10
+SPERRE_MINUTEN = 15
 
 #: Ob das Bild vom Anbieter in einem eigenen Faden geholt wird. Tests schalten das ab und warten nicht.
 BILD_IM_FADEN = True
@@ -284,25 +303,47 @@ class KontenStore:
         self.db.execute(
             update(Benutzer)
             .where(Benutzer.id == str(account_id))
-            .values(passwort_hash=benutzerdienst.hashen(password))
+            .values(passwort_hash=benutzerdienst.hashen(password), fehlversuche=0, gesperrt_bis=None)
         )
         self._auffrischen(account_id)
 
     def is_locked(self, account_id: AccountId) -> bool:
-        return False
+        """Gesperrt nach 10 Fehlversuchen fuer 15 Minuten (Teil 2; nexmail hatte vorher nur die Bremse)."""
+        zeile = self.db.get(Benutzer, str(account_id))
+        return bool(zeile and zeile.gesperrt_bis and _bewusst(zeile.gesperrt_bis) > utcnow())
 
     def note_failure(self, account_id: AccountId | None) -> None:
-        """Gezaehlt wird in der Bremse (``anmeldebremse``, am Konto und am Absender), nicht in der Datenbank. Darum
-        kostet ein unbekanntes Konto (``None``) genau dasselbe wie ein bekanntes: nichts; das Modul committet danach
-        in beiden Faellen."""
+        """Ein Fehlversuch am Konto; nach ``SPERRE_NACH`` gesperrt fuer ``SPERRE_MINUTEN``. Ohne Konto (``None``)
+        dieselbe Arbeit an einer Zeile, die es nicht gibt: gleich teuer, die Zeit verraet nichts."""
+        from datetime import timedelta
+
+        self.db.execute(
+            update(Benutzer)
+            .where(Benutzer.id == (str(account_id) if account_id is not None else ""))
+            .values(fehlversuche=Benutzer.fehlversuche + 1)
+        )
+        if account_id is None:
+            return
+        zeile = self.db.get(Benutzer, str(account_id))
+        if zeile is not None:
+            self.db.refresh(zeile)
+            if zeile.fehlversuche >= SPERRE_NACH:
+                zeile.gesperrt_bis = utcnow() + timedelta(minutes=SPERRE_MINUTEN)
+                zeile.fehlversuche = 0
+            self.db.flush()
 
     def note_success(self, account_id: AccountId) -> None:
-        """Siehe ``note_failure``."""
+        self.db.execute(
+            update(Benutzer).where(Benutzer.id == str(account_id)).values(fehlversuche=0, gesperrt_bis=None)
+        )
+        self._auffrischen(account_id)
 
     def end_sessions(self, account_id: AccountId) -> None:
         """Browser-Sitzungen und Anmeldungen, die auf den zweiten Faktor warten (beides ``art = browser``). Die
         iPhone-App (``art = geraet``) und API-Schluessel bleiben (Entwurf, Entscheidung „Neues Passwort“)."""
         self.db.execute(delete(Sitzung).where(Sitzung.benutzer_id == str(account_id), Sitzung.art == "browser"))
+        # Kennungen bekannter Browser werden mit einem neuen Passwort wertlos (Teil 2).
+        self.renew_device_key(account_id)
 
     def list_access(self, account_id: AccountId) -> list[Access]:
         geraete = self.db.scalars(
@@ -326,8 +367,10 @@ class KontenStore:
 
     def second_factor(self, account_id: AccountId) -> str:
         zeile = self.db.get(Benutzer, str(account_id))
-        if zeile is not None and zeile.totp_bestaetigt:
+        if zeile is not None and (zeile.totp_bestaetigt or self.passkeys_of(account_id)):
             return nexkonten.SECOND_FACTOR_ACTIVE
+        if zeile is not None and self.factor_required():
+            return nexkonten.SECOND_FACTOR_REQUIRED
         return nexkonten.SECOND_FACTOR_NONE
 
     # --- Bilder --------------------------------------------------------------------------------------------------
@@ -481,6 +524,263 @@ class KontenStore:
             self._auffrischen(event.account_id)
         elif event.kind == nexkonten.EVENT_RENAMED:
             logger.info("Account %s renamed.", event.account_id)
+
+
+    # === Teil 2: zweiter Faktor, Passkeys, Sitzungen, Bilder (``nexkonten.model2``) ================================
+
+    # --- Zweiter Faktor -------------------------------------------------------------------------------------------
+    def totp_seed(self, account_id: AccountId) -> str | None:
+        """Das Geheimnis eines **bestaetigten** Faktors, geoeffnet; versiegelt bleibt es wie bisher (Kontext
+        ``benutzer:<id>:totp``), damit eingerichtete Authenticator-Apps weiter gelten."""
+        zeile = self.db.get(Benutzer, str(account_id))
+        if zeile is None or not zeile.totp_bestaetigt or not zeile.totp_geheimnis:
+            return None
+        from . import zwei_faktor
+
+        return zwei_faktor.geheimnis_lesen(zeile) or None
+
+    def set_totp(self, account_id: AccountId, seed: str | None) -> None:
+        from . import zwei_faktor
+
+        zeile = self.db.get(Benutzer, str(account_id))
+        if zeile is None:
+            return
+        if seed:
+            zwei_faktor.geheimnis_speichern(zeile, seed)
+            zeile.totp_bestaetigt = True
+        else:
+            zeile.totp_geheimnis = ""
+            zeile.totp_bestaetigt = False
+            zeile.totp_letzter_schritt = 0
+        self.db.flush()
+
+    def claim_step(self, account_id: AccountId, step: int) -> bool:
+        ergebnis = self.db.execute(
+            update(Benutzer)
+            .where(Benutzer.id == str(account_id), Benutzer.totp_letzter_schritt < step)
+            .values(totp_letzter_schritt=step)
+        )
+        self._auffrischen(account_id)
+        return int(ergebnis.rowcount or 0) == 1
+
+    def recovery_hashes(self, account_id: AccountId) -> list[str]:
+        return list(
+            self.db.scalars(
+                select(Wiederherstellungscode.code_hash).where(
+                    Wiederherstellungscode.benutzer_id == str(account_id), Wiederherstellungscode.verbraucht.is_(None)
+                )
+            )
+        )
+
+    def set_recovery(self, account_id: AccountId, hashes: list[str]) -> None:
+        self.db.execute(delete(Wiederherstellungscode).where(Wiederherstellungscode.benutzer_id == str(account_id)))
+        for wert in hashes:
+            self.db.add(Wiederherstellungscode(benutzer_id=str(account_id), code_hash=wert))
+        self.db.flush()
+
+    def claim_recovery(self, account_id: AccountId, stored: str) -> bool:
+        ergebnis = self.db.execute(
+            update(Wiederherstellungscode)
+            .where(
+                Wiederherstellungscode.benutzer_id == str(account_id),
+                Wiederherstellungscode.code_hash == stored,
+                Wiederherstellungscode.verbraucht.is_(None),
+            )
+            .values(verbraucht=utcnow())
+        )
+        return int(ergebnis.rowcount or 0) == 1
+
+    def recovery_key(self) -> bytes:
+        import hashlib
+
+        return hashlib.sha256(b"nexmail-recovery:" + get_settings().resolved_secret_key().encode("utf-8")).digest()
+
+    def factor_required(self) -> bool:
+        from ..db import einstellung_lesen
+
+        return einstellung_lesen(self.db, SCHALTER_FAKTOR_FUER_ALLE) == "1"
+
+    # --- Passkeys -------------------------------------------------------------------------------------------------
+    def passkeys_allowed(self) -> bool:
+        from ..db import einstellung_lesen
+
+        return einstellung_lesen(self.db, SCHALTER_PASSKEYS) != "0"
+
+    def _passkey(self, z: Passkey) -> "PasskeyDaten":
+        return PasskeyDaten(
+            uid=z.id,
+            account_id=z.benutzer_id,
+            credential_id=bytes(z.credential_id),
+            public_key=bytes(z.public_key),
+            sign_count=z.sign_count,
+            name=z.name,
+            created_at=_bewusst(z.angelegt),
+            last_used_at=_bewusst(z.zuletzt) if z.zuletzt else None,
+        )
+
+    def passkeys_of(self, account_id: AccountId) -> list["PasskeyDaten"]:
+        zeilen = self.db.scalars(select(Passkey).where(Passkey.benutzer_id == str(account_id)).order_by(Passkey.angelegt))
+        return [self._passkey(z) for z in zeilen]
+
+    def find_passkey(self, credential_id: bytes) -> "PasskeyDaten | None":
+        zeile = self.db.scalar(select(Passkey).where(Passkey.credential_id == credential_id))
+        return self._passkey(zeile) if zeile is not None else None
+
+    def add_passkey(self, passkey: "PasskeyDaten") -> None:
+        self.db.add(
+            Passkey(
+                id=passkey.uid,
+                benutzer_id=str(passkey.account_id),
+                credential_id=passkey.credential_id,
+                public_key=passkey.public_key,
+                sign_count=passkey.sign_count,
+                name=passkey.name,
+                angelegt=passkey.created_at,
+            )
+        )
+        self.db.flush()
+
+    def claim_counter(self, uid: str, old: int, new: int) -> bool:
+        ergebnis = self.db.execute(
+            update(Passkey)
+            .where(Passkey.id == uid, Passkey.sign_count == old)
+            .values(sign_count=new, zuletzt=utcnow())
+        )
+        return int(ergebnis.rowcount or 0) == 1
+
+    def remove_passkey(self, account_id: AccountId, uid: str) -> bool:
+        ergebnis = self.db.execute(delete(Passkey).where(Passkey.benutzer_id == str(account_id), Passkey.id == uid))
+        return int(ergebnis.rowcount or 0) == 1
+
+    def remove_passkeys(self, account_id: AccountId) -> int:
+        return int(self.db.execute(delete(Passkey).where(Passkey.benutzer_id == str(account_id))).rowcount or 0)
+
+    def user_handle(self, account_id: AccountId) -> bytes:
+        import secrets
+
+        zeile = self.db.get(Benutzer, str(account_id))
+        if zeile is None:
+            raise LookupError(account_id)
+        if not zeile.passkey_handle:
+            zeile.passkey_handle = secrets.token_urlsafe(32)
+            self.db.flush()
+        return zeile.passkey_handle.encode("ascii")
+
+    # --- Sitzungen ------------------------------------------------------------------------------------------------
+    def _sitzung(self, z: Sitzung) -> "SitzungDaten":
+        if z.art == "geraet":
+            art = KIND_DEVICE
+        elif not z.bestaetigt:
+            art = KIND_WAITING
+        else:
+            art = KIND_BROWSER
+        return SitzungDaten(
+            uid=z.id,
+            account_id=z.benutzer_id,
+            kind=art,
+            created_at=_bewusst(z.angelegt),
+            expires_at=_bewusst(z.gueltig_bis),
+            last_seen_at=_bewusst(z.zuletzt_gesehen) if z.zuletzt_gesehen else None,
+            remember=bool(z.merken),
+            stage=z.stufe or STAGE_FULL,
+            provider_checked=bool(z.anbieter_geprueft),
+            label=z.geraet or "",
+            address=z.adresse or "",
+        )
+
+    def add_session(self, session: "SitzungDaten", token_hash: str) -> None:
+        self.db.add(
+            Sitzung(
+                id=session.uid,
+                benutzer_id=str(session.account_id),
+                token_hash=token_hash,
+                bestaetigt=session.kind != KIND_WAITING,
+                art="geraet" if session.kind == KIND_DEVICE else "browser",
+                geraet=session.label[:200],
+                adresse=session.address[:64],
+                angelegt=session.created_at,
+                zuletzt_gesehen=session.last_seen_at or session.created_at,
+                gueltig_bis=session.expires_at,
+                merken=session.remember,
+                stufe=session.stage,
+                anbieter_geprueft=session.provider_checked,
+            )
+        )
+        self.db.flush()
+
+    def session_by_hash(self, token_hash: str) -> "SitzungDaten | None":
+        zeile = self.db.scalar(select(Sitzung).where(Sitzung.token_hash == token_hash))
+        return self._sitzung(zeile) if zeile is not None else None
+
+    def touch_session(self, uid: str, last_seen_at: datetime, expires_at: datetime) -> None:
+        self.db.execute(
+            update(Sitzung).where(Sitzung.id == uid).values(zuletzt_gesehen=last_seen_at, gueltig_bis=expires_at)
+        )
+
+    def set_stage(self, uid: str, stage: str) -> None:
+        self.db.execute(update(Sitzung).where(Sitzung.id == uid).values(stufe=stage))
+
+    def sessions_of(self, account_id: AccountId) -> list["SitzungDaten"]:
+        zeilen = self.db.scalars(
+            select(Sitzung)
+            # Angefangene Anmeldungen (auf den zweiten Faktor wartend) stehen nicht in der Liste.
+            .where(Sitzung.benutzer_id == str(account_id), Sitzung.gueltig_bis > utcnow(), Sitzung.bestaetigt.is_(True))
+            .order_by(Sitzung.zuletzt_gesehen.desc())
+        )
+        return [self._sitzung(z) for z in zeilen]
+
+    def end_session(self, account_id: AccountId, uid: str) -> bool:
+        ergebnis = self.db.execute(delete(Sitzung).where(Sitzung.benutzer_id == str(account_id), Sitzung.id == uid))
+        return int(ergebnis.rowcount or 0) == 1
+
+    def end_everywhere(self, account_id: AccountId, keep_uid: str | None) -> int:
+        """Browser, wartende Anmeldungen und gekoppelte iPhones; API-Schluessel und Passkeys bleiben."""
+        bedingung = [Sitzung.benutzer_id == str(account_id)]
+        if keep_uid:
+            bedingung.append(Sitzung.id != keep_uid)
+        return int(self.db.execute(delete(Sitzung).where(*bedingung)).rowcount or 0)
+
+    def device_key(self, account_id: AccountId) -> str:
+        import secrets
+
+        zeile = self.db.get(Benutzer, str(account_id))
+        if zeile is None:
+            raise LookupError(account_id)
+        if not zeile.geraete_schluessel:
+            zeile.geraete_schluessel = secrets.token_urlsafe(32)
+            self.db.flush()
+        return zeile.geraete_schluessel
+
+    def renew_device_key(self, account_id: AccountId) -> None:
+        import secrets
+
+        self.db.execute(
+            update(Benutzer).where(Benutzer.id == str(account_id)).values(geraete_schluessel=secrets.token_urlsafe(32))
+        )
+        self._auffrischen(account_id)
+
+    # --- Bilder ---------------------------------------------------------------------------------------------------
+    def picture_of(self, account_id: AccountId) -> tuple[bytes, datetime] | None:
+        zeile = self.db.get(Benutzer, str(account_id))
+        if zeile is None or zeile.profilbild_am is None or not zeile.profilbild:
+            return None
+        return bytes(zeile.profilbild), _bewusst(zeile.profilbild_am)
+
+    def set_picture(self, account_id: AccountId, data: bytes, at: datetime, source: str) -> None:
+        self.db.execute(
+            update(Benutzer)
+            .where(Benutzer.id == str(account_id))
+            .values(profilbild=data, profilbild_am=at, profilbild_herkunft=PROVIDER if source == PROVIDER else "")
+        )
+        self._auffrischen(account_id)
+
+    def remove_picture(self, account_id: AccountId) -> None:
+        self.db.execute(
+            update(Benutzer)
+            .where(Benutzer.id == str(account_id))
+            .values(profilbild=None, profilbild_am=None, profilbild_herkunft="")
+        )
+        self._auffrischen(account_id)
 
     # --- Transaktion ---------------------------------------------------------------------------------------------
     def commit(self) -> None:

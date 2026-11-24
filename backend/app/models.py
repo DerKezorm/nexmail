@@ -139,6 +139,15 @@ class Benutzer(Base):
     #: Nach einem neuen Passwort ueber einen Link: wer den Link machte (``self``, ``operator``, ``server``). Solange
     #: gesetzt, zeigt die Oberflaeche nach der Anmeldung „Diese Geraete haben noch Zugriff“; ``""`` nichts.
     neues_passwort: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    #: Teil 2 des Kontenmoduls. ``passkey_handle``: der zufaellige Nutzer-Handle fuer Passkeys (beim ersten gemacht);
+    #: ``geraete_schluessel``: Zufallsschluessel fuer die Kennung bekannter Browser (neu bei neuem Passwort);
+    #: ``mail_neue_anmeldung``: Mail „Neue Anmeldung“ bei einem neuen Browser (ab Werk an, je Person abschaltbar);
+    #: ``fehlversuche``/``gesperrt_bis``: die Kontosperre (10 Fehlversuche, 15 Minuten), die nexmail vorher nicht hatte.
+    passkey_handle: Mapped[str] = mapped_column(String(128), default="", server_default="")
+    geraete_schluessel: Mapped[str] = mapped_column(String(128), default="", server_default="")
+    mail_neue_anmeldung: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    fehlversuche: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    gesperrt_bis: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
 
     # --- Der KI-Dienst dieses Menschen ---------------------------------- #
     #
@@ -366,6 +375,23 @@ class PostAusgang(Base):
     verschickt: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
 
 
+class Passkey(Base):
+    """Ein Passkey eines Kontos (Teil 2 des Kontenmoduls, wie in nexdiary und nexpaper). ``credential_id`` eindeutig."""
+
+    __tablename__ = "passkey"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    credential_id: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
+    public_key: Mapped[bytes] = mapped_column(LargeBinary)
+    sign_count: Mapped[int] = mapped_column(Integer, default=0)
+    name: Mapped[str] = mapped_column(String(80), default="")
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    zuletzt: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+
+
 class Einrichtung(Base):
     """Die Ersteinrichtung ist beansprucht (Kontenmodul, ``Store.claim_setup``): genau eine Zeile je Datenbank. Zwei
     Einrichtungen zugleich, auch aus zwei Prozessen, legen so nie zwei Betreiber an. Im Bestand leer (es gibt Konten,
@@ -456,6 +482,12 @@ class Sitzung(Base):
     #: ⚠️ **Im Klartext, wie ``PushAnmeldung``.** Das Ticket ist ohne den Relay
     #: wertlos, der Schlüssel ohne das Gerät. Ins Protokoll gehört beides nicht,
     #: und eine Sicherung trägt keine Sitzungen (``sicherung._schlank_machen``).
+    #: Teil 2 des Kontenmoduls: „Angemeldet bleiben“ (Bestand: ja, mit der Laufzeit von vorher), die Stufe (``full``,
+    #: ``setup`` nur den Faktor einrichten, ``codes``), ob ein Anbieter den zweiten Faktor schon prueft.
+    merken: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    stufe: Mapped[str] = mapped_column(String(16), default="full", server_default="full")
+    anbieter_geprueft: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+
     push_ticket: Mapped[str] = mapped_column(String(1024), default="", server_default="")
     push_schluessel: Mapped[str] = mapped_column(String(64), default="", server_default="")
 

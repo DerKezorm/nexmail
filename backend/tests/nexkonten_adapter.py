@@ -34,7 +34,8 @@ sys.path.insert(0, str(HIER / "bestand"))
 
 class Adapter(StandardAdapter):
     package = "app.vendor.nexkonten"
-    lock_after: int | None = None
+    #: Seit Teil 2 hat nexmail eine Kontosperre: 10 Fehlversuche, 15 Minuten (``konten_store.SPERRE_NACH``).
+    lock_after: int | None = 10
 
     def start(self) -> None:
         from app.services import anmeldebremse, konten_store
@@ -73,7 +74,7 @@ class Adapter(StandardAdapter):
         if blocked:
             pytest.skip("nexmail blocks no accounts (an account is there or removed)")
         if second_factor == "required":
-            pytest.skip("nexmail requires no second factor of anybody")
+            pytest.skip("nexmail requires a second factor only by the switch for everybody, not per account")
         from app.db import SessionLocal
         from app.models import Benutzer, utcnow
         from app.services import benutzer as benutzerdienst
@@ -93,6 +94,11 @@ class Adapter(StandardAdapter):
                 totp_bestaetigt=second_factor == "active",
             )
             db.add(person)
+            db.flush()
+            if second_factor == "active":
+                from app.services import zwei_faktor
+
+                zwei_faktor.geheimnis_speichern(person, zwei_faktor.geheimnis_erzeugen())
             db.commit()
             return person.id
 
@@ -127,7 +133,9 @@ class Adapter(StandardAdapter):
         ``art = browser``, not confirmed), ``device`` the paired iPhone app. nexmail keeps no mark of a known
         browser: it has no lock at the account that such a mark would get past."""
         if kind == "known_browser":
-            pytest.skip("nexmail has no lock at the account, so no mark of a known browser")
+            pytest.skip("nexmail does not keep the mark of a known browser yet (konten 0.3.0 part 2, to wire in)")
+        if kind == "program":
+            return None
         from app.db import SessionLocal
         from app.models import Sitzung, utcnow
 
@@ -144,7 +152,21 @@ class Adapter(StandardAdapter):
             db.commit()
             return sitzung.id
 
+    def switch(self, name: str, on: bool) -> None:
+        """The operator's switches of part 2: ``factor_required`` and ``passkeys_allowed``."""
+        from app.db import SessionLocal, einstellung_schreiben
+        from app.services import konten_store
+
+        schluessel = {
+            "factor_required": konten_store.SCHALTER_FAKTOR_FUER_ALLE,
+            "passkeys_allowed": konten_store.SCHALTER_PASSKEYS,
+        }[name]
+        with SessionLocal() as db:
+            einstellung_schreiben(db, schluessel, "1" if on else "0")
+
     def session_alive(self, handle: Any) -> bool:
+        if handle is None:
+            return False
         from app.db import SessionLocal
         from app.models import Sitzung
 
@@ -172,7 +194,7 @@ class Adapter(StandardAdapter):
 
     def legacy(self) -> Legacy:
         """The database 0.33.0 built (``tests/bestand``), then nexmail's start (``init_db``)."""
-        from bauen import dump_datei, manifest_datei
+        from bauen import dump_datei, manifest_datei, totp_geheimnis
 
         from app.config import get_settings
         from app.db import engine, init_db
@@ -213,6 +235,12 @@ class Adapter(StandardAdapter):
             invites=[offen["schluessel"]],
             fixed_names={offen["schluessel"]: offen["benutzername"]},
             provider_logins=[(sub, True) for sub in anbieter] + [("bestand-niemand", False)],
+            # Die Authenticator-Apps und Wiederherstellungscodes von 0.33.0 (Teil 2): Geheimnis wie in bauen.py.
+            factors=[
+                (konto["benutzername"], totp_geheimnis(konto["zweiter_faktor"]), list(konto["wiederherstellungscodes"]))
+                for konto in manifest["konten"]
+                if konto.get("zweiter_faktor")
+            ],
         )
 
     @contextmanager

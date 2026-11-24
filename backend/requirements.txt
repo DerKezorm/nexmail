@@ -160,3 +160,8 @@ dnspython==2.8.0
 # nexmails AGPL-3.0 vereinbar (siehe THIRD-PARTY.md).
 pillow==12.3.0
 pillow-heif==1.8.0
+
+# Passkeys (Kontenmodul Teil 2, vendor/nexkonten/passkeys.py): genau die Fassung, gegen die das Modul gebaut und
+# geprueft ist (der Manifest-Test verlangt sie). Bringt cbor2 mit; cryptography steht oben schon.
+webauthn==3.0.1
+cbor2==6.3.0
