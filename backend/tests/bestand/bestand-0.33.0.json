@@ -1,0 +1,121 @@
+{
+  "fassung": "0.33.0",
+  "testschluessel": "tests/conftest.py (NEXMAIL_SECRET_KEY)",
+  "anbieter": {
+    "kuerzel": "sso",
+    "issuer": "https://sso.example.com",
+    "client_id": "nexmail-bestand",
+    "client_geheimnis": "bestand-client"
+  },
+  "oeffentliche_adresse": "https://mail.example.com",
+  "konten": [
+    {
+      "benutzername": "betreiber",
+      "passwort": "Bestand-betreiber-2026",
+      "adresse": "betrieb@example.com",
+      "betreiber": true,
+      "zweiter_faktor": "betreiber",
+      "wiederherstellungscodes": [
+        "HRY7E-NV4BJ",
+        "SZ8FP-W5CKT",
+        "29GQX-6DMU3",
+        "AHRY7-ENV4B",
+        "JSZ8F-PW5CK",
+        "T29GQ-X6DMU",
+        "3AHRY-7ENV4",
+        "BJSZ8-FPW5C",
+        "KT29G-QX6DM",
+        "U3AHR-Y7ENV"
+      ],
+      "fall": "operator, password, address, second factor"
+    },
+    {
+      "benutzername": "Erika.Muster",
+      "passwort": "Bestand-erika-2026",
+      "adresse": "",
+      "sitzung": "bestand-sitzung-erika",
+      "fall": "capital letters in the username, password, no address, open browser session"
+    },
+    {
+      "benutzername": "jonas",
+      "passwort": "Bestand-jonas-2026",
+      "adresse": "jonas@example.net",
+      "api_schluessel": "nxm_bestand-api-jonas",
+      "fall": "password, address, mailbox, API key"
+    },
+    {
+      "benutzername": "kim",
+      "passwort": "kim-123456",
+      "adresse": "familie@example.net",
+      "doppelte_adresse": true,
+      "fall": "address shared with lou, password of 10 characters"
+    },
+    {
+      "benutzername": "lou",
+      "passwort": "lou-1234567",
+      "adresse": "Familie@Example.net",
+      "doppelte_adresse": true,
+      "fall": "address shared with kim, empty display name in the invitation, password of 11 characters"
+    },
+    {
+      "benutzername": "mona",
+      "passwort": "Bestand-mona-2026",
+      "adresse": "mona@example.com",
+      "zweiter_faktor": "mona",
+      "wiederherstellungscodes": [
+        "4BJSZ-8FPW5",
+        "CKT29-GQX6D",
+        "MU3AH-RY7EN",
+        "V4BJS-Z8FPW",
+        "5CKT2-9GQX6",
+        "DMU3A-HRY7E",
+        "NV4BJ-SZ8FP",
+        "W5CKT-29GQX",
+        "6DMU3-AHRY7",
+        "ENV4B-JSZ8F"
+      ],
+      "geraet": "nxa_bestand-geraet-mona",
+      "fall": "password, second factor, paired iPhone"
+    },
+    {
+      "benutzername": "sam",
+      "passwort": "Bestand-sam-2026",
+      "adresse": "sam@example.com",
+      "anbieter": {
+        "sub": "bestand-sam",
+        "preferred_username": "sam",
+        "name": "Sam Beispiel",
+        "email": "sam@example.com"
+      },
+      "fall": "password and a linked provider"
+    },
+    {
+      "benutzername": "Robin.SSO",
+      "adresse": "robin@example.com",
+      "anbieter": {
+        "sub": "bestand-robin",
+        "preferred_username": "Robin.SSO",
+        "name": "Robin Beispiel",
+        "email": "robin@sso.example.com"
+      },
+      "fall": "provider only, invited as 'robin', named after preferred_username, address from the invitation"
+    },
+    {
+      "benutzername": "j",
+      "adresse": "jay@example.org",
+      "anbieter": {
+        "sub": "bestand-j",
+        "preferred_username": "j",
+        "name": "",
+        "email": "j@sso.example.com"
+      },
+      "fall": "provider only, one-character name (the module allows it, the new rules do not)"
+    }
+  ],
+  "offene_einladung": {
+    "schluessel": "bestand-einladung-neu.gast",
+    "benutzername": "neu.gast",
+    "adresse": "gast@example.org",
+    "anzeigename": "Gast Beispiel"
+  }
+}
