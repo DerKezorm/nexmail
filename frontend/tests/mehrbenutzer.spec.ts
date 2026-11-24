@@ -47,7 +47,7 @@ test('Die Verwaltung zeigt Benutzer und offene Einladungen', async ({ page }) =>
   await keineRohenSchluessel(page)
 })
 
-test('Einladen, annehmen, entfernen', async ({ page, request }) => {
+test('Einladen, annehmen, entfernen', async ({ page }) => {
   // Sauberer Start, falls ein voriger Lauf abgebrochen ist.
   await aufraeumen(page)
 
@@ -121,7 +121,7 @@ test('Eine abgelehnte Adresse sagt warum — und lässt keine Leiche zurück', a
      eine abgelehnte Adresse von einem kaputten Postausgang unterscheiden —
      also steht die Adresse **oder** der Satz des Servers da. */
   const brauchbar =
-    text.includes('zz@example.com') || /\d{3}/.test(text) || text.length > 60
+    text.includes('zz@example.com') || /\b\d{3}\b/.test(text) || text.length > 60
   expect(
     brauchbar,
     `Die Meldung nennt weder Empfänger noch Grund — sie lautet „${text}“.`,

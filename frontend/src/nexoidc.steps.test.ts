@@ -18,7 +18,7 @@ const quelle = import.meta.glob('../../backend/app/vendor/nexoidc/authentik.py',
 
 function tupel(name: string): string[] {
   const text = quelle[SERVER] ?? ''
-  const treffer = new RegExp(`^${name} = \(([^)]*)\)`, 'm').exec(text)
+  const treffer = new RegExp(`^${name} = \\(([^)]*)\\)`, 'm').exec(text)
   return treffer ? [...treffer[1].matchAll(/"([a-z_A-Z]+)"/g)].map((m) => m[1]) : []
 }
 

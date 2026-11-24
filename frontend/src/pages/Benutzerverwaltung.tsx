@@ -232,7 +232,7 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
 
   async function entfernen(person: BenutzerZeile) {
     setFehler('')
-    let umfang: Umfang | null = null
+    let umfang: Umfang | null
     try {
       umfang = await api.holen<Umfang>(`/api/benutzer/${person.id}/umfang`)
     } catch {

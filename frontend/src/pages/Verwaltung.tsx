@@ -258,7 +258,6 @@ export function Postausgang() {
       absendername: a.absendername,
     })
     setLiegtVor(a.passwort_liegt_vor)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {

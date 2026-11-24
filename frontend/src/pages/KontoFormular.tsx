@@ -249,7 +249,6 @@ export function KontoFormular({
     }, 500)
 
     return () => window.clearTimeout(uhr.current)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [felder.adresse])
 
   /* --- Prüfen und anlegen ---------------------------------------------- */

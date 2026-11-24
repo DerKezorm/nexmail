@@ -433,6 +433,7 @@ export async function rechtsklick(seite: Page, ziel: Locator) {
 export function tabuWoerter(): string[] {
   const allgemein = ['@icloud.com', '@gmail.com', '@web.de', '@gmx.de']
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- synchron, ausserhalb eines async-Aufrufs
     const fs = require('node:fs') as typeof import('node:fs')
     const roh = fs.readFileSync(new URL('../../.veroeffentlichung-tabu', import.meta.url), 'utf-8')
     const eigene = roh

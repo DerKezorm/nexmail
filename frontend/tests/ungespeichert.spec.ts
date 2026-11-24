@@ -3,6 +3,7 @@
 import { expect, test } from '@playwright/test'
 import { anmelden, zuEinstellungen } from './hilfen'
 
+// eslint-disable-next-line no-empty-pattern -- Playwright verlangt die Zerlegung der Fixtures
 test.beforeEach(({}, info) => {
   test.skip(info.project.name === 'schmal', 'Fenster und Ziehen werden breit geprüft.')
 })

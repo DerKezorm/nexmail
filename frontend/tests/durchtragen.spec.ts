@@ -342,7 +342,7 @@ test('Ältere Nachrichten lassen sich nachladen', async ({ page }, info) => {
   await expect(leiste, 'In der Leiste fehlt „Aufgaben".').toBeVisible()
   await leiste.click()
   await page.waitForTimeout(800)
-  const vorher = await page.getByRole('checkbox').count()
+  const _vorher = await page.getByRole('checkbox').count()
 
   await zurAnsicht(page, 'Mail')
   await page.getByRole('button', { name: /Alle Posteingänge|All inboxes/ }).click()
