@@ -163,6 +163,13 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
         "existiert — siehe routers/setup.py."
     ),
     "/api/auth/anmelden": "Die Anmeldung selbst kann keine Anmeldung verlangen.",
+    "/api/auth/passkey": (
+        "Anmelden mit Passkey (Kontenmodul Teil 2): GET sagt der Anmeldeseite, ob der Knopf dasteht, POST nimmt die"
+        " Antwort des Browsers; beides vor jeder Anmeldung."
+    ),
+    "/api/auth/passkey/start": (
+        "Der Anlauf zum Anmelden mit Passkey: eine Challenge im Cookie, hoechstens 20 offene je Absender (Modul)."
+    ),
     "/api/auth/code": (
         "Zweiter Schritt der Anmeldung. Hängt an der halben Sitzung, die "
         "Schritt eins gesetzt hat — geschützt, aber nicht über 'angemeldet'."
