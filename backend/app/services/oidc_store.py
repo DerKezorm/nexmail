@@ -33,7 +33,7 @@ from ..vendor.nexoidc.model import (
 )
 from ..vendor import nexkonten
 from . import einladung as einladungsdienst
-from .konten_store import KontenStore, adresse_folgt_dem_anbieter, bild_vom_anbieter
+from .konten_store import KontenStore, bild_vom_anbieter
 
 
 def alter_kontext(anbieter_id: str) -> str:
@@ -300,7 +300,8 @@ class SqlStore:
             )
         )
         if konto and email:
-            adresse_folgt_dem_anbieter(self.db, konto, email)
+            # Ein Konto ohne eigene Adresse folgt der des Anbieters; sie zaehlt nie sofort (Kontenmodul).
+            nexkonten.profiles.follow_provider_email(KontenStore(self.db), konto, email)
 
     # --- Konten ----------------------------------------------------------------------------------------------------
     def account_state(self, account_id: int) -> AccountState | None:
@@ -342,27 +343,21 @@ class SqlStore:
         anzeigename = nexkonten.names.provider_display_name(store, display_name)
         if not anzeigename and einladung is not None:
             anzeigename = nexkonten.names.provider_display_name(store, einladung.anzeigename or "")
-        adresse, zaehlt, herkunft = "", True, ""
-        if einladung is not None and einladung.adresse:
-            adresse = einladung.adresse
-        elif email:
-            try:
-                kandidat = nexkonten.names.clean_email(email)
-            except nexkonten.AccountError:
-                kandidat = ""
-            if kandidat and not nexkonten.names.email_taken(store, kandidat):
-                adresse, zaehlt, herkunft = kandidat, False, nexkonten.EMAIL_PROVIDER
+        adresse = einladung.adresse if einladung is not None else ""
         person = Benutzer(
             benutzername=name,
             anzeigename=anzeigename,
             passwort_hash="",
             kontaktadresse=adresse,
-            kontaktadresse_zaehlt=zaehlt,
-            kontaktadresse_herkunft=herkunft,
+            kontaktadresse_zaehlt=True,
+            # Gemailt und hier eingeloest: Wer den Link hatte, hat die Adresse bewiesen.
+            kontaktadresse_bewiesen=bool(adresse and einladung is not None and einladung.gemailt),
             wasneu_gesehen=__version__,
         )
         self.db.add(person)
         self.db.flush()
+        if not adresse and email:
+            nexkonten.profiles.follow_provider_email(store, person.id, email)
         return self.konto_nummer(person)
 
     def provider_picture(self, account_id: int, picture: str, issuer: str) -> None:

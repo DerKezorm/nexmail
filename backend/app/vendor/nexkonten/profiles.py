@@ -17,7 +17,11 @@ operator changes it with the operator's own password, an operator without one af
 **Address:** changed only with the password (an account without one: a fresh sign-in at the provider). With a mail
 server a new one counts only after its confirmation link, until then the old one; without one at once. The old
 address hears of the change where a mail can go. The link can be sent again. The operator may only take an address
-away, never set one (or a password link could go to an address of the operator's choosing).
+away, never set one (or a password link could go to an address of the operator's choosing). Whenever the address in
+effect changes, open links a person asked for to the old one stop counting.
+
+**Address from a provider:** an account through a provider only follows the provider's address
+(``follow_provider_email``), which never counts at once and never takes an address another account has.
 """
 
 from __future__ import annotations
@@ -30,11 +34,13 @@ from .common import acting, address_hint, log, reload, tell
 from .errors import AccountError
 from .model import (
     EMAIL_OWN,
+    EMAIL_PROVIDER,
     EVENT_EMAIL_CHANGED,
     EVENT_RENAMED,
     MAIL_CONFIRM_EMAIL,
     MAIL_EMAIL_CHANGED,
     MAIL_USERNAME_CHANGED,
+    RESET_SELF,
     Account,
     AccountId,
     EmailChange,
@@ -160,6 +166,7 @@ def change_email(
     if not address:
         store.drop_email_change(target.id)
         store.set_email(target.id, "", confirmed=True, proven=False, source=EMAIL_OWN)
+        store.drop_resets(target.id, origin=RESET_SELF)
         store.commit()
         log().info("Email removed name=%s", target.username)
         tell(store, Event(EVENT_EMAIL_CHANGED, target.id, old=target.email, new=""))
@@ -178,6 +185,7 @@ def change_email(
         return EmailChanged(reload(store, target.id), address, letter)
     store.drop_email_change(target.id)
     _set_email(store, target.id, address, proven=False)
+    store.drop_resets(target.id, origin=RESET_SELF)
     store.commit()
     log().info("Email changed name=%s", target.username)
     tell(store, Event(EVENT_EMAIL_CHANGED, target.id, old=target.email, new=address))
@@ -225,6 +233,7 @@ def confirm_email(store: Store, token: str) -> EmailChanged:
         store.rollback()
         raise AccountError("email_taken", "This address belongs to another account already.", 409)
     _set_email(store, account.id, change.address, proven=True)
+    store.drop_resets(account.id, origin=RESET_SELF)
     store.commit()
     log().info("Email confirmed name=%s", account.username)
     tell(store, Event(EVENT_EMAIL_CHANGED, account.id, old=account.email, new=change.address))
@@ -255,7 +264,31 @@ def remove_email(
     )
     store.drop_email_change(target.id)
     store.set_email(target.id, "", confirmed=True, proven=False, source=EMAIL_OWN)
+    store.drop_resets(target.id, origin=RESET_SELF)
     store.commit()
     log().info("Email removed name=%s by=%s", target.username, actor.username)
     tell(store, Event(EVENT_EMAIL_CHANGED, target.id, old=target.email, new=""))
     return EmailChanged(reload(store, target.id), notice=_notice(target, "") if mail else None)
+
+
+def follow_provider_email(store: Store, account_id: AccountId, raw: str) -> bool:
+    """What a provider says about the address of an account at a sign-in or a link, for the OIDC binding (inside its
+    transaction: nothing is committed here). Only an account without an address of its own follows it: no address,
+    or one that came from a provider. The provider's address never counts at once and is never proven (the provider
+    may let anybody set any address), and it is never taken when another account has it. True when it was taken."""
+    account = common.account_or_404(store, account_id)
+    try:
+        address = names.clean_email(raw)
+    except AccountError:
+        return False
+    if not address or (account.email and account.email_source != EMAIL_PROVIDER):
+        return False
+    if names.same_address(address, account.email):
+        return False
+    if names.email_taken(store, address, except_id=account.id):
+        log().warning("Provider address not taken, another account has it name=%s", account.username)
+        return False
+    store.set_email(account.id, address, confirmed=False, proven=False, source=EMAIL_PROVIDER)
+    store.drop_resets(account.id, origin=RESET_SELF)
+    log().info("Provider address followed name=%s", account.username)
+    return True

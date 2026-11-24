@@ -22,6 +22,7 @@ from collections.abc import Iterable
 
 from .errors import AccountError
 from .model import Account, AccountId, Store
+from .visible import has_something_to_see, skeleton, visible
 
 USERNAME_MIN = 2
 USERNAME_MAX = 64
@@ -44,8 +45,6 @@ _GERMAN = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
 _NOT_ALLOWED = re.compile(r"[^a-z0-9._-]+")
 _PUNCTUATION_RUN = re.compile(r"([._-])[._-]+")
 _NUMBERED = re.compile(r"(.*?)(-\d+)")
-#: The zero width joiner holds emoji sequences together; every other format character goes.
-_ZWJ = "‍"
 
 
 def normalize_username(raw: str) -> str:
@@ -110,25 +109,30 @@ def username_taken(store: Store, name: str, except_id: AccountId | None = None) 
 
 
 def display_key(name: str) -> str:
-    """What display names are compared by: NFKC, without regard to case, blanks at the edges gone."""
-    return unicodedata.normalize("NFKC", name or "").casefold().strip()
+    """What display names (and usernames against them) are compared by: invisible characters gone, blanks as one,
+    NFKC, without regard to case, letters of Cyrillic and Greek that look like Latin ones as those
+    (``visible.skeleton``). An app that keeps the key in a column computes it with this function."""
+    return skeleton(name)
 
 
 def display_name_taken(store: Store, name: str, except_id: AccountId | None = None) -> bool:
-    """Another account shows this display name, or has it as its username. An empty one is never taken."""
+    """Another account shows this display name, or has it (or had it) as its username. An empty one is never
+    taken."""
     key = display_key(name)
     if not key:
         return False
     if store.display_name_taken(name, except_id):
         return True
-    return any(account.id != except_id for account in store.find_by_username(key))
+    if any(account.id != except_id for account in store.find_by_username(key)):
+        return True
+    return store.name_reserved(key, except_id)
 
 
 def check_display_name(store: Store, raw: str, except_id: AccountId | None = None, *, required: bool) -> str:
     """The display name as it is stored: cleaned, required where ``required`` (``display_name_empty``), and nobody
     else's (``display_name_taken``)."""
     shown = clean_display_name(raw)
-    if required and not shown:
+    if required and not has_something_to_see(shown):
         raise AccountError("display_name_empty", "Enter a display name.", 422)
     if display_name_taken(store, shown, except_id):
         raise AccountError("display_name_taken", "Another account shows this name already.", 409)
@@ -158,11 +162,13 @@ def free_username(store: Store, base: str) -> str:
 
 
 def clean_display_name(raw: str) -> str:
-    """A name as people typed it: umlauts and emoji stay, blanks at the edges go, no control or format characters
-    (but the joiner of emoji sequences), at most ``DISPLAY_NAME_MAX`` characters."""
-    text = unicodedata.normalize("NFC", raw or "")
-    text = "".join(char for char in text if unicodedata.category(char) not in ("Cc", "Cf") or char == _ZWJ)
-    return text.strip()[:DISPLAY_NAME_MAX].strip()
+    """A name as people typed it: umlauts and emoji stay; what nobody can see goes (control and format characters,
+    joiners and selectors outside emoji, fillers), blanks become one, at most ``DISPLAY_NAME_MAX`` characters. A name
+    of nothing visible is "" (``visible.visible``)."""
+    text = visible(raw)
+    if not has_something_to_see(text):
+        return ""
+    return text[:DISPLAY_NAME_MAX].strip()
 
 
 def shown_name(account: Account) -> str:

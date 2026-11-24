@@ -346,6 +346,17 @@ class FruehererName(Base):
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
+class Einrichtung(Base):
+    """Die Ersteinrichtung ist beansprucht (Kontenmodul, ``Store.claim_setup``): genau eine Zeile je Datenbank. Zwei
+    Einrichtungen zugleich, auch aus zwei Prozessen, legen so nie zwei Betreiber an. Im Bestand leer (es gibt Konten,
+    die Einrichtung ist ohnehin zu)."""
+
+    __tablename__ = "einrichtung"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
 class Adresswechsel(Base):
     """Eine neue Adresse, die auf ihren Bestaetigungslink wartet (nur mit Systempostausgang). Bis dahin gilt die
     bisherige. Der Schluessel liegt nur als Hash da, wie bei Einladung und Ruecksetz-Link."""
@@ -1333,6 +1344,10 @@ class Einladung(Base):
     anzeigename: Mapped[str] = mapped_column(String(120), default="")
     #: Wohin die Einladung ging; leer, wenn der Betreiber den Link selbst weitergibt.
     adresse: Mapped[str] = mapped_column(String(320), default="")
+    #: Ob der Link per Mail an ``adresse`` ging: Wer ihn dort oeffnet, hat die Adresse bewiesen
+    #: (``accept_invite(..., proven=True)``). ⚠️ **Vorgabe in der Tabelle: ja**, denn vor dem Kontenmodul ging jede
+    #: Einladung per Mail hinaus (Adresse und Versand waren Pflicht).
+    gemailt: Mapped[bool] = mapped_column(Boolean, default=False, server_default="1")
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     laeuft_ab: Mapped[datetime] = mapped_column(UtcDateTime)
     #: Gesetzt heisst: angenommen. Die Zeile bleibt als Spur stehen.

@@ -9,7 +9,8 @@ The address comes from the provider's token, so it is fetched with care:
 - only ``https``, or ``http`` when the issuer itself is ``http``; only from the issuer's host (on the issuer's port or
   the scheme's own); or a ``data:image/…;base64,`` address;
 - a redirect only to an address that passes the same rules, at most ``MAX_REDIRECTS``;
-- at most ``MAX_BYTES`` and ``TIMEOUT`` seconds in all;
+- at most ``MAX_BYTES`` and ``TIMEOUT`` seconds in all, held by a watchdog: a server that sends its headers drop by
+  drop is cut off when the time is up, whatever httpx's own timeouts say;
 - only PNG, JPEG, WebP, GIF, told by the first bytes and opened by Pillow with exactly these decoders, at most
   ``MAX_SIDE`` pixels a side, then written anew (PNG, a JPEG stays JPEG; the first frame of an animation): of the file
   only its picture survives, no metadata, no hidden second image.
@@ -22,6 +23,7 @@ from __future__ import annotations
 import base64
 import binascii
 import io
+import threading
 import time
 from urllib.parse import SplitResult, urljoin, urlsplit
 
@@ -107,7 +109,7 @@ def redraw(data: bytes) -> Picture:
                 content_type = "image/png"
     except PictureRefused:
         raise
-    except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as error:
+    except Exception as error:  # a broken file makes Pillow raise anything: struct, index, zero division
         raise PictureRefused(f"Pillow could not read it ({error.__class__.__name__})") from error
     return Picture(out.getvalue(), content_type, width, height)
 
@@ -138,9 +140,10 @@ def _client(deadline: float) -> httpx.Client:
     )
 
 
-def _download(url: str, issuer: str) -> bytes:
+def _download(url: str, issuer: str, box: dict[str, object]) -> bytes:
     deadline = time.monotonic() + TIMEOUT
     with _client(deadline) as client:
+        box["client"] = client
         for _ in range(MAX_REDIRECTS + 1):
             if not allowed(url, issuer):
                 raise PictureRefused(f"address not allowed for this issuer (host {urlsplit(url).hostname!r})")
@@ -172,11 +175,42 @@ def fetch_picture(url: str, issuer: str) -> Picture:
         raise PictureRefused("no address")
     if text[:5].lower() == "data:":
         return redraw(_from_data(text))
-    try:
-        data = _download(text, issuer)
-    except httpx.HTTPError as error:
+    return redraw(_within_deadline(text, issuer))
+
+
+def _within_deadline(url: str, issuer: str) -> bytes:
+    """``_download`` in a worker that gets ``TIMEOUT`` seconds in all; then its client is closed and the fetch is
+    refused, however slowly the server drips."""
+    box: dict[str, object] = {}
+
+    def work() -> None:
+        try:
+            box["data"] = _download(url, issuer, box)
+        except Exception as error:  # noqa: BLE001 (handed to the caller below)
+            box["error"] = error
+
+    worker = threading.Thread(target=work, name="nexkonten-picture", daemon=True)
+    worker.start()
+    worker.join(TIMEOUT)
+    if worker.is_alive():
+        client = box.get("client")
+        if isinstance(client, httpx.Client):
+            try:
+                client.close()
+            except Exception:  # noqa: BLE001, S110 (closing a client that hangs; nothing more to do)
+                pass
+        raise PictureRefused(f"took longer than {TIMEOUT} seconds")
+    error = box.get("error")
+    if isinstance(error, PictureRefused):
+        raise error
+    if isinstance(error, httpx.HTTPError):
         raise PictureRefused(f"could not be fetched ({error.__class__.__name__})") from error
-    return redraw(data)
+    if isinstance(error, Exception):
+        raise PictureRefused(f"could not be fetched ({error.__class__.__name__})") from error
+    data = box.get("data")
+    if not isinstance(data, bytes):
+        raise PictureRefused("nothing came")
+    return data
 
 
 def take_provider_picture(store: Store, account_id: AccountId, url: str, issuer: str) -> bool:

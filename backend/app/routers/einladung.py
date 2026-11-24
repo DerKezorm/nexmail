@@ -63,6 +63,13 @@ class Annahme(BaseModel):
     kontaktadresse: str | None = Field(default=None, max_length=320)
 
 
+def _gemailt(db, schluessel: str) -> bool:
+    from ..services import einladung as einladungsdienst
+
+    zeile = einladungsdienst.finden(db, schluessel)
+    return bool(zeile is not None and zeile.gemailt and zeile.adresse)
+
+
 @router.get("/{schluessel}", response_model=Vorschau)
 def ansehen(schluessel: str, request: Request, db: DbSession) -> Vorschau:
     """Was die Seite vorbelegt. ⚠️ Hier kommt **kein** Konto zustande und kein Cookie."""
@@ -102,16 +109,20 @@ def annehmen(
     alt = eingabe.anzeigename is None and eingabe.benutzername is None and eingabe.kontaktadresse is None
     try:
         form = nexkonten.invites.invite_form(store, schluessel)
+        adresse = eingabe.kontaktadresse if eingabe.kontaktadresse is not None else form.email
+        gemailt = _gemailt(db, schluessel)
         ergebnis = nexkonten.invites.accept_invite(
             store,
             schluessel,
             display_name=eingabe.anzeigename if eingabe.anzeigename is not None else form.display_name,
             username=eingabe.benutzername if eingabe.benutzername is not None else form.username,
-            email=eingabe.kontaktadresse if eingabe.kontaktadresse is not None else form.email,
+            email=adresse,
             password=eingabe.passwort,
             language=request.headers.get("accept-language", "").split(",")[0].split(";")[0],
             mail=kontenpost.mail_moeglich(db),
             older_request=alt,
+            # Der Link ging per Mail an genau diese Adresse: Wer ihn oeffnet, hat sie bewiesen.
+            proven=gemailt and nexkonten.names.same_address(adresse, form.email),
         )
     except nexkonten.AccountError as fehler:
         if fehler.code in ("invite_invalid", "invite_expired"):

@@ -295,12 +295,15 @@ class Store(Protocol):
         ...
 
     def is_locked(self, account_id: AccountId) -> bool:
-        """Locked after too many wrong passwords (the app's count and time). An app without a lock answers False."""
+        """Locked after too many wrong passwords, **for a while only** (``LOCK_MINUTES`` by default, the app's own
+        time where it has one): a stranger must not lock an account for good. An app without a lock answers False."""
         ...
 
-    def note_failure(self, account_id: AccountId) -> None:
+    def note_failure(self, account_id: AccountId | None) -> None:
         """A wrong password for this account: counted at the account (whatever was typed, name or address), locked
-        after the app's limit. An app without a lock does nothing."""
+        after the app's limit. ``None``: an attempt that named no account; the store writes as much as for a known one
+        (a row of failed attempts, a touched counter), so that both answers take the same time. The module commits
+        after either."""
         ...
 
     def note_success(self, account_id: AccountId) -> None:
@@ -309,7 +312,8 @@ class Store(Protocol):
 
     def end_sessions(self, account_id: AccountId) -> None:
         """After a new password from a link: end every **browser** session and every sign-in that waits for its
-        second factor. Paired devices, calendar and address book programs, API keys and passkeys stay
+        second factor, and make every "known browser" mark of the account worthless (``login.authenticate``'s
+        ``known_browser``). Paired devices, calendar and address book programs, API keys and passkeys stay
         (``list_access``)."""
         ...
 
@@ -386,8 +390,16 @@ class Store(Protocol):
         """Use it up with one statement that must hit exactly one row."""
         ...
 
-    def drop_resets(self, account_id: AccountId) -> None:
-        """Every open link of the account goes (a mail that could not be sent leaves none behind)."""
+    def drop_resets(self, account_id: AccountId, *, origin: str | None = None) -> None:
+        """Every open link of the account goes (a mail that could not be sent leaves none behind); with ``origin``
+        only the links of that origin (the account's address changed: links a person asked for to the old one go)."""
+        ...
+
+    # --- Setup ---------------------------------------------------------------------------------------------------
+    def claim_setup(self) -> bool:
+        """Mark the server as set up, with one statement that succeeds once in the life of the database (a unique row,
+        say): two setups at the same moment, also in two processes, never both make an operator. False when another
+        was first. Nothing committed here."""
         ...
 
     # --- After a commit ------------------------------------------------------------------------------------------

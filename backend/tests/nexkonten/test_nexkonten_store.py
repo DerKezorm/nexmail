@@ -372,3 +372,37 @@ def test_the_store_hears_what_happened_after_a_commit(app: Any, konten: Any) -> 
     alex = app.seed("alex", password=password())
     with app.store() as store:
         store.notify(konten.Event(konten.EVENT_RENAMED, alex, old="alex", new="alexa"))
+
+
+def test_a_failure_that_names_no_account_is_written_too(app: Any) -> None:
+    with app.store() as store:
+        store.note_failure(None)
+        store.commit()
+
+
+def test_links_of_one_origin_go_and_the_others_stay(app: Any, konten: Any, operator: Any) -> None:
+    operator_id, _ = operator
+    alex = app.seed("alex", password=password())
+    kim = app.seed("kim", password=password())
+    own, made = "own-" + password(), "made-" + password()
+    with app.store() as store:
+        store.start_reset(alex, own, _later(), created_by=None, origin=konten.RESET_SELF)
+        store.start_reset(kim, made, _later(), created_by=operator_id, origin=konten.RESET_OPERATOR)
+        store.commit()
+        store.drop_resets(alex, origin=konten.RESET_OPERATOR)
+        store.drop_resets(kim, origin=konten.RESET_SELF)
+        store.commit()
+    with app.store() as store:
+        assert store.find_reset(own) is not None and store.find_reset(made) is not None
+        store.drop_resets(alex, origin=konten.RESET_SELF)
+        store.commit()
+    with app.store() as store:
+        assert store.find_reset(own) is None
+
+
+def test_the_server_is_claimed_for_setup_once(app: Any) -> None:
+    with app.store() as one, app.store() as other:
+        assert one.claim_setup() is True
+        one.commit()
+        assert other.claim_setup() is False
+        other.rollback()

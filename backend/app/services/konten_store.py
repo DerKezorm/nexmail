@@ -34,6 +34,7 @@ from ..models import (
     AppKopplung,
     Benutzer,
     Einladung,
+    Einrichtung,
     FruehererName,
     Kennwortruecksetzung,
     Sitzung,
@@ -290,8 +291,10 @@ class KontenStore:
     def is_locked(self, account_id: AccountId) -> bool:
         return False
 
-    def note_failure(self, account_id: AccountId) -> None:
-        """Gezaehlt wird in der Bremse (``anmeldebremse``, am Konto), nicht in der Datenbank."""
+    def note_failure(self, account_id: AccountId | None) -> None:
+        """Gezaehlt wird in der Bremse (``anmeldebremse``, am Konto und am Absender), nicht in der Datenbank. Darum
+        kostet ein unbekanntes Konto (``None``) genau dasselbe wie ein bekanntes: nichts; das Modul committet danach
+        in beiden Faellen."""
 
     def note_success(self, account_id: AccountId) -> None:
         """Siehe ``note_failure``."""
@@ -447,12 +450,22 @@ class KontenStore:
         )
         return int(ergebnis.rowcount or 0) == 1
 
-    def drop_resets(self, account_id: AccountId) -> None:
-        self.db.execute(
-            delete(Kennwortruecksetzung).where(
-                Kennwortruecksetzung.benutzer_id == str(account_id), Kennwortruecksetzung.eingeloest.is_(None)
-            )
-        )
+    def drop_resets(self, account_id: AccountId, *, origin: str | None = None) -> None:
+        bedingung = [Kennwortruecksetzung.benutzer_id == str(account_id), Kennwortruecksetzung.eingeloest.is_(None)]
+        if origin is not None:
+            bedingung.append(Kennwortruecksetzung.herkunft == origin)
+        self.db.execute(delete(Kennwortruecksetzung).where(*bedingung))
+
+    def claim_setup(self) -> bool:
+        """Die Ersteinrichtung einmal je Datenbank: eine Zeile mit fester Kennung; die zweite scheitert am
+        Primaerschluessel, auch aus einem zweiten Prozess."""
+        try:
+            self.db.add(Einrichtung(id=1))
+            self.db.flush()
+        except IntegrityError:
+            self.db.rollback()
+            return False
+        return True
 
     # --- Nach dem Festschreiben ----------------------------------------------------------------------------------
     def notify(self, event: Event) -> None:
@@ -502,25 +515,3 @@ def bild_vom_anbieter(benutzer_id: str, adresse: str, aussteller: str) -> None:
         threading.Thread(target=arbeit, name="nexmail-anbieterbild", daemon=True).start()
     else:
         arbeit()
-
-
-def adresse_folgt_dem_anbieter(db: Session, benutzer_id: str, adresse: str) -> None:
-    """Ein Konto, dessen Adresse vom Anbieter kam (``kontaktadresse_herkunft = provider``), folgt einer neuen dort,
-    bis der Mensch selbst eine setzt. Hat ein anderes Konto sie, bleibt die alte. Sie zaehlt nicht, bis sie bestaetigt
-    ist (Anbieter melden Adressen unzuverlaessig)."""
-    adresse = (adresse or "").strip()
-    zeile = db.get(Benutzer, benutzer_id)
-    if zeile is None or zeile.kontaktadresse_herkunft != PROVIDER or not adresse:
-        return
-    if names.same_address(zeile.kontaktadresse, adresse):
-        return
-    try:
-        adresse = names.clean_email(adresse)
-    except AccountError:
-        return
-    store = KontenStore(db)
-    if names.email_taken(store, adresse, except_id=benutzer_id):
-        return
-    zeile.kontaktadresse = adresse
-    zeile.kontaktadresse_zaehlt = False
-    zeile.kontaktadresse_bewiesen = False

@@ -32,9 +32,8 @@ def test_a_one_letter_name_of_the_older_version_keeps_working(app: Any) -> None:
 def test_the_brake_counts_one_account_once_however_it_is_named(app: Any, konten: Any) -> None:
     alex = app.seed("alex", email="alex@example.com", password=password())
     with app.store() as store:
-        keys = {konten.login.attempt_key(store, typed, "203.0.113.9") for typed in ("alex", "ALEX@example.com")}
-        unknown = konten.login.attempt_key(store, "nobody", "203.0.113.9")
-    assert keys == {f"account:{alex}"} and unknown == "sender:203.0.113.9"
+        keys = {konten.login.attempt_key(store, typed, "203.0.113.9")[1] for typed in ("alex", "ALEX@example.com")}
+    assert keys == {f"account:{alex}"}
 
 
 def test_a_confirmed_address_signs_in_in_any_case(app: Any) -> None:
@@ -170,3 +169,71 @@ def test_failures_from_the_owners_own_browser_do_not_count(app: Any, konten: Any
             konten.login.authenticate(store, "alex", secret + "x", known_browser=alex)
     with app.store() as store:
         assert konten.login.authenticate(store, "alex", secret).id == alex
+
+
+def test_the_brake_counts_every_attempt_at_the_sender_and_at_what_it_names(app: Any, konten: Any) -> None:
+    alex = app.seed("alex", email="alex@example.com", password=password())
+    with app.store() as store:
+        by_name = konten.login.attempt_key(store, "alex", "203.0.113.7")
+        by_address = konten.login.attempt_key(store, "ALEX@example.com", "203.0.113.7")
+        unknown = konten.login.attempt_key(store, "nobody", "203.0.113.7")
+        again = konten.login.attempt_key(store, " Nobody ", "198.51.100.2")
+    assert by_name == by_address == ("sender:203.0.113.7", f"account:{alex}")
+    assert unknown[0] == "sender:203.0.113.7" and unknown[1].startswith("typed:")
+    assert again[1] == unknown[1] and again[0] == "sender:198.51.100.2"
+
+
+def test_a_brake_over_both_counts_tells_no_name_from_no_account(app: Any, konten: Any) -> None:
+    """The brake as the module asks for it: both counts, for every input. Once the sender's count is full, a known
+    name is refused exactly like an unknown one."""
+    app.seed("alex", password=password())
+    limit = 5
+    counts: dict[str, int] = {}
+
+    def attempt(typed: str) -> str:
+        with app.store() as store:
+            keys = konten.login.attempt_key(store, typed, "203.0.113.7")
+        for key in keys:
+            counts[key] = counts.get(key, 0) + 1
+        if any(counts[key] > limit for key in keys):
+            return "too_many"
+        return "tried"
+
+    for index in range(limit):
+        attempt(f"garbage{index}")
+    answers = {typed: attempt(typed) for typed in ("alex", "bob", "alex@elsewhere.example.org")}
+    assert set(answers.values()) == {"too_many"}, answers
+
+
+def test_a_wrong_password_takes_as_long_for_a_known_name_as_for_an_unknown_one(app: Any, konten: Any) -> None:
+    import time
+
+    secret = password()
+    for index in range(6):
+        app.seed(f"user{index}", password=secret)
+
+    def once(typed: str) -> float:
+        with app.store() as store:
+            started = time.perf_counter()
+            with pytest.raises(konten.AccountError):
+                konten.login.authenticate(store, typed, "wrong password")
+            return time.perf_counter() - started
+
+    known, unknown = [], []
+    for round_ in range(5):
+        for index in range(6):
+            known.append(once(f"user{index}"))
+            unknown.append(once(f"nobody{round_}{index}"))
+    known.sort()
+    unknown.sort()
+    middle_known, middle_unknown = known[len(known) // 2], unknown[len(unknown) // 2]
+    assert 0.6 < middle_known / middle_unknown < 1.6, (middle_known, middle_unknown)
+
+
+def test_a_new_password_makes_the_known_browser_mark_worthless(app: Any, konten: Any) -> None:
+    alex = app.seed("alex", email="alex@example.com", password=password())
+    mark = app.open_session(alex, "known_browser")
+    with app.store() as store:
+        token = konten.resets.forgot(store, "alex").token
+        konten.resets.use_reset(store, token, password())
+    assert not app.session_alive(mark)

@@ -201,3 +201,37 @@ def test_after_an_invitation_the_app_learns_the_next_step(app: Any, konten: Any,
     with app.store() as store:
         accepted = _accept(konten, store, token)
         assert accepted.next == konten.common.next_step(store, accepted.account)
+
+
+def test_the_address_of_an_invitation_several_may_follow_does_not_count_without_a_link(
+    app: Any, konten: Any, operator: Any
+) -> None:
+    token = app.make_invite(email="team@example.com", reusable=True)
+    with app.store() as store:
+        accepted = _accept(konten, store, token, email="team@example.com", mail=True)
+    assert accepted.account.email == "" and accepted.mail is not None and accepted.mail.to == "team@example.com"
+
+
+def test_an_invitation_mailed_by_the_app_proves_its_address(app: Any, konten: Any, operator: Any) -> None:
+    token = app.make_invite(email="new@example.com")
+    with app.store() as store:
+        accepted = _accept(konten, store, token, proven=True)
+    assert accepted.account.email_proven and accepted.account.email_confirmed
+    other = app.make_invite(email="other@example.com")
+    with app.store() as store:
+        changed = _accept(konten, store, other, username="second", display_name="Second", email="x@example.com",
+                          proven=True)
+    assert not changed.account.email_proven
+
+
+def test_a_name_an_older_invitation_fixed_is_kept_as_it_was(app: Any, konten: Any, operator: Any) -> None:
+    token = app.make_invite(display_name="Kim", username="_Kim.Old")
+    with app.store() as store:
+        form = konten.invites.invite_form(store, token)
+        assert form.username == "_Kim.Old"
+        accepted = _accept(konten, store, token, username=form.username, display_name="Kim", email="")
+    assert accepted.account.username == "_Kim.Old"
+    other = app.make_invite()
+    with app.store() as store, pytest.raises(konten.AccountError) as caught:
+        _accept(konten, store, other, username="_free", display_name="Free", email="")
+    assert caught.value.code == "username_invalid"

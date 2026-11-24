@@ -273,3 +273,43 @@ def test_a_mail_that_fails_in_the_background_takes_its_link(app: Any, konten: An
     with app.store() as store, pytest.raises(konten.AccountError):
         konten.resets.reset_state(store, tokens[0])
     assert alex
+
+
+@pytest.mark.parametrize("how", ["changed", "removed", "removed_by_operator", "confirmed"])
+def test_a_link_a_person_asked_for_dies_when_the_address_changes(
+    app: Any, konten: Any, operator: Any, how: str
+) -> None:
+    operator_id, operator_secret = operator
+    secret = password()
+    alex = app.seed("alex", email="alex@example.com", password=secret)
+    with app.store() as store:
+        token = konten.resets.forgot(store, "alex").token
+        made = konten.resets.reset_link(store, alex, actor_id=operator_id, password=operator_secret).token
+    # The operator's link replaced the person's: ask again for the person's own.
+    with app.store() as store:
+        token = konten.resets.forgot(store, "alex").token
+    with app.store() as store:
+        if how == "changed":
+            konten.profiles.change_email(store, alex, "new@example.com", password=secret)
+        elif how == "removed":
+            konten.profiles.change_email(store, alex, "", password=secret)
+        elif how == "removed_by_operator":
+            konten.profiles.remove_email(store, alex, actor_id=operator_id, password=operator_secret)
+        else:
+            link = konten.profiles.change_email(store, alex, "new@example.com", password=secret, mail=True).mail
+            konten.profiles.confirm_email(store, link.token)
+    with app.store() as store, pytest.raises(konten.AccountError) as caught:
+        konten.resets.reset_state(store, token)
+    assert caught.value.code == "reset_invalid"
+    assert made
+
+
+def test_an_operator_link_outlives_a_change_of_the_address(app: Any, konten: Any, operator: Any) -> None:
+    operator_id, operator_secret = operator
+    secret = password()
+    alex = app.seed("alex", email="alex@example.com", password=secret)
+    with app.store() as store:
+        made = konten.resets.reset_link(store, alex, actor_id=operator_id, password=operator_secret).token
+        konten.profiles.change_email(store, alex, "new@example.com", password=secret)
+    with app.store() as store:
+        assert konten.resets.reset_state(store, made).id == alex

@@ -5,6 +5,11 @@ in ``<APP>_SETUP_TOKEN``, else one made at the start of the process and written 
 while there is no account. Once an account exists there is neither code nor page; a running installation never asks
 for it.
 
+A code the operator fixes needs at least ``TOKEN_MIN`` characters (a shorter one is ignored, with a line in the log,
+and the made code counts) and is compared exactly; the made code (``ABCD-EF01-2345``) is compared without regard to
+case. The app's brake counts wrong codes like sign-ins (``login.attempt_key``). One setup at a time in the process,
+and once in the life of the database (``Store.claim_setup``): two processes never both make an operator.
+
 The address given here counts as confirmed at once: there is no mail server yet, and the account belongs to the person
 who owns the server.
 """
@@ -24,12 +29,20 @@ from .names import check_password_rule, check_username, clean_display_name, clea
 #: One setup at a time: two at once would each count no account yet and make two operators.
 _lock = threading.Lock()
 _generated: str | None = None
+#: The shortest code an operator may fix in ``<APP>_SETUP_TOKEN``.
+TOKEN_MIN = 16
+
+
+def _given() -> str:
+    """The code the operator fixed, when it is long enough."""
+    given = config.current().given_setup_token()
+    return given if len(given) >= TOKEN_MIN else ""
 
 
 def setup_code() -> str:
     """The code the first account must bring: the one the operator fixed, else one made once per process."""
     global _generated
-    given = config.current().given_setup_token()
+    given = _given()
     if given:
         return given
     if _generated is None:
@@ -53,7 +66,9 @@ def announce_setup(store: Store) -> None:
     if not needed(store):
         return
     cfg = config.current()
-    if cfg.given_setup_token():
+    if cfg.given_setup_token() and not _given():
+        log().error("%s is shorter than %s characters and is ignored.", cfg.setup_token_env, TOKEN_MIN)
+    if _given():
         log().warning("%s is not set up yet. Open it and give %s as the setup code.", cfg.app_name, cfg.setup_token_env)
     else:
         log().warning("%s is not set up yet. The setup code is %s (new at every start until set up).",
@@ -61,8 +76,11 @@ def announce_setup(store: Store) -> None:
 
 
 def _code_fits(code: str) -> bool:
-    expected = setup_code().strip().upper().encode("utf-8")
-    return secrets.compare_digest((code or "").strip().upper().encode("utf-8"), expected)
+    """A fixed code exactly, the made code without regard to case; both in constant time."""
+    typed = (code or "").strip()
+    if _given():
+        return secrets.compare_digest(typed.encode("utf-8"), _given().encode("utf-8"))
+    return secrets.compare_digest(typed.upper().encode("utf-8"), setup_code().upper().encode("utf-8"))
 
 
 def check_code(store: Store, code: str) -> None:
@@ -99,6 +117,9 @@ def setup(
         name = check_username(username)
         address = clean_email(email)
         check_password_rule(password)
+        if not store.claim_setup():
+            store.rollback()
+            raise AccountError("already_set_up", f"{config.current().app_name} is set up already.", 409)
         account_id = add_account(
             store,
             NewAccount(

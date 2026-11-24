@@ -13,7 +13,11 @@ Failures count at the account, however it was named (``Store.note_failure``); af
 (``Store.is_locked``), and a locked account answers like a wrong password. A browser that signed in as the account
 before (``known_browser``, the account its cookie names) gets in all the same, and its failures do not count: a
 stranger can lock an account against the world, not against its owner. Checks of one account run one after another.
-What is typed but names no account counts at the sender (``attempt_key``); the brake itself is the app's.
+The app's brake counts every attempt twice (``attempt_key``): at the sender, and at the account it names or, when
+it names none, at what was typed. Both counts are checked, whatever the input: a brake that counted unknown input at
+the sender alone would answer "too many attempts" for unknown names only and tell which names exist. Every failure
+costs one write and one commit, also for an unknown name (``Store.note_failure(None)``): the time of the answer does
+not tell either.
 
 Calendar and address book programs (DAV) sign in with ``background_account``: current name, former name or address,
 and always their own device password, which the app checks.
@@ -21,6 +25,7 @@ and always their own device password, which the app checks.
 
 from __future__ import annotations
 
+import hashlib
 import threading
 
 from .common import log
@@ -89,11 +94,17 @@ def background_account(store: Store, typed: str) -> Account | None:
     return former[0] if len({account.id for account in former}) == 1 else None
 
 
-def attempt_key(store: Store, typed: str, sender: str) -> str:
-    """What the app's brake counts a sign-in (or a request for a link) by: the account the field names, however it
-    is named (username or address, any case: one account, one count, not two), else the sender."""
+def attempt_key(store: Store, typed: str, sender: str) -> tuple[str, str]:
+    """The two counts of the app's brake for a sign-in, a request for a link or a setup code: the sender
+    (``sender:<address>``), and the account the field names however it is named (``account:<id>``: username or
+    address, any case, one count) or, naming none, what was typed (``typed:<hash>``). The app counts and checks
+    **both**, for every input, and refuses when either is full."""
     account = resolve_login(store, typed)
-    return f"account:{account.id}" if account is not None else f"sender:{sender}"
+    if account is not None:
+        return f"sender:{sender}", f"account:{account.id}"
+    digest = hashlib.sha256((typed or "").strip().lower().encode("utf-8")).hexdigest()[:24]
+    return f"sender:{sender}", f"typed:{digest}"
+
 
 
 def wrong_credentials(account_id: AccountId | None = None) -> AccountError:
@@ -112,12 +123,16 @@ def authenticate(
     account = resolve_login(store, typed)
     if account is None or not account.has_password:
         store.check_password(None, password or "")
+        store.note_failure(None)
+        store.commit()
         log().warning("Sign-in failed for an unknown account or one without a password")
         raise wrong_credentials()
     known = known_browser is not None and known_browser == account.id
     with _one_check_at_a_time(account.id):
         if store.is_locked(account.id) and not known:
             store.check_password(None, password or "")
+            store.note_failure(None)
+            store.commit()
             log().warning("Sign-in refused, account locked name=%s", account.username)
             raise wrong_credentials(account.id)
         if not store.check_password(account.id, password or ""):

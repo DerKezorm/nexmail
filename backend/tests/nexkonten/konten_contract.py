@@ -28,6 +28,8 @@ class Legacy:
     logins: list[tuple[str, str, bool]] = field(default_factory=list)
     invites: list[str] = field(default_factory=list)
     fixed_names: dict[str, str] = field(default_factory=dict)
+    #: Sign-ins through a provider that worked before, as ``(subject, works)`` (``provider_sign_in``).
+    provider_logins: list[tuple[str, bool]] = field(default_factory=list)
 
 
 def password() -> str:
@@ -102,8 +104,10 @@ class StandardAdapter:
 
     def open_session(self, account_id: Any, kind: str = "browser") -> Any:
         """APP: something of the account that may sign it in: ``"browser"`` a browser session, ``"waiting"`` a
-        sign-in that waits for its second factor, ``"device"`` a paired device (or a calendar program's password, an
-        API key, a passkey: what the app has). Returns what ``session_alive`` needs."""
+        sign-in that waits for its second factor, ``"known_browser"`` the mark a browser keeps after signing in as the
+        account (``login.authenticate``'s ``known_browser``: signed, random per account), ``"device"`` a paired
+        device (or a calendar program's password, an API key, a passkey: what the app has). Returns what
+        ``session_alive`` needs."""
         raise NotImplementedError("APP: open_session")
 
     def session_alive(self, handle: Any) -> bool:
@@ -121,9 +125,23 @@ class StandardAdapter:
 
     def legacy(self) -> Legacy:
         """APP: the database of the older version with accounts of every kind (password with and without address,
-        provider only, blocked, second factor, an address two accounts share, an open invitation), then the app's
-        own start with its migration; see ``Legacy``. Replaces what ``start`` made."""
+        provider only with its link, blocked, second factor, an address two accounts share, an open invitation), then
+        the app's own start with its migration; see ``Legacy``. Replaces what ``start`` made."""
         raise NotImplementedError("APP: legacy")
+
+    def oidc_store(self) -> AbstractContextManager[Any]:
+        """APP: the app's store for the OIDC module (``nexoidc.Store``: ``clean_name``, ``name_taken``,
+        ``create_account``) over one session, closed afterwards."""
+        raise NotImplementedError("APP: oidc_store")
+
+    def account_of(self, oidc_account_id: Any) -> Any:
+        """APP: the account id of the konten store for an id the OIDC store gave (the same in most apps)."""
+        return oidc_account_id
+
+    def provider_sign_in(self, subject: str) -> Any:
+        """APP: a sign-in through the app's provider for this subject (the app's own fake provider of its nexoidc
+        tests): the account id it reaches, None when refused."""
+        raise NotImplementedError("APP: provider_sign_in")
 
     def sign_in(self, typed: str, password: str) -> Any:
         """The account id a sign-in with "Username or email" and password reaches, None when it is refused. APP:

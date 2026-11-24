@@ -180,6 +180,8 @@ def einladen(eingabe: Einladen, _: Betreiber, db: DbSession) -> EinladungsZeile:
     einladung, schluessel = einladungsdienst.aussprechen(
         db, adresse=adresse, anzeigename=anzeigename, laeuft_ab=laeuft_ab
     )
+    einladung.gemailt = False
+    db.commit()
     if adresse and systempost.lesen(db).eingerichtet:
         try:
             kontenpost.einladung_senden(db, einladung, schluessel, eingabe.tage)
@@ -187,6 +189,8 @@ def einladen(eingabe: Einladen, _: Betreiber, db: DbSession) -> EinladungsZeile:
             db.delete(einladung)
             db.commit()
             raise MeldungHttp.aus(fehler, status.HTTP_502_BAD_GATEWAY) from fehler
+        einladung.gemailt = True
+        db.commit()
         return _einladungszeile(einladung)
     return _einladungszeile(einladung, kontenpost.link(db, f"/einladung/{schluessel}"))
 

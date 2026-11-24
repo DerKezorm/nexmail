@@ -48,11 +48,9 @@ from .names import (
     display_name_taken,
     email_taken,
     free_username,
-    normalize_username,
     same_address,
     suggest_username,
     username_taken,
-    valid_username,
 )
 
 #: How long the link that confirms a changed address holds.
@@ -113,8 +111,9 @@ def invite_form(store: Store, key: str) -> InviteForm:
     shown = clean_display_name(invite.display_name)
     if display_name_taken(store, shown):
         shown = ""
-    fixed = normalize_username(invite.username)
-    if fixed and valid_username(fixed) and not username_taken(store, fixed):
+    fixed = invite.username.strip()
+    if fixed and not username_taken(store, fixed):
+        # A name an older version fixed stays as it was, also against today's rules (capitals, "_kim").
         name = fixed
     else:
         base = suggest_username(shown or invite.display_name)
@@ -135,14 +134,19 @@ def accept_invite(
     language: str = "",
     mail: bool = False,
     older_request: bool = False,
+    proven: bool = False,
 ) -> Accepted:
     """A new account with the rights of the invitation. The invitation goes first, in the same transaction, with one
     statement that must hit exactly one row: two people with the same link at the same moment make one account.
 
     ``older_request``: the request came from a client of the older version, which sent no display name: the username
-    stands in for it (left empty when another account shows it)."""
+    stands in for it (left empty when another account shows it). ``proven``: the app mailed this very link to the
+    invitation's address itself, so an unchanged address is proven too (not for an invitation several may follow).
+    A name an older version fixed in the invitation is taken as it is, also against today's rules."""
     invite = _open(store, key)
-    name = check_username(username)
+    fixed = invite.username.strip()
+    typed = (username or "").strip()
+    name = typed if fixed and typed == fixed and "@" not in typed and len(typed) <= 64 else check_username(username)
     if username_taken(store, name):
         raise AccountError("username_taken", "Someone has this username already.", 409)
     if older_request and not clean_display_name(display_name):
@@ -156,7 +160,10 @@ def accept_invite(
     if not store.consume_invite(invite):
         store.rollback()
         raise AccountError("invite_invalid", "This invitation has been used already or is not valid any more.", 404)
-    waiting = bool(address) and mail and not same_address(address, invite.email)
+    # The invitation's own address counts without a link: it reached this person. Not for an invitation several may
+    # follow (it may have been passed on): then it is an address like any typed one.
+    from_invite = bool(address) and same_address(address, invite.email) and not invite.reusable
+    waiting = bool(address) and mail and not from_invite
     account_id = add_account(
         store,
         NewAccount(
@@ -167,6 +174,7 @@ def accept_invite(
             password=password,
             language=clean_language(language),
             invite=invite,
+            email_proven=proven and from_invite,
         ),
     )
     letter = None

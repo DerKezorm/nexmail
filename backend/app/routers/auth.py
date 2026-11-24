@@ -116,14 +116,12 @@ class Ich(BaseModel):
 
 
 def bremsschluessel(store, eingetippt: str, request: Request) -> str:
-    """Woran die Bremse zaehlt: am Konto, egal ob Name oder Adresse getippt wurde (ein Konto, ein Zaehler), sonst am
-    Absender. ⚠️ **Ohne ``NEXMAIL_CLIENT_IP`` kennt nexmail keinen Absender**; dann zaehlt eine unbekannte Eingabe
-    an sich selbst, wie bisher, statt alle unbekannten Eingaben in einen Topf zu werfen."""
-    absender = anmeldebremse.adresse_von(request)
-    schluessel = nexkonten.login.attempt_key(store, eingetippt, absender)
-    if schluessel.startswith("sender:") and not absender:
-        return "eingabe:" + (eingetippt or "").strip().lower()[:254]
-    return schluessel
+    """Woran die Bremse zaehlt (Kontenmodul, zwei Toepfe): am Konto, egal ob Name oder Adresse getippt wurde (ein
+    Konto, ein Zaehler), sonst an der Eingabe (``typed:<hash>``), **und** am Absender. Den zweiten Topf fuehrt
+    ``anmeldebremse.torwaechter`` selbst (``...:adresse:<ip>``), und zwar nur mit ``NEXMAIL_CLIENT_IP``: Ohne kennt
+    nexmail keinen Absender, und ein gemeinsamer Topf fuer alle liesse jeden alle aussperren."""
+    _, konto_oder_eingabe = nexkonten.login.attempt_key(store, eingetippt, anmeldebremse.adresse_von(request))
+    return konto_oder_eingabe
 
 
 def _konto_schluessel(person: Benutzer) -> str:

@@ -9,6 +9,7 @@ What lives here:
 - ``config``: what the app tells the module about itself (``configure(AppConfig(...))``);
 - ``model``: accounts, invitations, links, mails, and the ``Store`` the app implements over its database;
 - ``names``: display name, username and address: rules, suggestion, numbering;
+- ``visible``: what a display name shows, and the key under which look-alike names are equal;
 - ``login``: "Username or email" and the password;
 - ``setup``: the first account with the setup code;
 - ``invites``: what the operator gives, the form and accepting an invitation;
@@ -21,7 +22,7 @@ Only httpx and Pillow are needed (for a provider's picture); nothing from an app
 
 from __future__ import annotations
 
-from . import common, invites, login, names, pictures, profiles, resets, setup
+from . import common, invites, login, names, pictures, profiles, resets, setup, visible
 from .config import AppConfig, configure, current, use_transport
 from .errors import CODES, AccountError, PictureRefused
 from .model import (
@@ -63,7 +64,7 @@ from .model import (
     Taken,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
     "CODES",
@@ -118,4 +119,5 @@ __all__ = [
     "resets",
     "setup",
     "use_transport",
+    "visible",
 ]

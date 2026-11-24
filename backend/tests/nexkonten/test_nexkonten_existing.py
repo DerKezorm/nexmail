@@ -24,10 +24,18 @@ def test_open_invitations_of_the_older_version_stay_valid(app: Any, konten: Any)
             form = konten.invites.invite_form(store, token)
             fixed = legacy.fixed_names.get(token)
             if fixed:
-                assert form.username == fixed.lower()
+                assert form.username == fixed
 
 
 def test_the_setup_code_is_never_asked_after_the_migration(app: Any, konten: Any) -> None:
     app.legacy()
     with app.store() as store:
         assert konten.setup.needed(store) is False
+
+
+def test_every_sign_in_through_a_provider_of_the_older_version_works_after_the_migration(app: Any) -> None:
+    legacy = app.legacy()
+    assert legacy.provider_logins, "the older database needs an account through a provider"
+    assert any(works for _, works in legacy.provider_logins)
+    for subject, works in legacy.provider_logins:
+        assert (app.provider_sign_in(subject) is not None) == works, (subject, works)
