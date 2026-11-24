@@ -28,6 +28,7 @@ from ..services import kidienst
 from ..services import profilbild as profilbilddienst
 from ..services import konten_store as kontenstore
 from ..services import kontenpost
+from ..services import systempost
 from ..services import sitzung as sitzungsdienst
 from ..services import zwei_faktor
 from ..meldung import MeldungHttp
@@ -642,10 +643,10 @@ def _adresse_aendern(db, person: Benutzer, sitzung, adresse: str, passwort: str)
     if ergebnis.mail is not None:
         try:
             kontenpost.senden(db, ergebnis.mail)
-        except Exception as fehler:  # noqa: BLE001
+        except systempost.PostFehler as fehler:
             # Ohne Mail wartet die Adresse auf einen Link, den niemand hat: zuruecknehmen und sagen, warum.
             nexkonten.profiles.withdraw_email_change(store, person.id)
-            raise MeldungHttp(status.HTTP_502_BAD_GATEWAY, getattr(fehler, "kennung", "post_fehler")) from fehler
+            raise MeldungHttp.aus(fehler, status.HTTP_502_BAD_GATEWAY) from fehler
     _mail_versuchen(db, ergebnis.notice)
     db.expire(person)
 
@@ -771,8 +772,8 @@ def adresslink_nochmal(request: Request, person: AngemeldeterBenutzer, db: DbSes
         raise kontenstore.http(fehler) from fehler
     try:
         kontenpost.senden(db, mail)
-    except Exception as fehler:  # noqa: BLE001
-        raise MeldungHttp(status.HTTP_502_BAD_GATEWAY, getattr(fehler, "kennung", "post_fehler")) from fehler
+    except systempost.PostFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_502_BAD_GATEWAY) from fehler
     return ich(person, db)
 
 

@@ -487,20 +487,17 @@ def test_ueberall_abmelden_trennt_es_auch(klient, kein_cookie, bearer):
     assert kein_cookie.get(f"{PFAD}/me", headers=bearer).status_code == 401
 
 
-def test_kennwort_zuruecksetzen_trennt_es_auch(kein_cookie, bearer, db, person):
-    from app.models import Kennwortruecksetzung
-    from app.services import ruecksetzung
+def test_ein_neues_passwort_laesst_das_geraet_angemeldet_bis_alle_trennen(kein_cookie, bearer, db, person):
+    """Kontenmodul (Entwurf, Entscheidung „Neues Passwort“): Ein Link fuer ein neues Passwort beendet die
+    Browser-Anmeldungen, die iPhone-App bleibt; „Alle trennen“ nimmt sie mit."""
+    from app.services import konten_store
+    from app.vendor import nexkonten
 
-    db.add(
-        Kennwortruecksetzung(
-            schluessel_hash=ruecksetzung._hash("probe"),
-            benutzer_id=person.id,
-            laeuft_ab=utcnow() + timedelta(hours=1),
-        )
-    )
-    db.commit()
-    ruecksetzung.einloesen(db, "probe", "ein-neues-kennwort-123")
-
+    store = konten_store.store_fuer(db)
+    link = nexkonten.resets.server_reset_link(store, person.benutzername)
+    nexkonten.resets.use_reset(store, link.token, "A-long-enough-password")
+    assert kein_cookie.get(f"{PFAD}/me", headers=bearer).status_code == 200
+    assert nexkonten.resets.disconnect_all(store, person.id) >= 1
     assert kein_cookie.get(f"{PFAD}/me", headers=bearer).status_code == 401
 
 

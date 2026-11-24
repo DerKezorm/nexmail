@@ -14,6 +14,8 @@ Am 03.09.2026 belegt: ``models.py`` deklariert ``betreff_kern`` mit
 
 from __future__ import annotations
 
+import warnings
+
 import sqlite3
 
 import pytest
@@ -25,7 +27,9 @@ from app.models import Base, Kontakt
 
 
 def _indizes(tabelle: str) -> set[str]:
-    return {i["name"] for i in inspect(engine).get_indexes(tabelle)}
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Skipped unsupported reflection of expression-based index")
+        return {i["name"] for i in inspect(engine).get_indexes(tabelle)}
 
 
 def test_ein_fehlender_index_wird_beim_start_nachgelegt():
@@ -70,7 +74,10 @@ def test_jeder_index_aus_dem_modell_steht_wirklich_in_der_datenbank():
     for tabelle in Base.metadata.sorted_tables:
         if tabelle.name not in vorhandene:
             continue
-        da = {i["name"] for i in pruefer.get_indexes(tabelle.name)}
+        with warnings.catch_warnings():
+            # Der Index auf ``lower(benutzername)`` (Kontenmodul) ist ein Ausdrucksindex; SQLAlchemy kann ihn nicht lesen.
+            warnings.filterwarnings("ignore", message="Skipped unsupported reflection of expression-based index")
+            da = {i["name"] for i in pruefer.get_indexes(tabelle.name)}
         for index in tabelle.indexes:
             gezaehlt += 1
             assert index.name in da, f"{index.name} fehlt in {tabelle.name}."

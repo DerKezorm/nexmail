@@ -192,7 +192,7 @@ def einrichten(
         json={
             "benutzername": benutzername,
             "passwort": passwort,
-            "anzeigename": anzeigename or benutzername.capitalize(),
+            "anzeigename": anzeigename or benutzername,
             "einrichtungscode": EINRICHTUNGSCODE,
         },
     )

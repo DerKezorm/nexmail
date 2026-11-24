@@ -1595,7 +1595,6 @@
     "api_schluessel_ohne_schlagworte": "Dieser Schlüssel darf keine Schlagworte setzen.",
     "aufgabe_ohne_mail": "Die Mail zu dieser Aufgabe ist nicht mehr da.",
     "bedingung_ohne_wert": "Eine Bedingung ohne Wert trifft auf nichts zu.",
-    "benutzername_inzwischen_vergeben": "Dieser Benutzername ist inzwischen vergeben. Der Betreiber muss neu einladen.",
     "benutzername_ungueltig": "2 bis 64 Zeichen: a bis z, Ziffern, Punkt, Bindestrich, Unterstrich.",
     "benutzername_vergeben": "Diesen Benutzernamen hat schon jemand.",
     "betreiber_an_sich_selbst": "Du bist schon Betreiber.",
@@ -1620,7 +1619,6 @@
     "datenschluessel_fehlt": "Der Daten-Schlüssel ist nicht geladen.",
     "einfuhr_nur_in_eigenen_kalender": "Einspielen geht nur in einen Kalender, der in nexmail lebt. Bei einem verbundenen Kalender müssten die Termine erst zum Anbieter, und das kann nexmail noch nicht.",
     "einladung_abgelaufen": "Diese Einladung ist schon benutzt oder gilt nicht mehr.",
-    "einladung_abgelaufen_tage": "Diese Einladung gilt nicht mehr. Bitte um eine neue: Sie ist nach {{tage}} Tagen abgelaufen oder wurde schon benutzt.",
     "einladung_absender_unbekannt": "„{{adresse}}“ gehört zu keinem deiner Postfächer.",
     "einladung_ohne_absender": "Für die Einladung fehlt die Absenderadresse.",
     "einladung_ohne_teilnehmer": "Zu diesem Termin ist niemand eingeladen.",
@@ -1871,7 +1869,8 @@
     "nextasks_eingabe_ungueltig": "nextasks nimmt diese Angabe so nicht an. Prüf Titel, Datum und Uhrzeit.",
     "nextasks_sammlung_unbekannt": "Diese Ansicht gibt es nicht.",
     "eigene_aufgaben_aus": "Die eigene Aufgabenliste von nexmail ist ausgeschaltet. Wähl eine Liste in einer verbundenen Todo-App.",
-    "eigene_aufgaben_ohne_verbindung": "Ohne verbundene Todo-App lässt sich die eigene Aufgabenliste nicht ausschalten."
+    "eigene_aufgaben_ohne_verbindung": "Ohne verbundene Todo-App lässt sich die eigene Aufgabenliste nicht ausschalten.",
+    "benutzer_nicht_gefunden": "Dieses Konto gibt es nicht."
   },
   "sicherheit": {
     "aktiv": "Eingerichtet und aktiv.",

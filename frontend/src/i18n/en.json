@@ -1595,7 +1595,6 @@
     "api_schluessel_ohne_schlagworte": "This key may not tag messages.",
     "aufgabe_ohne_mail": "The message of this task is no longer there.",
     "bedingung_ohne_wert": "A condition without a value matches nothing.",
-    "benutzername_inzwischen_vergeben": "That username has been taken in the meantime. The operator has to invite again.",
     "benutzername_ungueltig": "2 to 64 characters: a to z, digits, dot, hyphen, underscore.",
     "benutzername_vergeben": "Someone has this username already.",
     "betreiber_an_sich_selbst": "You are the operator already.",
@@ -1620,7 +1619,6 @@
     "datenschluessel_fehlt": "The data key is not loaded.",
     "einfuhr_nur_in_eigenen_kalender": "Importing only works into a calendar that lives in nexmail. For a connected calendar the events would have to reach the provider first, and nexmail cannot do that yet.",
     "einladung_abgelaufen": "This invitation has been used already or is not valid any more.",
-    "einladung_abgelaufen_tage": "That invitation is no longer valid. Ask for a new one: it expired after {{tage}} days or has already been used.",
     "einladung_absender_unbekannt": "“{{adresse}}” does not belong to any of your mailboxes.",
     "einladung_ohne_absender": "The invitation has no sender address.",
     "einladung_ohne_teilnehmer": "Nobody is invited to this appointment.",
@@ -1871,7 +1869,8 @@
     "nextasks_eingabe_ungueltig": "nextasks does not take this input. Check the title, date and time.",
     "nextasks_sammlung_unbekannt": "There is no such view.",
     "eigene_aufgaben_aus": "nexmail's own task list is switched off. Pick a list in a connected to-do app.",
-    "eigene_aufgaben_ohne_verbindung": "Without a connected to-do app, nexmail's own task list cannot be switched off."
+    "eigene_aufgaben_ohne_verbindung": "Without a connected to-do app, nexmail's own task list cannot be switched off.",
+    "benutzer_nicht_gefunden": "There is no such account."
   },
   "sicherheit": {
     "aktiv": "Set up and active.",

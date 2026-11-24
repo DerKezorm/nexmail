@@ -77,6 +77,15 @@ def _stellen() -> list[tuple[str, int, str]]:
     return raus
 
 
+def _ueber_das_kontenmodul() -> set[str]:
+    """Die alten Kennungen, unter denen nexmail Ablehnungen des Kontenmoduls nach aussen gibt
+    (``AccountError.public_code`` ueber ``konten_store.ALTE_KENNUNGEN``): genannt, nur nicht als Zeichenkette an der
+    Stelle des Aufrufs."""
+    from app.services.konten_store import ALTE_KENNUNGEN
+
+    return set(ALTE_KENNUNGEN.values())
+
+
 def test_kein_satz_fuer_menschen_im_server():
     """⚠️ **Der eigentliche Wächter.** Was hier steht, steht in der Oberfläche.
 
@@ -119,7 +128,7 @@ def test_jede_kennung_steht_im_katalog():
     ⚠️ **In beiden Sprachen.** Nur eine zu pflegen heisst: In der anderen steht
     ``ordner_name_fehlt`` auf dem Bildschirm.
     """
-    genannt = {text for _, _, text in _stellen() if KENNUNG.match(text)}
+    genannt = {text for _, _, text in _stellen() if KENNUNG.match(text)} | _ueber_das_kontenmodul()
     de, en = _katalog("de"), _katalog("en")
 
     fehlt_de = sorted(genannt - set(de))
@@ -134,7 +143,7 @@ def test_der_katalog_traegt_keine_leichen():
     ⚠️ **Sonst traut sich niemand mehr, etwas zu löschen.** Ein Katalog, in dem
     die Hälfte tot ist, wird nur noch ergänzt.
     """
-    genannt = {text for _, _, text in _stellen() if KENNUNG.match(text)}
+    genannt = {text for _, _, text in _stellen() if KENNUNG.match(text)} | _ueber_das_kontenmodul()
     uebrig = sorted(set(_katalog("de")) - genannt)
     assert not uebrig, f"Im Katalog, aber im Server nirgends genannt: {uebrig}"
 

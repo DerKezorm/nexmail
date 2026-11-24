@@ -9,6 +9,8 @@ wurden, konnte dort ein ganzer Ordner unbemerkt fehlen.
 
 from __future__ import annotations
 
+import os
+
 import io
 import json
 
@@ -141,10 +143,17 @@ def test_falscher_schluessel_ersetzt_nichts(klient):
 
 def test_einspielen_vor_einrichtung_schliesst_sich(klient):
     """Wie beim ersten Konto: offen, bis es einen Benutzer gibt."""
-    antwort = klient.post(
+    ohne_code = klient.post(
         "/api/sicherung/einspielen-vor-einrichtung",
         files={"datei": ("x.zip", b"kaputt", "application/zip")},
         data={"passwort": ARCHIVPASSWORT},
+    )
+    # Seit dem Kontenmodul schuetzt der Einrichtungscode auch diesen Weg.
+    assert ohne_code.status_code == 403 and ohne_code.json()["detail"] == "setup_code_wrong"
+    antwort = klient.post(
+        "/api/sicherung/einspielen-vor-einrichtung",
+        files={"datei": ("x.zip", b"kaputt", "application/zip")},
+        data={"passwort": ARCHIVPASSWORT, "einrichtungscode": os.environ["NEXMAIL_SETUP_TOKEN"]},
     )
     # Offen - der Inhalt ist Unsinn, aber der Weg ist da.
     assert antwort.status_code == 400
