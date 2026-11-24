@@ -45,6 +45,52 @@ TOUCH_SECONDS = 300
 REMEMBER_COOKIE_DAYS = 400
 MARK_COOKIE_DAYS = 365
 MARKS_MAX = 5
+#: A paired device's own name in the list, at most this long.
+DEVICE_LABEL_MAX = 60
+
+#: What a browser's User-Agent may name in the list, the first that fits (Edge and Opera say Chrome too, Chrome says
+#: Safari). The same table and sentence as ``post.letters.describe_browser`` (the modules import nothing from each
+#: other; a test keeps both alike). Nothing else of the header ever reaches a page.
+BROWSERS = (
+    ("Edg/", "Edge"),
+    ("EdgiOS/", "Edge"),
+    ("OPR/", "Opera"),
+    ("SamsungBrowser/", "Samsung Internet"),
+    ("Vivaldi/", "Vivaldi"),
+    ("Firefox/", "Firefox"),
+    ("FxiOS/", "Firefox"),
+    ("CriOS/", "Chrome"),
+    ("Chrome/", "Chrome"),
+    ("Safari/", "Safari"),
+)
+SYSTEMS = (
+    ("iPhone", "iPhone"),
+    ("iPad", "iPad"),
+    ("Android", "Android"),
+    ("CrOS", "ChromeOS"),
+    ("Windows", "Windows"),
+    ("Macintosh", "macOS"),
+    ("Mac OS X", "macOS"),
+    ("Linux", "Linux"),
+)
+_ON = {"de": "{browser} auf {system}", "en": "{browser} on {system}", "fr": "{browser} sous {system}"}
+_UNKNOWN = {"de": "ein unbekannter Browser", "en": "an unknown browser", "fr": "un navigateur inconnu"}
+
+
+def describe_browser(agent: str, language: str = "en") -> str:
+    """"Firefox on Linux" from a raw User-Agent: only the names above, never a word of the header itself."""
+    text = (agent or "")[:512]
+    browser = next((name for mark, name in BROWSERS if mark in text), "")
+    system = next((name for mark, name in SYSTEMS if mark in text), "")
+    language = language if language in _ON else "en"
+    if not browser or not system:
+        return browser or system or _UNKNOWN[language]
+    return _ON[language].format(browser=browser, system=system)
+
+
+def device_label(name: str) -> str:
+    """A paired device keeps the name the app gave it when pairing: one line, printable, short."""
+    return " ".join("".join(char if char.isprintable() else " " for char in (name or "")).split())[:DEVICE_LABEL_MAX]
 
 
 def hash_token(token: str) -> str:
@@ -148,8 +194,12 @@ def finish_setup(store: SessionStore, session: Session) -> None:
     store.touch_session(session.uid, now, _end_for(session.remember, STAGE_FULL, now))
 
 
-def listing(store: SessionStore, account_id: AccountId, current_uid: str = "") -> list[dict[str, object]]:
-    """"Where am I signed in": browsers and paired devices, newest use first, the current one marked."""
+def listing(
+    store: SessionStore, account_id: AccountId, current_uid: str = "", *, language: str = "en"
+) -> list[dict[str, object]]:
+    """"Where am I signed in": browsers and paired devices, newest use first, the current one marked. A browser is
+    named "Firefox on Linux" in ``language`` from the User-Agent the app stored as its label, never with the raw
+    text; a paired device keeps its own name."""
     rows = sorted(
         store.sessions_of(account_id),
         key=lambda row: _aware(row.last_seen_at or row.created_at),
@@ -159,7 +209,7 @@ def listing(store: SessionStore, account_id: AccountId, current_uid: str = "") -
         {
             "uid": row.uid,
             "kind": row.kind,
-            "label": row.label,
+            "label": device_label(row.label) if row.kind == KIND_DEVICE else describe_browser(row.label, language),
             "address": row.address,
             "created_at": row.created_at.isoformat(),
             "last_seen_at": row.last_seen_at.isoformat() if row.last_seen_at else None,

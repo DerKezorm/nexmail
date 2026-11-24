@@ -55,6 +55,7 @@ export const ACCOUNT_ERROR_CODES = [
   'avatar_too_large',
   'avatar_not_a_picture',
   'avatars_busy',
+  'public_url_needed',
 ] as const
 
 export type AccountErrorCode = (typeof ACCOUNT_ERROR_CODES)[number]
@@ -131,6 +132,15 @@ export const SCREENS = {
 
 export type AccountScreen = keyof typeof SCREENS
 
+/** The parts of the account pages, top to bottom, each titled with ``account.<part>``. "Mail me about a new sign-in"
+ * sits under security next to the signed-in devices, not in the profile. ``operatorSignIn``: the operator's switches,
+ * each with its hint (``account.factorRequiredSwitchHint``). */
+export const SECTIONS = {
+  profile: ['picture', 'displayName', 'username', 'email', 'language'],
+  security: ['secondFactor', 'recoveryCodes', 'passkeys', 'sessions', 'newSignInMail', 'signOutEverywhere'],
+  operatorSignIn: ['factorRequiredSwitch', 'passkeysAllowed'],
+} as const satisfies Record<string, readonly string[]>
+
 export interface ScreenOptions {
   /** The app's own autocomplete of a field, e.g. { login: 'username webauthn' } where passkeys sign in too. */
   autoComplete?: Partial<Record<AccountField, string>>
@@ -142,7 +152,9 @@ export function screenFields(screen: AccountScreen, options: ScreenOptions = {})
     const spec = FIELDS[field]
     const optional = (screen === 'profile' || screen === 'operatorInvite') && field === 'displayName'
     const autoComplete = options.autoComplete?.[field] ?? spec.autoComplete
-    return { ...spec, field, autoComplete, required: optional ? false : spec.required }
+    // In the profile the username is changed right there: its hint says only what it is for.
+    const hint = screen === 'profile' && field === 'username' ? 'account.usernameHintProfile' : spec.hint
+    return { ...spec, field, autoComplete, hint, required: optional ? false : spec.required }
   })
 }
 
@@ -154,7 +166,7 @@ export const RESET_DAYS = [1, 7, 30] as const
 export const RESET_DAYS_DEFAULT = 1
 
 /** What the app starts after setup, an invitation or a new password (the server's next). */
-export const NEXT_STEPS = ['session', 'second_factor', 'second_factor_setup', 'sign_in'] as const
+export const NEXT_STEPS = ['session', 'second_factor', 'second_factor_setup', 'sign_in', 'passkey', 'show_codes'] as const
 
 export function normalizeUsername(raw: string): string {
   return raw.trim().toLowerCase()

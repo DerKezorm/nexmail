@@ -55,6 +55,7 @@ CODES = (
     "avatar_too_large",
     "avatar_not_a_picture",
     "avatars_busy",
+    "public_url_needed",
 )
 
 

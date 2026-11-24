@@ -198,8 +198,12 @@ def test_a_new_password_ends_browser_sign_ins_and_lists_what_still_has_access(ap
 
 def test_after_a_new_password_an_account_with_a_second_factor_is_asked_for_it(app: Any, konten: Any) -> None:
     alex = app.seed("alex", email="alex@example.com", password=password(), second_factor="active")
-    kim = app.seed("kim", email="kim@example.com", password=password(), second_factor="required")
-    for typed, expected in (("alex", konten.NEXT_SECOND_FACTOR), ("kim", konten.NEXT_SECOND_FACTOR_SETUP)):
+    cases = [("alex", konten.NEXT_SECOND_FACTOR)]
+    kim = None
+    if app.required_second_factor:
+        kim = app.seed("kim", email="kim@example.com", password=password(), second_factor="required")
+        cases.append(("kim", konten.NEXT_SECOND_FACTOR_SETUP))
+    for typed, expected in cases:
         with app.store() as store:
             token = konten.resets.forgot(store, typed).token
             assert konten.resets.use_reset(store, token, password()).next == expected
@@ -221,6 +225,8 @@ def test_the_operator_link_holds_one_seven_or_thirty_days(app: Any, konten: Any,
 
 
 def test_a_blocked_account_gets_a_link_and_stays_blocked(app: Any, konten: Any, operator: Any) -> None:
+    if not app.blocking:
+        return  # the app blocks no accounts (StandardAdapter.blocking)
     operator_id, secret = operator
     gone = app.seed("gone", password=password(), blocked=True)
     new = password()

@@ -96,6 +96,8 @@ def test_the_language_is_kept_and_read_back(app: Any) -> None:
 
 
 def test_blocked_accounts_count_and_say_so(app: Any) -> None:
+    if not app.blocking:
+        return  # the app blocks no accounts (StandardAdapter.blocking)
     blocked = app.seed("gone", password=password(), blocked=True)
     with app.store() as store:
         assert store.count_accounts() == 1
@@ -276,6 +278,8 @@ def test_an_address_counts_and_is_proven_as_two_answers(app: Any, konten: Any) -
 
 
 def test_finders_return_blocked_accounts_too(app: Any) -> None:
+    if not app.blocking:
+        return  # the app blocks no accounts (StandardAdapter.blocking)
     gone = app.seed("gone", email="gone@example.com", password=password(), blocked=True)
     with app.store() as store:
         assert [account.id for account in store.find_by_username("GONE")] == [gone]
@@ -335,11 +339,13 @@ def test_a_new_password_ends_browser_and_waiting_sign_ins_and_keeps_devices(app:
 def test_the_second_factor_of_an_account_is_told(app: Any, konten: Any) -> None:
     plain = app.seed("plain", password=password())
     active = app.seed("active", password=password(), second_factor="active")
-    required = app.seed("required", password=password(), second_factor="required")
     with app.store() as store:
         assert store.second_factor(plain) == konten.SECOND_FACTOR_NONE
         assert store.second_factor(active) == konten.SECOND_FACTOR_ACTIVE
-        assert store.second_factor(required) == konten.SECOND_FACTOR_REQUIRED
+    if app.required_second_factor:
+        required = app.seed("required", password=password(), second_factor="required")
+        with app.store() as store:
+            assert store.second_factor(required) == konten.SECOND_FACTOR_REQUIRED
 
 
 def test_failures_are_counted_at_the_account_and_a_success_starts_anew(app: Any) -> None:

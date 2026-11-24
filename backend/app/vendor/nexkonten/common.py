@@ -6,16 +6,18 @@ from __future__ import annotations
 import logging
 import re
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from . import config
 from .errors import AccountError
 from .model import (
+    NEXT_PASSKEY,
     NEXT_SECOND_FACTOR,
     NEXT_SECOND_FACTOR_SETUP,
     NEXT_SESSION,
     NEXT_SIGN_IN,
     SECOND_FACTOR_ACTIVE,
+    SECOND_FACTOR_PASSKEY,
     SECOND_FACTOR_REQUIRED,
     Account,
     AccountId,
@@ -43,6 +45,20 @@ def expired(moment: datetime | None) -> bool:
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=UTC)
     return moment <= utcnow()
+
+
+#: How old a sign-in at the provider may be to confirm a change for an account without a password (``actor_confirmed``).
+FRESH_SIGN_IN_MINUTES = 5
+
+
+def fresh_sign_in(signed_in_at: datetime | None, now: datetime | None = None) -> bool:
+    """Whether a sign-in at the provider is fresh enough to confirm a change: at most ``FRESH_SIGN_IN_MINUTES`` old,
+    not in the future. The app passes ``actor_confirmed=fresh_sign_in(<time of the provider's sign-in>)``."""
+    if signed_in_at is None:
+        return False
+    moment = signed_in_at if signed_in_at.tzinfo else signed_in_at.replace(tzinfo=UTC)
+    age = (now or utcnow()) - moment
+    return timedelta(0) <= age <= timedelta(minutes=FRESH_SIGN_IN_MINUTES)
 
 
 def new_token() -> str:
@@ -164,6 +180,8 @@ def next_step(store: Store, account: Account) -> str:
     state = store.second_factor(account.id)
     if state == SECOND_FACTOR_ACTIVE:
         return NEXT_SECOND_FACTOR
+    if state == SECOND_FACTOR_PASSKEY:
+        return NEXT_PASSKEY
     if state == SECOND_FACTOR_REQUIRED:
         return NEXT_SECOND_FACTOR_SETUP
     return NEXT_SESSION

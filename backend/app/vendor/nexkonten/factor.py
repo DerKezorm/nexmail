@@ -40,8 +40,11 @@ from .common import log
 from .errors import AccountError
 from .model import (
     MAIL_FACTOR_RESET,
+    NEXT_SESSION,
+    NEXT_SHOW_CODES,
     SECOND_FACTOR_ACTIVE,
     SECOND_FACTOR_NONE,
+    SECOND_FACTOR_PASSKEY,
     SECOND_FACTOR_REQUIRED,
     Account,
     AccountId,
@@ -154,11 +157,19 @@ def has_factor(store: FactorStore | AppStore, account_id: AccountId) -> bool:
 
 
 def state(store: AppStore, account_id: AccountId) -> str:
-    """What ``Store.second_factor`` answers, for an app that lets the module decide: active, required (the operator
-    asks one of everybody and the account has none), none."""
-    if has_factor(store, account_id):
+    """What ``Store.second_factor`` answers, for an app that lets the module decide.
+
+    ``active``: a time-based code (asked after the password). A passkey counts as a second factor: where the operator
+    asks one of everybody, an account with a passkey and no authenticator answers ``passkey`` (the passkey is the
+    second step, no authenticator is required of it); without the switch a passkey is a way in of its own and the
+    password alone signs in as before (``none``). ``required``: the operator asks one and the account has none."""
+    if store.totp_seed(account_id):
         return SECOND_FACTOR_ACTIVE
-    return SECOND_FACTOR_REQUIRED if store.factor_required() else SECOND_FACTOR_NONE
+    required = store.factor_required()
+    passkeys = getattr(store, "passkeys_of", None)
+    if passkeys is not None and passkeys(account_id):
+        return SECOND_FACTOR_PASSKEY if required else SECOND_FACTOR_NONE
+    return SECOND_FACTOR_REQUIRED if required else SECOND_FACTOR_NONE
 
 
 # --- Confirming a change -------------------------------------------------------------------------------------------
@@ -197,9 +208,11 @@ class Enrolment:
 
 @dataclass(frozen=True)
 class Confirmed:
-    """The factor counts; ``codes`` are shown once (only when the account had none)."""
+    """The factor counts; ``codes`` are shown once (only when the account had none). ``next``: ``show_codes`` when
+    there are codes to show (at sign-in: show them before the session), else ``session``."""
 
     codes: list[str]
+    next: str = NEXT_SESSION
 
 
 _enrolments: dict[AccountId, tuple[str, float]] = {}
@@ -241,7 +254,7 @@ def confirm_totp(
         store.set_recovery(account.id, [stored_form(key, entry) for entry in codes])
     store.commit()
     log().info("Second factor set up name=%s", account.username)
-    return Confirmed(codes)
+    return Confirmed(codes, NEXT_SHOW_CODES if codes else NEXT_SESSION)
 
 
 def new_codes(

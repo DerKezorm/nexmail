@@ -182,3 +182,24 @@ def test_a_waiting_sign_in_is_never_a_session_and_every_session_notes_its_last_u
     with app.store() as store:
         seen = store.session_by_hash(konten.sessions.hash_token(short.token))
     assert _near(seen.last_seen_at, now) and _near(seen.expires_at, now + timedelta(hours=2))
+
+
+AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0 "
+    "Security notice: confirm at https://evil.example.org/verify"
+)
+
+
+def test_the_list_names_the_browser_never_its_raw_text_and_devices_keep_their_name(app: Any, konten: Any) -> None:
+    alex = app.seed("alex", password=password())
+    here = _start(app, konten, alex, label=AGENT)
+    _start(app, konten, alex, kind=konten.model2.KIND_DEVICE, label="Phone of Alex\n")
+    with app.store() as store:
+        listed = {
+            entry["uid"]: entry for entry in konten.sessions.listing(store, alex, here.session.uid, language="de")
+        }
+        access = store.list_access(alex)
+    assert listed[here.session.uid]["label"] == "Firefox auf Linux"
+    assert sorted(entry["label"] for entry in listed.values()) == ["Firefox auf Linux", "Phone of Alex"]
+    for text in [str(entry) for entry in listed.values()] + [repr(entry) for entry in access]:
+        assert "Mozilla/" not in text and "evil" not in text

@@ -57,9 +57,11 @@ from .model import (
     MAIL_NEW_SIGN_IN,
     MAIL_RESET,
     MAIL_USERNAME_CHANGED,
+    NEXT_PASSKEY,
     NEXT_SECOND_FACTOR,
     NEXT_SECOND_FACTOR_SETUP,
     NEXT_SESSION,
+    NEXT_SHOW_CODES,
     NEXT_SIGN_IN,
     PICTURE_NONE,
     PICTURE_OWN,
@@ -69,6 +71,7 @@ from .model import (
     RESET_SERVER,
     SECOND_FACTOR_ACTIVE,
     SECOND_FACTOR_NONE,
+    SECOND_FACTOR_PASSKEY,
     SECOND_FACTOR_REQUIRED,
     Access,
     Account,
@@ -84,7 +87,7 @@ from .model import (
     Taken,
 )
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 __all__ = [
     "CODES",
@@ -101,9 +104,11 @@ __all__ = [
     "MAIL_NEW_SIGN_IN",
     "MAIL_RESET",
     "MAIL_USERNAME_CHANGED",
+    "NEXT_PASSKEY",
     "NEXT_SECOND_FACTOR",
     "NEXT_SECOND_FACTOR_SETUP",
     "NEXT_SESSION",
+    "NEXT_SHOW_CODES",
     "NEXT_SIGN_IN",
     "PICTURE_NONE",
     "PICTURE_OWN",
@@ -113,6 +118,7 @@ __all__ = [
     "RESET_SERVER",
     "SECOND_FACTOR_ACTIVE",
     "SECOND_FACTOR_NONE",
+    "SECOND_FACTOR_PASSKEY",
     "SECOND_FACTOR_REQUIRED",
     "Access",
     "Account",

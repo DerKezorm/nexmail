@@ -73,6 +73,8 @@ def test_an_account_through_a_provider_only_does_not_sign_in_with_a_password(app
 
 
 def test_a_blocked_account_does_not_sign_in(app: Any) -> None:
+    if not app.blocking:
+        return  # the app blocks no accounts (StandardAdapter.blocking)
     secret = password()
     app.seed("alex", password=secret, blocked=True)
     assert app.sign_in("alex", secret) is None
@@ -97,6 +99,8 @@ def test_every_refusal_says_the_same(app: Any, konten: Any) -> None:
 
 
 def test_a_blocked_account_hears_so_only_after_its_right_password(app: Any, konten: Any) -> None:
+    if not app.blocking:
+        return  # the app blocks no accounts (StandardAdapter.blocking)
     secret = password()
     app.seed("alex", password=secret, blocked=True)
     with app.store() as store, pytest.raises(konten.AccountError) as caught:

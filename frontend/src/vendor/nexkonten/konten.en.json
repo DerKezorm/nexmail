@@ -4,6 +4,7 @@
     "displayNameHint": "This is how others see you.",
     "username": "Username",
     "usernameHint": "You sign in with it. You can change it later in your profile.",
+    "usernameHintProfile": "You sign in with it.",
     "usernameRules": "2 to 64 characters: a to z, digits, dot, hyphen, underscore.",
     "email": "Email",
     "emailHint": "Optional. You can also sign in with it and reset a forgotten password.",
@@ -65,6 +66,7 @@
     "recoveryLeft_other": "{{count}} codes left",
     "factorRequired": "Every account on this server needs a second factor. Set it up now.",
     "factorRequiredSwitch": "Require a second factor of everybody",
+    "factorRequiredSwitchHint": "On: every account without a second factor sets one up at its next sign-in. A passkey counts.",
     "factorReset": "Reset the second factor",
     "factorResetHint": "Removes this account's authenticator app, recovery codes and passkeys and signs it out everywhere.",
     "factorResetDevices": "Disconnect the paired devices too (a lost phone stays signed in otherwise)",
@@ -125,6 +127,7 @@
       "avatar_too_large": "The picture is too large.",
       "avatar_not_a_picture": "This is not a picture we can read.",
       "avatars_busy": "Too many pictures at once. Try again in a moment.",
+      "public_url_needed": "The link needs the public address of {{app}}. Enter it in the server settings.",
       "unknown": "That did not work. Try again."
     }
   }

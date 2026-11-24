@@ -4,6 +4,7 @@
     "displayNameHint": "So sehen dich andere.",
     "username": "Benutzername",
     "usernameHint": "Damit meldest du dich an. Du kannst ihn später im Profil ändern.",
+    "usernameHintProfile": "Damit meldest du dich an.",
     "usernameRules": "2 bis 64 Zeichen: a bis z, Ziffern, Punkt, Bindestrich, Unterstrich.",
     "email": "E-Mail",
     "emailHint": "Freiwillig. Damit kannst du dich auch anmelden und ein vergessenes Passwort zurücksetzen.",
@@ -65,6 +66,7 @@
     "recoveryLeft_other": "Noch {{count}} Codes übrig",
     "factorRequired": "Auf diesem Server braucht jedes Konto einen zweiten Faktor. Richte ihn jetzt ein.",
     "factorRequiredSwitch": "Zweiten Faktor für alle verlangen",
+    "factorRequiredSwitchHint": "An: Jedes Konto ohne zweiten Faktor richtet ihn bei der nächsten Anmeldung ein. Ein Passkey zählt.",
     "factorReset": "Zweiten Faktor zurücksetzen",
     "factorResetHint": "Entfernt Authenticator-App, Wiederherstellungscodes und Passkeys dieses Kontos und meldet es überall ab.",
     "factorResetDevices": "Gekoppelte Geräte auch trennen (ein verlorenes Handy ist sonst noch angemeldet)",
@@ -125,6 +127,7 @@
       "avatar_too_large": "Das Bild ist zu groß.",
       "avatar_not_a_picture": "Das ist kein Bild, das wir lesen können.",
       "avatars_busy": "Gerade werden zu viele Bilder verarbeitet. Versuch es gleich noch einmal.",
+      "public_url_needed": "Für den Link braucht {{app}} seine öffentliche Adresse. Trag sie in den Einstellungen des Servers ein.",
       "unknown": "Das hat nicht geklappt. Versuch es noch einmal."
     }
   }

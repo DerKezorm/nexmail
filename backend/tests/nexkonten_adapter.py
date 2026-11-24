@@ -36,6 +36,11 @@ class Adapter(StandardAdapter):
     package = "app.vendor.nexkonten"
     #: Seit Teil 2 hat nexmail eine Kontosperre: 10 Fehlversuche, 15 Minuten (``konten_store.SPERRE_NACH``).
     lock_after: int | None = 10
+    #: Was nexmail nicht hat (konten 0.3.2): keine gesperrten Konten (ein Konto ist da oder entfernt), kein zweiter
+    #: Faktor je Konto (nur der Schalter fuer alle), keine Einladungen fuer mehrere.
+    blocking = False
+    required_second_factor = False
+    reusable_invites = False
 
     def start(self) -> None:
         from app.services import anmeldebremse, konten_store
@@ -72,9 +77,9 @@ class Adapter(StandardAdapter):
         second_factor: str = "none",
     ) -> Any:
         if blocked:
+            # Nur noch Vertragstests ohne Abfrage von ``blocking`` kommen hierher (test_no_link_goes_out_where_it_must_not
+            # mit ``blocked``, konten 0.3.2): nexmail hat keine gesperrten Konten.
             pytest.skip("nexmail blocks no accounts (an account is there or removed)")
-        if second_factor == "required":
-            pytest.skip("nexmail requires a second factor only by the switch for everybody, not per account")
         from app.db import SessionLocal
         from app.models import Benutzer, utcnow
         from app.services import benutzer as benutzerdienst
@@ -99,6 +104,7 @@ class Adapter(StandardAdapter):
                 from app.services import zwei_faktor
 
                 zwei_faktor.geheimnis_speichern(person, zwei_faktor.geheimnis_erzeugen())
+                person.totp_bestaetigt = True  # speichern setzt ein neues Geheimnis auf unbestaetigt
             db.commit()
             return person.id
 
@@ -113,8 +119,6 @@ class Adapter(StandardAdapter):
     ) -> str:
         """As ``POST /api/benutzer/einladungen`` makes it (``services/einladung.aussprechen``); ``username`` only
         for an invitation of 0.33.0, which fixed one. nexmail has no reusable invitations."""
-        if reusable:
-            pytest.skip("nexmail has no invitations several people may follow")
         from app.db import SessionLocal
         from app.services import einladung as einladungsdienst
 

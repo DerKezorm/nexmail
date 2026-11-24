@@ -40,6 +40,9 @@ PICTURE_PROVIDER = "provider"
 SECOND_FACTOR_NONE = "none"
 SECOND_FACTOR_ACTIVE = "active"
 SECOND_FACTOR_REQUIRED = "required"
+#: Since 0.3.2: the operator asks a second factor of everybody and the account's is a passkey (no authenticator app):
+#: after the password or the provider the passkey is the second step.
+SECOND_FACTOR_PASSKEY = "passkey"
 
 #: ``common.next_step``: what the app starts after setup, an invitation, a new password, a sign-in. ``NEXT_SESSION``: a
 #: full session; ``NEXT_SECOND_FACTOR``: ask the code of the second factor first; ``NEXT_SECOND_FACTOR_SETUP``: a
@@ -49,6 +52,10 @@ NEXT_SESSION = "session"
 NEXT_SECOND_FACTOR = "second_factor"
 NEXT_SECOND_FACTOR_SETUP = "second_factor_setup"
 NEXT_SIGN_IN = "sign_in"
+#: Since 0.3.2: ``NEXT_PASSKEY`` the second step is a passkey (``factor.finish_waiting_by_passkey``);
+#: ``NEXT_SHOW_CODES`` a second factor was just set up at sign-in: show the recovery codes once, then the session.
+NEXT_PASSKEY = "passkey"
+NEXT_SHOW_CODES = "show_codes"
 
 #: ``Reset.origin``: who made a link for a new password. A person on the sign-in page, an operator under Accounts, or
 #: the emergency command on the server (no operator signed in).

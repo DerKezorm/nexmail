@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from urllib.parse import quote, urlsplit
 
 from .common import (
     add_account,
@@ -84,10 +85,31 @@ class Accepted:
     next: str = ""
 
 
-def invite_values(store: Store, *, email: str, display_name: str, existing_ok: bool = False) -> tuple[str, str]:
+def public_url_needed() -> AccountError:
+    return AccountError(
+        "public_url_needed", "An invitation needs the public address of the app: enter it in the server settings.", 409
+    )
+
+
+def invite_link(public_url: str, path: str, token: str) -> str:
+    """The link of an invitation (or any link the app mails): the public address, the app's path, the token.
+    ``public_url_needed`` without a public address: a link to nowhere helps nobody."""
+    base = (public_url or "").strip().rstrip("/")
+    parts = urlsplit(base)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise public_url_needed()
+    return f"{base}/{path.strip('/')}/{quote(token, safe='')}"
+
+
+def invite_values(
+    store: Store, *, email: str, display_name: str, existing_ok: bool = False, public_url: str | None = None
+) -> tuple[str, str]:
     """What the operator typed for a new invitation, checked: an address in the right form that no account has
     (``existing_ok``: an invitation into a space may go to an account's address, it joins with it), and a display
-    name as people write it."""
+    name as people write it. ``public_url`` (since 0.3.2): the app's public address; empty refuses the invitation
+    (``public_url_needed``), None leaves it unchecked as before."""
+    if public_url is not None and not urlsplit((public_url or "").strip()).hostname:
+        raise public_url_needed()
     address = clean_email(email)
     if address and not existing_ok and email_taken(store, address):
         raise AccountError("email_taken", "This address belongs to another account already.", 409)

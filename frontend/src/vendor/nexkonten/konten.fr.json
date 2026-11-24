@@ -4,6 +4,7 @@
     "displayNameHint": "C'est ainsi que les autres vous voient.",
     "username": "Nom d'utilisateur",
     "usernameHint": "Vous vous connectez avec. Vous pourrez le modifier plus tard dans votre profil.",
+    "usernameHintProfile": "Vous vous connectez avec.",
     "usernameRules": "2 à 64 caractères : a à z, chiffres, point, trait d'union, tiret bas.",
     "email": "Courriel",
     "emailHint": "Facultatif. Vous pouvez aussi vous connecter avec et réinitialiser un mot de passe oublié.",
@@ -65,6 +66,7 @@
     "recoveryLeft_other": "Il reste {{count}} codes",
     "factorRequired": "Chaque compte de ce serveur a besoin d'un second facteur. Configurez-le maintenant.",
     "factorRequiredSwitch": "Exiger un second facteur de tous",
+    "factorRequiredSwitchHint": "Activé : chaque compte sans second facteur en configure un à sa prochaine connexion. Une clé d'accès compte.",
     "factorReset": "Réinitialiser le second facteur",
     "factorResetHint": "Retire l'application d'authentification, les codes de récupération et les clés d'accès de ce compte et le déconnecte partout.",
     "factorResetDevices": "Dissocier aussi les appareils associés (sinon un téléphone perdu reste connecté)",
@@ -125,6 +127,7 @@
       "avatar_too_large": "La photo est trop grande.",
       "avatar_not_a_picture": "Ce n'est pas une image que nous pouvons lire.",
       "avatars_busy": "Trop de photos en même temps. Réessayez dans un instant.",
+      "public_url_needed": "Le lien a besoin de l'adresse publique de {{app}}. Saisissez-la dans les réglages du serveur.",
       "unknown": "Cela n'a pas fonctionné. Réessayez."
     }
   }

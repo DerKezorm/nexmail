@@ -55,6 +55,14 @@ class StandardAdapter:
     package = "app.vendor.nexkonten"
     #: Wrong passwords until the app locks an account; None for an app without a lock.
     lock_after: int | None = 10
+    #: What the app has (since 0.3.2). An app without it says so here; the tests that need it pass over that part
+    #: instead of being skipped, and the rest of each test still runs. ``blocking``: accounts can be blocked (the
+    #: operator's switch; an app that only removes accounts has none). ``required_second_factor``: a second factor
+    #: can be required of a single account (beyond the switch for everybody). ``reusable_invites``: invitations several
+    #: may follow (into a space).
+    blocking: bool = True
+    required_second_factor: bool = True
+    reusable_invites: bool = True
 
     def start(self) -> None:
         """APP: an empty app with a fresh database, ``nexkonten.configure(...)`` as at start-up."""

@@ -371,12 +371,13 @@ class KontenStore:
         return int(weg)
 
     def second_factor(self, account_id: AccountId) -> str:
-        zeile = self.db.get(Benutzer, str(account_id))
-        if zeile is not None and (zeile.totp_bestaetigt or self.passkeys_of(account_id)):
-            return nexkonten.SECOND_FACTOR_ACTIVE
-        if zeile is not None and self.factor_required():
-            return nexkonten.SECOND_FACTOR_REQUIRED
-        return nexkonten.SECOND_FACTOR_NONE
+        """Entscheidet das Modul (``factor.state``, konten 0.3.2): ``active`` mit Authenticator, ``passkey`` bei „fuer
+        alle verlangen“ mit Passkey und ohne Authenticator, ohne den Schalter dann ``none``."""
+        from ..vendor.nexkonten import factor
+
+        if self.db.get(Benutzer, str(account_id)) is None:
+            return nexkonten.SECOND_FACTOR_NONE
+        return factor.state(self, account_id)
 
     # --- Bilder --------------------------------------------------------------------------------------------------
     def set_provider_picture(self, account_id: AccountId, picture: Picture) -> bool:

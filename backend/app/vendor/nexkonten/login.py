@@ -100,10 +100,11 @@ def attempt_key(store: Store, typed: str, sender: str) -> tuple[str, str]:
     address, any case, one count) or, naming none, what was typed (``typed:<hash>``). The app counts and checks
     **both**, for every input, and refuses when either is full."""
     account = resolve_login(store, typed)
-    if account is not None:
-        return f"sender:{sender}", f"account:{account.id}"
     digest = hashlib.sha256((typed or "").strip().lower().encode("utf-8")).hexdigest()[:24]
-    return f"sender:{sender}", f"typed:{digest}"
+    target = f"account:{account.id}" if account is not None else f"typed:{digest}"
+    # An unknown sender never shares one count with every other unknown sender: it counts with what it aims at.
+    origin = (sender or "").strip() or f"none:{target}"
+    return f"sender:{origin}", target
 
 
 
@@ -139,7 +140,7 @@ def authenticate(
             if not known:
                 store.note_failure(account.id)
                 store.commit()
-            log().warning("Sign-in failed, wrong password name=%s", account.username)
+            log().warning("Sign-in failed, wrong credentials name=%s", account.username)
             raise wrong_credentials(account.id)
     if account.blocked:
         log().warning("Sign-in refused, account blocked name=%s", account.username)

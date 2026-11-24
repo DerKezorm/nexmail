@@ -92,7 +92,7 @@ def forgot(store: Store, typed: str) -> Mail | None:
     token = new_token()
     store.start_reset(account.id, token, utcnow() + timedelta(hours=SELF_HOURS), created_by=None, origin=RESET_SELF)
     store.commit()
-    log().info("Password link made name=%s by=the person", account.username)
+    log().info("Reset link made name=%s by=the person", account.username)
     return Mail(MAIL_RESET, account.email, account.id, account.username, account.display_name, token, SELF_HOURS)
 
 
@@ -115,7 +115,7 @@ def forgot_in_background(
             try:
                 send(letter)
             except Exception as error:  # noqa: BLE001 (nobody waits for this answer; the link must not stay)
-                log().warning("Password link not mailed name=%s: %r", letter.username, error)
+                log().warning("Reset link not mailed name=%s: %r", letter.username, error)
                 reset_mail_failed(store, letter.account_id)
 
     later(job)
@@ -156,7 +156,7 @@ def reset_link(
             "password_login_off", "Signing in by password is off; this account signs in through a provider.", 409
         )
     token, expires_at = _link(store, target, days, actor.id, RESET_OPERATOR)
-    log().warning("Password link made name=%s by=%s", target.username, actor.username)
+    log().warning("Reset link made name=%s by=%s", target.username, actor.username)
     if mail and _mailable(target):
         letter = Mail(MAIL_RESET, target.email, target.id, target.username, target.display_name, token, days * 24)
         return ResetLink(expires_at, mail=letter)
@@ -171,7 +171,7 @@ def server_reset_link(store: Store, who: str, *, days: int = OPERATOR_DAYS_DEFAU
     if target is None:
         raise AccountError("not_found", "No such account.", 404)
     token, expires_at = _link(store, target, days, None, RESET_SERVER)
-    log().warning("Password link made name=%s by=the command on the server", target.username)
+    log().warning("Reset link made name=%s by=the command on the server", target.username)
     return ResetLink(expires_at, token=token)
 
 
@@ -227,7 +227,7 @@ def use_reset(store: Store, token: str, password: str, *, password_login: bool =
         renew(account.id)
     store.commit()
     factor.drop_waiting(account.id)
-    log().warning("Password set through a link name=%s origin=%s", account.username, reset.origin)
+    log().warning("Reset link used name=%s origin=%s", account.username, reset.origin)
     tell(store, Event(EVENT_PASSWORD_SET, account.id, details={"origin": reset.origin}))
     account = reload(store, account.id)
     return ResetDone(account, reset.origin, next_step(store, account), store.list_access(account.id))

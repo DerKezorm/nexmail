@@ -26,7 +26,8 @@ def test_the_operator_cannot_invite_an_address_another_account_has(app: Any, kon
             konten.invites.invite_values(store, email="BOSS@example.com", display_name="x")
         assert caught.value.code == "email_taken"
         assert konten.invites.invite_values(store, email=" new@example.com ", display_name=" Neu ") == (
-            "new@example.com", "Neu",
+            "new@example.com",
+            "Neu",
         )
 
 
@@ -155,9 +156,7 @@ def test_an_invitation_holds_one_seven_or_thirty_days(app: Any, konten: Any) -> 
     assert caught.value.code == "invalid_days"
 
 
-def test_a_display_name_another_account_shows_is_refused_and_not_offered(
-    app: Any, konten: Any, operator: Any
-) -> None:
+def test_a_display_name_another_account_shows_is_refused_and_not_offered(app: Any, konten: Any, operator: Any) -> None:
     app.seed("kim", display_name="Kim Lee", password=password())
     token = app.make_invite(display_name="kim lee")
     with app.store() as store:
@@ -206,6 +205,8 @@ def test_after_an_invitation_the_app_learns_the_next_step(app: Any, konten: Any,
 def test_the_address_of_an_invitation_several_may_follow_does_not_count_without_a_link(
     app: Any, konten: Any, operator: Any
 ) -> None:
+    if not app.reusable_invites:
+        return  # the app has no invitations several may follow
     token = app.make_invite(email="team@example.com", reusable=True)
     with app.store() as store:
         accepted = _accept(konten, store, token, email="team@example.com", mail=True)
@@ -219,8 +220,9 @@ def test_an_invitation_mailed_by_the_app_proves_its_address(app: Any, konten: An
     assert accepted.account.email_proven and accepted.account.email_confirmed
     other = app.make_invite(email="other@example.com")
     with app.store() as store:
-        changed = _accept(konten, store, other, username="second", display_name="Second", email="x@example.com",
-                          proven=True)
+        changed = _accept(
+            konten, store, other, username="second", display_name="Second", email="x@example.com", proven=True
+        )
     assert not changed.account.email_proven
 
 
@@ -235,3 +237,19 @@ def test_a_name_an_older_invitation_fixed_is_kept_as_it_was(app: Any, konten: An
     with app.store() as store, pytest.raises(konten.AccountError) as caught:
         _accept(konten, store, other, username="_free", display_name="Free", email="")
     assert caught.value.code == "username_invalid"
+
+
+def test_without_a_public_address_there_is_no_invitation(app: Any, konten: Any, operator: Any) -> None:
+    """The link would lead nowhere: refused with a hint where the address is entered."""
+    with app.store() as store:
+        for public_url in ("", "   ", "notes.example.com"):
+            with pytest.raises(konten.AccountError) as caught:
+                konten.invites.invite_values(store, email="", display_name="Kim", public_url=public_url)
+            assert caught.value.code == "public_url_needed" and caught.value.status == 409
+        assert konten.invites.invite_values(
+            store, email="kim@example.com", display_name="Kim", public_url="https://notes.example.com"
+        ) == ("kim@example.com", "Kim")
+    with pytest.raises(konten.AccountError):
+        konten.invites.invite_link("", "invite", "abc")
+    link = konten.invites.invite_link("https://notes.example.com/", "/invite/", "a/b")
+    assert link == "https://notes.example.com/invite/a%2Fb"

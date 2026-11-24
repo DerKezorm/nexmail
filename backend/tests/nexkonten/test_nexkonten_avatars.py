@@ -42,6 +42,8 @@ def test_a_picture_is_kept_as_a_square_webp_and_every_signed_in_account_sees_it(
 def test_the_picture_of_a_blocked_account_only_the_operator_sees(
     app: Any, konten: Any, operator: tuple[Any, str]
 ) -> None:
+    if not app.blocking:
+        return  # the app blocks no accounts (StandardAdapter.blocking)
     boss, _ = operator
     gone = app.seed("gone", password=password(), blocked=True)
     kim = app.seed("kim", password=password())

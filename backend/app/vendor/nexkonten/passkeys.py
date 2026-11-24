@@ -71,8 +71,14 @@ class Party:
     origin: str
 
 
-def party(public_url: str) -> Party:
-    """The relying party of an app from its public address (``https://notes.example.com``)."""
+def party(public_url: str, origin: str = "") -> Party:
+    """The relying party of an app from its public address (``https://notes.example.com``). ``origin`` is the
+    ``Origin`` header of the request: a page on ``localhost`` (a secure context without https, often on another port
+    than the public address) gets exactly that host and port; any other origin changes nothing. The page shows the
+    passkey section only where ``window.isSecureContext`` holds."""
+    seen = urlsplit((origin or "").strip())
+    if (seen.hostname or "").lower() == LOCALHOST and seen.scheme in ("http", "https") and not seen.path.strip("/"):
+        public_url = f"{seen.scheme}://{seen.netloc}"
     parts = urlsplit(public_url.strip())
     host = (parts.hostname or "").lower()
     if not host or parts.scheme not in ("http", "https"):
@@ -108,9 +114,10 @@ def _keep(table: OrderedDict[str, _Held], key: str, held: _Held, per_owner: int)
     now = time.monotonic()
     with _lock:
         _drop_expired(table, now)
-        mine = [old for old, entry in table.items() if entry.owner == held.owner]
-        for old in mine[: max(0, len(mine) - per_owner + 1)]:
-            table.pop(old, None)
+        if held.owner:  # without a sender only the whole memory limits: no shared count for the unknown
+            mine = [old for old, entry in table.items() if entry.owner == held.owner]
+            for old in mine[: max(0, len(mine) - per_owner + 1)]:
+                table.pop(old, None)
         while len(table) >= MAX_OPEN:
             table.popitem(last=False)
         table[key] = held

@@ -4,6 +4,7 @@ sign-in that waits for the code; the operator's reset and switch; and what the o
 from __future__ import annotations
 
 import time
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -180,6 +181,8 @@ def test_the_waiting_sign_in_takes_the_code_and_ends_after_five_wrong_ones(app: 
 
 
 def test_a_blocked_account_gets_no_further_with_its_code(app: Any, konten: Any) -> None:
+    if not app.blocking:
+        return  # the app blocks no accounts (StandardAdapter.blocking)
     gone = app.seed("gone", password=password(), blocked=True)
     seed = konten.factor.new_seed()
     with app.store() as store:
@@ -250,3 +253,35 @@ def test_an_account_without_a_password_replaces_its_authenticator_only_after_a_f
         konten.factor.confirm_totp(store, viaprovider, code, actor_confirmed=True)
     with app.store() as store:
         assert store.totp_seed(viaprovider) == enrolment.seed
+
+
+def test_a_factor_set_up_at_sign_in_shows_its_codes_before_the_session(app: Any, konten: Any) -> None:
+    """The operator asks a second factor of everybody: the session that can only set it up gets the ten codes and
+    ``show_codes``; then a full session."""
+    alex = app.seed("alex", password=password())
+    app.switch("factor_required", True)
+    with app.store() as store:
+        assert konten.common.next_step(store, store.get_account(alex)) == konten.NEXT_SECOND_FACTOR_SETUP
+        started = konten.sessions.start(store, alex, cookie_name="s", secure=True, stage=konten.model2.STAGE_SETUP)
+        store.commit()
+    with app.store() as store:
+        enrolment = konten.factor.begin_totp(store, alex, issuer=ISSUER)
+        code = konten.factor.code_at(enrolment.seed, time.time())
+        done = konten.factor.confirm_totp(store, alex, code, actor_confirmed=True)
+    assert done.next == konten.NEXT_SHOW_CODES and len(done.codes) == konten.factor.RECOVERY_CODES
+    with app.store() as store:
+        konten.sessions.finish_setup(store, started.session)
+        store.commit()
+    with app.store() as store:
+        assert konten.sessions.current(store, started.token).stage == konten.model2.STAGE_FULL
+        fresh = konten.factor.new_codes(store, alex, actor_confirmed=True)
+    assert len(fresh) == konten.factor.RECOVERY_CODES
+
+
+def test_a_fresh_sign_in_at_the_provider_is_at_most_five_minutes_old(konten: Any) -> None:
+    now = konten.common.utcnow()
+    assert konten.common.FRESH_SIGN_IN_MINUTES == 5
+    assert konten.common.fresh_sign_in(now - timedelta(minutes=4, seconds=59), now) is True
+    assert konten.common.fresh_sign_in(now - timedelta(minutes=5, seconds=1), now) is False
+    assert konten.common.fresh_sign_in(now + timedelta(minutes=1), now) is False
+    assert konten.common.fresh_sign_in(None, now) is False
