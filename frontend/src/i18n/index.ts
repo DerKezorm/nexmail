@@ -24,6 +24,7 @@ import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import { oidcVariables, oidcWording, type OidcWording } from '../vendor/nexoidc/oidc'
 import { kontenVariables } from '../vendor/nexkonten/konten'
+import { postVariables } from '../vendor/nexpost/post'
 
 export const SPRACHEN = [
   { code: 'de', name: 'Deutsch' },
@@ -40,9 +41,19 @@ const GEMERKT = 'nexmail.sprache'
    fällt erst zur Laufzeit auf. */
 const LADER: Record<Sprachcode, () => Promise<{ default: object }>> = {
   de: () =>
-    mitAnmeldung(import('./de.json'), import('../vendor/nexoidc/oidc.de.json'), import('../vendor/nexkonten/konten.de.json')),
+    mitAnmeldung(
+      import('./de.json'),
+      import('../vendor/nexoidc/oidc.de.json'),
+      import('../vendor/nexkonten/konten.de.json'),
+      import('../vendor/nexpost/post.de.json'),
+    ),
   en: () =>
-    mitAnmeldung(import('./en.json'), import('../vendor/nexoidc/oidc.en.json'), import('../vendor/nexkonten/konten.en.json')),
+    mitAnmeldung(
+      import('./en.json'),
+      import('../vendor/nexoidc/oidc.en.json'),
+      import('../vendor/nexkonten/konten.en.json'),
+      import('../vendor/nexpost/post.en.json'),
+    ),
 }
 
 /* ⚠️ **Die Wortlaute der Anmeldung über Anbieter kommen aus dem gemeinsamen Modul** (`vendor/nexoidc`): in jeder nex-App dieselben Sätze unter `oidc.*`, eingemischt über
@@ -51,8 +62,9 @@ async function mitAnmeldung(
   eigen: Promise<{ default: object }>,
   modul: Promise<{ default: OidcWording }>,
   konten: Promise<{ default: object }>,
+  post: Promise<{ default: object }>,
 ): Promise<{ default: object }> {
-  const [app, oidc, kontenmodul] = await Promise.all([eigen, modul, konten])
+  const [app, oidc, kontenmodul, postmodul] = await Promise.all([eigen, modul, konten, post])
   /* ⚠️ **Auch die Wortlaute des Kontenmoduls kommen aus dem Modul** (`vendor/nexkonten`, Namensraum `account`):
      Anmelden, Einrichten, Einladung, Profil und Passwort vergessen sagen in jeder nex-App dasselbe. nexmails eigene
      Dateien tragen keinen Schlüssel `account`. */
@@ -61,6 +73,8 @@ async function mitAnmeldung(
       ...app.default,
       ...oidcWording(oidc.default, { singleAccount: false, invitations: true }),
       ...kontenmodul.default,
+      // Die Wortlaute des Mailmoduls (Systempostausgang), Namensraum `mail`.
+      ...postmodul.default,
     },
   }
 }
@@ -82,7 +96,7 @@ export const GRUNDEINSTELLUNG = {
   // Kontenmoduls.
   interpolation: {
     escapeValue: false,
-    defaultVariables: { ...oidcVariables('nexmail'), ...kontenVariables('nexmail') },
+    defaultVariables: { ...oidcVariables('nexmail'), ...kontenVariables('nexmail'), ...postVariables('nexmail') },
   },
 }
 

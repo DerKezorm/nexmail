@@ -310,6 +310,12 @@ export function Postausgang() {
           ]}
         />
       </div>
+      {/* Mailmodul: ohne Verschlüsselung erlaubt, aber mit deutlicher Warnung (Passwort und Links im Klartext). */}
+      {f.sicherheit === 'keine' && (
+        <p role="note" className="mb-0 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-[12px] text-warning-text">
+          {t('mail.warningUnencrypted')}
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <Input
