@@ -18,6 +18,13 @@ Entwurf in nexlore (`Development/nexapps/Baupläne/Entwurf Konten, Einrichtung u
 | Oberfläche | Anmelden, Einrichtung, Einladung, Passwort vergessen und neu, Adresse bestätigen (neu, `pages/AdressePage.tsx`), Profil, Benutzerverwaltung, „Diese Geräte haben noch Zugriff“ nach der Anmeldung (`components/NeuesPasswort.tsx`); „Passwort“ statt „Kennwort“ in allen Texten |
 | Tests | Vertrag `tests/nexkonten` (149, 10 übersprungen, s. unten), `tests/nexoidc`, `tests/test_konten_routen.py`, Test „Bestand“ ohne `xfail` |
 
+**Geprüft am 24.11.2026:** Backend voll einmal (`pytest`, ohne xdist: 2935 bestanden, 14 übersprungen, 6 rot, alle
+sechs danach behoben und ihre Dateien erneut grün), Vertrag `tests/nexkonten` 149 grün und 10 übersprungen, Test
+„Bestand“ 55 grün und gegen vier Mutationen am neuen Code geprüft (Rückgabecode 1, ohne Mutation 0), Frontend
+`npx vitest run --maxWorkers=2` 259 grün, `npm run build` grün samt `tools/gewicht-pruefen.mjs`. `npm run lint` läuft in
+nexmail nicht: Es gibt weder `eslint` in den Abhängigkeiten noch eine Konfiguration (schon auf `main` so). Kein
+Playwright, keine Server; die Oberflächentests unter `frontend/tests` suchen noch alte Beschriftungen.
+
 **Wo das Modul nicht passte** (mit Vorschlag an `bauplaene/konten`):
 
 1. **Vertragstests setzen Dinge voraus, die nexmail nicht hat:** gesperrte Konten (6 Tests), ein verlangter zweiter
