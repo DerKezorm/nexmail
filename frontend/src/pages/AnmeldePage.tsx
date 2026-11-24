@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { KeyRound } from 'lucide-react'
+import { Fingerprint, KeyRound } from 'lucide-react'
 import { appPfad } from '../lib/basis'
 import { Torbogen } from '../components/Torbogen'
 import { Button, Checkbox, Input } from '../ds'
@@ -19,6 +19,7 @@ import { servermeldung } from '../lib/servermeldung'
 import type { Einrichtung, Schritt } from '../api/client'
 import { oidcErrorKey } from '../vendor/nexoidc/oidc'
 import { EMAIL_MAX } from '../vendor/nexkonten/konten'
+import { alsJson, anmeldeOptionen, passkeyMoeglich } from '../lib/passkey'
 
 type Lage = 'passwort' | 'code' | 'wiederherstellung' | 'einrichten'
 
@@ -61,6 +62,16 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
     password: true,
   })
   const [betreiberWeg, setBetreiberWeg] = useState(false)
+  // „Mit Passkey anmelden“ (Kontenmodul Teil 2): nur, wenn der Betreiber sie erlaubt, nexmail unter https läuft und
+  // der Browser sie kann.
+  const [passkeyAn, setPasskeyAn] = useState(false)
+  useEffect(() => {
+    if (!passkeyMoeglich()) return
+    api
+      .holen<{ an: boolean }>('/api/auth/passkey')
+      .then((s) => setPasskeyAn(s.an))
+      .catch(() => undefined)
+  }, [])
   useEffect(() => {
     api
       .holen<{ providers: Array<{ slug: string; label: string }>; password: boolean }>('/api/oidc/anmeldeseite')
@@ -100,6 +111,18 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
       return t('anmeldung.zu_viele', { s: f.wartenSekunden ?? 60 })
     }
     return servermeldung(f, t('anmeldung.fehler_allgemein'))
+  }
+
+  async function mitPasskey() {
+    await schritt(async () => {
+      const optionen = await api.senden<Record<string, unknown>>('/api/auth/passkey/start', {})
+      const antwort = await navigator.credentials.get({ publicKey: anmeldeOptionen(optionen) })
+      if (!antwort) throw new Error('passkey_invalid')
+      return api.senden<Schritt>('/api/auth/passkey', {
+        credential: alsJson(antwort as PublicKeyCredential),
+        angemeldet_bleiben: bleiben,
+      })
+    })
   }
 
   async function schritt(aufruf: () => Promise<Schritt>) {
@@ -207,6 +230,18 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
               </a>
             ))}
           </div>
+        )}
+        {passkeyAn && (
+          <Button
+            variant="secondary"
+            size="lg"
+            fullWidth
+            className="mt-3"
+            iconLeft={<Fingerprint className="size-4" />}
+            onClick={() => void mitPasskey()}
+          >
+            {t('account.passkeySignIn')}
+          </Button>
         )}
         {!passwortformDa && (
           <button

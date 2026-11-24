@@ -48,6 +48,7 @@ from .routers import (
     bilder as bilder_router,
     oidc as oidc_router,
     auth,
+    passkeys as passkeys_router,
     benutzer as benutzer_router,
     einladung as einladung_router,
     einstellungen,
@@ -560,6 +561,7 @@ NUR_ANGEMELDET = [Depends(angemeldet)]
 app.include_router(health.router)
 app.include_router(setup.router)
 app.include_router(auth.router)
+app.include_router(passkeys_router.router)
 app.include_router(sitzungen.router, dependencies=NUR_ANGEMELDET)
 app.include_router(einstellungen.router, dependencies=NUR_ANGEMELDET)
 app.include_router(ki_router.router, dependencies=NUR_ANGEMELDET)

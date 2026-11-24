@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { KeyRound, LogOut, Monitor, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { Fingerprint, KeyRound, LogOut, Monitor, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import type { Ich } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
@@ -19,6 +19,20 @@ import { Anmeldeanbieter } from '../components/Anmeldeanbieter'
 import { Badge, Button, Dialog, IconButton, Input, Switch } from '../ds'
 import { ZweiterFaktor } from '../components/ZweiterFaktor'
 import { servermeldung } from '../lib/servermeldung'
+import { alsJson, anlegeOptionen, geraetename, passkeyMoeglich } from '../lib/passkey'
+
+interface Passkey {
+  uid: string
+  name: string
+  created_at: string
+  last_used_at: string | null
+}
+
+interface Passkeys {
+  erlaubt: boolean
+  grund: string
+  passkeys: Passkey[]
+}
 
 interface Geraet {
   id: string
@@ -41,13 +55,49 @@ export function Sicherheit({
   const [geraete, setGeraete] = useState<Geraet[] | null>(null)
   const [fehler, setFehler] = useState('')
 
+  const [passkeys, setPasskeys] = useState<Passkeys | null>(null)
+
   const laden = useCallback(async () => {
     setGeraete(await api.holen<Geraet[]>('/api/sitzungen'))
+    setPasskeys(await api.holen<Passkeys>('/api/auth/passkeys').catch(() => null))
   }, [])
 
   useEffect(() => {
     void laden().catch(() => setGeraete([]))
   }, [laden])
+
+  /** Das eigene Passwort für einen Schritt, der es verlangt; ein Konto ohne Passwort bestätigt mit der frischen
+   *  Anmeldung beim Anbieter (der Server prüft das), dann wird nicht gefragt. */
+  async function passwortFragen(titel: string): Promise<string | null> {
+    if (ich && ich.hat_kennwort === false) return ''
+    const kennwort = await fragen({
+      titel,
+      text: t('account.confirmWithPassword'),
+      eingabe: { beschriftung: t('account.password'), typ: 'password' },
+      knopf: t('aktion.weiter'),
+    })
+    return typeof kennwort === 'string' && kennwort ? kennwort : null
+  }
+
+  async function passkeyHinzufuegen() {
+    const kennwort = await passwortFragen(t('account.passkeyAdd'))
+    if (kennwort === null) return
+    const name = await fragen({
+      titel: t('account.passkeyAdd'),
+      eingabe: { beschriftung: t('account.passkeyName'), vorgabe: geraetename() },
+      knopf: t('account.passkeyAdd'),
+    })
+    if (name === null || name === false) return
+    await mit(async () => {
+      const optionen = await api.senden<Record<string, unknown>>('/api/auth/passkeys/start', { passwort: kennwort })
+      const antwort = await navigator.credentials.create({ publicKey: anlegeOptionen(optionen) })
+      if (!antwort) return null
+      return api.senden('/api/auth/passkeys', {
+        credential: alsJson(antwort as PublicKeyCredential),
+        name: typeof name === 'string' ? name.trim() : '',
+      })
+    })
+  }
 
   async function mit<T>(tun: () => Promise<T>) {
     setFehler('')
@@ -298,6 +348,50 @@ export function Sicherheit({
             </div>
           </div>
         </Dialog>
+      )}
+
+      {/* --- Passkeys (Kontenmodul Teil 2) ------------------------------- */}
+      {/* Nur, wenn der Betreiber sie erlaubt und nexmail unter https läuft; vorhandene stehen auch sonst da, damit man
+          sie entfernen kann. */}
+      {passkeys && (passkeys.erlaubt || passkeys.passkeys.length > 0) && (
+        <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-4">
+          <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{t('account.passkeys')}</h2>
+          <p className="mb-0 text-[12px] text-fg-3">{t('account.passkeysHint')}</p>
+          {passkeys.passkeys.length > 0 && (
+            <ul className="flex flex-col gap-2">
+              {passkeys.passkeys.map((p) => (
+                <li key={p.uid} className="flex items-center gap-3 rounded-lg border border-line bg-surface-1 px-3 py-2">
+                  <Fingerprint className="size-4 shrink-0 text-fg-4" />
+                  <div className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] text-fg-1">{p.name || t('account.passkeys')}</span>
+                    <span className="block truncate font-mono text-[11px] text-fg-4">
+                      {new Date(p.last_used_at ?? p.created_at).toLocaleString(i18n.language)}
+                    </span>
+                  </div>
+                  <IconButton
+                    icon={<Trash2 />}
+                    label={t('account.passkeyRemove')}
+                    size="sm"
+                    onClick={() =>
+                      void (async () => {
+                        const kennwort = await passwortFragen(t('account.passkeyRemove'))
+                        if (kennwort === null) return
+                        await mit(() => api.senden(`/api/auth/passkeys/${p.uid}/entfernen`, { passwort: kennwort }))
+                      })()
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+          {passkeys.erlaubt && passkeyMoeglich() && (
+            <div className="pt-1">
+              <Button size="sm" variant="secondary" iconLeft={<Fingerprint className="size-4" />} onClick={() => void passkeyHinzufuegen()}>
+                {t('account.passkeyAdd')}
+              </Button>
+            </div>
+          )}
+        </section>
       )}
 
       {/* --- Anmeldeanbieter: verknüpfen mit Passwort, lösen ------------- */}

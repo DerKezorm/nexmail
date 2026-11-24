@@ -109,6 +109,8 @@ class AnmeldungIn(BaseModel):
     #: „Zweiten Faktor fuer alle verlangen“ (Kontenmodul Teil 2), ab Werk aus: Wer noch keinen hat, richtet ihn bei
     #: der naechsten Anmeldung ein. Laufende Installationen behalten ihren Stand (nexmail hatte keinen Pflichtschalter).
     zwei_faktor_fuer_alle: bool | None = None
+    #: „Passkeys erlaubt“ (Teil 2), ab Werk an. Aus: vorhandene bleiben gespeichert, melden aber nicht an.
+    passkeys_erlaubt: bool | None = None
 
 
 @router.get(f"{API}/oidc/admin/anmeldung", summary="Card 1: whether people sign in with a password")
@@ -119,6 +121,7 @@ def anmeldung_lesen(_: Betreiber, db: DbSession) -> dict[str, Any]:
         "passwort": passwort_anmeldung_an(db),
         "anbieter_aktiv": aktiver_anbieter(db),
         "zwei_faktor_fuer_alle": einstellung_lesen(db, konten_store.SCHALTER_FAKTOR_FUER_ALLE) == "1",
+        "passkeys_erlaubt": einstellung_lesen(db, konten_store.SCHALTER_PASSKEYS) != "0",
     }
 
 
@@ -137,6 +140,11 @@ def anmeldung_setzen(eingabe: AnmeldungIn, betreiber: Betreiber, db: DbSession) 
             "Second factor for everybody switched %s by=%s",
             "on" if eingabe.zwei_faktor_fuer_alle else "off",
             betreiber.benutzername,
+        )
+    if eingabe.passkeys_erlaubt is not None:
+        einstellung_schreiben(db, konten_store.SCHALTER_PASSKEYS, "1" if eingabe.passkeys_erlaubt else "0")
+        logger.info(
+            "Passkeys switched %s by=%s", "on" if eingabe.passkeys_erlaubt else "off", betreiber.benutzername
         )
     return anmeldung_lesen(betreiber, db)
 

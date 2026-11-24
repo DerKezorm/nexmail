@@ -213,6 +213,14 @@ export function OidcVerwaltung() {
 
 // --- Karte 1: Anmeldung ----------------------------------------------------------------------------------------------
 
+
+/** Die Schalter der Karte „Anmeldung“ (Kontenmodul: Passwort, Teil 2: zweiter Faktor für alle, Passkeys). */
+interface Anmeldeschalter {
+  passwort: boolean
+  zwei_faktor_fuer_alle: boolean
+  passkeys_erlaubt: boolean
+}
+
 function AnmeldungKarte({
   aktiv,
   oeffentlich,
@@ -227,6 +235,7 @@ function AnmeldungKarte({
   const deuten = useDeuten()
   const [passwort, setPasswort] = useState<boolean | null>(null)
   const [faktorFuerAlle, setFaktorFuerAlle] = useState<boolean | null>(null)
+  const [passkeysErlaubt, setPasskeysErlaubt] = useState<boolean | null>(null)
   const [adresse, setAdresse] = useState('')
   const [zone, setZone] = useState('')
   const [gespeichert, setGespeichert] = useState('')
@@ -237,11 +246,12 @@ function AnmeldungKarte({
 
   const laden = useCallback(async () => {
     const [anmeldung, einstellungen] = await Promise.all([
-      api.holen<{ passwort: boolean; zwei_faktor_fuer_alle: boolean }>('/api/oidc/admin/anmeldung'),
+      api.holen<Anmeldeschalter>('/api/oidc/admin/anmeldung'),
       api.holen<{ oeffentliche_adresse: string; zeitzone: string }>('/api/einstellungen'),
     ])
     setPasswort(anmeldung.passwort)
     setFaktorFuerAlle(anmeldung.zwei_faktor_fuer_alle)
+    setPasskeysErlaubt(anmeldung.passkeys_erlaubt)
     setAdresse(einstellungen.oeffentliche_adresse)
     setGespeichert(einstellungen.oeffentliche_adresse)
     setZone(einstellungen.zeitzone)
@@ -251,15 +261,13 @@ function AnmeldungKarte({
     void laden().catch((f) => setFehler(deuten(f)))
   }, [laden, deuten, aktiv, oeffentlich])
 
-  async function umschalten(schalter: { passwort?: boolean; zwei_faktor_fuer_alle?: boolean }) {
+  async function umschalten(schalter: Partial<Anmeldeschalter>) {
     setFehler('')
     try {
-      const antwort = await api.aendern<{ passwort: boolean; zwei_faktor_fuer_alle: boolean }>(
-        '/api/oidc/admin/anmeldung',
-        schalter,
-      )
+      const antwort = await api.aendern<Anmeldeschalter>('/api/oidc/admin/anmeldung', schalter)
       setPasswort(antwort.passwort)
       setFaktorFuerAlle(antwort.zwei_faktor_fuer_alle)
+      setPasskeysErlaubt(antwort.passkeys_erlaubt)
     } catch (f) {
       setFehler(deuten(f))
     }
@@ -308,6 +316,14 @@ function AnmeldungKarte({
         checked={faktorFuerAlle ?? false}
         disabled={faktorFuerAlle === null}
         onCheckedChange={(an) => void umschalten({ zwei_faktor_fuer_alle: an })}
+      />
+      {/* Ab Werk an; nur mit einer https-Adresse wirksam. Aus: vorhandene bleiben gespeichert, melden aber nicht an. */}
+      <Switch
+        label={t('account.passkeysAllowed')}
+        description={t('account.passkeysHint')}
+        checked={passkeysErlaubt ?? true}
+        disabled={passkeysErlaubt === null}
+        onCheckedChange={(an) => void umschalten({ passkeys_erlaubt: an })}
       />
       <form
         className="flex flex-wrap items-end gap-2"
