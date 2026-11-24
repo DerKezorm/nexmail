@@ -155,7 +155,8 @@ def test_kein_bild_gibt_422_mit_kennung(klient):
     assert antwort.json()["detail"] == "profilbild_kein_bild"
 
 
-def test_fremdes_bild_sieht_nur_der_betreiber(klient, zweiter_klient, db):
+def test_jedes_angemeldete_konto_sieht_die_bilder(klient, zweiter_klient, db):
+    """Kontenmodul Teil 2: Profilbilder sehen alle angemeldeten Konten des Servers (vorher nur Betreiber und Konto)."""
     einrichten(klient)
     klient.put("/api/auth/ich/profilbild", content=_bild())
     betreiber_id = klient.get("/api/auth/ich").json()["id"]
@@ -164,8 +165,9 @@ def test_fremdes_bild_sieht_nur_der_betreiber(klient, zweiter_klient, db):
     anmelden(zweiter_klient, "zweiter", "auch-geheim-456", geheimnis)
     zweiter_klient.put("/api/auth/ich/profilbild", content=_bild())
 
-    # Der zweite sieht das Bild des Betreibers nicht, wie ein fehlendes.
-    assert zweiter_klient.get(f"/api/auth/profilbild/{betreiber_id}").status_code == 404
+    assert zweiter_klient.get(f"/api/auth/profilbild/{betreiber_id}").status_code == 200
+    # Ein Konto ohne Bild antwortet wie ein fehlendes.
+    assert zweiter_klient.get("/api/auth/profilbild/gibt-es-nicht").status_code == 404
     # Der Betreiber sieht das des zweiten (seine Benutzerliste).
     assert klient.get(f"/api/auth/profilbild/{person.id}").status_code == 200
 

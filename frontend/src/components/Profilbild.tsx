@@ -1,4 +1,5 @@
-/* Das Profilbild eines Kontos, sonst seine Initialen.
+/* Das Profilbild eines Kontos, sonst ein Buchstabe auf einer Farbe aus dem Namen (Kontenmodul Teil 2: in jeder App
+ * und in den iPhone-Apps gleich, `avatarPlaceholder`; vorher zwei Initialen auf der Akzentfarbe).
  *
  * ⚠️ **Die Adresse trägt den Stand** (`?v=`, wann das Bild gesetzt wurde).
  * Der Server liefert es mit langem Zwischenspeichern aus; ein neues Bild ist
@@ -6,6 +7,7 @@
  */
 import { useState } from 'react'
 import { BASIS } from '../lib/basis'
+import { avatarPlaceholder } from '../vendor/nexkonten/konten'
 
 export function profilbildAdresse(id: string, stand: string): string {
   return `${BASIS}/api/auth/profilbild/${encodeURIComponent(id)}?v=${encodeURIComponent(stand)}`
@@ -39,13 +41,20 @@ export function Profilbild({
       />
     )
   }
+  // Helligkeit und Sättigung wählt die App (Modul); hell genug für weiße Schrift in beiden Modi.
+  const { letter, hue } = avatarPlaceholder(name)
   return (
     <span
       aria-hidden
-      style={{ ...masse, fontSize: Math.max(10, Math.round(groesse * 0.38)) }}
-      className="flex shrink-0 items-center justify-center rounded-pill bg-accent-soft font-semibold text-accent-text"
+      style={{
+        ...masse,
+        fontSize: Math.max(10, Math.round(groesse * 0.42)),
+        background: `hsl(${hue} 45% 45%)`,
+      }}
+      className="flex shrink-0 items-center justify-center rounded-pill font-semibold text-white"
+      data-testid="profilbild-platzhalter"
     >
-      {name.slice(0, 2).toUpperCase()}
+      {letter}
     </span>
   )
 }

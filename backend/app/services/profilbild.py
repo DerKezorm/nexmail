@@ -90,5 +90,7 @@ def zeichnen(daten: bytes) -> bytes:
 
 
 def darf_sehen(betrachter: Benutzer, besitzer_id: str) -> bool:
-    """Das Konto selbst und der Betreiber."""
-    return betrachter.id == besitzer_id or betrachter.ist_betreiber
+    """Jedes angemeldete Konto des Servers (Entwurf, Teil 2: „Profilbilder sehen alle angemeldeten Konten“, in jeder
+    App gleich; vorher nur das Konto selbst und der Betreiber). Abgemeldete nie: Die Route verlangt eine Anmeldung.
+    nexmail sperrt keine Konten, also gibt es keine gesperrten, die nur der Betreiber sehen duerfte."""
+    return betrachter is not None and bool(besitzer_id)
