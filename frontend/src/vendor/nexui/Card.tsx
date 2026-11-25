@@ -10,9 +10,10 @@ import { Children, useId, type ReactNode } from 'react'
 const filled = (slot: ReactNode) => Children.toArray(slot).some((child) => child !== '')
 
 import { iconOf, type IconLike } from './icons'
-import { BADGE_BASE, BADGE_TONE, BOX, CARD, HINT, MUTED, PLAIN, TILE, type BadgeTone } from './styles'
+import { BADGE_BASE, BADGE_TONE, BOX, CARD, HINT, MUTED, PLAIN, SUB, TILE, type BadgeTone } from './styles'
 
-/** A state in a word: "On" (`on`), "Off" (`off`), "Linked" (`on`), few codes left (`warn`). */
+/** A state in a word: "On" (`on`), "Off" (`off`), "Linked" (`on`), few codes left (`warn`); since 0.1.1 a role
+ * ("Operator", `accent`) and what keeps an account out ("Blocked", `danger`). */
 export function Badge({ tone, children, testId }: { tone: BadgeTone; children: ReactNode; testId?: string }) {
   return (
     <span className={`${BADGE_BASE} ${BADGE_TONE[tone]}`} data-tone={tone} data-testid={testId}>
@@ -115,17 +116,24 @@ export function Rows({ children, label, testId }: { children: ReactNode; label?:
 
 export function Row({
   icon,
+  lead,
   name,
   badge,
+  sub,
   detail,
   action,
   note,
   testId,
 }: {
-  icon: IconLike
+  /** The symbol in front (devices, passkeys, providers). */
+  icon?: IconLike
+  /** Since 0.1.1: in place of the symbol, e.g. a person's picture (`Avatar`, 32 px). */
+  lead?: ReactNode
   name: ReactNode
-  /** A state right of the name ("Linked", "This browser"). */
+  /** A state right of the name ("Linked", "This browser"); several side by side, wrapping. */
   badge?: ReactNode
+  /** Since 0.1.1: a second line under the name, small and grey, breaking where it must ("kim · kim@example.com"). */
+  sub?: ReactNode
   /** Small and grey to the right: when last used, an address. */
   detail?: ReactNode
   /** The button at the end. */
@@ -134,10 +142,28 @@ export function Row({
   note?: ReactNode
   testId?: string
 }) {
-  const { Icon } = iconOf(icon)
+  const front = lead ?? (icon ? <RowIcon icon={icon} /> : null)
+  if (lead !== undefined || filled(sub)) {
+    // Since 0.1.1: picture, then name and badges with the second line under them, the button at the end.
+    return (
+      <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2" data-testid={testId}>
+        {front}
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className={`${PLAIN} min-w-0 truncate text-sm leading-5 font-medium text-[var(--nexui-text)]`}>{name}</span>
+            {badge}
+          </div>
+          {filled(sub) && <span className={`${SUB} mt-0.5`}>{sub}</span>}
+        </div>
+        {detail && <span className={`${PLAIN} text-xs leading-4 ${MUTED}`}>{detail}</span>}
+        {action}
+        {note && <span className={`${HINT} basis-full`}>{note}</span>}
+      </li>
+    )
+  }
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2" data-testid={testId}>
-      <Icon aria-hidden className={`h-4 w-4 shrink-0 ${MUTED}`} strokeWidth={1.8} />
+      {front}
       <span className={`${PLAIN} min-w-0 flex-1 truncate text-sm leading-5 text-[var(--nexui-text)]`}>{name}</span>
       {badge}
       {detail && <span className={`${PLAIN} text-xs leading-4 ${MUTED}`}>{detail}</span>}
@@ -145,4 +171,9 @@ export function Row({
       {note && <span className={`${HINT} basis-full pl-7`}>{note}</span>}
     </li>
   )
+}
+
+function RowIcon({ icon }: { icon: IconLike }) {
+  const { Icon } = iconOf(icon)
+  return <Icon aria-hidden className={`h-4 w-4 shrink-0 ${MUTED}`} strokeWidth={1.8} />
 }

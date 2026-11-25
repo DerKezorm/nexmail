@@ -56,6 +56,7 @@ export const ACCOUNT_ERROR_CODES = [
   'avatar_not_a_picture',
   'avatars_busy',
   'public_url_needed',
+  'nothing_to_prove',
 ] as const
 
 export type AccountErrorCode = (typeof ACCOUNT_ERROR_CODES)[number]
@@ -68,15 +69,37 @@ const MAIN_TEXT: Partial<Record<AccountErrorCode, string>> = {
   email_taken: 'account.emailTaken',
 }
 
+function isAccountCode(code: string): code is AccountErrorCode {
+  return (ACCOUNT_ERROR_CODES as readonly string[]).includes(code)
+}
+
 /** The text key for an error code from the server; never show the code itself. ``appCodes`` maps the app's own codes
  * of an older version to the module's (the server's AppConfig.error_codes the other way round), e.g.
- * { name_taken: 'username_taken' }. */
-export function accountErrorKey(code: string | null | undefined, appCodes: Readonly<Record<string, string>> = {}): string {
+ * { name_taken: 'username_taken' }.
+ *
+ * Since 0.3.10 ``accountCode``: the module's own code where the server mapped it to an older one (``account_code`` in
+ * the answer, ``AccountError.as_dict``). An app may answer ``invite_invalid`` for ``invite_expired`` too (its clients
+ * know only the old code); its pages still say "expired". The chain, the first that is a code of the module:
+ * ``accountCode``, then ``code`` through ``appCodes``, then ``code`` itself; else ``account.error.unknown``. */
+export function accountErrorKey(
+  code: string | null | undefined,
+  appCodes: Readonly<Record<string, string>> = {},
+  accountCode?: string | null,
+): string {
   const given = code ?? ''
-  const own = Object.hasOwn(appCodes, given) ? (appCodes[given] ?? '') : given
-  const known = (ACCOUNT_ERROR_CODES as readonly string[]).includes(own)
-  if (!known) return 'account.error.unknown'
-  return MAIN_TEXT[own as AccountErrorCode] ?? `account.error.${own}`
+  const mapped = Object.hasOwn(appCodes, given) ? (appCodes[given] ?? '') : given
+  const own = [accountCode ?? '', mapped].find((candidate) => isAccountCode(candidate))
+  if (own === undefined || !isAccountCode(own)) return 'account.error.unknown'
+  return MAIN_TEXT[own] ?? `account.error.${own}`
+}
+
+/** Since 0.3.10: ``accountErrorKey`` for an answer of the server as it came (``code`` and, where the app maps it,
+ * ``account_code``). */
+export function accountErrorKeyOf(
+  answer: { code?: string | null; account_code?: string | null } | null | undefined,
+  appCodes: Readonly<Record<string, string>> = {},
+): string {
+  return accountErrorKey(answer?.code, appCodes, answer?.account_code)
 }
 
 /** Every field the module's screens know. */
@@ -168,6 +191,9 @@ export interface PagePart {
   title: string
   hint: string
   rules?: string
+  /** Since 0.3.10: a line every app shows in this part, whatever the state (the password's last change, see
+   * ``passwordChanged``). */
+  line?: string
   buttons: readonly string[]
 }
 
@@ -212,7 +238,7 @@ export const PAGES = {
     title: 'account.security',
     layout: 'stacked',
     parts: [
-      { part: 'password', title: 'account.password', hint: '', buttons: ['account.passwordChange'] },
+      { part: 'password', title: 'account.password', hint: '', line: 'account.passwordChangedAt', buttons: ['account.passwordChange'] },
       { part: 'secondFactor', title: 'account.secondFactor', hint: 'account.secondFactorHint', buttons: ['account.totpSetup', 'account.totpRemove'] },
       { part: 'recoveryCodes', title: 'account.recoveryCodes', hint: 'account.recoveryCodesHint', buttons: ['account.recoveryCodesNew'] },
       { part: 'passkeys', title: 'account.passkeys', hint: 'account.passkeysHint', buttons: ['account.passkeyAdd'] },
@@ -223,6 +249,17 @@ export const PAGES = {
 } as const satisfies {
   profile: { title: string; layout: 'stacked'; parts: readonly PagePart[] } & PageSave
   security: { title: string; layout: 'stacked'; parts: readonly PagePart[] }
+}
+
+/** Since 0.3.10: the line "Last changed on …" in the box Password under Security, in every app (decided for 0.3.10;
+ * nexmail and nextasks had none). ``at``: the server's ``password_changed_at`` (ISO); null or left out where it is not
+ * known (a password of an older version): then ``account.passwordChangedUnknown``. ``date`` fills ``{{day}}`` the
+ * app's way. An account without a password shows none of this. */
+export function passwordChanged(at: string | null | undefined): {
+  text: 'account.passwordChangedAt' | 'account.passwordChangedUnknown'
+  date?: string
+} {
+  return at ? { text: 'account.passwordChangedAt', date: at } : { text: 'account.passwordChangedUnknown' }
 }
 
 /** Since 0.3.6: the parts a page shows, top to bottom: the module's first in their order, then the app's own. */
@@ -258,6 +295,8 @@ export const BUTTONS = {
   'account.emailResend': { kind: 'secondary', icon: 'Send' },
   'account.emailWithdraw': { kind: 'danger', icon: 'Undo2' },
   'account.emailRemove': { kind: 'danger', icon: 'Trash2' },
+  // Since 0.3.10: "Confirm by link" for an address that counts and is not proven yet (profiles.prove_email)
+  'account.emailProve': { kind: 'secondary', icon: 'Send' },
   // Security
   'account.passwordChange': { kind: 'secondary', icon: 'KeyRound' },
   'account.totpSetup': { kind: 'primary', icon: 'ShieldCheck' },
@@ -275,6 +314,22 @@ export const BUTTONS = {
   // The operator's account list
   'account.resetLink': { kind: 'secondary', icon: 'Link' },
   'account.factorReset': { kind: 'danger', icon: 'ShieldOff' },
+  // Since 0.3.9: the list, its dialog "Manage" (ACCOUNT_LIST, MANAGE_DIALOG), "Invite" and the open invitations
+  'account.invite': { kind: 'primary', icon: 'UserPlus' },
+  'account.manage': { kind: 'secondary', icon: 'UserCog' },
+  'account.changeDisplayName': { kind: 'secondary', icon: 'UserPen' },
+  'account.changeUsername': { kind: 'secondary', icon: 'Pencil' },
+  'account.makeOperator': { kind: 'secondary', icon: 'Crown' },
+  'account.makeMember': { kind: 'secondary', icon: 'UserRound' },
+  'account.signOutAccount': { kind: 'danger', icon: 'LogOut' },
+  'account.unlinkProvider': { kind: 'danger', icon: 'Unlink' },
+  'account.block': { kind: 'danger', icon: 'Ban' },
+  'account.unblock': { kind: 'secondary', icon: 'CircleCheck' },
+  'account.remove': { kind: 'danger', icon: 'UserX' },
+  'account.restore': { kind: 'secondary', icon: 'RotateCcw' },
+  'account.linkMake': { kind: 'primary', icon: 'Link' },
+  'account.linkSend': { kind: 'primary', icon: 'Send' },
+  'account.inviteWithdraw': { kind: 'danger', icon: 'Undo2' },
   // The providers (the words of the module oidc)
   'oidc.login.button': { kind: 'secondary', icon: 'KeyRound' },
   'oidc.account.link': { kind: 'secondary', icon: 'Link' },
@@ -297,6 +352,9 @@ export const BUTTONS = {
   confirm: { kind: 'primary', icon: 'Check' },
   cancel: { kind: 'secondary', icon: 'X' },
   back: { kind: 'secondary', icon: 'ArrowLeft' },
+  // Since 0.3.9: the app's own buttons in the dialog "Manage", at their fixed places (OwnButton)
+  storageLimit: { kind: 'secondary', icon: 'HardDrive' },
+  handOver: { kind: 'secondary', icon: 'ArrowRightLeft' },
 } as const satisfies Record<string, ButtonSpec>
 
 export type ButtonName = keyof typeof BUTTONS
@@ -477,4 +535,623 @@ export function avatarPlaceholder(name: string): { letter: string; hue: number }
     hash = Math.imul(hash, 0x01000193) >>> 0
   }
   return { letter, hue: hash % 360 }
+}
+
+// --- Since 0.3.9: the operator's account list, the dialog "Manage", inviting --------------------------------------
+
+/** Since 0.3.9: the tones of a badge, as the kit ``ui`` knows them (``Badge``). */
+export type BadgeTone = 'accent' | 'on' | 'off' | 'warn' | 'danger'
+
+/** Since 0.3.9: a provider an account is linked with (the module ``oidc``): its link's id and the label of its
+ * button ("Pocket ID"). */
+export interface ListedProvider {
+  id: number | string
+  label: string
+}
+
+/** Since 0.3.9: one account as the operator's list knows it. Every app maps its own row to this once (the names of
+ * its interfaces stay); what the app does not know it leaves out, and the list shows nothing for it. ``color``
+ * (since 0.3.10): the colour the app gives this person already (nextime, nexfolk), for the letter of a picture-less
+ * account everywhere, the list included. */
+export interface ListedAccount {
+  id: number | string
+  username: string
+  /** '' when none: the username shows in its place. */
+  displayName: string
+  /** '' when the account has no address. */
+  email: string
+  /** Whether the address counts (confirmed); left out where the app does not tell. */
+  emailConfirmed?: boolean
+  /** Another account has the same address (it counts for neither). */
+  emailDuplicate?: boolean
+  operator: boolean
+  /** The operator's own account: what changes it is in the profile and under security, not here. */
+  self: boolean
+  hasPassword: boolean
+  /** An authenticator app is set up. */
+  authenticator: boolean
+  /** How many passkeys the account has. */
+  passkeys: number
+  providers: readonly ListedProvider[]
+  blocked?: boolean
+  /** When it was blocked (ISO); null or left out: not known. */
+  blockedAt?: string | null
+  /** Held for a while by the brake after wrong passwords (not the operator's block). */
+  locked?: boolean
+  /** When it was deleted (ISO); null or left out: not deleted. */
+  deletedAt?: string | null
+  /** The day it goes for good (ISO), while it can still be brought back. */
+  purgeAt?: string | null
+  /** The last sign-in (ISO); null: never; left out: the app does not keep it, and the fact does not show. */
+  lastSeenAt?: string | null
+  /** The address of its own picture; null or left out: the letter (``avatarPlaceholder``). */
+  picture?: string | null
+  /** Since 0.3.10: the app's colour of this person (a CSS colour, ``#4a6491``); null or left out: the hue from the
+   * name (``avatarPlaceholder``), as before. */
+  color?: string | null
+}
+
+/** Since 0.3.9: the badges of a row, in this order, each with its words and tone. ``provider`` is one badge per
+ * linked provider, worded with the provider's label. ``deleted`` names the day it goes for good (``{{day}}``, the app
+ * writes the day its way). */
+export const ACCOUNT_BADGES = {
+  operator: { text: 'account.roleOperator', tone: 'accent' },
+  you: { text: 'account.badgeYou', tone: 'off' },
+  secondFactor: { text: 'account.badgeSecondFactor', tone: 'on' },
+  blocked: { text: 'account.badgeBlocked', tone: 'danger' },
+  locked: { text: 'account.badgeLocked', tone: 'warn' },
+  deleted: { text: 'account.badgeDeleted', tone: 'danger' },
+  emailDuplicate: { text: 'account.badgeEmailDuplicate', tone: 'warn' },
+  provider: { text: '', tone: 'off' },
+} as const satisfies Record<string, { text: string; tone: BadgeTone }>
+
+export type AccountBadge = keyof typeof ACCOUNT_BADGES
+
+export const ACCOUNT_BADGE_ORDER = [
+  'operator',
+  'you',
+  'secondFactor',
+  'blocked',
+  'locked',
+  'deleted',
+  'emailDuplicate',
+  'provider',
+] as const satisfies readonly AccountBadge[]
+
+/** One badge to show: its text key (with ``{{day}}`` from ``date``), or for a provider its label. */
+export interface BadgeShown {
+  badge: AccountBadge | 'invite'
+  text: string
+  tone: BadgeTone
+  /** The provider's label, shown as it is (``text`` is then ''). */
+  label?: string
+  /** A day the app writes its way, ``{{day}}`` in ``text``. */
+  date?: string
+}
+
+/** Since 0.3.9: the operator's account list, the same in every app (``ui``: ``Card``, ``Rows``, ``Row`` with ``lead``
+ * and ``sub``, ``Avatar``, ``Badge``, ``Button``). A card titled ``account.accounts`` with the number of accounts under
+ * it (``account.accountsCount`` with ``count``, deleted ones not counted), the button ``account.invite`` first, then one
+ * row per account: ``row`` in this order. ``picture``: ``Avatar`` 32 px (``accountPicture``); ``name``: the display
+ * name, else the username (``accountName``); ``badges``: ``accountBadges``; ``lines``: small under the name,
+ * ``username · email`` (``accountLine``, no address: the username alone); ``manage``: the button ``account.manage``
+ * (named for readers ``account.manageTitle`` with ``{{name}}``), which opens ``MANAGE_DIALOG``. Under the card, only
+ * while there are any, the card ``OPEN_INVITES``. Nothing else in a row: every act on an account is in the dialog. */
+export const ACCOUNT_LIST = {
+  title: 'account.accounts',
+  subtitle: 'account.accountsCount',
+  invite: 'account.invite',
+  row: ['picture', 'name', 'badges', 'lines', 'manage'],
+  picture: 32,
+  lines: ['username', 'email'],
+  separator: ' · ',
+  badges: ACCOUNT_BADGE_ORDER,
+  manage: 'account.manage',
+  manageLabel: 'account.manageTitle',
+  after: ['openInvites'],
+} as const
+
+/** Since 0.3.9: what a row and the dialog show as the name: the display name, else the username. */
+export function accountName(row: Pick<ListedAccount, 'displayName' | 'username'>): string {
+  return row.displayName.trim() || row.username
+}
+
+/** Since 0.3.9: the small line under the name: ``username · email``, without an address the username alone. */
+export function accountLine(row: Pick<ListedAccount, 'username' | 'email'>): string {
+  return row.email ? `${row.username}${ACCOUNT_LIST.separator}${row.email}` : row.username
+}
+
+/** Since 0.3.9: the picture of a row and of the dialog: the own picture where there is one, the letter and hue in any
+ * case (``Avatar`` falls back to them when the picture does not load). Since 0.3.10 ``color``: the app's colour of the
+ * person (``ListedAccount.color``) where it has one, for ``Avatar``'s ``color``; else null and the hue counts (decided
+ * 25.11.2026: an app with colours of its own for people paints the letter in that colour everywhere). */
+export function accountPicture(row: Pick<ListedAccount, 'displayName' | 'username' | 'picture' | 'color'>): {
+  src: string | null
+  letter: string
+  hue: number
+  color: string | null
+} {
+  const color = row.color?.trim() ?? ''
+  return { src: row.picture ?? null, ...avatarPlaceholder(accountName(row)), color: color || null }
+}
+
+/** Since 0.3.9: how many accounts the subtitle counts: all but the deleted ones. */
+export function accountCount(rows: readonly Pick<ListedAccount, 'deletedAt'>[]): number {
+  return rows.filter((row) => !row.deletedAt).length
+}
+
+/** Since 0.3.9: whether the account has a second factor (an authenticator or a passkey; a passkey counts). */
+export function hasSecondFactor(row: Pick<ListedAccount, 'authenticator' | 'passkeys'>): boolean {
+  return row.authenticator || row.passkeys > 0
+}
+
+/** Since 0.3.9: the badges of one account, in ``ACCOUNT_BADGE_ORDER``. A deleted account is neither blocked nor
+ * locked any more; without its day it says only "Deleted" (``account.badgeDeletedNow``). */
+export function accountBadges(row: ListedAccount): BadgeShown[] {
+  const shown: BadgeShown[] = []
+  const add = (badge: Exclude<AccountBadge, 'provider'>, date?: string) => {
+    const spec = ACCOUNT_BADGES[badge]
+    shown.push(date === undefined ? { badge, text: spec.text, tone: spec.tone } : { badge, text: spec.text, tone: spec.tone, date })
+  }
+  if (row.operator) add('operator')
+  if (row.self) add('you')
+  if (hasSecondFactor(row)) add('secondFactor')
+  if (row.blocked && !row.deletedAt) add('blocked')
+  if (row.locked && !row.deletedAt) add('locked')
+  if (row.deletedAt) {
+    if (row.purgeAt) add('deleted', row.purgeAt)
+    else shown.push({ badge: 'deleted', text: 'account.badgeDeletedNow', tone: ACCOUNT_BADGES.deleted.tone })
+  }
+  if (row.email && row.emailDuplicate) add('emailDuplicate')
+  for (const provider of row.providers) shown.push({ badge: 'provider', text: '', tone: ACCOUNT_BADGES.provider.tone, label: provider.label })
+  return shown
+}
+
+/** Since 0.3.9: the facts of the dialog "Manage" by the module, in this order; the app's own follow (``accountFacts``). */
+export const ACCOUNT_FACTS = ['username', 'email', 'role', 'signIn', 'lastSeen', 'blockedSince', 'purgeAt'] as const
+
+/** One fact of the dialog "Manage" (``ui``: ``Facts``): its label (text key) and one value: ``raw`` as it is, ``text``
+ * a text key with ``values``, or ``date`` a moment the app writes its way (day, or day and time). ``state``: a small
+ * word after the value (text key, "confirmed"); ``note``: a line under the value (text key). An app's own facts
+ * (storage with its limit, mailboxes, documents) come in the same shape. */
+export interface FactShown {
+  fact: string
+  label: string
+  raw?: string
+  text?: string
+  values?: Readonly<Record<string, string>>
+  date?: string
+  state?: string
+  note?: string
+}
+
+/** Since 0.3.9: how an account signs in, as the fact ``signIn`` says it: password (with a second factor), providers
+ * (``{{providers}}`` their labels), or both. */
+export function signInWay(row: Pick<ListedAccount, 'hasPassword' | 'authenticator' | 'passkeys' | 'providers'>): {
+  text: string
+  values?: Readonly<Record<string, string>>
+} {
+  const providers = row.providers.map((provider) => provider.label).join(', ')
+  const factor = hasSecondFactor(row)
+  if (row.hasPassword && providers) return { text: factor ? 'account.wayBothFactor' : 'account.wayBoth', values: { providers } }
+  if (row.hasPassword) return { text: factor ? 'account.wayPasswordFactor' : 'account.wayPassword' }
+  if (providers) return { text: 'account.wayProviders', values: { providers } }
+  return { text: 'account.wayNone' }
+}
+
+/** Since 0.3.9: the facts of one account, top to bottom (``ACCOUNT_FACTS``, only those with a value), then the app's
+ * own (``own``) in the order given. */
+export function accountFacts(row: ListedAccount, own: readonly FactShown[] = []): FactShown[] {
+  const facts: FactShown[] = [{ fact: 'username', label: 'account.username', raw: row.username }]
+  if (row.email) {
+    const email: FactShown = { fact: 'email', label: 'account.email', raw: row.email }
+    if (row.emailConfirmed !== undefined) email.state = row.emailConfirmed ? 'account.emailStateConfirmed' : 'account.emailStateWaiting'
+    if (row.emailDuplicate) email.note = 'account.emailDuplicate'
+    facts.push(email)
+  } else {
+    facts.push({ fact: 'email', label: 'account.email', text: 'account.emailNone' })
+  }
+  facts.push({ fact: 'role', label: 'account.role', text: row.operator ? 'account.roleOperator' : 'account.roleMember' })
+  facts.push({ fact: 'signIn', label: 'account.signInWay', ...signInWay(row) })
+  if (row.lastSeenAt === null) facts.push({ fact: 'lastSeen', label: 'account.lastSeen', text: 'account.never' })
+  else if (row.lastSeenAt !== undefined) facts.push({ fact: 'lastSeen', label: 'account.lastSeen', date: row.lastSeenAt })
+  if (row.blocked && row.blockedAt && !row.deletedAt) facts.push({ fact: 'blockedSince', label: 'account.blockedSince', date: row.blockedAt })
+  if (row.deletedAt && row.purgeAt) facts.push({ fact: 'purgeAt', label: 'account.purgeAt', date: row.purgeAt })
+  return [...facts, ...own]
+}
+
+/** Since 0.3.9: the groups of the dialog "Manage", top to bottom: change it (secondary; removing the address is
+ * danger), the app's rights as boxes to tick, access, end it (danger; unblock and bring back are secondary). */
+export const MANAGE_GROUPS = ['change', 'rights', 'access', 'end'] as const
+
+export type ManageGroup = (typeof MANAGE_GROUPS)[number]
+
+/** Since 0.3.9: the dialog behind "Manage" (``ui``: ``Dialog`` titled ``account.manageTitle`` with ``{{name}}``). At
+ * the head the picture 48 px with name, badges and the line under it (``Row`` with ``lead`` and ``sub``), then the facts
+ * (``Facts``: ``accountFacts`` with the app's own), then one ``ButtonGroup`` per group that has anything, titled
+ * ``title``, its buttons (``layout: 'buttons'``) or boxes (``'list'``, ``CheckboxRow``) from ``accountActions`` in that
+ * order. ``buttons``: the module's buttons of each group in their order (``makeOperator`` or ``makeMember``, ``block``
+ * or ``unblock``, ``unlinkProvider`` once per provider). Every button says what it does in words. */
+export const MANAGE_DIALOG = {
+  title: 'account.manageTitle',
+  picture: 48,
+  parts: ['head', 'facts', 'change', 'rights', 'access', 'end'],
+  groups: {
+    change: {
+      title: 'account.groupChange',
+      layout: 'buttons',
+      buttons: ['account.changeDisplayName', 'account.changeUsername', 'account.makeOperator', 'account.makeMember', 'account.emailRemove'],
+    },
+    rights: { title: 'account.groupRights', layout: 'list', buttons: [] },
+    access: {
+      title: 'account.groupAccess',
+      layout: 'buttons',
+      buttons: ['account.resetLink', 'account.factorReset', 'account.signOutAccount', 'account.unlinkProvider'],
+    },
+    end: { title: 'account.groupEnd', layout: 'buttons', buttons: ['account.block', 'account.unblock', 'account.remove', 'account.restore'] },
+  },
+} as const satisfies {
+  title: string
+  picture: number
+  parts: readonly string[]
+  groups: Record<ManageGroup, { title: string; layout: 'buttons' | 'list'; buttons: readonly ButtonName[] }>
+}
+
+/** Since 0.3.9: a button of the module in the dialog "Manage". */
+export type ManageButton =
+  | (typeof MANAGE_DIALOG.groups.change.buttons)[number]
+  | (typeof MANAGE_DIALOG.groups.access.buttons)[number]
+  | (typeof MANAGE_DIALOG.groups.end.buttons)[number]
+
+/** Since 0.3.9: the switches of an app, what its server can do for the operator; a switch left out is off, and its
+ * buttons do not show. ``rename``: display name and username; ``roles``: operator or member; ``emailRemove``: take an
+ * account's address; ``resetLink``: a link for a new password; ``factorReset``: reset the second factor;
+ * ``signOut``: sign an account out everywhere; ``unlink``: take a provider's link; ``blocking``: block and unblock;
+ * ``remove``: delete; ``restore``: bring a deleted account back while its days run. ``inviteRole`` (since 0.3.10): the
+ * field "Role" in the dialog "Invite"; left out it follows ``roles`` as before (nextasks changes roles but invites
+ * members only: ``inviteRole: false``). */
+export const ACCOUNT_CAPS = ['rename', 'roles', 'emailRemove', 'resetLink', 'factorReset', 'signOut', 'unlink', 'blocking', 'remove', 'restore', 'inviteRole'] as const
+
+export type AccountCap = (typeof ACCOUNT_CAPS)[number]
+
+export type AccountCaps = Partial<Record<AccountCap, boolean>>
+
+/** Since 0.3.9: which switch each button of the module needs. */
+export const MANAGE_CAP: Record<ManageButton, AccountCap> = {
+  'account.changeDisplayName': 'rename',
+  'account.changeUsername': 'rename',
+  'account.makeOperator': 'roles',
+  'account.makeMember': 'roles',
+  'account.emailRemove': 'emailRemove',
+  'account.resetLink': 'resetLink',
+  'account.factorReset': 'factorReset',
+  'account.signOutAccount': 'signOut',
+  'account.unlinkProvider': 'unlink',
+  'account.block': 'blocking',
+  'account.unblock': 'blocking',
+  'account.remove': 'remove',
+  'account.restore': 'restore',
+}
+
+/** Since 0.3.9: what the dialog never offers on the operator's own account: that is changed in the profile and under
+ * security (and an operator does not demote, block or delete themself). An app's own button with ``notSelf`` too.
+ * Since 0.3.10 also "Sign out everywhere" (it would sign the operator out of this very page; the own account has
+ * "Sign out everywhere else" under security) and "Unlink" (the own providers are under security). */
+export const NOT_ON_SELF = [
+  'account.makeOperator',
+  'account.makeMember',
+  'account.block',
+  'account.unblock',
+  'account.remove',
+  'account.resetLink',
+  'account.factorReset',
+  'account.signOutAccount',
+  'account.unlinkProvider',
+] as const satisfies readonly ManageButton[]
+
+/** Since 0.3.9: how an act in the dialog is confirmed. ``password``: a dialog with the operator's own password
+ * (``account.confirmWithPassword``; an operator without a password signs in fresh at their provider,
+ * ``account.confirmFresh``, as ``confirmLine`` says); ``ask``: a question without a password; ``none``: at once. */
+export type ManageConfirm = 'password' | 'ask' | 'none'
+
+/** Since 0.3.9: how each act is confirmed and the sentence of its dialog (text key; ``{{name}}`` the account's name,
+ * ``{{provider}}`` the provider, ``{{email}}`` the address, ``{{app}}`` the app; '' none). Everything that changes or
+ * ends an account asks for the password; signing out everywhere and withdrawing an invitation only ask; the app's boxes
+ * of rights save at once. The dialog's title and confirming button are the act's own words, kind and symbol.
+ * ``account.remove``: the app adds its numbers (notes, mailboxes, events, documents) after ``text``, then
+ * ``removeLines`` (nexpaper brings its own dialog for handing documents on). The renaming dialogs have their field
+ * (``FIELDS.displayName``; ``FIELDS.username`` with ``account.usernameRules``) and save with ``account.save``. */
+export const MANAGE_CONFIRM = {
+  'account.changeDisplayName': { confirm: 'password', text: '' },
+  'account.changeUsername': { confirm: 'password', text: 'account.askChangeUsername' },
+  'account.makeOperator': { confirm: 'password', text: 'account.askMakeOperator' },
+  'account.makeMember': { confirm: 'password', text: 'account.askMakeMember' },
+  'account.emailRemove': { confirm: 'password', text: 'account.askEmailRemove' },
+  'account.resetLink': { confirm: 'password', text: 'account.askResetLink' },
+  'account.factorReset': { confirm: 'password', text: 'account.factorResetHint' },
+  'account.signOutAccount': { confirm: 'ask', text: 'account.askSignOut' },
+  'account.unlinkProvider': { confirm: 'password', text: 'account.askUnlink' },
+  'account.block': { confirm: 'password', text: 'account.askBlock' },
+  'account.unblock': { confirm: 'password', text: 'account.askUnblock' },
+  'account.remove': { confirm: 'password', text: 'account.askRemove' },
+  'account.restore': { confirm: 'password', text: 'account.askRestore' },
+  'account.inviteWithdraw': { confirm: 'ask', text: 'account.askInviteWithdraw' },
+} as const satisfies Record<ManageButton | 'account.inviteWithdraw', { confirm: ManageConfirm; text: string }>
+
+/** Since 0.3.9: how an act of the dialog (the module's, or the app's by its name) is confirmed: the app's own buttons
+ * with the password like the module's, its boxes at once. */
+export function manageConfirm(action: Pick<AccountAction, 'type' | 'name' | 'own'>): ManageConfirm {
+  if (action.type === 'check') return 'none'
+  if (action.own) return 'password'
+  const base = action.name.split(':')[0] ?? ''
+  return base in MANAGE_CONFIRM ? MANAGE_CONFIRM[base as keyof typeof MANAGE_CONFIRM].confirm : 'password'
+}
+
+/** Since 0.3.9: the line above the password field of a ``password`` dialog. */
+export function confirmLine(operatorHasPassword: boolean): 'account.confirmWithPassword' | 'account.confirmFresh' {
+  return operatorHasPassword ? 'account.confirmWithPassword' : 'account.confirmFresh'
+}
+
+/** Since 0.3.9: the line of the question "Delete account" after the app's numbers: how many days it can be brought
+ * back (``account.askRemoveDays`` with ``count``) where the app can, else that it cannot be undone. */
+export function removeLines(caps: AccountCaps): Array<'account.askRemoveDays' | 'account.askRemoveFinal'> {
+  return caps.restore ? ['account.askRemoveDays'] : ['account.askRemoveFinal']
+}
+
+/** Since 0.3.9: an app's own button in the dialog "Manage": its name (unique there), its words (the app's text key),
+ * its group, its look by a name in ``BUTTONS`` (the module's or a role: ``storageLimit``, ``handOver``), and its fixed
+ * place: before or after one of the module's buttons of that group (else at the end of the group); the place holds
+ * where that button does not show. ``notSelf``: not on the operator's own account (``handOver``). Confirmed with the
+ * password like the module's. */
+export interface OwnButton {
+  name: string
+  label: string
+  group: Exclude<ManageGroup, 'rights'>
+  button: ButtonName
+  before?: ManageButton
+  after?: ManageButton
+  notSelf?: boolean
+  values?: Readonly<Record<string, string>>
+}
+
+/** Since 0.3.9: an app's own right as a box to tick in the group ``rights`` (``CheckboxRow``: "AI allowed", "Immich
+ * allowed"), saved at once without a question; ``checked`` its state for this account. */
+export interface OwnCheck {
+  name: string
+  label: string
+  group: 'rights'
+  checked: boolean
+  hint?: string
+  notSelf?: boolean
+}
+
+export type OwnAction = OwnButton | OwnCheck
+
+/** Since 0.3.9: one thing the dialog "Manage" offers, in its order: a button (``kind`` and ``icon`` from ``BUTTONS``,
+ * by ``button``) or a box to tick. ``values`` fill the words (``{{provider}}`` of ``account.unlinkProvider``);
+ * ``provider`` is the link to take. ``own``: the app's. */
+export type AccountAction =
+  | {
+      type: 'button'
+      name: string
+      label: string
+      group: Exclude<ManageGroup, 'rights'>
+      button: ButtonName
+      kind: ButtonKind
+      icon: string
+      confirm: ManageConfirm
+      own: boolean
+      values?: Readonly<Record<string, string>>
+      provider?: ListedProvider
+    }
+  | { type: 'check'; name: string; label: string; group: 'rights'; checked: boolean; confirm: 'none'; own: true; hint?: string }
+
+type ButtonAction = Extract<AccountAction, { type: 'button' }>
+
+/** Since 0.3.9: the buttons and boxes the dialog "Manage" shows for one account, in their order, by the app's switches
+ * (``caps``) and the rules: nothing of ``NOT_ON_SELF`` (nor an own ``notSelf``) on the operator's own account;
+ * "Reset the second factor" only with an authenticator or a passkey; "Remove address" only with an address; "Unlink"
+ * once per linked provider; "Make operator" or "Make member" by the role, "Block" or "Unblock" by the state; a deleted
+ * account shows nothing but "Bring back" (with ``restore``, while it has its day). ``own``: the app's buttons and boxes
+ * at their fixed places. */
+export function accountActions(row: ListedAccount, caps: AccountCaps, own: readonly OwnAction[] = []): AccountAction[] {
+  const visible = (name: ManageButton): boolean => {
+    if (!caps[MANAGE_CAP[name]]) return false
+    if (row.self && (NOT_ON_SELF as readonly string[]).includes(name)) return false
+    if (row.deletedAt) return name === 'account.restore' && Boolean(row.purgeAt)
+    switch (name) {
+      case 'account.makeOperator':
+        return !row.operator
+      case 'account.makeMember':
+        return row.operator
+      case 'account.emailRemove':
+        return Boolean(row.email)
+      case 'account.factorReset':
+        return hasSecondFactor(row)
+      case 'account.block':
+        return !row.blocked
+      case 'account.unblock':
+        return Boolean(row.blocked)
+      case 'account.restore':
+        return false
+      default:
+        return true
+    }
+  }
+  const moduleButton = (name: ManageButton, group: Exclude<ManageGroup, 'rights'>): ButtonAction[] => {
+    if (!visible(name)) return []
+    const spec = BUTTONS[name]
+    const base: ButtonAction = { type: 'button', name, label: name, group, button: name, kind: spec.kind, icon: spec.icon, confirm: MANAGE_CONFIRM[name].confirm, own: false }
+    if (name !== 'account.unlinkProvider') return [base]
+    return row.providers.map((provider) => ({ ...base, name: `${name}:${provider.id}`, values: { provider: provider.label }, provider }))
+  }
+  const ownButton = (entry: OwnButton): ButtonAction[] => {
+    if (row.deletedAt || (row.self && entry.notSelf)) return []
+    const spec = BUTTONS[entry.button]
+    const action: ButtonAction = { type: 'button', name: entry.name, label: entry.label, group: entry.group, button: entry.button, kind: spec.kind, icon: spec.icon, confirm: 'password', own: true }
+    if (entry.values) action.values = entry.values
+    return [action]
+  }
+  const shown: AccountAction[] = []
+  for (const group of MANAGE_GROUPS) {
+    if (group === 'rights') {
+      if (row.deletedAt) continue
+      for (const entry of own) {
+        if (entry.group !== 'rights' || (row.self && entry.notSelf)) continue
+        const check: AccountAction = { type: 'check', name: entry.name, label: entry.label, group: 'rights', checked: entry.checked, confirm: 'none', own: true }
+        if (entry.hint !== undefined) check.hint = entry.hint
+        shown.push(check)
+      }
+      continue
+    }
+    const mine = own.filter((entry): entry is OwnButton => entry.group === group)
+    const placed = new Set<OwnButton>()
+    const at = (name: ManageButton, where: 'before' | 'after'): ButtonAction[] =>
+      mine
+        .filter((entry) => !placed.has(entry) && entry[where] === name)
+        .flatMap((entry) => {
+          placed.add(entry)
+          return ownButton(entry)
+        })
+    for (const name of MANAGE_DIALOG.groups[group].buttons) {
+      shown.push(...at(name, 'before'), ...moduleButton(name, group), ...at(name, 'after'))
+    }
+    for (const entry of mine) if (!placed.has(entry)) shown.push(...ownButton(entry))
+  }
+  return shown
+}
+
+/** Since 0.3.9: the groups the dialog shows for these actions (only those with anything), each with its title and
+ * layout, in ``MANAGE_GROUPS`` order. */
+export function manageGroups(actions: readonly AccountAction[]): Array<{
+  group: ManageGroup
+  title: string
+  layout: 'buttons' | 'list'
+  actions: AccountAction[]
+}> {
+  return MANAGE_GROUPS.map((group: ManageGroup) => ({
+    group,
+    title: MANAGE_DIALOG.groups[group].title,
+    layout: MANAGE_DIALOG.groups[group].layout,
+    actions: actions.filter((action) => action.group === group),
+  })).filter((entry) => entry.actions.length > 0)
+}
+
+/** Since 0.3.9: the dialog "Invite" (``ui``: ``Dialog`` with ``Field``, ``SelectField``, ``CheckboxRow``), fields top to
+ * bottom: the address (free, hint ``account.inviteEmailHint``), the display name (free), the role (only with
+ * ``caps.roles``; member by default), how long it holds (``INVITE_DAYS``, 7 by default), the box "Send by mail" (only
+ * with a mail server and an address typed). The button makes the link (``account.linkMake``) or sends it
+ * (``account.linkSend``, box ticked). Afterwards: ``account.inviteSent`` where it went by mail, and always the link to
+ * copy (``account.inviteLink``, hint ``account.inviteLinkHint`` with ``{{day}}``), ``copy`` and ``done``. No username:
+ * the person picks it. */
+export const INVITE_DIALOG = {
+  title: 'account.inviteTitle',
+  fields: ['email', 'displayName', 'role', 'days', 'sendMail'],
+  emailHint: 'account.inviteEmailHint',
+  role: { label: 'account.role', options: ['member', 'operator'], texts: { member: 'account.roleMember', operator: 'account.roleOperator' }, default: 'member' },
+  days: { label: 'account.validFor', options: INVITE_DAYS, default: INVITE_DAYS_DEFAULT },
+  sendMail: 'account.inviteSendMail',
+  submit: { make: 'account.linkMake', send: 'account.linkSend' },
+  cancel: 'cancel',
+  done: { sent: 'account.inviteSent', link: 'account.inviteLink', linkHint: 'account.inviteLinkHint', copy: 'copy', close: 'done' },
+} as const
+
+export type InviteField = (typeof INVITE_DIALOG.fields)[number]
+
+/** Since 0.3.9: the fields the dialog "Invite" shows now. The role since 0.3.10 by ``caps.inviteRole``, left out by
+ * ``caps.roles`` as before. */
+export function inviteFields(caps: AccountCaps, state: { mailServer: boolean; email: string }): InviteField[] {
+  return INVITE_DIALOG.fields.filter((field: InviteField) => {
+    if (field === 'role') return caps.inviteRole ?? Boolean(caps.roles)
+    if (field === 'sendMail') return state.mailServer && state.email.trim().includes('@')
+    return true
+  })
+}
+
+/** Since 0.3.9: the words of the button of "Invite" and of "Link for a new password": it sends where the link goes by
+ * mail, else it makes the link to hand on. */
+export function linkSubmit(sends: boolean): 'account.linkMake' | 'account.linkSend' {
+  return sends ? 'account.linkSend' : 'account.linkMake'
+}
+
+/** Since 0.3.9: the dialog "Link for a new password" (``account.resetLink``): the sentence, how long it holds
+ * (``RESET_DAYS``, 1 by default), the password; with a mail server and an address it goes there by mail
+ * (``account.resetLinkSent``), else it shows once to copy (``account.resetLinkShown``). */
+export const RESET_LINK_DIALOG = {
+  title: 'account.resetLink',
+  text: 'account.askResetLink',
+  days: { label: 'account.validFor', options: RESET_DAYS, default: RESET_DAYS_DEFAULT },
+  sent: 'account.resetLinkSent',
+  shown: 'account.resetLinkShown',
+} as const
+
+/** Since 0.3.10: the kinds of access that stay after a new password (``Access.kind`` on the server, ``ACCESS_KINDS``),
+ * the same names in every app, each with its words for "These devices still have access". */
+export const ACCESS_KINDS = {
+  device: 'account.accessDevice',
+  calendar: 'account.accessCalendar',
+  contacts: 'account.accessContacts',
+  'api_key': 'account.accessApiKey',
+  passkey: 'account.accessPasskey',
+} as const
+
+export type AccessKind = keyof typeof ACCESS_KINDS
+
+/** Since 0.3.10: the words of an access kind; '' for a kind the module does not know (the label shows alone). */
+export function accessKindText(kind: string): string {
+  return Object.hasOwn(ACCESS_KINDS, kind) ? ACCESS_KINDS[kind as AccessKind] : ''
+}
+
+/** Since 0.3.10: the namespace of the texts belongs to the module. An app keeps no text of its own under ``account``
+ * (nextime had ``account.later``); the vitest template checks that the app's texts there are the module's, word for
+ * word, and nothing else. */
+export const ACCOUNT_NAMESPACE = 'account'
+
+/** Since 0.3.9: an invitation still open, as the list knows it. Since 0.3.10 said plainly: the app's route lists an
+ * expired invitation too, with ``expired: true``, until the operator withdraws it (the contract test
+ * ``test_the_list_route_keeps_expired_invitations`` holds every app to it). */
+export interface ListedInvite {
+  id: number | string
+  displayName?: string
+  email?: string
+  /** The fixed name of an invitation of an older version. */
+  username?: string
+  role?: 'operator' | 'member'
+  /** When it stops holding (ISO). */
+  expiresAt: string
+  /** Where the server says so; else from ``expiresAt``. */
+  expired?: boolean
+}
+
+/** Since 0.3.9: the card "Open invitations" under the list (``ui``: ``Card``, ``Rows``, ``Row``), only while there are
+ * any. One row each: the name (display name, older username, else the address, else ``account.inviteNoName``), the
+ * address small under it where the name is not the address, the badges (operator where it makes one, then how long it
+ * holds: ``account.inviteUntil`` with ``{{day}}``, or ``account.inviteExpired``; expired ones stay until withdrawn), and
+ * "Withdraw" (``account.inviteWithdraw``, danger) with a question without password (``MANAGE_CONFIRM``). */
+export const OPEN_INVITES = {
+  title: 'account.openInvites',
+  row: ['name', 'badges', 'lines', 'withdraw'],
+  noName: 'account.inviteNoName',
+  valid: { text: 'account.inviteUntil', tone: 'off' },
+  expired: { text: 'account.inviteExpired', tone: 'warn' },
+  withdraw: 'account.inviteWithdraw',
+} as const
+
+/** Since 0.3.9: one row of the open invitations: ``name`` as it is, or ``nameText`` (a text key) where there is none;
+ * ``sub`` the address under it; the badges (``date``: ``{{day}}``). */
+export function inviteRow(
+  invite: ListedInvite,
+  now = Date.now(),
+): { name: string; nameText: string; sub: string; badges: BadgeShown[]; expired: boolean } {
+  const email = invite.email?.trim() ?? ''
+  const named = invite.displayName?.trim() || invite.username?.trim() || ''
+  const expired = invite.expired ?? Date.parse(invite.expiresAt) <= now
+  const badges: BadgeShown[] = []
+  if (invite.role === 'operator') badges.push({ badge: 'operator', text: ACCOUNT_BADGES.operator.text, tone: ACCOUNT_BADGES.operator.tone })
+  badges.push(
+    expired
+      ? { badge: 'invite', text: OPEN_INVITES.expired.text, tone: OPEN_INVITES.expired.tone }
+      : { badge: 'invite', text: OPEN_INVITES.valid.text, tone: OPEN_INVITES.valid.tone, date: invite.expiresAt },
+  )
+  return { name: named || email, nameText: named || email ? '' : OPEN_INVITES.noName, sub: named ? email : '', badges, expired }
 }

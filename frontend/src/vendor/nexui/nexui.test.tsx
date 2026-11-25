@@ -4,12 +4,12 @@
  * with its symbol and the same size, and that every part is reachable as a reader and a test finds it (names, hints,
  * states, dialogs). Needs react-dom and @testing-library/dom, both in every app.
  */
-import { fireEvent, getByLabelText, getByRole, getByText, queryByRole } from '@testing-library/dom'
+import { fireEvent, getAllByRole, getByLabelText, getByRole, getByText, queryByRole } from '@testing-library/dom'
 import { act, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { Badge, Box, Button, Card, Checkbox, CheckboxRow, ConfirmDialog, Field, Row, Rows, SelectField, ICONS } from './index'
+import { Avatar, Badge, Box, Button, ButtonGroup, Card, Checkbox, CheckboxRow, ConfirmDialog, Facts, Field, Row, Rows, SelectField, ICONS } from './index'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -200,5 +200,103 @@ describe('ConfirmDialog', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(cancelled).toHaveBeenCalledTimes(1)
     expect(queryByRole(dialog, 'button', { name: 'Close' })).not.toBeNull()
+  })
+})
+
+describe('Avatar, Row with a picture, Facts, ButtonGroup (since 0.1.1)', () => {
+  it('shows the own picture, else the letter on its hue, round, 32 or 48 px, hidden from readers', () => {
+    const root = show(
+      <>
+        <Avatar src="/a.webp" letter="K" hue={200} testId="picture" />
+        <Avatar letter="M" hue={-20} size={48} testId="letter" />
+      </>,
+    )
+    const picture = root.querySelector<HTMLElement>('[data-testid="picture"]')
+    expect(picture?.tagName.toLowerCase()).toBe('img')
+    expect(picture?.getAttribute('aria-hidden')).toBe('true')
+    expect(picture?.className).toContain('rounded-full')
+    expect(picture?.className).toContain('h-8')
+    const letter = root.querySelector<HTMLElement>('[data-testid="letter"]')
+    expect(letter?.textContent).toBe('M')
+    expect(letter?.dataset.hue).toBe('340')
+    expect(letter?.style.getPropertyValue('--nexui-avatar-hue')).toBe('340')
+    expect(letter?.className).toContain('h-12')
+    expect(letter?.className).toContain('var(--nexui-avatar-saturation)')
+    expect(letter?.getAttribute('aria-hidden')).toBe('true')
+    // A picture that does not load gives way to the letter.
+    act(() => {
+      picture?.dispatchEvent(new Event('error'))
+    })
+    expect(root.querySelector('[data-testid="picture"]')?.textContent).toBe('K')
+  })
+
+  it("paints the letter in the app's colour of the person where it has one (since 0.1.2)", () => {
+    const root = show(
+      <>
+        <Avatar letter="K" hue={200} color="rgb(74, 100, 145)" testId="coloured" />
+        <Avatar letter="M" hue={20} color="  " testId="plain" />
+      </>,
+    )
+    const coloured = root.querySelector<HTMLElement>('[data-testid="coloured"]')
+    expect(coloured?.style.backgroundColor).toBe('rgb(74, 100, 145)')
+    expect(coloured?.dataset.color).toBe('rgb(74, 100, 145)')
+    expect(coloured?.dataset.hue).toBe('200')
+    const plain = root.querySelector<HTMLElement>('[data-testid="plain"]')
+    expect(plain?.style.backgroundColor).toBe('')
+    expect(plain?.dataset.color).toBeUndefined()
+  })
+
+  it('a row takes a picture in place of the symbol and a second line, an old row stays as it was', () => {
+    const root = show(
+      <Rows label="Accounts">
+        <Row
+          lead={<Avatar letter="K" hue={10} />}
+          name="Kim"
+          badge={
+            <>
+              <Badge tone="accent">Operator</Badge>
+              <Badge tone="danger">Blocked</Badge>
+            </>
+          }
+          sub="kim · kim@example.com"
+          action={<Button kind="secondary" icon="UserCog">Manage</Button>}
+        />
+        <Row icon="KeyRound" name="Pocket ID" />
+      </Rows>,
+    )
+    const [person, plain] = getAllByRole(root, 'listitem')
+    expect(person?.querySelector('svg')?.closest('button')).not.toBeNull()
+    expect(getByText(person as HTMLElement, 'kim · kim@example.com').className).toContain('text-xs')
+    expect(getByText(person as HTMLElement, 'Operator').dataset.tone).toBe('accent')
+    expect(getByText(person as HTMLElement, 'Blocked').dataset.tone).toBe('danger')
+    expect(getByRole(person as HTMLElement, 'button', { name: 'Manage' }).dataset.icon).toBe('UserCog')
+    expect(plain?.firstElementChild?.tagName.toLowerCase()).toBe('svg')
+    expect(plain?.textContent).toBe('Pocket ID')
+  })
+
+  it('Facts pair every label with its value, ButtonGroup names its group by its heading', () => {
+    const root = show(
+      <>
+        <Facts label="About Kim" items={[{ label: 'Username', value: 'kim' }, { label: 'Email', value: 'kim@example.com', note: 'confirmed' }]} />
+        <ButtonGroup title="Access">
+          <Button kind="secondary" icon="Link">Link for a new password</Button>
+        </ButtonGroup>
+        <ButtonGroup title="Rights" layout="list">
+          <CheckboxRow label="AI allowed" checked onChange={() => undefined} />
+        </ButtonGroup>
+      </>,
+    )
+    const list = root.querySelector('dl')
+    expect(list?.getAttribute('aria-label')).toBe('About Kim')
+    expect(Array.from(list?.querySelectorAll('dt') ?? []).map((term) => term.textContent)).toEqual(['Username', 'Email'])
+    const values = Array.from(list?.querySelectorAll('dd') ?? [])
+    expect(values.map((value) => value.firstChild?.textContent)).toEqual(['kim', 'kim@example.com'])
+    expect(values[1]?.querySelector('span')?.textContent).toBe('confirmed')
+    const access = getByRole(root, 'region', { name: 'Access' })
+    expect(getByRole(access, 'heading', { level: 3, name: 'Access' })).toBeTruthy()
+    expect(getByRole(access, 'button', { name: 'Link for a new password' }).dataset.kind).toBe('secondary')
+    const rights = getByRole(root, 'region', { name: 'Rights' })
+    expect(rights.dataset.groupLayout).toBe('list')
+    expect(getByRole(rights, 'checkbox', { name: 'AI allowed' })).toBeTruthy()
   })
 })

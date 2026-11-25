@@ -46,6 +46,10 @@ export const BADGE_TONE = {
   on: 'border-transparent bg-[color-mix(in_srgb,var(--nexui-ok)_14%,transparent)] text-[var(--nexui-ok)]',
   off: 'border-[var(--nexui-line)] bg-transparent text-[var(--nexui-text-muted)]',
   warn: 'border-transparent bg-[color-mix(in_srgb,var(--nexui-warn)_14%,transparent)] text-[var(--nexui-warn)]',
+  /** Since 0.1.1: a role ("Operator"), in the accent colour. */
+  accent: 'border-transparent bg-[color-mix(in_srgb,var(--nexui-accent)_14%,transparent)] text-[var(--nexui-accent-text)]',
+  /** Since 0.1.1: a state that keeps the account out ("Blocked", "Deleted"). */
+  danger: 'border-transparent bg-[color-mix(in_srgb,var(--nexui-danger)_14%,transparent)] text-[var(--nexui-danger)]',
 } as const
 
 export type BadgeTone = keyof typeof BADGE_TONE
@@ -83,3 +87,18 @@ export const NOTICE_TEXT = {
 } as const
 
 export type NoticeTone = keyof typeof NOTICE_TONE
+
+/** Since 0.1.1: a person's picture, round, never squeezed. */
+export const AVATAR = 'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full'
+
+/** Since 0.1.1: the letter of a picture-less person on its hue; saturation, lightness and the letter's colour are the
+ * app's (README, "Farben"). */
+export const AVATAR_LETTER =
+  'bg-[hsl(var(--nexui-avatar-hue)_var(--nexui-avatar-saturation)_var(--nexui-avatar-lightness))] text-[var(--nexui-avatar-text)] ' +
+  'font-semibold tracking-normal select-none [font-family:inherit]'
+
+/** Since 0.1.1: the small grey second line of a row (username, address); it breaks rather than being cut off. */
+export const SUB = `${PLAIN} block text-xs leading-4 ${MUTED} [overflow-wrap:anywhere]`
+
+/** Since 0.1.1: the heading over a group of buttons in a dialog ("Change", "Access", "End"). */
+export const GROUP_TITLE = `${PLAIN} text-xs leading-4 font-semibold ${MUTED}`
