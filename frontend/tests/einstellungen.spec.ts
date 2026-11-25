@@ -40,6 +40,10 @@ test('Die Einstellungen sind gegliedert wie in nexnotes', async ({ page }, info)
   // Wie nexnotes: eine Karte „Profil“, die Beschriftungen normal geschrieben, nicht in Großbuchstaben (25.11.2026).
   await expect(inhalt.getByRole('region', { name: 'Profil', exact: true }).getByLabel('Anzeigename', { exact: true })).toBeVisible()
   await expect(inhalt.locator('label', { hasText: /^Anzeigename$/ })).toHaveCSS('text-transform', 'none')
+  // konten 0.3.7: ein Knopf „Speichern“ für die drei Felder, nie beim Verlassen; am Benutzernamen auch seine Regeln.
+  const profilkarte = inhalt.getByRole('region', { name: 'Profil', exact: true })
+  await expect(profilkarte.getByRole('button', { name: 'Speichern', exact: true })).toHaveCount(1)
+  await expect(inhalt.getByLabel('Benutzername', { exact: true })).toHaveAccessibleDescription(/2 bis 64 Zeichen/)
   await expect(inhalt.getByRole('button', { name: 'Bearbeiten', exact: true })).toHaveCount(0)
   // `layout: 'stacked'`: Die Felder stehen untereinander, nie nebeneinander, auch breit.
   const links = await Promise.all(profil.slice(1, 4).map(async (feld) => (await feld.boundingBox())!.x))

@@ -6,7 +6,10 @@
  * Passwort; mit Postausgang gilt die neue erst nach ihrem Link, bis dahin die alte.
  * ⚠️ **Ohne sie gibt es keinen Weg zurück** nach einem vergessenen Passwort, außer über den Betreiber. Deshalb steht
  * die Warnung direkt unter dem Feld, sobald sie leer ist.
- * ⚠️ **Der Benutzername wird direkt im Feld geändert** (kein „Bearbeiten“); „Speichern“ fragt nach dem Passwort.
+ * ⚠️ **Der Benutzername wird direkt im Feld geändert** (kein „Bearbeiten“).
+ * ⚠️ **Ein Knopf „Speichern“ für Anzeigename, Benutzername und E-Mail** (konten 0.3.7, `PAGES.profile.saveButton`), nie
+ * beim Verlassen eines Felds. Ist Benutzername oder E-Mail geändert (`confirmOnSave`), fragt er vorher einmal das
+ * Passwort.
  *
  * ⚠️ **Die Sprache hängt seit dem Kontenmodul am Konto** und reist mit auf jedes Gerät (wie nexnotes).
  */
@@ -100,19 +103,25 @@ export function Profil({
     return typeof antwort === 'string' && antwort ? antwort : null
   }
 
-  /** Der Anzeigename gilt beim Verlassen des Feldes (er braucht kein Passwort). */
-  async function nameSpeichern() {
-    if (!nameNeu) return
-    await tun(() => api.aendern('/api/auth/ich/profil', { anzeigename: name.trim() }), t('profil.gespeichert'))
-  }
-
-  async function adresseSpeichern() {
-    const passwort = await passwortFragen()
+  /** „Speichern“ unter den drei Feldern: erst der Benutzername, dann Anzeigename und Adresse in einem Zug (der Server
+   *  prüft den Namen vor der Adresse). Das Passwort einmal für beides, nur wenn eins davon geändert ist. */
+  async function speichern() {
+    const bestaetigen = PAGES.profile.confirmOnSave.some((feld) => (feld === 'username' ? benutzernameNeu : adresseNeu))
+    const passwort = bestaetigen ? await passwortFragen() : ''
     if (passwort === null) return
-    await tun(
-      () => api.aendern('/api/auth/ich/profil', { anzeigename: name.trim(), kontaktadresse: adresse.trim(), passwort }),
-      t('profil.gespeichert'),
+    const neu = benutzername.trim().toLowerCase()
+    const ok = await tun(
+      async () => {
+        if (benutzernameNeu) await api.aendern('/api/auth/ich/benutzername', { benutzername: neu, passwort })
+        if (nameNeu || adresseNeu)
+          await api.aendern('/api/auth/ich/profil', {
+            anzeigename: name.trim(),
+            ...(adresseNeu ? { kontaktadresse: adresse.trim(), passwort } : {}),
+          })
+      },
+      benutzernameNeu ? t('account.usernameChanged', { username: neu }) : t('profil.gespeichert'),
     )
+    if (ok && benutzernameNeu) setUmbenannt(true)
   }
 
   /** „Übernehmen“: wie eine Adressänderung, mit Passwort; mit Postausgang wartet sie danach auf ihren Link. */
@@ -120,17 +129,6 @@ export function Profil({
     const passwort = await passwortFragen()
     if (passwort === null) return
     await tun(() => api.senden('/api/auth/ich/angebotene-adresse', { passwort }), t('profil.gespeichert'))
-  }
-
-  async function benutzernameSpeichern() {
-    const neu = benutzername.trim().toLowerCase()
-    const passwort = await passwortFragen()
-    if (passwort === null) return
-    const ok = await tun(
-      () => api.aendern('/api/auth/ich/benutzername', { benutzername: neu, passwort }),
-      t('account.usernameChanged', { username: neu }),
-    )
-    if (ok) setUmbenannt(true)
   }
 
   const teile: Record<string, () => ReactNode> = {
@@ -187,50 +185,31 @@ export function Profil({
         autoComplete="name"
         placeholder={person.benutzername}
         onChange={(e) => setName(e.target.value)}
-        onBlur={() => void nameSpeichern()}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') void nameSpeichern()
-        }}
       />
     ),
     username: () => {
       const p = teil('username')
       return (
-        <form
-          className="flex flex-col gap-2"
-          onSubmit={(e) => {
-            e.preventDefault()
-            void benutzernameSpeichern()
-          }}
-        >
-          <Input
-            label={t(p.title)}
-            hint={umbenannt ? t('account.formerUsername') : t(p.hint)}
-            value={benutzername}
-            maxLength={USERNAME_MAX}
-            autoComplete="username"
-            onChange={(e) => setBenutzername(e.target.value)}
-          />
-          {benutzernameNeu && (
-            <div>
-              <Button type="submit" variant="primary" disabled={laeuft || !benutzername.trim()}>
-                {t(p.buttons[0])}
-              </Button>
-            </div>
-          )}
-        </form>
+        <Input
+          label={t(p.title)}
+          // Beide Hinweise unter dem Feld (konten 0.3.7): wofür er ist und seine Regeln.
+          hint={
+            <>
+              <span className="block">{umbenannt ? t('account.formerUsername') : t(p.hint)}</span>
+              {p.rules && <span className="block">{t(p.rules)}</span>}
+            </>
+          }
+          value={benutzername}
+          maxLength={USERNAME_MAX}
+          autoComplete="username"
+          onChange={(e) => setBenutzername(e.target.value)}
+        />
       )
     },
     email: () => {
       const p = teil('email')
       return (
-        <form
-          className="flex flex-col gap-2"
-          onSubmit={(e) => {
-            e.preventDefault()
-            void adresseSpeichern()
-          }}
-        >
+        <div className="flex flex-col gap-2">
           <Input
             type="email"
             label={t(p.title)}
@@ -274,14 +253,7 @@ export function Profil({
               <span>{t('sicherheit.kontaktadresse_fehlt')}</span>
             </div>
           )}
-          {adresseNeu && (
-            <div>
-              <Button type="submit" variant="primary" disabled={laeuft}>
-                {t(p.buttons[0])}
-              </Button>
-            </div>
-          )}
-        </form>
+        </div>
       )
     },
     /* konten 0.3.3: Einem Konto mit Passwort bietet ein Anbieter seine Adresse nur an; seit 0.3.4 mit seinem Namen,
@@ -332,6 +304,9 @@ export function Profil({
     ),
   }
 
+  const sichtbar = PROFIL_TEILE.filter((name) => name in teile)
+  const gesichert = (name: string) => (PAGES.profile.saveFields as readonly string[]).includes(name)
+
   return (
     <div className="flex flex-col gap-5">
       <div aria-live="polite">
@@ -348,10 +323,31 @@ export function Profil({
       </div>
 
       <Karte id="profil" symbol={UserRound} titel={t(PAGES.profile.title)}>
-        {/* `layout: 'stacked'`: ein Teil unter dem anderen, auch auf breiten Bildschirmen. */}
-        {PROFIL_TEILE.filter((name) => name in teile).map((name) => (
-          <Fragment key={name}>{teile[name]()}</Fragment>
-        ))}
+        {/* `layout: 'stacked'`: ein Teil unter dem anderen, auch auf breiten Bildschirmen. Die drei Felder, die
+            „Speichern“ zusammen sichert (`saveFields`), stehen in einem Formular, der Knopf darunter. */}
+        {sichtbar.map((name) =>
+          !gesichert(name) ? (
+            <Fragment key={name}>{teile[name]()}</Fragment>
+          ) : name === sichtbar.find(gesichert) ? (
+            <form
+              key="speichern"
+              className="flex flex-col gap-3"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void speichern()
+              }}
+            >
+              {sichtbar.filter(gesichert).map((feld) => (
+                <Fragment key={feld}>{teile[feld]()}</Fragment>
+              ))}
+              <div>
+                <Button type="submit" variant="primary" disabled={laeuft || !benutzername.trim() || !(nameNeu || benutzernameNeu || adresseNeu)}>
+                  {t(PAGES.profile.saveButton)}
+                </Button>
+              </div>
+            </form>
+          ) : null,
+        )}
       </Karte>
 
       <Karte id="abmelden" symbol={LogOut} titel={t('profil.abmelden_titel')} text={t('profil.abmelden_text')}>

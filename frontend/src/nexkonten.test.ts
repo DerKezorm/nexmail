@@ -7,16 +7,28 @@
  *
  * The module's own tests check the wording files word for word against the blueprint; this test checks that the
  * app really loads them (merged into its resources, `{{app}}`, `{{setupTokenEnv}}` and `{{minimum}}` filled in
- * through kontenVariables) and that nothing in the app overrides them.
+ * through kontenVariables) and that nothing in the app overrides them. Since 0.3.7 it shows the app's screens
+ * (APP_RENDER) and checks that every field is found by exactly its label and that the profile saves with one button;
+ * this needs `@testing-library/dom` among the app's devDependencies and vitest's `environment: 'jsdom'`.
  */
+import { fireEvent, getAllByRole, getByLabelText, waitFor } from '@testing-library/dom'
 import i18next from 'i18next'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { createElement, type ReactNode } from 'react'
+import { createRoot } from 'react-dom/client'
+import { I18nextProvider } from 'react-i18next'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { kontenVariables, PAGES, pageOrder, SCREENS, screenFields, sessionExpiredParts, suggestUsername } from './vendor/nexkonten/konten'
+import { FIELDS, kontenVariables, PAGES, pageOrder, SCREENS, screenFields, sessionExpiredParts, suggestUsername } from './vendor/nexkonten/konten'
+import type { AccountField } from './vendor/nexkonten/konten'
+import type { Ich } from './api/client'
 import { naechster } from './components/SitzungAbgelaufen'
 // nexmail: the order the pages really use (pages/einstellungen/Profil, pages/Sicherheit).
-import { PROFIL_TEILE } from './pages/einstellungen/Profil'
+import { Profil, PROFIL_TEILE } from './pages/einstellungen/Profil'
 import { SICHERHEIT_TEILE } from './pages/Sicherheit'
+import { EinrichtungPage } from './pages/EinrichtungPage'
+import { EinladungPage } from './pages/EinladungPage'
+import { AnmeldePage } from './pages/AnmeldePage'
+import { KennwortNeuPage, VergessenPage } from './pages/KennwortPage'
 import de from './vendor/nexkonten/konten.de.json'
 import en from './vendor/nexkonten/konten.en.json'
 // nexmail: the resources and settings exactly as `spracheHochfahren` gives them to i18next (`i18n/index.ts` merges the
@@ -26,6 +38,8 @@ import { GRUNDEINSTELLUNG, ressourcen } from './i18n'
 const i18n = i18next.createInstance()
 
 beforeAll(async () => {
+  // nexmail: the server of the screens below; every write answers with an empty success.
+  globalThis.fetch = server as typeof fetch
   await i18n.init({
     resources: { de: { translation: await ressourcen('de') }, en: { translation: await ressourcen('en') } },
     lng: 'de',
@@ -52,6 +66,65 @@ const APP_SCREENS: Partial<Record<keyof typeof SCREENS, readonly string[]>> = {
 const APP_PAGES: Record<keyof typeof PAGES, readonly string[]> = {
   profile: PROFIL_TEILE,
   security: SICHERHEIT_TEILE,
+}
+
+/** A screen of the app shown in the document: the element that holds it, and how to take it away again. */
+type Shown = { root: HTMLElement; unmount: () => void }
+
+/** nexmail: what the screens below ask the server for while they load (the invitation, the sign-in page's
+ * providers); everything else answers 404, which the screens take as "nothing there". */
+async function server(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const address = String(input instanceof Request ? input.url : input)
+  const method = (init?.method ?? 'GET').toUpperCase()
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+  if (method !== 'GET') return json({})
+  if (address.includes('/api/einladung/')) return json({ anzeigename: 'Kim', benutzername: 'kim', kontaktadresse: 'kim@example.com', passwort: true })
+  if (address.includes('/api/oidc/anmeldeseite')) return json({ providers: [], password: true })
+  if (address.includes('/api/oidc/providers')) return json([])
+  return json({ detail: 'not_found' }, 404)
+}
+
+/** nexmail: an account with a password, as the profile gets it from `/api/auth/ich`. */
+const KIM = {
+  id: 'kim',
+  anzeigename: 'Kim',
+  benutzername: 'kim',
+  kontaktadresse: 'kim@example.com',
+  hat_kennwort: true,
+  ist_betreiber: false,
+} as unknown as Ich
+
+const nichts = () => undefined
+const modus = { modus: 'dark' as const, aufModus: nichts }
+
+/** Shows a page with the test's i18n and waits until its first field is there. */
+function zeigen(screen: keyof typeof SCREENS, page: ReactNode): () => Promise<Shown> {
+  return async () => {
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const react = createRoot(root)
+    react.render(createElement(I18nextProvider, { i18n }, page))
+    const first = screenFields(screen)[0]
+    if (first) await waitFor(() => getByLabelText(root, i18n.t(first.label)))
+    return {
+      root,
+      unmount: () => {
+        react.unmount()
+        root.remove()
+      },
+    }
+  }
+}
+
+// nexmail (since 0.3.7): every screen of APP_SCREENS with its own page component; `profile` is the page "Profile" of
+// an account with a password.
+const APP_RENDER: Partial<Record<keyof typeof SCREENS, () => Promise<Shown>>> = {
+  setup: zeigen('setup', createElement(EinrichtungPage, { ...modus, aufFertig: nichts })),
+  invite: zeigen('invite', createElement(EinladungPage, { ...modus, schluessel: 'einladung', aufFertig: nichts })),
+  login: zeigen('login', createElement(AnmeldePage, { ...modus, aufFertig: nichts, aufVergessen: nichts })),
+  forgot: zeigen('forgot', createElement(VergessenPage, { ...modus, aufZurueck: nichts })),
+  reset: zeigen('reset', createElement(KennwortNeuPage, { ...modus, schluessel: 'neu', aufFertig: nichts })),
+  profile: zeigen('profile', createElement(Profil, { ich: KIM, aufAbmelden: nichts })),
 }
 
 type Tree = { [key: string]: string | Tree }
@@ -116,8 +189,86 @@ describe('the konten pages (since 0.3.6)', () => {
     expect(i18n.t('account.pictureUpload')).toBe('Profilbild hochladen')
     for (const page of Object.values(PAGES)) {
       for (const part of page.parts) {
-        for (const key of [part.title, ...part.buttons]) expect(i18n.exists(key), key).toBe(true)
+        const rules = 'rules' in part ? [part.rules] : []
+        for (const key of [part.title, ...part.buttons, ...rules]) expect(i18n.exists(key), key).toBe(true)
       }
+    }
+    expect(i18n.t(PAGES.profile.saveButton)).toBe('Speichern')
+  })
+})
+
+/** The texts of the elements ``aria-describedby`` names, one after the other. */
+function description(field: HTMLElement): string {
+  const ids = (field.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean)
+  return ids.map((id) => field.ownerDocument.getElementById(id)?.textContent ?? '').join(' ')
+}
+
+/** The field of a screen, found by exactly its label (getByLabelText fails on none and on more than one). */
+function labelled(root: HTMLElement, field: AccountField): HTMLElement {
+  return getByLabelText(root, i18n.t(FIELDS[field].label))
+}
+
+async function shown(screen: keyof typeof SCREENS): Promise<Shown> {
+  await i18n.changeLanguage('de')
+  const render = APP_RENDER[screen]
+  if (!render) throw new Error(`APP_RENDER.${screen} is missing`)
+  return render()
+}
+
+describe('the konten fields (since 0.3.7)', () => {
+  for (const screen of Object.keys(APP_SCREENS) as (keyof typeof SCREENS)[]) {
+    it(`${screen}: every field is found by exactly its label, its hints by aria-describedby`, async () => {
+      const { root, unmount } = await shown(screen)
+      try {
+        for (const spec of screenFields(screen)) {
+          const label = i18n.t(spec.label)
+          const field = getByLabelText(root, label)
+          const own = field.getAttribute('aria-label')
+          expect(own === null || own === label, `${screen}.${spec.field}: aria-label`).toBe(true)
+          const said = description(field)
+          for (const hint of spec.hints) expect(said, `${screen}.${spec.field}: ${hint}`).toContain(i18n.t(hint))
+        }
+      } finally {
+        unmount()
+      }
+    })
+  }
+})
+
+describe('the profile saves with one button (since 0.3.7)', () => {
+  it('has exactly one "Save" for display name, username and email', async () => {
+    const { root, unmount } = await shown('profile')
+    try {
+      const fields = PAGES.profile.saveFields.map((field) => labelled(root, field))
+      // The card: the closest element holding all three fields.
+      let card: HTMLElement = fields[0] ?? root
+      while (!fields.every((field) => card.contains(field)) && card.parentElement) card = card.parentElement
+      expect(getAllByRole(card, 'button', { name: i18n.t(PAGES.profile.saveButton) })).toHaveLength(1)
+    } finally {
+      unmount()
+    }
+  })
+
+  it('saves nothing when a field is changed and left', async () => {
+    const { root, unmount } = await shown('profile')
+    const sent = vi.spyOn(globalThis, 'fetch')
+    try {
+      for (const field of PAGES.profile.saveFields) {
+        const input = labelled(root, field)
+        fireEvent.focus(input)
+        fireEvent.change(input, { target: { value: field === 'email' ? 'neu@example.com' : 'neu' } })
+        fireEvent.focusOut(input)
+        fireEvent.blur(input)
+      }
+      await new Promise((done) => setTimeout(done, 50))
+      const writes = sent.mock.calls.filter(([input, init]) => {
+        const method = init?.method ?? (input instanceof Request ? input.method : 'GET')
+        return method.toUpperCase() !== 'GET'
+      })
+      expect(writes).toEqual([])
+    } finally {
+      sent.mockRestore()
+      unmount()
     }
   })
 })

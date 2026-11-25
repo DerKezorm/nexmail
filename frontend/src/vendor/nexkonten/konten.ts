@@ -161,12 +161,25 @@ export function factorResetParts(overview: { passkeys: readonly unknown[] | numb
 export const FACTOR_RESET_DEFAULTS = { factorResetPasskeys: true, factorResetDevices: true } as const
 
 /** One part of an account page (since 0.3.6): its heading or label, the hint under it, the buttons it may show (text
- * keys, in their order; which one shows depends on the state, e.g. ``totpSetup`` or ``totpRemove``). */
+ * keys, in their order; which one shows depends on the state, e.g. ``totpSetup`` or ``totpRemove``). ``rules``
+ * (since 0.3.7): a second hint under the first, the rules of the value (the username in the profile). */
 export interface PagePart {
   part: string
   title: string
   hint: string
+  rules?: string
   buttons: readonly string[]
+}
+
+/** Since 0.3.7: how the profile saves. ``save: 'button'``: one button (``saveButton``) under the fields saves
+ * ``saveFields`` together, never on leaving a field. Has one of ``confirmOnSave`` changed, saving first asks for the
+ * password (``account.confirmWithPassword``; without a password a fresh sign-in, ``account.confirmFresh``), once for
+ * all of them: the server confirms the username and the address that way (profiles.change_username, change_email). */
+export interface PageSave {
+  save: 'button'
+  saveButton: string
+  saveFields: readonly AccountField[]
+  confirmOnSave: readonly AccountField[]
 }
 
 /** Since 0.3.6: the pages "Profile" and "Security" as every app shows them, so that they look the same everywhere:
@@ -174,16 +187,22 @@ export interface PagePart {
  * from the module's texts. ``stacked``: the fields stand one under the other, never side by side. In the profile the
  * username is changed right in its field; saving asks for the password (``account.confirmWithPassword``; without a
  * password a fresh sign-in, ``account.confirmFresh``). The role shows small at the end. The app's own parts (nexmail
- * "Google and Microsoft accounts", nexnotes "Links for reading") come after the module's (``pageOrder``). */
+ * "Google and Microsoft accounts", nexnotes "Links for reading") come after the module's (``pageOrder``). Since 0.3.7
+ * the profile has one button "Save" for display name, username and email (``PageSave``), and the username shows two
+ * hints, what it is for and its rules. Picture, offered address and language keep their own ways. */
 export const PAGES = {
   profile: {
     title: 'account.profile',
     layout: 'stacked',
+    save: 'button',
+    saveButton: 'account.save',
+    saveFields: ['displayName', 'username', 'email'],
+    confirmOnSave: ['username', 'email'],
     parts: [
       { part: 'picture', title: 'account.picture', hint: 'account.pictureHint', buttons: ['account.pictureUpload', 'account.pictureRemove'] },
       { part: 'displayName', title: 'account.displayName', hint: 'account.displayNameHint', buttons: [] },
-      { part: 'username', title: 'account.username', hint: 'account.usernameHintProfile', buttons: ['account.save'] },
-      { part: 'email', title: 'account.email', hint: 'account.emailHint', buttons: ['account.save'] },
+      { part: 'username', title: 'account.username', hint: 'account.usernameHintProfile', rules: 'account.usernameRules', buttons: [] },
+      { part: 'email', title: 'account.email', hint: 'account.emailHint', buttons: [] },
       { part: 'providerEmailOffer', title: 'account.providerEmailOffer', hint: '', buttons: ['account.providerEmailTake', 'account.providerEmailDismiss'] },
       { part: 'language', title: 'account.language', hint: '', buttons: [] },
       { part: 'role', title: 'account.role', hint: '', buttons: [] },
@@ -201,7 +220,10 @@ export const PAGES = {
       { part: 'newSignInMail', title: 'account.newSignInMail', hint: 'account.newSignInMailHint', buttons: [] },
     ],
   },
-} as const satisfies Record<'profile' | 'security', { title: string; layout: 'stacked'; parts: readonly PagePart[] }>
+} as const satisfies {
+  profile: { title: string; layout: 'stacked'; parts: readonly PagePart[] } & PageSave
+  security: { title: string; layout: 'stacked'; parts: readonly PagePart[] }
+}
 
 /** Since 0.3.6: the parts a page shows, top to bottom: the module's first in their order, then the app's own. */
 export function pageOrder(page: keyof typeof PAGES, own: readonly string[] = []): string[] {
@@ -235,15 +257,23 @@ export interface ScreenOptions {
   autoComplete?: Partial<Record<AccountField, string>>
 }
 
-/** The fields of a screen with their specs; on the profile the display name may stay empty (the username shows). */
-export function screenFields(screen: AccountScreen, options: ScreenOptions = {}): Array<FieldSpec & { field: AccountField }> {
+/** The fields of a screen with their specs; on the profile the display name may stay empty (the username shows).
+ * ``hints`` (since 0.3.7): every hint under the field, in order, each joined to the field by ``aria-describedby`` (the
+ * first is ``hint``); the field's accessible name is its label, nothing else. */
+export function screenFields(
+  screen: AccountScreen,
+  options: ScreenOptions = {},
+): Array<FieldSpec & { field: AccountField; hints: string[] }> {
   return SCREENS[screen].map((field: AccountField) => {
     const spec = FIELDS[field]
     const optional = (screen === 'profile' || screen === 'operatorInvite') && field === 'displayName'
     const autoComplete = options.autoComplete?.[field] ?? spec.autoComplete
     // In the profile the username is changed right there: its hint says only what it is for.
-    const hint = screen === 'profile' && field === 'username' ? 'account.usernameHintProfile' : spec.hint
-    return { ...spec, field, autoComplete, hint, required: optional ? false : spec.required }
+    const profileName = screen === 'profile' && field === 'username'
+    const hint = profileName ? 'account.usernameHintProfile' : spec.hint
+    // Since 0.3.7 the profile names the rules under it too.
+    const hints = profileName ? [hint, 'account.usernameRules'] : hint ? [hint] : []
+    return { ...spec, field, autoComplete, hint, hints, required: optional ? false : spec.required }
   })
 }
 

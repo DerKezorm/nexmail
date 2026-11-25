@@ -158,6 +158,17 @@ Einrichtung, Bremse beim Abschalten, Passwort vergessen je Absender, neue Codes)
 öffentliche Adresse), `test_anmeldung.py` (410 statt 400 ohne Einrichtung), vitest `src/nexkonten.test.ts`
 (`APP_PAGES`, Dialog „Sitzung abgelaufen“).
 
+## 0e. `konten` 0.3.7
+
+Nachgezogen am 25.11.2026 auf demselben Zweig; Server und Store unverändert (nur `__version__`).
+
+| Teil | Wo |
+|---|---|
+| Ein Knopf „Speichern“ | `einstellungen/Profil.tsx`: Anzeigename, Benutzername und E-Mail in einem Formular, darunter `PAGES.profile.saveButton`; kein Speichern beim Verlassen eines Felds, keine Knöpfe je Feld. Ist Benutzername oder E-Mail geändert (`confirmOnSave`), fragt er einmal das Passwort; dann erst `PUT /api/auth/ich/benutzername`, danach `PUT /api/auth/ich/profil` (Anzeigename, Adresse nur wenn geändert) |
+| Regeln am Benutzernamen | beide Hinweise (`usernameHintProfile`, `rules`) im Hinweis des Felds, per `aria-describedby` |
+| Beschriftung und Feld | `ds/Feld.tsx` seit `4fc817f`: `<label for>` mit genau der Beschriftung, Hinweis per `aria-describedby` |
+| vitest | `src/nexkonten.test.ts` zeigt die sechs Bildschirme (`APP_RENDER`: Einrichtung, Einladung, Anmeldung, Passwort vergessen, neues Passwort, Profil) mit einem `fetch`-Ersatz und prüft Beschriftungen, Hinweise und den einen Knopf; dafür `@testing-library/dom` als devDependency |
+
 ## 1. Bestand heute (0.33.0)
 
 ### Datenmodell
