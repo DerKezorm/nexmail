@@ -6,6 +6,7 @@
  */
 import { useId } from 'react'
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
+import { useBeschriftung } from './beschriftung'
 
 type Groesse = 'sm' | 'md' | 'lg'
 
@@ -14,8 +15,6 @@ const HOEHE: Record<Groesse, string> = {
   md: 'h-[var(--control-h-md)]',
   lg: 'h-[var(--control-h-lg)]',
 }
-
-const BESCHRIFTUNG = 'text-[12px] font-semibold uppercase tracking-[0.06em] text-fg-3'
 
 /** Der Rahmen um Eingabefelder. Fokus faerbt ihn, ein Fehler uebersteuert ihn. */
 function huelle(fehler: boolean) {
@@ -53,6 +52,8 @@ export function Input({
   ...rest
 }: InputProps) {
   const kaputt = Boolean(error)
+  // In den Einstellungen normal geschrieben, sonst wie das Design-System (`beschriftung.ts`).
+  const beschriftung = useBeschriftung()
   /* ⚠️ **Die Beschriftung gehört allein zum Feld** (`htmlFor`/`id`), der Hinweis beschreibt es nur
      (`aria-describedby`). Vorher umschloss ein `<label>` Beschriftung, Feld und Hinweis: Der Name des Feldes war
      dann „Anzeigename“ samt Inhalt und Hinweis, und weder ein Vorleseprogramm noch `getByLabel(…, { exact })`
@@ -63,7 +64,7 @@ export function Input({
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       {label && (
-        <label htmlFor={id} className={BESCHRIFTUNG}>
+        <label htmlFor={id} className={beschriftung}>
           {label}
         </label>
       )}
@@ -103,13 +104,14 @@ export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement
 
 export function Select({ label, hint, size = 'md', options = [], className = '', children, ...rest }: SelectProps) {
   // Wie beim Input: die Beschriftung allein ist der Name, der Hinweis beschreibt.
+  const beschriftung = useBeschriftung()
   const eigen = useId()
   const id = rest.id ?? eigen
   const hinweisId = hint ? `${id}-hinweis` : undefined
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       {label && (
-        <label htmlFor={id} className={BESCHRIFTUNG}>
+        <label htmlFor={id} className={beschriftung}>
           {label}
         </label>
       )}

@@ -32,6 +32,7 @@ import {
   slugFromLabel,
   type AuthentikAddress,
 } from '../vendor/nexoidc/oidc'
+import { BESCHRIFTUNG_NORMAL } from '../ds/beschriftung'
 
 export interface Anbieter {
   id: number
@@ -717,7 +718,7 @@ function Formular({
         />
         <div className="flex flex-col gap-1.5">
           {/* Dieselbe Beschriftung wie die Felder (ds/Feld.tsx), aber nur lesbar. */}
-          <span className="text-[12px] font-semibold tracking-[0.06em] text-fg-3 uppercase">{t('oidc.admin.redirect')}</span>
+          <span className={BESCHRIFTUNG_NORMAL}>{t('oidc.admin.redirect')}</span>
           <div className="flex items-center gap-2 rounded-md border border-line bg-surface-2 px-3 py-2">
             <code className="min-w-0 flex-1 truncate font-mono text-[12px] text-fg-1 select-all" data-testid="provider-redirect">
               {rueckleit}

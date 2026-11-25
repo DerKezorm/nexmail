@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Check, Copy, Download } from 'lucide-react'
 import { api, ApiFehler } from '../api/client'
 import { Button, Input } from '../ds'
+import { useBeschriftung } from '../ds/beschriftung'
 import { servermeldung } from '../lib/servermeldung'
 
 interface Start {
@@ -32,6 +33,8 @@ export function ZweiterFaktor({
   aufAbbrechen?: () => void
 }) {
   const { t } = useTranslation()
+  // In den Einstellungen normal geschrieben, bei der Anmeldung wie die Felder dort.
+  const beschriftung = useBeschriftung()
   const [start, setStart] = useState<Start | null>(null)
   const [codes, setCodes] = useState<string[] | null>(null)
   const [code, setCode] = useState('')
@@ -99,7 +102,7 @@ export function ZweiterFaktor({
           <div className="size-[168px] shrink-0 rounded-lg bg-surface-2" />
         )}
         <div className="min-w-0 flex-1">
-          <p className="mb-1 text-[12px] font-semibold tracking-[0.06em] text-fg-4 uppercase">
+          <p className={`mb-1 ${beschriftung}`}>
             {t('einrichtung.geheimnis_abtippen')}
           </p>
           <code className="block break-all rounded-md border border-line bg-surface-2 px-3 py-2 font-mono text-[13px] text-fg-1 select-all">

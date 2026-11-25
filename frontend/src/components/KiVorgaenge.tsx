@@ -18,6 +18,7 @@ import { Button } from '../ds'
 import { useNachfrage } from './Nachfrage'
 import { servermeldung } from '../lib/servermeldung'
 import { vorgangFehler } from '../lib/kivorgang'
+import { BESCHRIFTUNG_NORMAL } from '../ds/beschriftung'
 
 interface Nachricht {
   role: string
@@ -148,7 +149,7 @@ export function KiVorgaenge({ tage }: { tage: number }) {
                   ) : (
                     (v.rumpf.messages ?? []).map((n, i) => (
                       <div key={i} className="flex flex-col gap-1">
-                        <span className="text-[11px] font-semibold uppercase tracking-wide text-fg-4">
+                        <span className={BESCHRIFTUNG_NORMAL}>
                           {n.role === 'system' ? t('ki.anweisung') : t('ki.dein_text')}
                         </span>
                         {/* ⚠️ Als Text, nicht gerendert — sonst wäre versteckter

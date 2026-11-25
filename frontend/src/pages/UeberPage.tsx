@@ -16,6 +16,7 @@ import { api } from '../api/client'
 import { Badge, Button, Switch } from '../ds'
 import { Logo } from '../components/Logo'
 import { servermeldung } from '../lib/servermeldung'
+import { GRUPPENTITEL } from '../ds/beschriftung'
 
 interface Auskunft {
   version: string
@@ -238,7 +239,7 @@ export function UeberPage({
             ))}
           </ul>
 
-          <h3 className="mt-4 text-[11px] font-medium tracking-wide text-fg-3 uppercase">
+          <h3 className={`mt-4 ${GRUPPENTITEL}`}>
             {t('ueber.schriften')}
           </h3>
           <p className="mt-1 text-[12px] leading-relaxed text-fg-3">

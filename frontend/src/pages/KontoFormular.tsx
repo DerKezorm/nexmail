@@ -26,6 +26,7 @@ import type { Befund, KontoZeile, Vorschlag } from '../api/client'
 import { Zeichenwahl } from '../components/Zeichenwahl'
 import type { Postfachfarbe } from '../daten/typen'
 import { servermeldung } from '../lib/servermeldung'
+import { GRUPPENTITEL } from '../ds/beschriftung'
 
 interface Props {
   naechsteFarbe: 1 | 2 | 3 | 4 | 5 | 6
@@ -651,11 +652,11 @@ function Serverblock({ titel, server, port, sicherheit, benutzer, aufAendern }: 
   const { t } = useTranslation()
   return (
     <fieldset className="min-w-0 border-0 p-0">
-      <legend className="mb-2 p-0 text-[12px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
+      <legend className={`mb-2 p-0 ${GRUPPENTITEL}`}>
         {titel}
       </legend>
-      {/* ⚠️ **132 px, nicht 96.** Gemessen: „VERSCHLÜSSELUNG" ist 115 px breit
-          und lief über den Rand; das Auswahlfeld braucht mit Polster und Pfeil
+      {/* ⚠️ **132 px, nicht 96.** Gemessen (damals in Großbuchstaben, seit 25.11.2026
+          normal geschrieben): „VERSCHLÜSSELUNG" war 115 px breit und lief über den Rand; das Auswahlfeld braucht mit Polster und Pfeil
           rund 102 px und zeigte „STARTTI". Deutsche Beschriftungen sind
           durchweg länger als die englischen, an denen man so eine Spalte
           unwillkürlich bemisst. */}

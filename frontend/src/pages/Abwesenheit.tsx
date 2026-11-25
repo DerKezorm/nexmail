@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Check } from 'lucide-react'
 import { api, ApiFehler } from '../api/client'
 import { Button, Input, Switch } from '../ds'
+import { BESCHRIFTUNG_NORMAL } from '../ds/beschriftung'
 
 interface Stand {
   konto_id: string
@@ -181,7 +182,7 @@ export function Abwesenheit() {
                 />
 
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-[11px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
+                  <span className={BESCHRIFTUNG_NORMAL}>
                     {t('abwesenheit.text')}
                   </span>
                   <textarea

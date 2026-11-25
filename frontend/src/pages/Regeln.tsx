@@ -19,6 +19,7 @@ import { useNachfrage } from '../components/Nachfrage'
 import type { Schlagwort } from '../daten/typen'
 import { Button, EmptyState, IconButton, Input, Select, Switch } from '../ds'
 import { servermeldung } from '../lib/servermeldung'
+import { GRUPPENTITEL } from '../ds/beschriftung'
 
 interface Bedingung {
   feld: string
@@ -399,7 +400,7 @@ function Formular({
 
       {/* --- Bedingungen ------------------------------------------------- */}
       <fieldset className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
-        <legend className="px-1 text-[12px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
+        <legend className={`px-1 ${GRUPPENTITEL}`}>
           {t('regeln.wenn')}
         </legend>
 
@@ -490,7 +491,7 @@ function Formular({
 
       {/* --- Aktionen ---------------------------------------------------- */}
       <fieldset className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
-        <legend className="px-1 text-[12px] font-semibold tracking-[0.06em] text-fg-3 uppercase">
+        <legend className={`px-1 ${GRUPPENTITEL}`}>
           {t('regeln.dann')}
         </legend>
 

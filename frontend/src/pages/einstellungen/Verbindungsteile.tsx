@@ -7,6 +7,7 @@
  * „Trennen"); in einem Formular steht der Hauptknopf rechts.
  */
 import type { ReactNode } from 'react'
+import { GRUPPENTITEL } from '../../ds/beschriftung'
 
 /** Ein Punkt, ein Wort und die Adresse: verbunden, gestört oder nicht verbunden. */
 export function Lage({
@@ -50,7 +51,7 @@ export function Abschnitt({
 }) {
   return (
     <fieldset className="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0">
-      <legend className="mb-1 p-0 text-[12px] font-semibold tracking-wide text-fg-3 uppercase">{titel}</legend>
+      <legend className={`mb-1 p-0 ${GRUPPENTITEL}`}>{titel}</legend>
       {hinweis && <p className="mb-1 text-[12px] leading-relaxed text-fg-4">{hinweis}</p>}
       {children}
     </fieldset>

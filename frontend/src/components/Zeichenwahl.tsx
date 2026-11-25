@@ -11,8 +11,10 @@ import type { Postfachfarbe } from '../daten/typen'
 import { PUNKT_KLASSE, TEXT_KLASSE } from '../lib/farben'
 import { FARBTOENE, tonVon } from '../lib/farbtoene'
 import { symboleSuchen } from '../lib/nextasksSymbole'
+import { BESCHRIFTUNG_NORMAL } from '../ds/beschriftung'
 
-const BESCHRIFTUNG = 'text-[12px] font-semibold uppercase tracking-[0.06em] text-fg-3'
+/* Nur in den Einstellungen (Postfach-Fenster): normal geschrieben wie dort die Felder. */
+const BESCHRIFTUNG = BESCHRIFTUNG_NORMAL
 
 interface Props {
   /** Die automatisch vergebene Farbe (1..6), für „Automatisch“. */

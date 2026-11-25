@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Building2, FileText, Info, KeyRound, ListChecks, Mail, RefreshCw, Smartphone } from 'lucide-react'
 import { Button, Dialog } from '../ds'
+import { Beschriftung } from '../ds/beschriftung'
 import type { Ich } from '../api/client'
 import { Postfachkacheln } from '../components/Postfachkacheln'
 import { PostfachHinzufuegen } from '../components/PostfachHinzufuegen'
@@ -293,77 +294,80 @@ export function EinstellungenPage({
   }
 
   return (
-    <div className="@container min-h-0 flex-1 overflow-y-auto bg-canvas">
-      <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-        <div className="flex flex-col gap-5 @min-[700px]:flex-row @min-[700px]:items-start @min-[700px]:gap-8">
-          <Navigation ich={ich} bereich={bereich} aufBereich={aufBereich} />
-          <Sprungwahl ich={ich} bereich={bereich} aufBereich={aufBereich} />
+    /* Beschriftungen normal geschrieben wie in nexnotes, auch in den Fenstern, die von hier aufgehen (25.11.2026). */
+    <Beschriftung.Provider value="normal">
+      <div className="@container min-h-0 flex-1 overflow-y-auto bg-canvas">
+        <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+          <div className="flex flex-col gap-5 @min-[700px]:flex-row @min-[700px]:items-start @min-[700px]:gap-8">
+            <Navigation ich={ich} bereich={bereich} aufBereich={aufBereich} />
+            <Sprungwahl ich={ich} bereich={bereich} aufBereich={aufBereich} />
 
-          <div className="flex min-w-0 flex-1 flex-col gap-5" data-testid={`einstellungen-${bereich}`}>
-            <div>
-              <h1 className="mb-0 flex items-center gap-2 font-display text-[24px] font-semibold tracking-tight text-fg-1">
-                <Symbol className="size-5 text-fg-4 @min-[700px]:hidden" aria-hidden />
-                {titel}
-              </h1>
-              {text && <p className="mt-1 mb-0 max-w-[720px] text-[14px] text-fg-3">{text}</p>}
-            </div>
-            <div className="flex flex-col gap-6" data-testid="einstellungen-inhalt">
-              {/* konten 0.3.3: Der Nothammer ist unten, deutlich oben auf den Kontoseiten und bei der Anmeldung. */}
-              {ich?.zwei_faktor_aus && NOTHAMMER_BEREICHE.includes(bereich) && <FaktorAusHinweis />}
-              {inhalt()}
+            <div className="flex min-w-0 flex-1 flex-col gap-5" data-testid={`einstellungen-${bereich}`}>
+              <div>
+                <h1 className="mb-0 flex items-center gap-2 font-display text-[24px] font-semibold tracking-tight text-fg-1">
+                  <Symbol className="size-5 text-fg-4 @min-[700px]:hidden" aria-hidden />
+                  {titel}
+                </h1>
+                {text && <p className="mt-1 mb-0 max-w-[720px] text-[14px] text-fg-3">{text}</p>}
+              </div>
+              <div className="flex flex-col gap-6" data-testid="einstellungen-inhalt">
+                {/* konten 0.3.3: Der Nothammer ist unten, deutlich oben auf den Kontoseiten und bei der Anmeldung. */}
+                {ich?.zwei_faktor_aus && NOTHAMMER_BEREICHE.includes(bereich) && <FaktorAusHinweis />}
+                {inhalt()}
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* ⚠️ **Ein Fenster, nicht eine zweite Seite.** Anlegen und Bearbeiten
-          gehen durch dieselbe Maske; sie einmal als Seite und einmal als
-          Fenster zu zeigen wären zwei Anwendungen. */}
-      <Dialog
-        open={formularOffen}
-        width={720}
-        title={bearbeitet ? t('konto.bearbeiten_titel') : t('konto.hinzufuegen')}
-        onClose={() => void fensterZu()}
-      >
-        <KontoFormular
-          key={bearbeitet?.id ?? 'neu'}
-          imFenster
-          naechsteFarbe={naechste}
-          bestehend={bearbeitet}
-          /* Was schon vergeben ist, wird angeboten — sonst entstehen
-             „Arbeit" und „arbeit" nebeneinander. */
-          bekannteTags={[...new Set((konten ?? []).flatMap((k) => k.tags ?? []))]}
-          aufAbbrechen={() => void fensterZu()}
-          aufUngespeichert={setUngespeichert}
-          aufAngelegt={() => {
-            setUngespeichert(false)
-            aufFormular(false)
+        {/* ⚠️ **Ein Fenster, nicht eine zweite Seite.** Anlegen und Bearbeiten
+            gehen durch dieselbe Maske; sie einmal als Seite und einmal als
+            Fenster zu zeigen wären zwei Anwendungen. */}
+        <Dialog
+          open={formularOffen}
+          width={720}
+          title={bearbeitet ? t('konto.bearbeiten_titel') : t('konto.hinzufuegen')}
+          onClose={() => void fensterZu()}
+        >
+          <KontoFormular
+            key={bearbeitet?.id ?? 'neu'}
+            imFenster
+            naechsteFarbe={naechste}
+            bestehend={bearbeitet}
+            /* Was schon vergeben ist, wird angeboten — sonst entstehen
+               „Arbeit" und „arbeit" nebeneinander. */
+            bekannteTags={[...new Set((konten ?? []).flatMap((k) => k.tags ?? []))]}
+            aufAbbrechen={() => void fensterZu()}
+            aufUngespeichert={setUngespeichert}
+            aufAngelegt={() => {
+              setUngespeichert(false)
+              aufFormular(false)
+              setBearbeitet(null)
+              laden()
+              aufKontenGeaendert?.()
+            }}
+          />
+        </Dialog>
+
+        {rueckfrage}
+
+        {/* ⚠️ **Über der Seite, nicht im Reiter.** Der Rückweg von Google landet
+            auf der Startseite; das Fenster muss auch dann aufgehen, wenn gerade
+            ein anderer Reiter zuletzt offen war. */}
+        <PostfachHinzufuegen
+          offen={wahlOffen}
+          konten={konten ?? []}
+          aufSchliessen={() => aufWahl(false)}
+          aufImap={() => {
             setBearbeitet(null)
+            aufFormular(true)
+          }}
+          aufAngelegt={() => {
             laden()
             aufKontenGeaendert?.()
           }}
         />
-      </Dialog>
-
-      {rueckfrage}
-
-      {/* ⚠️ **Über der Seite, nicht im Reiter.** Der Rückweg von Google landet
-          auf der Startseite; das Fenster muss auch dann aufgehen, wenn gerade
-          ein anderer Reiter zuletzt offen war. */}
-      <PostfachHinzufuegen
-        offen={wahlOffen}
-        konten={konten ?? []}
-        aufSchliessen={() => aufWahl(false)}
-        aufImap={() => {
-          setBearbeitet(null)
-          aufFormular(true)
-        }}
-        aufAngelegt={() => {
-          laden()
-          aufKontenGeaendert?.()
-        }}
-      />
-    </div>
+      </div>
+    </Beschriftung.Provider>
   )
 }
 
