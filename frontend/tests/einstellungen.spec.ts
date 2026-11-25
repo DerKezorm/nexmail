@@ -96,8 +96,8 @@ test('Jeder Bereich geht auf, mit Inhalt und ohne Fehler', async ({ page }, info
   // die Teile, die vorher in den Reitern von Einstellungen und Verwaltung,
   // auf der KI-Seite und der Über-Seite standen.
   const merkmal: Array<[string, RegExp[]]> = [
-    ['Profil', [/Bild wählen|Anderes Bild/, /Gilt in diesem Browser/, /^Abmelden$/]],
-    ['Sicherheit', [/Angemeldete Geräte/, /Wiederherstellungscode/]],
+    ['Profil', [/Profilbild hochladen/, /Gilt in diesem Browser/, /^Abmelden$/]],
+    ['Sicherheit', [/Angemeldete Geräte/, /Überall sonst abmelden/, /Zweiter Faktor/]],
     ['Darstellung', [/Dichte der Nachrichtenliste/i, /Wie das System/]],
     ['Benachrichtigungen', [/Je Abgleich eine Meldung/]],
     ['Verbindungen', [/Verbinde deine Todo-App/, /Code anzeigen/, /Adresse für das Dashboard/]],

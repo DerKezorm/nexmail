@@ -166,6 +166,8 @@ export interface Ich {
   ist_betreiber: boolean
   zwei_faktor_aktiv: boolean
   offene_codes: number
+  /** konten 0.3.6: `none` | `required` | `active` | `passkey` (`SECOND_FACTOR_STATE`). */
+  zweiter_faktor?: string
   /** Wohin ein Rücksetz-Link ginge. Leer heißt: **kein Weg zurück**. */
   kontaktadresse: string
   /** Ob der KI-Dienst eingeschaltet ist — daran hängt der Knopf im Editor.

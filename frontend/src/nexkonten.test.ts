@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+// nexmail: jsdom because the pages it reads their order from reach `client.ts`, which reads the base from the DOM.
 /**
  * Every text of the konten module is in the app, in German and English, through the app's own i18n, and the screens
  * show the module's fields in the module's order. Copied once by the module's `tools/sync.py` to
@@ -10,7 +12,10 @@
 import i18next from 'i18next'
 import { beforeAll, describe, expect, it } from 'vitest'
 
-import { kontenVariables, SCREENS, screenFields, suggestUsername } from './vendor/nexkonten/konten'
+import { kontenVariables, PAGES, pageOrder, SCREENS, screenFields, suggestUsername } from './vendor/nexkonten/konten'
+// nexmail: the order the pages really use (pages/einstellungen/Profil, pages/Sicherheit).
+import { PROFIL_TEILE } from './pages/einstellungen/Profil'
+import { SICHERHEIT_TEILE } from './pages/Sicherheit'
 import de from './vendor/nexkonten/konten.de.json'
 import en from './vendor/nexkonten/konten.en.json'
 // nexmail: the resources and settings exactly as `spracheHochfahren` gives them to i18next (`i18n/index.ts` merges the
@@ -38,6 +43,14 @@ const APP_SCREENS: Partial<Record<keyof typeof SCREENS, readonly string[]>> = {
   forgot: SCREENS.forgot,
   reset: SCREENS.reset,
   profile: SCREENS.profile,
+}
+
+// nexmail (since 0.3.6): the parts of the pages "Profile" and "Security", top to bottom, by the module's part names
+// (PAGES), then nexmail's own: 'signOut' in the profile, 'providers' (linking sign-in providers) and 'googleMicrosoft'
+// in security, always after the module's.
+const APP_PAGES: Record<keyof typeof PAGES, readonly string[]> = {
+  profile: PROFIL_TEILE,
+  security: SICHERHEIT_TEILE,
 }
 
 type Tree = { [key: string]: string | Tree }
@@ -79,5 +92,31 @@ describe('the konten screens', () => {
 
   it('suggest the username the server would', () => {
     expect(suggestUsername('Max Müller')).toBe('max-mueller')
+  })
+})
+
+describe('the konten pages (since 0.3.6)', () => {
+  it("show the module's parts first, in its order, and the app's own after them", () => {
+    expect(APP_PAGES.profile).toEqual(pageOrder('profile', ['signOut']))
+    expect(APP_PAGES.security).toEqual(pageOrder('security', ['providers', 'googleMicrosoft']))
+    for (const page of Object.keys(PAGES) as (keyof typeof PAGES)[]) {
+      const module = pageOrder(page)
+      const shown = APP_PAGES[page]
+      expect(shown.slice(0, module.length), page).toEqual(module)
+      for (const own of shown.slice(module.length)) expect(module, `${page}: ${own}`).not.toContain(own)
+    }
+  })
+
+  it("title every part with the module's texts", async () => {
+    await i18n.changeLanguage('de')
+    expect(i18n.t('account.sessions')).toBe('Angemeldete Geräte')
+    expect(i18n.t('account.signOutEverywhere')).toBe('Überall sonst abmelden')
+    expect(i18n.t('account.stateOff')).toBe('Aus')
+    expect(i18n.t('account.pictureUpload')).toBe('Profilbild hochladen')
+    for (const page of Object.values(PAGES)) {
+      for (const part of page.parts) {
+        for (const key of [part.title, ...part.buttons]) expect(i18n.exists(key), key).toBe(true)
+      }
+    }
   })
 })

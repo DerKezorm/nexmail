@@ -32,6 +32,7 @@ import { Badge, Button, Dialog, IconButton, Input, Select } from '../ds'
 import { servermeldung } from '../lib/servermeldung'
 import {
   FACTOR_RESET_DEFAULTS,
+  factorResetParts,
   INVITE_DAYS,
   INVITE_DAYS_DEFAULT,
   RESET_DAYS,
@@ -212,7 +213,8 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
 
   /** „Zweiten Faktor zurücksetzen“ (Kontenmodul Teil 2): für jemanden, dessen Telefon weg ist. Seit konten 0.3.3
    *  zeigt der Dialog vorher die Passkeys des Kontos (`factor.reset_overview`) und fragt „Passkeys auch entfernen“;
-   *  beide Haken ab Werk an (`FACTOR_RESET_DEFAULTS`). */
+   *  beide Haken ab Werk an (`FACTOR_RESET_DEFAULTS`). Seit 0.3.4 kommen die Teile aus `factorResetParts`: Liste und
+   *  „Passkeys auch entfernen“ nur bei einem Konto mit Passkeys. */
   async function faktorZuruecksetzen(p: BenutzerZeile) {
     let stand: FaktorUeberblick
     try {
@@ -221,14 +223,15 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
       setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
       return
     }
+    const teile = factorResetParts(stand)
     const ja = await fragen({
       titel: t('account.factorReset'),
-      text: t('account.factorResetHint'),
+      text: teile.includes('factorResetHint') ? t('account.factorResetHint') : undefined,
       knopf: t('aktion.weiter'),
       gefaehrlich: true,
-      liste: { titel: t('account.passkeys'), eintraege: stand.passkeys },
+      liste: teile.includes('passkeys') ? { titel: t('account.passkeys'), eintraege: stand.passkeys } : undefined,
       weitereHaken: [
-        ...(stand.passkeys.length > 0
+        ...(teile.includes('factorResetPasskeys')
           ? [
               {
                 schluessel: 'passkeys',
@@ -238,11 +241,15 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
             ]
           : []),
         // konten 0.3.1: ab Werk an, ein verlorenes Handy ist sonst noch angemeldet.
-        {
-          schluessel: 'geraete',
-          beschriftung: t('account.factorResetDevices'),
-          vorgabe: FACTOR_RESET_DEFAULTS.factorResetDevices,
-        },
+        ...(teile.includes('factorResetDevices')
+          ? [
+              {
+                schluessel: 'geraete',
+                beschriftung: t('account.factorResetDevices'),
+                vorgabe: FACTOR_RESET_DEFAULTS.factorResetDevices,
+              },
+            ]
+          : []),
       ],
     })
     if (typeof ja !== 'object' || ja === null || !ja.ja) return

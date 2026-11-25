@@ -89,6 +89,9 @@ class Ich(BaseModel):
     ist_betreiber: bool
     zwei_faktor_aktiv: bool
     offene_codes: int
+    #: Der Zustand des zweiten Faktors im Modul (``factor.state``): ``none``, ``required``, ``active``, ``passkey``;
+    #: daran haengt „An“/„Aus“ unter Sicherheit (``SECOND_FACTOR_STATE``, konten 0.3.6).
+    zweiter_faktor: str = "none"
     #: Wohin ein Ruecksetz-Link ginge. Leer heisst: **kein Weg zurueck**, und
     #: die Sicherheitsseite sagt das auch so.
     kontaktadresse: str = ""
@@ -634,6 +637,28 @@ class MitKennwort(BaseModel):
     passwort: str = Field(default="", max_length=200)
 
 
+@router.post("/zwei-faktor/codes", response_model=Bestaetigung)
+def neue_codes(
+    eingabe: MitKennwort, person: AngemeldeterBenutzer, sitzung: AktiveSitzung, db: DbSession
+) -> Bestaetigung:
+    """„Neue Codes erzeugen“ unter Sicherheit (``factor.new_codes``, konten 0.3.6): zehn neue, die alten gelten nicht
+    mehr. Mit dem Passwort (Bremse ``confirm:<Konto>``); ohne Passwort mit einer frischen Anmeldung beim Anbieter."""
+    try:
+        codes = nexkonten.factor.new_codes(
+            kontenstore.store_fuer(db),
+            person.id,
+            password=eingabe.passwort,
+            actor_confirmed=_bestaetigt(person, sitzung),
+        )
+    except nexkonten.AccountError as fehler:
+        if fehler.code == "wrong_password":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="kennwort_falsch") from fehler
+        raise kontenstore.http(fehler) from fehler
+    db.expire(person)
+    logger.info("New recovery codes were made for a user.")
+    return Bestaetigung(codes=codes)
+
+
 @router.post("/zwei-faktor/aus", status_code=status.HTTP_204_NO_CONTENT)
 def zwei_faktor_aus(
     eingabe: MitKennwort, person: AngemeldeterBenutzer, sitzung: AktiveSitzung, db: DbSession
@@ -683,6 +708,7 @@ def ich(person: Benutzer, db) -> Ich:
         ist_betreiber=person.ist_betreiber,
         zwei_faktor_aktiv=person.totp_bestaetigt,
         offene_codes=zwei_faktor.offene_codes(person),
+        zweiter_faktor=kontenstore.store_fuer(db).second_factor(person.id),
         kontaktadresse=person.kontaktadresse,
         ki_aktiv=person.ki_aktiv and kidienst.erlaubt_fuer(db, person),
         absenderlogos=person.absenderlogos_laden,

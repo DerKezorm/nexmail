@@ -155,7 +155,7 @@ test('Der zweite Faktor lässt sich ein- und ausschalten', async ({ page }) => {
      TOTP-Rechner, und die hat das Backend schon. */
   await zuEinstellungen(page, 'Sicherheit')
 
-  const knopf = page.getByRole('button', { name: /Zweiten Faktor (ein|aus)schalten/ })
+  const knopf = page.getByRole('button', { name: /Authenticator-App (einrichten|entfernen)/ })
   await expect(knopf, 'Zum zweiten Faktor gibt es keinen Knopf.').toBeVisible({ timeout: 10_000 })
 
   const beschriftung = (await knopf.textContent())?.trim() ?? ''
@@ -163,7 +163,7 @@ test('Der zweite Faktor lässt sich ein- und ausschalten', async ({ page }) => {
   const fenster = page.getByRole('dialog')
   await expect(fenster).toBeVisible()
 
-  if (beschriftung.includes('einschalten')) {
+  if (beschriftung.includes('einrichten')) {
     // Der QR-Code kommt aus dem eigenen Server, nicht von einem fremden Dienst.
     await expect(fenster.locator('svg').first()).toBeVisible({ timeout: 15_000 })
   } else {

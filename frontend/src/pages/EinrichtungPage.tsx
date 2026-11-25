@@ -16,8 +16,10 @@ import {
   DISPLAY_NAME_MAX,
   EMAIL_MAX,
   PASSWORD_MIN,
+  SETUP_PAGE,
   USERNAME_MAX,
   followUsername,
+  setupNotes,
   usernameProblem,
 } from '../vendor/nexkonten/konten'
 
@@ -85,11 +87,18 @@ export function EinrichtungPage({ modus, aufModus, aufFertig }: Props) {
 
   return (
     <Torbogen
-      titel={t('account.setupTitle')}
-      untertitel={t('einrichtung.untertitel')}
+      titel={t(SETUP_PAGE.title)}
+      untertitel={t(SETUP_PAGE.subtitle)}
       modus={modus}
       aufModus={aufModus}
     >
+      {/* konten 0.3.6: Unter dem Passwort kein Satz über den zweiten Faktor; nur wo der Betreiber ihn verlangt, sagt
+          es `setupNotes` (beim ersten Konto ist der Schalter noch aus). */}
+      {setupNotes().map((note) => (
+        <p key={note} className="mb-3 text-[13px] text-fg-2">
+          {t(note)}
+        </p>
+      ))}
       {/* Felder und Reihenfolge aus dem Kontenmodul (`SCREENS.setup`), gleich in jeder nex-App. */}
       <form onSubmit={kontoAnlegen} className="flex flex-col gap-4">
         <Input

@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Check, Copy, Download } from 'lucide-react'
-import { api } from '../api/client'
+import { api, ApiFehler } from '../api/client'
 import { Button, Input } from '../ds'
 import { servermeldung } from '../lib/servermeldung'
 
@@ -38,9 +38,16 @@ export function ZweiterFaktor({
   const [fehler, setFehler] = useState('')
   const [laeuft, setLaeuft] = useState(false)
 
+  /* konten 0.3.4: Wartet schon eine Einrichtung (Seite neu geladen, anderer Reiter), zeigt sie denselben QR-Code
+     noch einmal (`factor.pending_setup`); erst ohne eine (410) beginnt eine neue. */
   const holen = useCallback(async () => {
     try {
-      setStart(await api.senden<Start>('/api/auth/zwei-faktor/starten', {}))
+      try {
+        setStart(await api.holen<Start>('/api/auth/zwei-faktor/einrichtung'))
+      } catch (f) {
+        if (!(f instanceof ApiFehler) || f.status !== 410) throw f
+        setStart(await api.senden<Start>('/api/auth/zwei-faktor/starten', {}))
+      }
     } catch (f) {
       setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
     }
@@ -59,9 +66,13 @@ export function ZweiterFaktor({
         '/api/auth/zwei-faktor/bestaetigen',
         { code: code.trim() },
       )
-      setCodes(antwort.codes)
+      // Hatte das Konto schon Codes (etwa neben einem Passkey), bleiben sie, und es gibt keine neuen zu zeigen.
+      if (antwort.codes.length) setCodes(antwort.codes)
+      else aufFertig()
     } catch (f) {
       setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+      // Zehn Minuten vorbei (`enrolment_expired`): ein neuer QR-Code.
+      if (f instanceof ApiFehler && f.status === 410) void holen()
     } finally {
       setLaeuft(false)
     }

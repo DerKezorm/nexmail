@@ -342,3 +342,17 @@ def test_passwort_vergessen_zaehlt_je_absender_im_modul(klient):
         assert klient.post("/api/auth/kennwort-vergessen", json={"benutzername": "betreiber"}).status_code == 202
     gebremst = klient.post("/api/auth/kennwort-vergessen", json={"benutzername": "betreiber"})
     assert (gebremst.status_code, gebremst.json()["detail"]) == (429, "zu_viele_versuche")
+
+
+def test_neue_wiederherstellungscodes_ersetzen_die_alten(klient):
+    from conftest import zwei_faktor_an
+
+    einrichten(klient)
+    assert klient.get("/api/auth/ich").json()["zweiter_faktor"] == "none"
+    _, alte = zwei_faktor_an(klient)
+    assert klient.get("/api/auth/ich").json()["zweiter_faktor"] == "active"
+    assert klient.post("/api/auth/zwei-faktor/codes", json={"passwort": "falsch-falsch-1"}).status_code == 401
+    neue = klient.post("/api/auth/zwei-faktor/codes", json={"passwort": PASSWORT})
+    assert neue.status_code == 200, neue.text
+    assert len(neue.json()["codes"]) == 10 and not set(neue.json()["codes"]) & set(alte)
+    assert klient.get("/api/auth/ich").json()["offene_codes"] == 10

@@ -608,7 +608,7 @@ test('Eine Änderung an mir selbst steht sofort da, nicht erst nach F5', async (
   await bereich(page, 'Sicherheit')
 
   const beenden = page.getByRole('button', { name: /^(Sitzung beenden|Abmelden)$/ }).first()
-  const alleBeenden = page.getByRole('button', { name: /Alle anderen Geräte abmelden|Sign out all other devices/ })
+  const alleBeenden = page.getByRole('button', { name: /Überall sonst abmelden|Sign out everywhere else/ })
   const knopf = (await beenden.count()) && (await beenden.isEnabled()) ? beenden : alleBeenden
   await expect(knopf, 'Im Reiter Sicherheit gibt es keine Handlung zum Prüfen.').toBeVisible({
     timeout: 10_000,
