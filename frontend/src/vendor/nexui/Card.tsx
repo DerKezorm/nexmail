@@ -4,7 +4,10 @@
  * a list of `Row`s (devices, passkeys, providers: symbol, name, more to the right, a button at the end). Sizes of
  * nexnotes' settings: cards 20 px inside, boxes 16 by 12 px, both with 12 px corners, 12 px between the parts.
  */
-import { useId, type ReactNode } from 'react'
+import { Children, useId, type ReactNode } from 'react'
+
+/** Whether a slot holds anything to show (`false`, `null`, `''` and empty lists do not count, else an empty gap stays). */
+const filled = (slot: ReactNode) => Children.toArray(slot).some((child) => child !== '')
 
 import { iconOf, type IconLike } from './icons'
 import { BADGE_BASE, BADGE_TONE, BOX, CARD, HINT, MUTED, PLAIN, TILE, type BadgeTone } from './styles'
@@ -41,7 +44,7 @@ export function Card({
   const { Icon } = iconOf(icon)
   return (
     <section id={id} aria-labelledby={titleId} className={CARD} data-testid={testId}>
-      <div className={`flex gap-3${children ? ' mb-4' : ''}`}>
+      <div className={`flex gap-3${filled(children) ? ' mb-4' : ''}`}>
         {logo ? (
           <img src={logo} alt="" className="h-9 w-9 shrink-0 rounded-[12px]" />
         ) : (
@@ -56,7 +59,7 @@ export function Card({
           {subtitle && <p className={`${PLAIN} text-sm leading-5 ${MUTED}`}>{subtitle}</p>}
         </div>
       </div>
-      {children && <div className="flex flex-col gap-3">{children}</div>}
+      {filled(children) && <div className="flex flex-col gap-3">{children}</div>}
     </section>
   )
 }
@@ -95,8 +98,8 @@ export function Box({
           {hint}
         </p>
       )}
-      {children && <div className="mt-3 flex flex-col gap-3">{children}</div>}
-      {actions && <div className="mt-3 flex flex-wrap items-center gap-2">{actions}</div>}
+      {filled(children) && <div className="mt-3 flex flex-col gap-3">{children}</div>}
+      {filled(actions) && <div className="mt-3 flex flex-wrap items-center gap-2">{actions}</div>}
     </section>
   )
 }

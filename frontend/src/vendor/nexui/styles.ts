@@ -5,8 +5,9 @@
  * so that an app's own rules for `h2`, `p` or `button` (nexmail's base.css) cannot change it.
  */
 
-/** Text that ignores the app's rules for headings and paragraphs: no margin, normal letter spacing, the page's font. */
-export const PLAIN = 'm-0 tracking-normal [font-family:inherit]'
+/** Text that ignores the app's rules for headings and paragraphs: no margin, normal letter spacing, the page's font,
+ * lines broken the plain way (nexmail's body sets `text-wrap: pretty`, which breaks the same hint elsewhere). */
+export const PLAIN = 'm-0 tracking-normal [font-family:inherit] [text-wrap:wrap]'
 
 export const MUTED = 'text-[var(--nexui-text-muted)]'
 
@@ -50,12 +51,12 @@ export const BADGE_TONE = {
 export type BadgeTone = keyof typeof BADGE_TONE
 
 export const CARD =
-  'rounded-[12px] border border-solid border-[var(--nexui-line)] bg-[var(--nexui-surface)] p-5 text-[var(--nexui-text)] tracking-normal'
+  'rounded-[12px] border border-solid border-[var(--nexui-line)] bg-[var(--nexui-surface)] p-5 text-[var(--nexui-text)] tracking-normal [text-wrap:wrap]'
 
 export const TILE =
   'flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[color-mix(in_srgb,var(--nexui-accent)_14%,transparent)] text-[var(--nexui-accent-text)]'
 
-export const BOX = 'rounded-[12px] border border-solid border-[var(--nexui-line)] px-4 py-3 text-sm leading-5 text-[var(--nexui-text)] tracking-normal'
+export const BOX = 'rounded-[12px] border border-solid border-[var(--nexui-line)] px-4 py-3 text-sm leading-5 text-[var(--nexui-text)] tracking-normal [text-wrap:wrap]'
 
 export const FIELD =
   'block h-10 w-full min-w-0 rounded-[9px] border border-solid border-[var(--nexui-edge)] bg-[var(--nexui-field)] px-3 text-sm leading-5 ' +

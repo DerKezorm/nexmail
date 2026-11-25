@@ -81,6 +81,9 @@ export function Sicherheit({
   const [fehler, setFehler] = useState('')
 
   const [passkeys, setPasskeys] = useState<Passkeys | null>(null)
+  /** Tag und Uhrzeit wie in nexnotes („25.11.2026, 11:50“). */
+  const zeitpunkt = (wann: string) =>
+    new Date(wann).toLocaleString(i18n.language, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
   const laden = useCallback(async () => {
     setGeraete(await api.holen<Geraet[]>(`/api/sitzungen?sprache=${encodeURIComponent(i18n.language)}`))
@@ -224,7 +227,7 @@ export function Sicherheit({
             />
           }
         >
-          {gewechselt && <Notice tone="ok">{gewechselt}</Notice>}
+          {gewechselt ? <Notice tone="ok">{gewechselt}</Notice> : null}
         </Box>
       )
     },
@@ -282,7 +285,7 @@ export function Sicherheit({
                   key={k.uid}
                   icon={Fingerprint}
                   name={k.name || t(p.title)}
-                  detail={new Date(k.last_used_at ?? k.created_at).toLocaleString(i18n.language)}
+                  detail={zeitpunkt(k.last_used_at ?? k.created_at)}
                   action={
                     <AccountButton
                       name="account.passkeyRemove"
@@ -338,7 +341,8 @@ export function Sicherheit({
                   icon={Monitor}
                   name={g.geraet || t('sicherheit.unbekanntes_geraet')}
                   badge={g.aktuell ? <Badge tone="on">{t('account.sessionThis')}</Badge> : undefined}
-                  detail={`${g.adresse} · ${new Date(g.zuletzt_gesehen).toLocaleString(i18n.language)}`}
+                  // Wie in nexnotes: beim eigenen Browser nichts, sonst Tag und Uhrzeit (ohne Sekunden), davor die Adresse.
+                  detail={g.aktuell ? undefined : [g.adresse, zeitpunkt(g.zuletzt_gesehen)].filter(Boolean).join(' · ')}
                   action={
                     // Die eigene Sitzung beendet man über „Abmelden“, nicht hier.
                     !g.aktuell && <AccountButton name="account.sessionSignOut" onClick={() => void mit(() => api.loeschen(`/api/sitzungen/${g.id}`))} />
