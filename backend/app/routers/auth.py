@@ -121,6 +121,13 @@ class Ich(BaseModel):
     #: ``server``; ``""``: nichts zu zeigen).
     kontaktadresse_zaehlt: bool = True
     kontaktadresse_wartet: str = ""
+    #: konten 0.3.3: die Adresse, die ein Anbieter einem Konto mit Passwort nur anbietet, und sein Name fuer
+    #: „Adresse von <Anbieter> uebernehmen?“; ``""`` kein Angebot.
+    angebotene_adresse: str = ""
+    angebotene_adresse_von: str = ""
+    #: Der Nothammer (``NEXMAIL_ZWEI_FAKTOR_AUS`` oder ``NEXMAIL_SECOND_FACTOR_OFF``): Niemand wird nach einem zweiten
+    #: Faktor gefragt. Die Oberflaeche sagt es deutlich (``account.secondFactorOff``).
+    zwei_faktor_aus: bool = False
     sprache: str = ""
     neues_passwort: str = ""
     #: Die Mail „Neue Anmeldung“ (Teil 2), je Person im Profil abschaltbar.
@@ -649,10 +656,34 @@ def ich(person: Benutzer, db) -> Ich:
         gruppen_reihenfolge=_reihenfolge_lesen(person.gruppen_reihenfolge),
         kontaktadresse_zaehlt=bool(person.kontaktadresse_zaehlt) if person.kontaktadresse else True,
         kontaktadresse_wartet=kontenstore.store_fuer(db).get_account(person.id).pending_email,
+        angebotene_adresse=person.angebotene_adresse or "",
+        angebotene_adresse_von=_anbieter_der_adresse(db, person),
+        zwei_faktor_aus=nexkonten.factor.switched_off(),
         sprache=person.sprache or "",
         neues_passwort=person.neues_passwort or "",
         mail_neue_anmeldung=bool(person.mail_neue_anmeldung),
     )
+
+
+def _anbieter_der_adresse(db, person: Benutzer) -> str:
+    """Der Name des Anbieters, dessen Verknuepfung die angebotene Adresse traegt (die letzte, die sie nannte)."""
+    from sqlalchemy import func, select
+
+    from ..models import OidcAnbieter, OidcVerknuepfung
+
+    if not person.angebotene_adresse:
+        return ""
+    name = db.scalar(
+        select(OidcAnbieter.anzeigename)
+        .join(OidcVerknuepfung, OidcVerknuepfung.anbieter_id == OidcAnbieter.id)
+        .where(
+            OidcVerknuepfung.benutzer_id == person.id,
+            func.lower(OidcVerknuepfung.email) == person.angebotene_adresse.lower(),
+        )
+        .order_by(OidcVerknuepfung.zuletzt_benutzt.desc())
+        .limit(1)
+    )
+    return name or ""
 
 
 def _reihenfolge_lesen(roh: str) -> list[str]:
@@ -751,6 +782,52 @@ def kontaktadresse_setzen(
         raise kontenstore.http(fehler) from fehler
     wache.geschafft()
     logger.info("A user changed their address (empty=%s).", not eingabe.adresse.strip())
+    return ich(person, db)
+
+
+class MitPasswort(BaseModel):
+    passwort: str = Field(default="", max_length=300)
+
+
+@router.post("/ich/angebotene-adresse", response_model=Ich)
+def angebotene_adresse_nehmen(
+    eingabe: MitPasswort, request: Request, person: AngemeldeterBenutzer, sitzung: AktiveSitzung, db: DbSession
+) -> Ich:
+    """„Adresse von <Anbieter> uebernehmen?“ → Uebernehmen (konten 0.3.3): wie eine Adressaenderung, mit Passwort;
+    mit Postausgang wartet die Adresse auf ihren Link. Danach ist das Angebot weg."""
+    wache = anmeldebremse.torwaechter(request, "adresse", _konto_schluessel(person))
+    store = kontenstore.store_fuer(db)
+    try:
+        ergebnis = nexkonten.profiles.take_offered_email(
+            store,
+            person.id,
+            password=eingabe.passwort,
+            actor_confirmed=_bestaetigt(person, sitzung),
+            mail=kontenpost.mail_moeglich(db),
+        )
+    except nexkonten.AccountError as fehler:
+        if fehler.code == "wrong_password":
+            wache.fehlgeschlagen()
+        raise kontenstore.http(fehler) from fehler
+    wache.geschafft()
+    if ergebnis.mail is not None:
+        try:
+            kontenpost.senden(db, ergebnis.mail)
+        except systempost.PostFehler as fehler:
+            nexkonten.profiles.withdraw_email_change(store, person.id)
+            raise MeldungHttp.aus(fehler, status.HTTP_502_BAD_GATEWAY) from fehler
+    _mail_versuchen(db, ergebnis.notice)
+    db.expire(person)
+    logger.info("A user took the address a provider offered.")
+    return ich(person, db)
+
+
+@router.delete("/ich/angebotene-adresse", response_model=Ich)
+def angebotene_adresse_ablehnen(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
+    """„Nein, danke“: das Angebot verwerfen (nennt der Anbieter sie bei einer spaeteren Anmeldung wieder, kommt es
+    wieder)."""
+    nexkonten.profiles.dismiss_offered_email(kontenstore.store_fuer(db), person.id)
+    db.expire(person)
     return ich(person, db)
 
 

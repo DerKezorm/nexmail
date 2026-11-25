@@ -300,8 +300,9 @@ class SqlStore:
             )
         )
         if konto and email:
-            # Ein Konto ohne eigene Adresse folgt der des Anbieters; sie zaehlt nie sofort (Kontenmodul).
-            nexkonten.profiles.follow_provider_email(KontenStore(self.db), konto, email)
+            # Ein Konto ohne eigene Adresse folgt der des Anbieters; sie zaehlt nie sofort (Kontenmodul). Einem Konto
+            # mit Passwort wird sie nur angeboten (konten 0.3.3): „Adresse von <Anbieter> uebernehmen?“ im Profil.
+            nexkonten.profiles.provider_email(KontenStore(self.db), konto, email)
 
     # --- Konten ----------------------------------------------------------------------------------------------------
     def account_state(self, account_id: int) -> AccountState | None:
@@ -357,7 +358,7 @@ class SqlStore:
         self.db.add(person)
         self.db.flush()
         if not adresse and email:
-            nexkonten.profiles.follow_provider_email(store, person.id, email)
+            nexkonten.profiles.provider_email(store, person.id, email)
         return self.konto_nummer(person)
 
     def provider_picture(self, account_id: int, picture: str, issuer: str) -> None:

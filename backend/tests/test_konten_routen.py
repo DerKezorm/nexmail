@@ -260,3 +260,38 @@ def test_der_einrichtungscode_schuetzt_auch_das_einspielen_vor_der_einrichtung(k
     assert klient.get("/api/setup/status").json()["code_noetig"] is True
     einrichten(klient)
     assert klient.get("/api/setup/status").json()["code_noetig"] is False
+
+
+# --- konten 0.3.3: die Adresse eines Anbieters wird einem Konto mit Passwort nur angeboten -------------------------
+
+
+def test_angebotene_adresse_uebernehmen_und_ablehnen(klient):
+    from app.services.konten_store import KontenStore
+    from app.vendor import nexkonten
+
+    einrichten(klient)
+    with SessionLocal() as db:
+        person = db.query(Benutzer).one()
+        assert (
+            nexkonten.profiles.provider_email(KontenStore(db), person.id, "betrieb@id.example.com")
+            == nexkonten.profiles.PROVIDER_EMAIL_OFFERED
+        )
+        db.commit()
+    ich = klient.get("/api/auth/ich").json()
+    assert ich["angebotene_adresse"] == "betrieb@id.example.com" and ich["kontaktadresse"] != "betrieb@id.example.com"
+
+    falsch = klient.post("/api/auth/ich/angebotene-adresse", json={"passwort": "falsch-falsch-1"})
+    assert falsch.status_code == 401
+    assert klient.get("/api/auth/ich").json()["angebotene_adresse"] == "betrieb@id.example.com"
+
+    weg = klient.delete("/api/auth/ich/angebotene-adresse")
+    assert weg.status_code == 200 and weg.json()["angebotene_adresse"] == ""
+
+    with SessionLocal() as db:
+        nexkonten.profiles.provider_email(KontenStore(db), db.query(Benutzer).one().id, "betrieb@id.example.com")
+        db.commit()
+    genommen = klient.post("/api/auth/ich/angebotene-adresse", json={"passwort": "sehr-geheim-123"})
+    assert genommen.status_code == 200, genommen.text
+    daten = genommen.json()
+    assert daten["angebotene_adresse"] == ""
+    assert "betrieb@id.example.com" in (daten["kontaktadresse"], daten["kontaktadresse_wartet"])
