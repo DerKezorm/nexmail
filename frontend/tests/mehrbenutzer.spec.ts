@@ -101,9 +101,10 @@ test('Eine abgelehnte Adresse sagt warum — und lässt keine Leiche zurück', a
 
   const einladen = page.getByRole('button', { name: 'Benutzer einladen' })
   await expect(einladen).toBeVisible({ timeout: 10_000 })
-  if (!(await einladen.isEnabled())) {
-    test.skip(true, 'Kein Systempostausgang in data-dev eingerichtet.')
-  }
+  /* Seit konten 0.3.5 ist der Knopf immer an (ohne Postausgang steht danach der Link zum Weitergeben da); ob eine
+     Mail hinausgeht, sagt der Server. */
+  const stand = (await (await page.request.get('/api/benutzer')).json()) as { postausgang_da?: boolean }
+  test.skip(!stand.postausgang_da, 'Kein Systempostausgang eingerichtet.')
 
   await einladen.click()
   const fenster = page.getByRole('dialog')

@@ -4,17 +4,63 @@
  * „Mail", „Server" und „Über nexmail" am Ende; schmal eine Auswahl darüber.
  * Verwaltung, KI und „Über" sind Bereiche darin, keine Punkte der Leiste mehr.
  */
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 import { anmelden, bereich, jederKnopfHatEinenNamen, keineRohenSchluessel, keinSeitlichesScrollen, zuEinstellungen, zurAnsicht } from './hilfen'
+
+/** Die Teile stehen in dieser Reihenfolge von oben nach unten, alle sichtbar. */
+async function untereinander(teile: Locator[], wo: string) {
+  let oben = -Infinity
+  for (const teil of teile) {
+    await expect(teil.first(), `${wo}: ${teil} fehlt.`).toBeVisible({ timeout: 10_000 })
+    const y = (await teil.first().boundingBox())!.y
+    expect(y, `${wo}: ${teil} steht nicht unter dem Teil davor.`).toBeGreaterThan(oben)
+    oben = y
+  }
+}
 
 test('Die Einstellungen sind gegliedert wie in nexnotes', async ({ page }, info) => {
   await anmelden(page)
   await zuEinstellungen(page, 'Profil')
 
-  // Das Profil zuerst, mit Name, Mailadresse, Sprache und Abmelden.
-  await expect(page.getByLabel('Name', { exact: true })).toBeVisible()
-  await expect(page.getByLabel('E-Mail', { exact: true })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Abmelden' })).toBeVisible()
+  /* Das Profil zuerst, seit konten 0.3.6 ganz aus `PAGES.profile`: Bild, Anzeigename, Benutzername, E-Mail,
+     Sprache, klein die Rolle, untereinander; danach nexmails „Abmelden“. Der Benutzername wird direkt im Feld
+     geändert, ein „Bearbeiten“ gibt es nicht mehr. */
+  const inhalt = page.getByTestId('einstellungen-inhalt')
+  const profil = [
+    inhalt.getByText('Profilbild hochladen', { exact: true }),
+    inhalt.getByLabel('Anzeigename', { exact: true }),
+    inhalt.getByLabel('Benutzername', { exact: true }),
+    inhalt.getByLabel('E-Mail', { exact: true }),
+    inhalt.getByRole('combobox', { name: /^Sprache/ }),
+    inhalt.getByText(/^Rolle: /),
+    inhalt.getByRole('heading', { name: 'Abmelden' }),
+  ]
+  await untereinander(profil, 'Profil')
+  await expect(inhalt.getByLabel('Benutzername', { exact: true })).toBeEditable()
+  await expect(inhalt.getByRole('button', { name: 'Bearbeiten', exact: true })).toHaveCount(0)
+  // `layout: 'stacked'`: Die Felder stehen untereinander, nie nebeneinander, auch breit.
+  const links = await Promise.all(profil.slice(1, 4).map(async (feld) => (await feld.boundingBox())!.x))
+  expect(new Set(links).size, 'Die Felder des Profils stehen nicht untereinander.').toBe(1)
+
+  /* Sicherheit in der Reihenfolge des Moduls (`PAGES.security`); Passkeys und Codes zeigen sich nur, wenn es sie
+     gibt. nexmails eigene Teile (Anmeldeanbieter, Google und Microsoft) stehen danach. */
+  await bereich(page, 'Sicherheit')
+  await untereinander(
+    [
+      inhalt.getByRole('heading', { name: 'Passwort', exact: true }),
+      inhalt.getByRole('heading', { name: 'Zweiter Faktor', exact: true }),
+      inhalt.getByRole('heading', { name: 'Angemeldete Geräte', exact: true }),
+      inhalt.getByRole('button', { name: 'Überall sonst abmelden' }),
+      inhalt.getByText('Mail bei neuer Anmeldung', { exact: true }),
+    ],
+    'Sicherheit',
+  )
+  await expect(inhalt.getByText('Aus', { exact: true }).or(inhalt.getByText('An', { exact: true })).first()).toBeVisible()
+  const geraete = (await inhalt.getByRole('heading', { name: 'Angemeldete Geräte', exact: true }).boundingBox())!.y
+  for (const eigen of ['Anmeldeanbieter', 'Google- und Microsoft-Konten']) {
+    const kopf = inhalt.getByRole('heading', { name: eigen, exact: true })
+    if (await kopf.count()) expect((await kopf.first().boundingBox())!.y, `${eigen} steht vor den Teilen des Moduls.`).toBeGreaterThan(geraete)
+  }
 
   if (info.project.name !== 'schmal') {
     const navigation = page.getByTestId('einstellungen-navigation')
@@ -96,7 +142,8 @@ test('Jeder Bereich geht auf, mit Inhalt und ohne Fehler', async ({ page }, info
   // die Teile, die vorher in den Reitern von Einstellungen und Verwaltung,
   // auf der KI-Seite und der Über-Seite standen.
   const merkmal: Array<[string, RegExp[]]> = [
-    ['Profil', [/Profilbild hochladen/, /Gilt in diesem Browser/, /^Abmelden$/]],
+    // Seit konten 0.3.6 aus `PAGES.profile`; die Sprache gilt am Konto (vorher „Gilt in diesem Browser“).
+    ['Profil', [/Profilbild hochladen/, /^Damit meldest du dich an\.$/, /^Rolle: /, /^Abmelden$/]],
     ['Sicherheit', [/Angemeldete Geräte/, /Überall sonst abmelden/, /Zweiter Faktor/]],
     ['Darstellung', [/Dichte der Nachrichtenliste/i, /Wie das System/]],
     ['Benachrichtigungen', [/Je Abgleich eine Meldung/]],
