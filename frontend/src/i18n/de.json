@@ -1614,8 +1614,6 @@
     "carddav_google_api_aus": "Im Google-Projekt ist die CardDAV API nicht eingeschaltet. Sie ist eine eigene neben der CalDAV API.",
     "carddav_kein_buchserver": "Unter dieser Adresse liegt kein Adressbuch-Server.",
     "carddav_nicht_lesbar": "Das Adressbuch ließ sich nicht lesen.",
-    "code_falsch": "Der Code stimmt nicht.",
-    "code_ungueltig": "Dieser Code gilt nicht.",
     "datei_leer": "Die Datei ist leer.",
     "datenschluessel_fehlt": "Der Daten-Schlüssel ist nicht geladen.",
     "einfuhr_nur_in_eigenen_kalender": "Einspielen geht nur in einen Kalender, der in nexmail lebt. Bei einem verbundenen Kalender müssten die Termine erst zum Anbieter, und das kann nexmail noch nicht.",
@@ -1721,7 +1719,6 @@
     "oauth_zustimmung_abgelaufen": "Die Zustimmung gilt nicht mehr. Bitte neu erteilen.",
     "oauth_zustimmung_fehlt": "Für dieses Konto fehlt die Zustimmung.",
     "oauth_zweck": "Dieser Zweck ist nicht vorgesehen.",
-    "oeffentliche_adresse_fehlt": "Ohne öffentliche Adresse führt der Link ins Leere. Sie steht unter Einstellungen → Server → Allgemein.",
     "ordner_angelegt_aber_unsichtbar": "Der Ordner wurde angelegt, taucht aber nicht in der Ordnerliste des Servers auf. Ein Abgleich sollte ihn nachliefern.",
     "ordner_anlegen_abgewiesen": "Der Server hat den Ordner nicht angelegt: {{grund}}",
     "ordner_entfernen_abgewiesen": "Der Server hat den Ordner nicht entfernt: {{grund}}",
@@ -1747,7 +1744,6 @@
     "postfach_schon_da": "Dieses Postfach ist schon eingerichtet.",
     "postfach_unbekannt": "Dieses Postfach gibt es nicht.",
     "postfach_weg": "Das Postfach gibt es nicht mehr.",
-    "qr_code_fehlt": "Zuerst den QR-Code holen.",
     "regel_ohne_aktion": "Eine Regel ohne Aktion tut nichts.",
     "regel_ohne_bedingung": "Eine Regel ohne Bedingung würde auf jede Nachricht zutreffen.",
     "rolle_ohne_ordner": "Dieses Postfach hat keinen Ordner für „{{rolle}}“. Klicke mit rechts auf den passenden Ordner und wähle „Verwenden als“.",
@@ -1871,7 +1867,8 @@
     "nextasks_sammlung_unbekannt": "Diese Ansicht gibt es nicht.",
     "eigene_aufgaben_aus": "Die eigene Aufgabenliste von nexmail ist ausgeschaltet. Wähl eine Liste in einer verbundenen Todo-App.",
     "eigene_aufgaben_ohne_verbindung": "Ohne verbundene Todo-App lässt sich die eigene Aufgabenliste nicht ausschalten.",
-    "benutzer_nicht_gefunden": "Dieses Konto gibt es nicht."
+    "benutzer_nicht_gefunden": "Dieses Konto gibt es nicht.",
+    "enrolment_expired": "Das hat zu lange gedauert. Fang noch einmal an."
   },
   "sicherheit": {
     "aktiv": "Eingerichtet und aktiv.",

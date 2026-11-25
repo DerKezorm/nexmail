@@ -1614,8 +1614,6 @@
     "carddav_google_api_aus": "The CardDAV API is switched off in the Google project. It is separate from the CalDAV API.",
     "carddav_kein_buchserver": "There is no address book server at that address.",
     "carddav_nicht_lesbar": "The address book could not be read.",
-    "code_falsch": "That code is wrong.",
-    "code_ungueltig": "That code is not valid.",
     "datei_leer": "The file is empty.",
     "datenschluessel_fehlt": "The data key is not loaded.",
     "einfuhr_nur_in_eigenen_kalender": "Importing only works into a calendar that lives in nexmail. For a connected calendar the events would have to reach the provider first, and nexmail cannot do that yet.",
@@ -1721,7 +1719,6 @@
     "oauth_zustimmung_abgelaufen": "The consent has expired. Please grant it again.",
     "oauth_zustimmung_fehlt": "This account has no consent yet.",
     "oauth_zweck": "That purpose is not allowed.",
-    "oeffentliche_adresse_fehlt": "Without a public address the link goes nowhere. It is under Settings → Server → General.",
     "ordner_angelegt_aber_unsichtbar": "The folder was created but does not appear in the server’s folder list. A sync should bring it in.",
     "ordner_anlegen_abgewiesen": "The server did not create the folder: {{grund}}",
     "ordner_entfernen_abgewiesen": "The server did not remove the folder: {{grund}}",
@@ -1747,7 +1744,6 @@
     "postfach_schon_da": "That mailbox is already set up.",
     "postfach_unbekannt": "There is no such mailbox.",
     "postfach_weg": "That mailbox is gone.",
-    "qr_code_fehlt": "Fetch the QR code first.",
     "regel_ohne_aktion": "A rule without an action does nothing.",
     "regel_ohne_bedingung": "A rule without a condition would match every message.",
     "rolle_ohne_ordner": "This mailbox has no folder for “{{rolle}}”. Right-click the folder you want and choose “Use as”.",
@@ -1871,7 +1867,8 @@
     "nextasks_sammlung_unbekannt": "There is no such view.",
     "eigene_aufgaben_aus": "nexmail's own task list is switched off. Pick a list in a connected to-do app.",
     "eigene_aufgaben_ohne_verbindung": "Without a connected to-do app, nexmail's own task list cannot be switched off.",
-    "benutzer_nicht_gefunden": "There is no such account."
+    "benutzer_nicht_gefunden": "There is no such account.",
+    "enrolment_expired": "That took too long. Start again."
   },
   "sicherheit": {
     "aktiv": "Set up and active.",
