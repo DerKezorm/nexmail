@@ -49,7 +49,7 @@ function leaves(tree: Tree, prefix = ''): [string, string][] {
   })
 }
 
-const values = { username: 'kim', email: 'kim@example.com' }
+const values = { username: 'kim', email: 'kim@example.com', provider: 'Pocket ID' }
 const fill: Record<string, string | number> = { ...kontenVariables(APP_NAME), ...values }
 
 describe('the konten texts', () => {

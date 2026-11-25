@@ -258,15 +258,23 @@ def add_mark(cookie: str, new: str) -> str:
     return "~".join([new, *marks][:MARKS_MAX])
 
 
-def is_known(
+def known_mark(
     cookie: str, secret: bytes, device_key: str, *, older: Callable[[str], bool] | None = None
-) -> bool:
-    """Whether the cookie holds a valid mark for the account with ``device_key``. ``older`` checks one entry in the
-    format of the app's older version (one version long, so that owners stay known)."""
+) -> str:
+    """The mark in the cookie that is valid for the account with ``device_key``, "" for none: the brake counts that
+    browser in a pot of its own (``brake.BRAKE.claim(..., browser=mark)``). ``older`` checks one entry in the format
+    of the app's older version (one version long, so that owners stay known)."""
     for entry in (cookie or "").split("~")[:MARKS_MAX]:
         nonce, _, mac = entry.partition(".")
         if nonce and mac and "." not in mac and hmac.compare_digest(_mac(secret, device_key, nonce), mac):
-            return True
-        if older is not None and older(entry):
-            return True
-    return False
+            return entry
+        if older is not None and entry and older(entry):
+            return entry
+    return ""
+
+
+def is_known(
+    cookie: str, secret: bytes, device_key: str, *, older: Callable[[str], bool] | None = None
+) -> bool:
+    """Whether the cookie holds a valid mark for the account with ``device_key`` (``known_mark``)."""
+    return bool(known_mark(cookie, secret, device_key, older=older))

@@ -74,3 +74,40 @@ def test_a_provider_address_follows_only_an_account_without_one_of_its_own(app: 
         assert store.get_account(own).email == "own@example.com"
         followed = store.get_account(follows)
     assert followed.email == "second@example.com" and not followed.email_confirmed
+
+
+def test_a_provider_address_is_only_offered_to_an_account_with_a_password(app: Any, konten: Any) -> None:
+    """Decided 25.11.2026 (0.3.3): an account with a password is only offered the provider's address ("Use the
+    address from <provider>?"); an account through a provider only takes it at once."""
+    secret = password()
+    alex = app.seed("alex", password=secret)
+    own = app.seed("own", email="own@example.com", password=secret)
+    via = app.seed("via", password=None)
+    profiles = konten.profiles
+    with app.store() as store:
+        assert profiles.provider_email(store, alex, "alex@id.example.com") == profiles.PROVIDER_EMAIL_OFFERED
+        assert profiles.provider_email(store, own, "other@example.com") == profiles.PROVIDER_EMAIL_OFFERED
+        assert profiles.provider_email(store, via, "via@example.com") == profiles.PROVIDER_EMAIL_TAKEN
+        assert profiles.provider_email(store, alex, "VIA@example.com") == profiles.PROVIDER_EMAIL_NONE
+        store.commit()
+    with app.store() as store:
+        offered = store.get_account(alex)
+        assert (offered.email, offered.offered_email) == ("", "alex@id.example.com")
+        assert store.get_account(own).email == "own@example.com"
+        assert store.get_account(via).email == "via@example.com"
+    assert app.sign_in("alex@id.example.com", secret) is None
+    with app.store() as store:
+        try:
+            profiles.take_offered_email(store, alex, password=password())
+            raise AssertionError("taken without the password")
+        except konten.AccountError as error:
+            assert error.code == "wrong_password"
+    with app.store() as store:
+        done = profiles.take_offered_email(store, alex, password=secret)
+    assert done.account.email == "alex@id.example.com" and done.account.email_confirmed
+    assert done.account.offered_email == "" and done.account.email_source == konten.EMAIL_OWN
+    with app.store() as store:
+        profiles.dismiss_offered_email(store, own)
+    with app.store() as store:
+        kept = store.get_account(own)
+    assert (kept.email, kept.offered_email) == ("own@example.com", "")

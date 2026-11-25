@@ -9,8 +9,10 @@ Recovery codes: 10 new ones (``xxxxx-xxxxx``, no 0, o, 1, l, i), stored as ``h1:
 key (``FactorStore.recovery_key``). Lists of the older versions keep working: a plain SHA-256 of the code in small
 letters (most apps) or in capitals (one app) is recognised too, whatever the count.
 
-Setting up keeps the new seed in memory for ten minutes and stores it only once a code confirmed it; nothing
-unconfirmed is ever a factor. The sign-in that waits for the code is in memory for five minutes and five attempts.
+Setting up keeps the new seed for ten minutes, sealed in the store (``FactorStore.set_pending_totp``, since 0.3.3:
+a restart between the QR code and the first code loses nothing; a store without it keeps the seed in memory as
+before), and makes it the factor only once a code confirmed it; nothing unconfirmed is ever a factor. The sign-in that
+waits for the code is in memory for five minutes and five attempts.
 
 Every change of a factor is confirmed: with the password (or a fresh sign-in at the provider for an account without one,
 ``actor_confirmed`` from the app), also when an account replaces its authenticator; wrong passwords there are braked
@@ -20,6 +22,11 @@ nothing more (the app passes ``actor_confirmed``).
 Nobody must have a second factor unless the operator says so (``FactorStore.factor_required``, off by default); then
 the last factor of an account cannot be taken away by its owner, and ``common.next_step`` sends an account without
 one to set one up first.
+
+The emergency hammer (since 0.3.3): ``<APP>_SECOND_FACTOR_OFF`` in the environment (or the app's hook
+``AppConfig.second_factor_off``) switches the second factor off for everybody, beating "required of everybody" and
+``common.next_step``; ``switched_off()`` tells the app to show "Second factor is switched off" plainly
+(``account.secondFactorOff``). Nothing is deleted: without the variable every factor counts again.
 """
 
 from __future__ import annotations
@@ -32,10 +39,11 @@ import struct
 import threading
 import time
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Protocol
 from urllib.parse import quote
 
-from . import brake, common
+from . import brake, common, config
 from .common import log
 from .errors import AccountError
 from .model import (
@@ -51,7 +59,7 @@ from .model import (
     Mail,
     Store,
 )
-from .model2 import FactorStore, PasskeyStore
+from .model2 import KIND_DEVICE, FactorStore, Passkey, PasskeyStore, Session
 
 STEP_SECONDS = 30
 DIGITS = 6
@@ -148,6 +156,24 @@ def recognised_forms(key: bytes, code: str) -> tuple[str, ...]:
 # --- State ------------------------------------------------------------------------------------------------------------
 
 
+def switched_off() -> bool:
+    """The emergency hammer is down: nobody is asked for a second factor. The app shows ``account.secondFactorOff``
+    plainly (top of the account pages and the operator's settings) while it is."""
+    return config.current().second_factor_is_off()
+
+
+def announce_switched_off() -> bool:
+    """At start-up: a warning in the log while the hammer is down. True when it is."""
+    off = switched_off()
+    if off:
+        log().warning("Second factor switched off for everybody by %s", config.current().second_factor_off_env)
+    return off
+
+
+def _required(store: FactorStore | AppStore) -> bool:
+    return store.factor_required() and not switched_off()
+
+
 def has_factor(store: FactorStore | AppStore, account_id: AccountId) -> bool:
     """A confirmed TOTP or a passkey."""
     if store.totp_seed(account_id):
@@ -163,9 +189,11 @@ def state(store: AppStore, account_id: AccountId) -> str:
     asks one of everybody, an account with a passkey and no authenticator answers ``passkey`` (the passkey is the
     second step, no authenticator is required of it); without the switch a passkey is a way in of its own and the
     password alone signs in as before (``none``). ``required``: the operator asks one and the account has none."""
+    if switched_off():
+        return SECOND_FACTOR_NONE
     if store.totp_seed(account_id):
         return SECOND_FACTOR_ACTIVE
-    required = store.factor_required()
+    required = _required(store)
     passkeys = getattr(store, "passkeys_of", None)
     if passkeys is not None and passkeys(account_id):
         return SECOND_FACTOR_PASSKEY if required else SECOND_FACTOR_NONE
@@ -220,12 +248,39 @@ _enrolments_lock = threading.Lock()
 
 
 def begin_totp(store: AppStore, account_id: AccountId, *, issuer: str) -> Enrolment:
-    """A new seed for the account, kept in memory for ten minutes; nothing is stored yet."""
+    """A new seed for the account, waiting ten minutes for its first code: sealed in the store and committed (a store
+    without ``set_pending_totp`` keeps it in memory). It is no factor yet."""
     account = common.account_or_404(store, account_id)
     seed = new_seed()
-    with _enrolments_lock:
-        _enrolments[account.id] = (seed, time.monotonic() + ENROLMENT_SECONDS)
+    keep = getattr(store, "set_pending_totp", None)
+    if keep is not None:
+        keep(account.id, seed, common.utcnow() + timedelta(seconds=ENROLMENT_SECONDS))
+        store.commit()
+    else:
+        with _enrolments_lock:
+            _enrolments[account.id] = (seed, time.monotonic() + ENROLMENT_SECONDS)
     return Enrolment(seed, provisioning_uri(seed, issuer, account.username))
+
+
+def _waiting_seed(store: AppStore, account_id: AccountId) -> str | None:
+    """The seed that waits for its first code, None when there is none or it waited too long."""
+    pending = getattr(store, "pending_totp", None)
+    if pending is not None:
+        held = pending(account_id)
+        if held is None or common.expired(held[1]):
+            return None
+        return held[0]
+    with _enrolments_lock:
+        kept = _enrolments.get(account_id)
+    return kept[0] if kept is not None and kept[1] >= time.monotonic() else None
+
+
+def _drop_waiting_seed(store: AppStore, account_id: AccountId) -> None:
+    drop = getattr(store, "set_pending_totp", None)
+    if drop is not None:
+        drop(account_id, None, None)
+    with _enrolments_lock:
+        _enrolments.pop(account_id, None)
 
 
 def confirm_totp(
@@ -236,16 +291,14 @@ def confirm_totp(
     is set up already needs the password, or a fresh sign-in for an account without one, like taking it away."""
     account = common.account_or_404(store, account_id)
     confirmed(store, account, password, actor_confirmed, without_password=has_factor(store, account.id))
-    with _enrolments_lock:
-        held = _enrolments.get(account.id)
-    if held is None or held[1] < time.monotonic():
+    seed = _waiting_seed(store, account.id)
+    if seed is None:
         raise AccountError("enrolment_expired", "That took too long. Start again.", 410)
-    step = matching_step(held[0], code)
+    step = matching_step(seed, code)
     if step is None:
         raise AccountError("code_wrong", "The code is wrong.", 422)
-    with _enrolments_lock:
-        _enrolments.pop(account.id, None)
-    store.set_totp(account.id, held[0])
+    _drop_waiting_seed(store, account.id)
+    store.set_totp(account.id, seed)
     store.claim_step(account.id, step)
     codes: list[str] = []
     if not store.recovery_hashes(account.id):
@@ -274,7 +327,7 @@ def new_codes(
 
 
 def _last_factor_guard(store: AppStore, account_id: AccountId, *, removing_totp: bool, removing_passkey: bool) -> None:
-    if not store.factor_required():
+    if not _required(store):
         return
     totp_left = bool(store.totp_seed(account_id)) and not removing_totp
     passkeys = len(store.passkeys_of(account_id)) - (1 if removing_passkey else 0)
@@ -296,6 +349,33 @@ def disable_totp(
     log().info("Second factor removed name=%s", account.username)
 
 
+@dataclass(frozen=True)
+class ResetOverview:
+    """What the operator's dialog "Reset the second factor" shows before the reset (since 0.3.3): whether the account
+    has an authenticator, how many recovery codes are left, its passkeys (each with its name; "Remove the passkeys
+    too", ticked by default) and its paired devices ("Disconnect the paired devices too", ticked by default)."""
+
+    authenticator: bool
+    recovery_codes: int
+    passkeys: list[Passkey]
+    devices: list[Session]
+
+
+def reset_overview(store: AppStore, account_id: AccountId, *, actor_id: AccountId) -> ResetOverview:
+    """For the operator's dialog (the app checks the operator's role): what a reset would take away."""
+    if account_id == actor_id:
+        raise AccountError("use_account_page", "Change your own second factor in your profile.", 409)
+    target = common.account_or_404(store, account_id)
+    sessions_of = getattr(store, "sessions_of", None)
+    devices = [entry for entry in sessions_of(target.id) if entry.kind == KIND_DEVICE] if sessions_of else []
+    return ResetOverview(
+        authenticator=bool(store.totp_seed(target.id)),
+        recovery_codes=len(store.recovery_hashes(target.id)),
+        passkeys=list(store.passkeys_of(target.id)),
+        devices=devices,
+    )
+
+
 def operator_reset(
     store: AppStore,
     account_id: AccountId,
@@ -304,11 +384,14 @@ def operator_reset(
     password: str = "",
     actor_confirmed: bool = False,
     disconnect_devices: bool = True,
+    remove_passkeys: bool = True,
 ) -> Mail | None:
-    """The operator takes every factor of another account away (time-based code, recovery codes, passkeys): its
-    owner lost the phone. Every browser session and waiting sign-in of the account ends, and with
-    ``disconnect_devices`` (on by default; the page asks "Disconnect the devices too") its paired devices too: the lost
-    phone may be one of them. A confirmed address hears of it."""
+    """The operator takes the factors of another account away (time-based code, recovery codes and, with
+    ``remove_passkeys``, its passkeys): its owner lost the phone. The dialog shows them first (``reset_overview``) and
+    asks "Remove the passkeys too", ticked by default (since 0.3.3): a lost phone may carry a passkey. Every browser
+    session and waiting sign-in of the account ends, and with ``disconnect_devices`` (on by default; the page asks
+    "Disconnect the devices too") its paired devices too: the lost phone may be one of them. A confirmed address
+    hears of it."""
     if account_id == actor_id:
         raise AccountError("use_account_page", "Change your own second factor in your profile.", 409)
     keys = (f"confirm:{actor_id}",)
@@ -322,8 +405,10 @@ def operator_reset(
     if not actor_confirmed:
         brake.BRAKE.succeeded(keys)
     store.set_totp(target.id, None)
+    _drop_waiting_seed(store, target.id)
     store.set_recovery(target.id, [])
-    store.remove_passkeys(target.id)
+    if remove_passkeys:
+        store.remove_passkeys(target.id)
     store.end_sessions(target.id)
     if disconnect_devices:
         everywhere = getattr(store, "end_everywhere", None)

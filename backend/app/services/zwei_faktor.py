@@ -58,6 +58,16 @@ def geheimnis_lesen(benutzer: Benutzer) -> str:
     return crypto.entschluesseln(benutzer.totp_geheimnis, _kontext(benutzer))
 
 
+def wartend_speichern(benutzer: Benutzer, geheimnis: str) -> None:
+    """Der halb eingerichtete Authenticator des Kontenmoduls (``factor.begin_totp``): eigener Kontext, damit er nie
+    als bestaetigter gelesen werden kann."""
+    benutzer.totp_wartend = crypto.verschluesseln(geheimnis, _kontext(benutzer) + ":wartend")
+
+
+def wartend_lesen(benutzer: Benutzer) -> str:
+    return crypto.entschluesseln(benutzer.totp_wartend, _kontext(benutzer) + ":wartend")
+
+
 def otpauth_adresse(benutzer: Benutzer, geheimnis: str, ausgeber: str = "nexmail") -> str:
     return pyotp.TOTP(geheimnis).provisioning_uri(name=benutzer.benutzername, issuer_name=ausgeber)
 

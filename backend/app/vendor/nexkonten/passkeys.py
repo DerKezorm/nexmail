@@ -71,12 +71,17 @@ class Party:
     origin: str
 
 
-def party(public_url: str, origin: str = "") -> Party:
+def party(public_url: str, origin: str = "", request_url: str = "") -> Party:
     """The relying party of an app from its public address (``https://notes.example.com``). ``origin`` is the
     ``Origin`` header of the request: a page on ``localhost`` (a secure context without https, often on another port
-    than the public address) gets exactly that host and port; any other origin changes nothing. The page shows the
-    passkey section only where ``window.isSecureContext`` holds."""
+    than the public address) gets exactly that host and port; any other origin changes nothing. Browsers send no
+    ``Origin`` with a GET on the same page: then ``request_url`` (the address the request came to, path and all)
+    stands in for it, by its scheme, host and port only. The page shows the passkey section only where
+    ``window.isSecureContext`` holds."""
     seen = urlsplit((origin or "").strip())
+    if not (origin or "").strip() and (request_url or "").strip():
+        asked = urlsplit(request_url.strip())
+        seen = urlsplit(f"{asked.scheme}://{asked.netloc}")
     if (seen.hostname or "").lower() == LOCALHOST and seen.scheme in ("http", "https") and not seen.path.strip("/"):
         public_url = f"{seen.scheme}://{seen.netloc}"
     parts = urlsplit(public_url.strip())
@@ -312,7 +317,8 @@ def remove(
     """The owner removes one of their passkeys (not the last factor where one is required)."""
     account = common.account_or_404(store, account_id)
     factor.confirmed(store, account, password, actor_confirmed, without_password=True)
-    if store.factor_required() and not store.totp_seed(account.id) and len(store.passkeys_of(account.id)) <= 1:
+    required = store.factor_required() and not factor.switched_off()
+    if required and not store.totp_seed(account.id) and len(store.passkeys_of(account.id)) <= 1:
         raise AccountError("factor_required", "A second factor is required here; set up another one first.", 409)
     removed = store.remove_passkey(account.id, uid)
     store.commit()

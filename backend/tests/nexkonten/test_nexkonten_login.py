@@ -241,3 +241,32 @@ def test_a_new_password_makes_the_known_browser_mark_worthless(app: Any, konten:
         token = konten.resets.forgot(store, "alex").token
         konten.resets.use_reset(store, token, password())
     assert not app.session_alive(mark)
+
+
+def test_a_known_browser_counts_in_a_pot_of_its_own_not_at_the_sender(app: Any, konten: Any) -> None:
+    """Decided 25.11.2026 (0.3.3): a stranger behind the same router as the owner fills the sender's and the
+    account's counts; the owner's known browser still gets five tries of its own, and only its own pot fills."""
+    import secrets
+
+    alex = app.seed("alex", password=password())
+    secret = secrets.token_bytes(32)
+    with app.store() as store:
+        keys = konten.login.attempt_key(store, "alex", "192.0.2.10")
+        key = store.device_key(alex)
+        store.commit()
+    cookie = konten.sessions.add_mark("", konten.sessions.mark(secret, key))
+    other = konten.sessions.mark(secret, key)
+    mark = konten.sessions.known_mark(cookie, secret, key)
+    assert mark and konten.sessions.known_mark(cookie, secret, "another key") == ""
+    held = konten.brake.BRAKE
+    for _ in range(40):
+        held.claim(keys)
+    assert held.claim(keys) > 0
+    # Five free failures; the sixth is still tried and starts the wait.
+    for _ in range(6):
+        assert held.claim(keys, browser=mark) == 0.0
+    assert held.claim(keys, browser=mark) > 0
+    # Another browser of the owner has a pot of its own; a right password empties the pot.
+    assert held.claim(keys, browser=other) == 0.0
+    held.succeeded(keys, browser=mark)
+    assert held.claim(keys, browser=mark) == 0.0

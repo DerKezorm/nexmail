@@ -148,6 +148,12 @@ class Benutzer(Base):
     mail_neue_anmeldung: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     fehlversuche: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     gesperrt_bis: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+    #: konten 0.3.3. ``totp_wartend``/``totp_wartend_bis``: ein Authenticator, den das Modul halb eingerichtet hat
+    #: (``factor.begin_totp``), versiegelt im Kontext ``benutzer:<id>:totp:wartend``, zehn Minuten; nie ein Faktor.
+    #: ``angebotene_adresse``: die Adresse, die ein Anbieter einem Konto mit Passwort nur anbietet, ``""`` keine.
+    totp_wartend: Mapped[str] = mapped_column(Text, default="", server_default="")
+    totp_wartend_bis: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+    angebotene_adresse: Mapped[str] = mapped_column(String(320), default="", server_default="")
 
     # --- Der KI-Dienst dieses Menschen ---------------------------------- #
     #

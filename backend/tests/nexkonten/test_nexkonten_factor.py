@@ -56,6 +56,63 @@ def test_a_time_based_code_counts_only_once_a_code_confirmed_it_and_is_kept_seal
     assert not any(entry in raw or entry.replace("-", "") in raw for entry in done.codes)
 
 
+def test_a_half_set_up_authenticator_waits_sealed_in_the_store_across_a_restart(
+    app: Any, konten: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Decided while building (0.3.3): between the QR code and the first code the seed waits in the database,
+    sealed, not only in memory; a restart in between loses nothing. It is no factor until a code confirmed it, and it
+    waits ten minutes."""
+    secret = password()
+    alex = app.seed("alex", password=secret)
+    kim = app.seed("kim", password=secret)
+    with app.store() as store:
+        enrolment = konten.factor.begin_totp(store, alex, issuer=ISSUER)
+        late = konten.factor.begin_totp(store, kim, issuer=ISSUER)
+    konten.factor.forget()  # the restart: nothing is left in memory
+    raw = app.raw_text()
+    assert enrolment.seed not in raw and enrolment.seed.lower() not in raw
+    with app.store() as store:
+        assert store.totp_seed(alex) is None and not konten.factor.has_factor(store, alex)
+        assert store.pending_totp(alex)[0] == enrolment.seed
+        code = konten.factor.code_at(enrolment.seed, time.time())
+        assert konten.factor.confirm_totp(store, alex, code, password=secret).codes
+    with app.store() as store:
+        assert store.totp_seed(alex) == enrolment.seed and store.pending_totp(alex) is None
+    now = konten.common.utcnow()
+    monkeypatch.setattr(konten.common, "utcnow", lambda: now + timedelta(minutes=11))
+    with app.store() as store:
+        code = konten.factor.code_at(late.seed, time.time())
+        _refused(konten, lambda: konten.factor.confirm_totp(store, kim, code, password=secret), "enrolment_expired")
+
+
+def test_the_emergency_hammer_switches_the_second_factor_off_for_everybody(
+    app: Any, konten: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Decided 25.11.2026 (0.3.3): ``<APP>_SECOND_FACTOR_OFF`` beats every factor and "required of everybody";
+    nothing is deleted, and without it everything counts again."""
+    secret = password()
+    alex = app.seed("alex", password=secret)
+    kim = app.seed("kim", password=secret)
+    _set_up(app, konten, alex, secret)
+    app.switch("factor_required", True)
+    with app.store() as store:
+        assert konten.common.next_step(store, store.get_account(alex)) == konten.NEXT_SECOND_FACTOR
+        assert konten.common.next_step(store, store.get_account(kim)) == konten.NEXT_SECOND_FACTOR_SETUP
+    assert konten.factor.switched_off() is False
+    app_name = konten.current().app_name
+    assert konten.current().second_factor_off_env == app_name.upper().replace("-", "_") + "_SECOND_FACTOR_OFF"
+    monkeypatch.setenv(konten.current().second_factor_off_env, "1")
+    assert konten.factor.switched_off() is True
+    with app.store() as store:
+        for account_id in (alex, kim):
+            assert konten.common.next_step(store, store.get_account(account_id)) == konten.NEXT_SESSION
+            assert konten.factor.state(store, account_id) == konten.SECOND_FACTOR_NONE
+        assert store.totp_seed(alex)
+    monkeypatch.delenv(konten.current().second_factor_off_env)
+    with app.store() as store:
+        assert konten.common.next_step(store, store.get_account(alex)) == konten.NEXT_SECOND_FACTOR
+
+
 def test_a_code_counts_once_also_for_two_requests_at_the_same_moment(app: Any, konten: Any) -> None:
     secret = password()
     alex = app.seed("alex", password=secret)

@@ -34,6 +34,8 @@ def test_a_person_asks_by_username_or_address_and_the_link_goes_to_the_confirmed
     ],
 )
 def test_no_link_goes_out_where_it_must_not(app: Any, konten: Any, seeded: dict[str, Any], typed: str) -> None:
+    if seeded.get("blocked") and not app.blocking:
+        return  # the app blocks no accounts (StandardAdapter.blocking)
     values: dict[str, Any] = {"password": password(), **seeded}
     app.seed("alex", **values)
     with app.store() as store:
@@ -319,3 +321,19 @@ def test_an_operator_link_outlives_a_change_of_the_address(app: Any, konten: Any
         konten.profiles.change_email(store, alex, "new@example.com", password=secret)
     with app.store() as store:
         assert konten.resets.reset_state(store, made).id == alex
+
+
+def test_devices_stay_connected_after_the_operators_link_too(
+    app: Any, konten: Any, operator: tuple[Any, str]
+) -> None:
+    """Decided 25.11.2026: after any link for a new password the paired devices stay; the app lists them ("These
+    devices still have access") with "Disconnect all"."""
+    boss, boss_secret = operator
+    alex = app.seed("alex", email="alex@example.com", password=password())
+    browser, device = (app.open_session(alex, kind) for kind in ("browser", "device"))
+    with app.store() as store:
+        token = konten.resets.reset_link(store, alex, actor_id=boss, password=boss_secret).token
+    with app.store() as store:
+        done = konten.resets.use_reset(store, token, password())
+    assert done.origin == konten.RESET_OPERATOR
+    assert not app.session_alive(browser) and app.session_alive(device) and len(done.remaining) >= 1

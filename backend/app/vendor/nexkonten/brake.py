@@ -10,8 +10,10 @@ count lives one hour from its first failure (also when failures keep coming), un
 
 A right attempt (``succeeded``) takes back what it counted: the account's count starts anew, and the sender's loses
 the one failure ``claim`` counted for it, so that a family behind one address never fills the sender's count with
-right passwords. A browser that knows the account (``sessions.is_known``) is braked at the sender only
-(``known_browser=True``): a stranger who types the name of the owner never brakes the owner's own browser.
+right passwords. A browser that knows the account (``sessions.known_mark``) counts in a pot of its own
+(``browser=<its mark>``, 5 free), neither at the sender nor at the account: a stranger who types the name of the
+owner never brakes the owner's own browser, also not from behind the same router (decided 25.11.2026; until 0.3.2
+such a browser counted at the sender, which ``known_browser=True`` without a mark still does for older callers).
 
 At most 50 000 counts are kept; when full, the ones whose hour is over go first, then senders and typed text before
 accounts, the least recently failed first.
@@ -22,18 +24,20 @@ The sender's address: behind proxies the app trusts (``<APP>_TRUSTED_PROXIES``, 
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import threading
 import time
 from dataclasses import dataclass, field
 
-FREE = {"sender": 30, "account": 5, "typed": 5}
+FREE = {"sender": 30, "account": 5, "typed": 5, "browser": 5}
 FREE_OTHER = 5
 FIRST_WAIT = 5.0
 LONGEST_WAIT = 15 * 60.0
 FORGET_AFTER = 3600.0
 MAX_COUNTS = 50_000
 SENDER = "sender:"
+BROWSER = "browser:"
 
 
 @dataclass
@@ -48,7 +52,16 @@ class _Count:
         return moment - self.start > FORGET_AFTER and moment >= self.blocked_until
 
 
-def _kept(keys: tuple[str, ...] | list[str], known_browser: bool) -> list[str]:
+def browser_key(mark: str) -> str:
+    """The pot of one known browser: its mark (``sessions.known_mark``), hashed. A pot key passes unchanged."""
+    if mark.startswith(BROWSER):
+        return mark
+    return BROWSER + hashlib.sha256(mark.encode("utf-8")).hexdigest()[:32]
+
+
+def _kept(keys: tuple[str, ...] | list[str], known_browser: bool, browser: str = "") -> list[str]:
+    if browser:
+        return [browser_key(browser)]
     return [key for key in keys if key.startswith(SENDER)] if known_browser else list(keys)
 
 
@@ -99,28 +112,44 @@ class Brake:
         return longest
 
     def wait(
-        self, keys: tuple[str, ...] | list[str], now: float | None = None, *, known_browser: bool = False
+        self,
+        keys: tuple[str, ...] | list[str],
+        now: float | None = None,
+        *,
+        known_browser: bool = False,
+        browser: str = "",
     ) -> float:
         """Seconds to wait before the next attempt may run (0: it may), without counting."""
         moment = time.monotonic() if now is None else now
         with self.lock:
-            return self._wait_locked(_kept(keys, known_browser), moment)
+            return self._wait_locked(_kept(keys, known_browser, browser), moment)
 
     def failed(
-        self, keys: tuple[str, ...] | list[str], now: float | None = None, *, known_browser: bool = False
+        self,
+        keys: tuple[str, ...] | list[str],
+        now: float | None = None,
+        *,
+        known_browser: bool = False,
+        browser: str = "",
     ) -> float:
         """Count a failure at every key; the longest wait that follows."""
         moment = time.monotonic() if now is None else now
         with self.lock:
-            return self._failed_locked(_kept(keys, known_browser), moment)
+            return self._failed_locked(_kept(keys, known_browser, browser), moment)
 
     def claim(
-        self, keys: tuple[str, ...] | list[str], now: float | None = None, *, known_browser: bool = False
+        self,
+        keys: tuple[str, ...] | list[str],
+        now: float | None = None,
+        *,
+        known_browser: bool = False,
+        browser: str = "",
     ) -> float:
         """Check and count in one step: the wait when the attempt must not run (nothing counted then), else 0 and
-        the attempt counted as a failure until ``succeeded``."""
+        the attempt counted as a failure until ``succeeded``. ``browser``: the mark of a browser that knows the
+        account (``sessions.known_mark``); the attempt then counts in that browser's own pot only."""
         moment = time.monotonic() if now is None else now
-        kept = _kept(keys, known_browser)
+        kept = _kept(keys, known_browser, browser)
         with self.lock:
             waiting = self._wait_locked(kept, moment)
             if waiting > 0:
@@ -128,10 +157,11 @@ class Brake:
             self._failed_locked(kept, moment)
             return 0.0
 
-    def succeeded(self, keys: tuple[str, ...] | list[str]) -> None:
-        """The attempt was right: the account's count starts anew; the sender's loses the failure ``claim`` counted."""
+    def succeeded(self, keys: tuple[str, ...] | list[str], *, browser: str = "") -> None:
+        """The attempt was right: the account's count starts anew (and the browser's pot, with ``browser``); the
+        sender's loses the failure ``claim`` counted."""
         with self.lock:
-            for key in keys:
+            for key in [*keys, *([browser_key(browser)] if browser else [])]:
                 if not key.startswith(SENDER):
                     self.counts.pop(key, None)
                     continue

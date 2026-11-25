@@ -177,6 +177,9 @@ def next_step(store: Store, account: Account) -> str:
     """What the app starts for an account that just got in (``NEXT_*`` in ``model``)."""
     if account.blocked:
         return NEXT_SIGN_IN
+    if config.current().second_factor_is_off():
+        # The emergency hammer (``<APP>_SECOND_FACTOR_OFF``) beats every second factor and the switch for everybody.
+        return NEXT_SESSION
     state = store.second_factor(account.id)
     if state == SECOND_FACTOR_ACTIVE:
         return NEXT_SECOND_FACTOR

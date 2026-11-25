@@ -95,6 +95,19 @@ class FactorStore(Protocol):
         """The operator's switch "second factor for everybody" (off by default; an installation keeps its own)."""
         ...
 
+    # Since 0.3.3: the seed of an authenticator that is set up halfway waits in the store, sealed, so that a restart
+    # between the QR code and the first code loses nothing. A store without these two keeps it in memory as before;
+    # the contract tests ask for them.
+
+    def pending_totp(self, account_id: AccountId) -> tuple[str, datetime] | None:
+        """The opened seed that waits for its first code and until when it waits; None without one. Never a factor:
+        ``totp_seed`` does not answer it."""
+        ...
+
+    def set_pending_totp(self, account_id: AccountId, seed: str | None, until: datetime | None) -> None:
+        """Seal and keep the waiting seed (in another context than a confirmed one), None takes it away."""
+        ...
+
 
 class PasskeyStore(Protocol):
     """Passkeys over the app's table (``passkeys`` in nexdiary and nexpaper)."""

@@ -92,6 +92,9 @@ class Account:
     #: The language the account chose (``de``, ``en-GB``), "" for the browser's. Kept at the account, part of the
     #: profile; mails to the account go out in it.
     language: str = ""
+    #: Since 0.3.3: an address a provider named for an account with a password, only offered ("Use the address from
+    #: <provider>?" in the profile, ``profiles.take_offered_email``); "" for none. Never counts, never signs in.
+    offered_email: str = ""
 
 
 @dataclass(frozen=True)
@@ -243,6 +246,11 @@ class Store(Protocol):
         ...
 
     def get_account(self, account_id: AccountId) -> Account | None: ...
+
+    def set_offered_email(self, account_id: AccountId, address: str) -> None:
+        """Since 0.3.3: keep the address a provider offers an account with a password (``Account.offered_email``),
+        "" takes the offer away. A store without it offers nothing; the contract tests ask for it."""
+        ...
 
     def find_by_username(self, username: str) -> list[Account]:
         """Every account whose **current** username equals this one without regard to case (normally none or one),

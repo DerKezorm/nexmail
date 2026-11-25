@@ -186,6 +186,7 @@ class KontenStore:
             operator=bool(zeile.ist_betreiber),
             picture=bild,
             language=zeile.sprache or "",
+            offered_email=zeile.angebotene_adresse or "",
         )
 
     def count_accounts(self) -> int:
@@ -288,6 +289,11 @@ class KontenStore:
 
     def set_language(self, account_id: AccountId, language: str) -> None:
         self.db.execute(update(Benutzer).where(Benutzer.id == str(account_id)).values(sprache=language))
+        self._auffrischen(account_id)
+
+    def set_offered_email(self, account_id: AccountId, address: str) -> None:
+        """konten 0.3.3: die Adresse, die ein Anbieter einem Konto mit Passwort nur anbietet (``""`` keine)."""
+        self.db.execute(update(Benutzer).where(Benutzer.id == str(account_id)).values(angebotene_adresse=address))
         self._auffrischen(account_id)
 
     def _auffrischen(self, account_id: AccountId) -> None:
@@ -558,6 +564,45 @@ class KontenStore:
             zeile.totp_geheimnis = ""
             zeile.totp_bestaetigt = False
             zeile.totp_letzter_schritt = 0
+        self.db.flush()
+
+    def pending_totp(self, account_id: AccountId) -> tuple[str, datetime] | None:
+        """konten 0.3.3: der halb eingerichtete Authenticator des Moduls (``totp_wartend``, eigener Kontext). Sonst
+        nexmails eigener halber (unbestaetigtes ``totp_geheimnis`` aus ``/zwei-faktor/starten`` oder der Einrichtung
+        beim Anmelden): der wartet ohne Ende wie bisher, damit ein schon eingescannter QR-Code weiter passt."""
+        from datetime import timedelta
+
+        from . import zwei_faktor
+
+        zeile = self.db.get(Benutzer, str(account_id))
+        if zeile is None:
+            return None
+        if zeile.totp_wartend:
+            geheimnis = zwei_faktor.wartend_lesen(zeile)
+            if geheimnis:
+                return geheimnis, zeile.totp_wartend_bis or utcnow()
+        if zeile.totp_geheimnis and not zeile.totp_bestaetigt:
+            geheimnis = zwei_faktor.geheimnis_lesen(zeile)
+            if geheimnis:
+                return geheimnis, utcnow() + timedelta(seconds=nexkonten.factor.ENROLMENT_SECONDS)
+        return None
+
+    def set_pending_totp(self, account_id: AccountId, seed: str | None, until: datetime | None) -> None:
+        """Versiegelt im Kontext ``benutzer:<id>:totp:wartend``; ``None`` nimmt ihn weg, auch nexmails eigenen halben
+        (ein bestaetigter Faktor bleibt immer stehen)."""
+        from . import zwei_faktor
+
+        zeile = self.db.get(Benutzer, str(account_id))
+        if zeile is None:
+            return
+        if seed:
+            zwei_faktor.wartend_speichern(zeile, seed)
+            zeile.totp_wartend_bis = until
+        else:
+            zeile.totp_wartend = ""
+            zeile.totp_wartend_bis = None
+            if not zeile.totp_bestaetigt:
+                zeile.totp_geheimnis = ""
         self.db.flush()
 
     def claim_step(self, account_id: AccountId, step: int) -> bool:

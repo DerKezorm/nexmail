@@ -132,14 +132,27 @@ export const SCREENS = {
 
 export type AccountScreen = keyof typeof SCREENS
 
-/** The parts of the account pages, top to bottom, each titled with ``account.<part>``. "Mail me about a new sign-in"
+/** The parts of the account pages, top to bottom, each titled with ``account.<part>``. ``providerEmailOffer``
+ * (since 0.3.3) shows only while the account has ``offered_email``: "Use the address from <provider>?" with
+ * ``account.providerEmailTake`` and ``account.providerEmailDismiss`` (``{{provider}}`` the provider's label). "Mail me about a new sign-in"
  * sits under security next to the signed-in devices, not in the profile. ``operatorSignIn``: the operator's switches,
  * each with its hint (``account.factorRequiredSwitchHint``). */
 export const SECTIONS = {
-  profile: ['picture', 'displayName', 'username', 'email', 'language'],
+  profile: ['picture', 'displayName', 'username', 'email', 'providerEmailOffer', 'language'],
   security: ['secondFactor', 'recoveryCodes', 'passkeys', 'sessions', 'newSignInMail', 'signOutEverywhere'],
   operatorSignIn: ['factorRequiredSwitch', 'passkeysAllowed'],
+  /** Since 0.3.3: the operator's dialog "Reset the second factor" (``factor.reset_overview``): the account's
+   * passkeys by name, then the two boxes, both ticked by default. */
+  operatorFactorReset: ['factorResetHint', 'passkeys', 'factorResetPasskeys', 'factorResetDevices'],
 } as const satisfies Record<string, readonly string[]>
+
+/** The boxes of the operator's dialog "Reset the second factor" and how they start. */
+export const FACTOR_RESET_DEFAULTS = { factorResetPasskeys: true, factorResetDevices: true } as const
+
+/** Since 0.3.3: notices shown plainly at the top of every account page and of the operator's settings while the
+ * server says so. ``secondFactorOff``: the emergency hammer is down (``factor.switched_off()``), with its hint
+ * ``account.secondFactorOffHint``. */
+export const NOTICES = ['secondFactorOff'] as const
 
 export interface ScreenOptions {
   /** The app's own autocomplete of a field, e.g. { login: 'username webauthn' } where passkeys sign in too. */
@@ -217,11 +230,22 @@ export function usernameProblem(raw: string): string {
   return usernameValid(normalizeUsername(raw)) ? '' : 'account.usernameRules'
 }
 
-/** The default variables of i18next for the texts of this module: the app's name as its container is called and
- * the environment variable of the setup code. */
-export function kontenVariables(app: string): { app: string; setupTokenEnv: string; minimum: number } {
+/** The default variables of i18next for the texts of this module: the app's name as its container is called, the
+ * environment variables of the setup code and of the emergency hammer (since 0.3.3). */
+export function kontenVariables(app: string): {
+  app: string
+  setupTokenEnv: string
+  secondFactorOffEnv: string
+  minimum: number
+} {
   const name = app.trim().toLowerCase()
-  return { app: name, setupTokenEnv: `${name.toUpperCase().replace(/-/g, '_')}_SETUP_TOKEN`, minimum: PASSWORD_MIN }
+  const env = name.toUpperCase().replace(/-/g, '_')
+  return {
+    app: name,
+    setupTokenEnv: `${env}_SETUP_TOKEN`,
+    secondFactorOffEnv: `${env}_SECOND_FACTOR_OFF`,
+    minimum: PASSWORD_MIN,
+  }
 }
 
 // --- Since 0.3.0: second factor, sessions, passkeys, pictures ------------------------------------------------------

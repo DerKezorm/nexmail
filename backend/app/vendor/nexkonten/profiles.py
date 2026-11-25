@@ -21,12 +21,15 @@ away, never set one (or a password link could go to an address of the operator's
 effect changes, open links a person asked for to the old one stop counting.
 
 **Address from a provider:** an account through a provider only follows the provider's address
-(``follow_provider_email``), which never counts at once and never takes an address another account has.
+(``follow_provider_email``), which never counts at once and never takes an address another account has. An account
+with a password is only offered it (since 0.3.3, ``provider_email`` answers ``offered``): the profile asks "Use the
+address from <provider>?", and ``take_offered_email`` takes it like a change of address (with the password, by link
+where a mail server is there); ``dismiss_offered_email`` says no.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 
 from . import common, names
@@ -52,6 +55,12 @@ from .model import (
 
 #: How long the link that confirms an address holds.
 CONFIRM_HOURS = 24
+
+#: ``provider_email``: the account follows the provider's address now; it is only offered (an account with a
+#: password); nothing happened.
+PROVIDER_EMAIL_TAKEN = "taken"
+PROVIDER_EMAIL_OFFERED = "offered"
+PROVIDER_EMAIL_NONE = ""
 
 
 @dataclass(frozen=True)
@@ -272,23 +281,73 @@ def remove_email(
 
 
 def follow_provider_email(store: Store, account_id: AccountId, raw: str) -> bool:
+    """``provider_email`` for callers of 0.3.2: True when the address was taken."""
+    return provider_email(store, account_id, raw) == PROVIDER_EMAIL_TAKEN
+
+
+def provider_email(store: Store, account_id: AccountId, raw: str) -> str:
     """What a provider says about the address of an account at a sign-in or a link, for the OIDC binding (inside its
-    transaction: nothing is committed here). Only an account without an address of its own follows it: no address,
-    or one that came from a provider. The provider's address never counts at once and is never proven (the provider
-    may let anybody set any address), and it is never taken when another account has it. True when it was taken."""
+    transaction: nothing is committed here). An account through a provider only follows it (``taken``) when it has no
+    address of its own: none, or one that came from a provider. An account with a password is only offered it
+    (``offered``, decided 25.11.2026): the person takes it in the profile. The provider's address never counts at once
+    and is never proven (the provider may let anybody set any address), and it is never taken or offered when another
+    account has it."""
     account = common.account_or_404(store, account_id)
     try:
         address = names.clean_email(raw)
     except AccountError:
-        return False
-    if not address or (account.email and account.email_source != EMAIL_PROVIDER):
-        return False
-    if names.same_address(address, account.email):
-        return False
+        return PROVIDER_EMAIL_NONE
+    if not address or names.same_address(address, account.email):
+        return PROVIDER_EMAIL_NONE
+    if account.has_password:
+        return _offer(store, account, address)
+    if account.email and account.email_source != EMAIL_PROVIDER:
+        return PROVIDER_EMAIL_NONE
     if names.email_taken(store, address, except_id=account.id):
         log().warning("Provider address not taken, another account has it name=%s", account.username)
-        return False
+        return PROVIDER_EMAIL_NONE
     store.set_email(account.id, address, confirmed=False, proven=False, source=EMAIL_PROVIDER)
     store.drop_resets(account.id, origin=RESET_SELF)
     log().info("Provider address followed name=%s", account.username)
-    return True
+    return PROVIDER_EMAIL_TAKEN
+
+
+def _offer(store: Store, account: Account, address: str) -> str:
+    if names.same_address(address, account.offered_email):
+        return PROVIDER_EMAIL_OFFERED
+    keep = getattr(store, "set_offered_email", None)
+    if keep is None or names.email_taken(store, address, except_id=account.id):
+        return PROVIDER_EMAIL_NONE
+    keep(account.id, address)
+    log().info("Provider address offered name=%s", account.username)
+    return PROVIDER_EMAIL_OFFERED
+
+
+def take_offered_email(
+    store: Store,
+    account_id: AccountId,
+    *,
+    password: str = "",
+    actor_confirmed: bool = False,
+    mail: bool = False,
+) -> EmailChanged:
+    """The person takes the address a provider offered ("Use the address from <provider>?"): a change of address
+    like ``change_email`` (the password; with a mail server it waits for its link), then the offer is gone. Without an
+    offer nothing changes."""
+    account = common.account_or_404(store, account_id)
+    if not account.offered_email:
+        return EmailChanged(account)
+    done = change_email(
+        store, account.id, account.offered_email, password=password, actor_confirmed=actor_confirmed, mail=mail
+    )
+    store.set_offered_email(account.id, "")
+    store.commit()
+    return replace(done, account=reload(store, account.id))
+
+
+def dismiss_offered_email(store: Store, account_id: AccountId) -> None:
+    """The person does not want the offered address."""
+    account = common.account_or_404(store, account_id)
+    if account.offered_email:
+        store.set_offered_email(account.id, "")
+        store.commit()
