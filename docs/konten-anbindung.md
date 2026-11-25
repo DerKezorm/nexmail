@@ -118,6 +118,23 @@ einem GET ohne Kopfzeile auf die Adresse der Anfrage zurück.
    Marken und die Mail. Vorschlag: in `SCHNITTSTELLE.md` sagen, welche Teile eine App mit eigener Sitzungsschicht
    mindestens nehmen muss.
 
+## 0c. `konten` 0.3.3
+
+Nachgezogen am 25.11.2026 auf demselben Zweig.
+
+| Teil | Wo |
+|---|---|
+| Store | `pending_totp`/`set_pending_totp` über `benutzer.totp_wartend` (versiegelt, Kontext `benutzer:<id>:totp:wartend`) und `totp_wartend_bis`; ohne sie liest der Store nexmails eigenen halben Authenticator (unbestätigtes `totp_geheimnis`, ohne Ablauf). `set_offered_email` über `benutzer.angebotene_adresse` (Vorgabe `''`) |
+| Anmeldung | Bremse des Moduls (`brake.BRAKE.claim(..., browser=sessions.known_mark(...))`, `succeeded(..., browser=…)`) statt `anmeldebremse.torwaechter`; die anderen Türen (Code, Adresse, Passwort vergessen …) bleiben bei nexmails Bremse |
+| Passkeys | `passkeys.party(..., origin=…, request_url=str(request.url))` statt eigener GET-Rückfall-Lösung |
+| Nothammer | `AppConfig(second_factor_off=…)` mit `NEXMAIL_ZWEI_FAKTOR_AUS`, `NEXMAIL_SECOND_FACTOR_OFF` zusätzlich; beim Start `factor.announce_switched_off()`; `GET /api/auth/ich` → `zwei_faktor_aus`, Hinweis `account.secondFactorOff` oben in Profil, Sicherheit und Anmeldung (`components/FaktorAusHinweis.tsx`) |
+| Anbieteradresse | `profiles.provider_email`; Profil „Adresse von <Anbieter> übernehmen?“ über `POST`/`DELETE /api/auth/ich/angebotene-adresse` (Name des Anbieters aus der Verknüpfung mit dieser Adresse) |
+| Zurücksetzen | `GET /api/benutzer/{id}/zweiter-faktor-ueberblick` (`factor.reset_overview`), Dialog mit Passkey-Liste und Haken „Passkeys auch entfernen“ (nur mit Passkeys) → `passkeys_entfernen` |
+
+Lokal geblieben: das Einrichten des Authenticators in nexmails eigenen Routen (`/zwei-faktor/starten`, `/einrichtung`,
+`/code`; Wiederherstellungscodes im alten Format), weil dort der QR-Code ohne Ablauf wieder abrufbar ist, und nexmails
+Bremse an den übrigen Türen.
+
 ## 1. Bestand heute (0.33.0)
 
 ### Datenmodell
