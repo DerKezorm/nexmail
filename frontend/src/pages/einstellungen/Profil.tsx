@@ -93,6 +93,13 @@ export function Profil({
     )
   }
 
+  /** „Übernehmen“: wie eine Adressänderung, mit Passwort; mit Postausgang wartet sie danach auf ihren Link. */
+  async function angeboteneNehmen() {
+    const passwort = await passwortFragen()
+    if (passwort === null) return
+    await tun(() => api.senden('/api/auth/ich/angebotene-adresse', { passwort }), t('profil.gespeichert'))
+  }
+
   async function benutzernameAendern() {
     const neu = await fragen({
       titel: t('account.username'),
@@ -225,6 +232,31 @@ export function Profil({
                 onClick={() => void tun(() => api.loeschen('/api/auth/ich/kontaktadresse/wartend'), t('profil.gespeichert'))}
               >
                 {t('account.emailWithdraw')}
+              </Button>
+            </div>
+          )}
+          {/* konten 0.3.3: Einem Konto mit Passwort bietet ein Anbieter seine Adresse nur an. */}
+          {person.angebotene_adresse && person.hat_kennwort !== false && (
+            <div className="flex flex-wrap items-center gap-2 text-[12px] text-fg-3">
+              <span className="flex-1">
+                {t('account.providerEmailOffer', {
+                  // Ohne Verknüpfung (inzwischen getrennt) steht die Domain der Adresse für den Anbieter.
+                  provider: person.angebotene_adresse_von || person.angebotene_adresse.split('@')[1],
+                })}{' '}
+                <span className="text-fg-2">{person.angebotene_adresse}</span>
+              </span>
+              <Button type="button" variant="ghost" disabled={laeuft} onClick={() => void angeboteneNehmen()}>
+                {t('account.providerEmailTake')}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={laeuft}
+                onClick={() =>
+                  void tun(() => api.loeschen('/api/auth/ich/angebotene-adresse'), t('profil.gespeichert'))
+                }
+              >
+                {t('account.providerEmailDismiss')}
               </Button>
             </div>
           )}

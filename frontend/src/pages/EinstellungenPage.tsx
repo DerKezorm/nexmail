@@ -24,6 +24,7 @@ import { Postfachkacheln } from '../components/Postfachkacheln'
 import { PostfachHinzufuegen } from '../components/PostfachHinzufuegen'
 import { useNachfrage } from '../components/Nachfrage'
 import { Profilbild } from '../components/Profilbild'
+import { FaktorAusHinweis } from '../components/FaktorAusHinweis'
 import { Benachrichtigungen } from './Benachrichtigungen'
 import { Darstellung } from './Darstellung'
 import { KontoFormular } from './KontoFormular'
@@ -58,6 +59,9 @@ import {
   type Bereich,
 } from './einstellungen/bereiche'
 import { api } from '../api/client'
+
+/** Wo der Hinweis „Zweiter Faktor ist abgeschaltet“ oben steht (`NOTICES` im Kontenmodul). */
+const NOTHAMMER_BEREICHE: string[] = ['profil', 'sicherheit', 'anmeldung']
 import type { KontoZeile } from '../api/client'
 
 export type { Bereich } from './einstellungen/bereiche'
@@ -304,6 +308,8 @@ export function EinstellungenPage({
               {text && <p className="mt-1 mb-0 max-w-[720px] text-[14px] text-fg-3">{text}</p>}
             </div>
             <div className="flex flex-col gap-6" data-testid="einstellungen-inhalt">
+              {/* konten 0.3.3: Der Nothammer ist unten, deutlich oben auf den Kontoseiten und bei der Anmeldung. */}
+              {ich?.zwei_faktor_aus && NOTHAMMER_BEREICHE.includes(bereich) && <FaktorAusHinweis />}
               {inhalt()}
             </div>
           </div>

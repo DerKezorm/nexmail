@@ -30,7 +30,21 @@ import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { Badge, Button, Dialog, IconButton, Input, Select } from '../ds'
 import { servermeldung } from '../lib/servermeldung'
-import { INVITE_DAYS, INVITE_DAYS_DEFAULT, RESET_DAYS, RESET_DAYS_DEFAULT } from '../vendor/nexkonten/konten'
+import {
+  FACTOR_RESET_DEFAULTS,
+  INVITE_DAYS,
+  INVITE_DAYS_DEFAULT,
+  RESET_DAYS,
+  RESET_DAYS_DEFAULT,
+} from '../vendor/nexkonten/konten'
+
+/** Was ein Zurücksetzen des zweiten Faktors wegnähme (`GET /api/benutzer/{id}/zweiter-faktor-ueberblick`). */
+interface FaktorUeberblick {
+  authenticator: boolean
+  codes: number
+  passkeys: string[]
+  geraete: string[]
+}
 
 interface BenutzerZeile {
   id: string
@@ -196,15 +210,40 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
     await handeln(() => api.aendern(`/api/benutzer/${p.id}/${feld}`, { [feld]: neu, passwort: kennwort }))
   }
 
-  /** „Zweiten Faktor zurücksetzen“ (Kontenmodul Teil 2): für jemanden, dessen Telefon weg ist. */
+  /** „Zweiten Faktor zurücksetzen“ (Kontenmodul Teil 2): für jemanden, dessen Telefon weg ist. Seit konten 0.3.3
+   *  zeigt der Dialog vorher die Passkeys des Kontos (`factor.reset_overview`) und fragt „Passkeys auch entfernen“;
+   *  beide Haken ab Werk an (`FACTOR_RESET_DEFAULTS`). */
   async function faktorZuruecksetzen(p: BenutzerZeile) {
+    let stand: FaktorUeberblick
+    try {
+      stand = await api.holen<FaktorUeberblick>(`/api/benutzer/${p.id}/zweiter-faktor-ueberblick`)
+    } catch (f) {
+      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+      return
+    }
     const ja = await fragen({
       titel: t('account.factorReset'),
       text: t('account.factorResetHint'),
       knopf: t('aktion.weiter'),
       gefaehrlich: true,
-      // konten 0.3.1: ab Werk an, ein verlorenes Handy ist sonst noch angemeldet.
-      haken: { beschriftung: t('account.factorResetDevices'), vorgabe: true },
+      liste: { titel: t('account.passkeys'), eintraege: stand.passkeys },
+      weitereHaken: [
+        ...(stand.passkeys.length > 0
+          ? [
+              {
+                schluessel: 'passkeys',
+                beschriftung: t('account.factorResetPasskeys'),
+                vorgabe: FACTOR_RESET_DEFAULTS.factorResetPasskeys,
+              },
+            ]
+          : []),
+        // konten 0.3.1: ab Werk an, ein verlorenes Handy ist sonst noch angemeldet.
+        {
+          schluessel: 'geraete',
+          beschriftung: t('account.factorResetDevices'),
+          vorgabe: FACTOR_RESET_DEFAULTS.factorResetDevices,
+        },
+      ],
     })
     if (typeof ja !== 'object' || ja === null || !ja.ja) return
     const kennwort = await eigenesPasswort(t('account.factorReset'))
@@ -212,7 +251,8 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
     await handeln(() =>
       api.senden(`/api/benutzer/${p.id}/zweiter-faktor-zuruecksetzen`, {
         passwort: kennwort,
-        geraete_trennen: ja.haken,
+        geraete_trennen: ja.weitere.geraete ?? true,
+        passkeys_entfernen: ja.weitere.passkeys ?? true,
       }),
     )
   }

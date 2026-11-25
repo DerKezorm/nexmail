@@ -197,6 +197,11 @@ export interface Ich {
    *  und nach einem neuen Passwort über einen Link, wer ihn machte ("" nichts zu zeigen). */
   kontaktadresse_zaehlt?: boolean
   kontaktadresse_wartet?: string
+  /** konten 0.3.3: die Adresse, die ein Anbieter nur anbietet, und sein Name („Adresse von … übernehmen?“). */
+  angebotene_adresse?: string
+  angebotene_adresse_von?: string
+  /** Der Nothammer ist unten: niemand wird nach einem zweiten Faktor gefragt (`account.secondFactorOff`). */
+  zwei_faktor_aus?: boolean
   sprache?: string
   neues_passwort?: string
   /** Kontenmodul Teil 2: die Mail „Neue Anmeldung“, im Profil abschaltbar. */

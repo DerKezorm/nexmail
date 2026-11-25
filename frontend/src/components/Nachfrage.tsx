@@ -29,6 +29,11 @@ interface Frage {
    *  Handlung gehört („Kalender mit entfernen"). ⚠️ **Vorbelegt mit aus:**
    *  Was zusätzlich gelöscht wird, soll man anhaken, nicht abwählen. */
   haken?: { beschriftung: string; vorgabe?: boolean }
+  /** Eine Liste zum Ansehen über den Haken („Passkeys“ beim Zurücksetzen des zweiten Faktors): was die Handlung
+   *  betrifft, mit Namen. */
+  liste?: { titel: string; eintraege: string[] }
+  /** Weitere Haken unter `haken`, je mit eigenem Schlüssel; die Antwort trägt sie in `weitere`. */
+  weitereHaken?: Array<{ schluessel: string; beschriftung: string; vorgabe?: boolean }>
   /** Eine Auswahl in der Rückfrage — wohin die Handlung gehen soll
    *  („In welchen Kalender?"). ⚠️ **Nur anbieten, wenn es etwas zu wählen
    *  gibt**; eine Liste mit einem Eintrag ist Zierde. */
@@ -44,6 +49,7 @@ export interface Zusage {
   ja: true
   haken: boolean
   wert: string
+  weitere: Record<string, boolean>
 }
 
 type Antwort = string | boolean | null | Zusage
@@ -54,6 +60,7 @@ export function useNachfrage() {
   const [wert, setWert] = useState('')
   const [hakenAn, setHakenAn] = useState(false)
   const [gewaehlt, setGewaehlt] = useState('')
+  const [weitere, setWeitere] = useState<Record<string, boolean>>({})
   const aufloesen = useRef<((a: Antwort) => void) | null>(null)
 
   const fragen = useCallback((f: Frage): Promise<Antwort> => {
@@ -61,6 +68,7 @@ export function useNachfrage() {
     setWert(f.eingabe?.vorgabe ?? '')
     setHakenAn(f.haken?.vorgabe ?? false)
     setGewaehlt(f.auswahl?.vorgabe ?? f.auswahl?.werte[0]?.wert ?? '')
+    setWeitere(Object.fromEntries((f.weitereHaken ?? []).map((h) => [h.schluessel, h.vorgabe ?? false])))
     return new Promise<Antwort>((fertig) => {
       aufloesen.current = fertig
     })
@@ -94,8 +102,8 @@ export function useNachfrage() {
               schliessen(
                 frage?.eingabe
                   ? wert.trim()
-                  : frage?.haken || frage?.auswahl
-                    ? { ja: true, haken: hakenAn, wert: gewaehlt }
+                  : frage?.haken || frage?.auswahl || frage?.weitereHaken
+                    ? { ja: true, haken: hakenAn, wert: gewaehlt, weitere }
                     : true,
               )
             }
@@ -119,6 +127,17 @@ export function useNachfrage() {
         </Select>
       )}
 
+      {frage?.liste && frage.liste.eintraege.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1 text-[13px] font-medium text-fg">{frage.liste.titel}</p>
+          <ul className="m-0 list-disc pl-5 text-[13px] text-fg-2">
+            {frage.liste.eintraege.map((e, i) => (
+              <li key={i}>{e}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {frage?.haken && (
         <Checkbox
           label={frage.haken.beschriftung}
@@ -126,6 +145,15 @@ export function useNachfrage() {
           onCheckedChange={setHakenAn}
         />
       )}
+
+      {frage?.weitereHaken?.map((h) => (
+        <Checkbox
+          key={h.schluessel}
+          label={h.beschriftung}
+          checked={weitere[h.schluessel] ?? false}
+          onCheckedChange={(an) => setWeitere((alt) => ({ ...alt, [h.schluessel]: an }))}
+        />
+      ))}
 
       {frage?.eingabe && (
         <Input
