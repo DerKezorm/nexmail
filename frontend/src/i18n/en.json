@@ -320,87 +320,38 @@
     "signaturen": "Signatures",
     "titel": "Settings",
     "dinge": "mail",
-    "gruppen": {
-      "konto": "My account",
-      "mail": "Mail",
-      "server": "Server"
-    },
-    "springen": "Choose a section",
     "bereiche": {
-      "profil": {
-        "titel": "Profile",
-        "text": "Picture, name, email address and language of your account."
-      },
-      "sicherheit": {
-        "titel": "Security",
-        "text": "Password, second factor, sign-in with providers and signed-in devices."
-      },
-      "darstellung": {
-        "titel": "Appearance",
-        "text": "How the list and your mail look for you."
-      },
-      "benachrichtigungen": {
-        "titel": "Notifications",
-        "text": "Alerts, even when nexmail is not open."
-      },
-      "verbindungen": {
-        "titel": "Connections",
-        "text": "To-do apps, the iPhone app and API keys for other programs."
-      },
-      "kalender": {
+      "calendars": {
         "titel": "Calendars and address books",
         "text": "Your own and connected calendars and address books: add, rename, disconnect."
       },
-      "postfaecher": {
+      "mailboxes": {
         "titel": "Mailboxes",
         "text": "The mailboxes nexmail fetches for you."
       },
-      "regeln": {
+      "rules": {
         "titel": "Rules",
         "text": "What happens to incoming mail on its own."
       },
-      "signaturen": {
+      "signatures": {
         "titel": "Signatures",
         "text": "Signatures and text templates for writing."
       },
-      "abwesenheit": {
+      "out-of-office": {
         "titel": "Out of office",
         "text": "An automatic reply while you are away."
       },
-      "schlagworte": {
+      "tags": {
         "titel": "Tags",
         "text": "Tags for your mail, with colours."
       },
-      "ki": {
-        "titel": "AI"
+      "ai": {
+        "titel": "AI",
+        "text": "Your own access to an AI service, and what nexmail does with it for you."
       },
-      "allgemein": {
-        "titel": "General",
-        "text": "Address, time zone and what applies to all users."
-      },
-      "anmeldung": {
-        "titel": "Sign-in",
-        "text": "Sign-in with OpenID Connect, for example with authentik."
-      },
-      "mailversand": {
-        "titel": "Mail",
-        "text": "nexmail's own outgoing mail and the apps for Google and Microsoft."
-      },
-      "speicher": {
-        "titel": "Storage and backups",
-        "text": "Create, download and restore backups."
-      },
-      "konten": {
-        "titel": "Accounts",
-        "text": "Invite, change and remove users."
-      },
-      "log": {
-        "titel": "Log",
-        "text": "What nexmail did, and who."
-      },
-      "ueber": {
-        "titel": "About nexmail",
-        "text": "Version, origin, licence and updates."
+      "ai-provider": {
+        "titel": "AI provider",
+        "text": "Whether and which accounts may use AI, for everyone on this server."
       }
     },
     "kalender_titel": "Calendars",
@@ -410,7 +361,8 @@
     "buecher_text": "“My contacts” lives only in nexmail; connected books come from iCloud, Google or another CardDAV address.",
     "nur_hier": "Only in nexmail",
     "kontakte_zahl_one": "{{count}} contact",
-    "kontakte_zahl_other": "{{count}} contacts"
+    "kontakte_zahl_other": "{{count}} contacts",
+    "gruppe_mail": "Mail"
   },
   "erinnerung": {
     "titel_one": "Reminder",
@@ -2155,9 +2107,7 @@
     "kein_postausgang": "Without a system outbox no mail goes out. You can still invite: the link is shown to pass on, and so is a link for a new password.",
     "keine_adresse": "No public address is set. The link in the invitation would lead nowhere. It is under Settings → Server → General.",
     "ki": "AI services for all users",
-    "ki_erlauben": "Allow",
     "ki_fremde_post": "Received mail for all users",
-    "ki_fremde_post_erlauben": "Permit",
     "ki_fremde_post_hinweis": "Lets users have received mail summarised and translated, ask questions about it and have replies drafted. Third parties wrote those messages, and their text goes to the user's service. Off by default. Only applies while AI services are allowed.",
     "ki_hinweis": "While this is off, no user can set up or use an AI service, not even with a key of their own. Off by default, because otherwise text from mail goes to a foreign server without you finding out.",
     "nur_betreiber": "Operator only",
@@ -2192,7 +2142,8 @@
     "nachrichten_zahl_one": "{{zahl}} message",
     "nachrichten_zahl_other": "{{zahl}} messages",
     "entfernen_zahlen": "With it go {{postfaecher}} and {{nachrichten}}, along with contacts, rules and signatures. Everything on the mail server stays untouched; nexmail only forgets.",
-    "entfernen_ohne_zahlen": "With it go its mailboxes and messages, along with contacts, rules and signatures. Everything on the mail server stays untouched; nexmail only forgets."
+    "entfernen_ohne_zahlen": "With it go its mailboxes and messages, along with contacts, rules and signatures. Everything on the mail server stays untouched; nexmail only forgets.",
+    "ki_karte_text": "Applies to every account. Whether a single account may use AI is set under “Accounts”."
   },
   "wiedervorlage": {
     "menue": "Snooze",

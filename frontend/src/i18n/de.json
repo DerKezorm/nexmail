@@ -320,87 +320,38 @@
     "signaturen": "Signaturen",
     "titel": "Einstellungen",
     "dinge": "Mails",
-    "gruppen": {
-      "konto": "Mein Konto",
-      "mail": "Mail",
-      "server": "Server"
-    },
-    "springen": "Bereich wählen",
     "bereiche": {
-      "profil": {
-        "titel": "Profil",
-        "text": "Bild, Name, Mailadresse und Sprache deines Kontos."
-      },
-      "sicherheit": {
-        "titel": "Sicherheit",
-        "text": "Passwort, zweiter Faktor, Anmeldung über Anbieter und angemeldete Geräte."
-      },
-      "darstellung": {
-        "titel": "Darstellung",
-        "text": "Wie Liste und Mails bei dir aussehen."
-      },
-      "benachrichtigungen": {
-        "titel": "Benachrichtigungen",
-        "text": "Meldungen, auch wenn nexmail gerade nicht offen ist."
-      },
-      "verbindungen": {
-        "titel": "Verbindungen",
-        "text": "Todo-Apps, die iPhone-App und API-Schlüssel für andere Programme."
-      },
-      "kalender": {
+      "calendars": {
         "titel": "Kalender und Adressbücher",
         "text": "Eigene und verbundene Kalender und Adressbücher: anlegen, umbenennen, trennen."
       },
-      "postfaecher": {
+      "mailboxes": {
         "titel": "Postfächer",
         "text": "Die Postfächer, die nexmail für dich abholt."
       },
-      "regeln": {
+      "rules": {
         "titel": "Regeln",
         "text": "Was mit eingehender Post von selbst passiert."
       },
-      "signaturen": {
+      "signatures": {
         "titel": "Signaturen",
         "text": "Signaturen und Textvorlagen für das Schreiben."
       },
-      "abwesenheit": {
+      "out-of-office": {
         "titel": "Abwesenheit",
         "text": "Automatische Antwort, solange du nicht da bist."
       },
-      "schlagworte": {
+      "tags": {
         "titel": "Schlagworte",
         "text": "Schlagworte für deine Mails, mit Farbe."
       },
-      "ki": {
-        "titel": "KI"
+      "ai": {
+        "titel": "KI",
+        "text": "Dein eigener Zugang zu einem KI-Dienst, und was nexmail damit für dich tut."
       },
-      "allgemein": {
-        "titel": "Allgemein",
-        "text": "Adresse, Zeitzone und was für alle Benutzer gilt."
-      },
-      "anmeldung": {
-        "titel": "Anmeldung",
-        "text": "Anmeldung über OpenID Connect, etwa mit authentik."
-      },
-      "mailversand": {
-        "titel": "Mail",
-        "text": "Der Postausgang von nexmail und die Apps für Google und Microsoft."
-      },
-      "speicher": {
-        "titel": "Speicher und Sicherung",
-        "text": "Sicherungen anlegen, herunterladen und einspielen."
-      },
-      "konten": {
-        "titel": "Konten",
-        "text": "Benutzer einladen, ändern und entfernen."
-      },
-      "log": {
-        "titel": "Log",
-        "text": "Was nexmail getan hat, und wer."
-      },
-      "ueber": {
-        "titel": "Über nexmail",
-        "text": "Version, Herkunft, Lizenz und Updates."
+      "ai-provider": {
+        "titel": "KI-Anbieter",
+        "text": "Ob und welche Konten KI nutzen dürfen, für alle auf diesem Server."
       }
     },
     "kalender_titel": "Kalender",
@@ -410,7 +361,8 @@
     "buecher_text": "„Meine Kontakte“ lebt nur in nexmail; verbundene Bücher kommen von iCloud, Google oder einer anderen CardDAV-Adresse.",
     "nur_hier": "Nur in nexmail",
     "kontakte_zahl_one": "{{count}} Kontakt",
-    "kontakte_zahl_other": "{{count}} Kontakte"
+    "kontakte_zahl_other": "{{count}} Kontakte",
+    "gruppe_mail": "Mail"
   },
   "erinnerung": {
     "titel_one": "Erinnerung",
@@ -2155,9 +2107,7 @@
     "kein_postausgang": "Ohne Systempostausgang geht keine Mail hinaus. Einladen geht trotzdem: Der Link steht danach zum Weitergeben da, ebenso ein Link für ein neues Passwort.",
     "keine_adresse": "Es ist keine öffentliche Adresse hinterlegt. Der Link in der Einladung führte sonst ins Leere. Sie steht unter Einstellungen → Server → Allgemein.",
     "ki": "KI-Dienste für alle Benutzer",
-    "ki_erlauben": "Erlauben",
     "ki_fremde_post": "Eingegangene Mails für alle Benutzer",
-    "ki_fremde_post_erlauben": "Zulassen",
     "ki_fremde_post_hinweis": "Erlaubt den Benutzern, eingegangene Mails zusammenfassen und übersetzen zu lassen, Fragen dazu zu stellen und Antworten entwerfen zu lassen. Diese Mails haben Dritte geschrieben, und ihr Text geht dabei an den Dienst des Benutzers. Ab Werk aus. Wirkt nur, solange KI-Dienste erlaubt sind.",
     "ki_hinweis": "Solange das aus ist, kann kein Benutzer einen KI-Dienst einrichten oder benutzen, auch nicht mit eigenem Schlüssel. Ab Werk aus, weil Text aus Mails sonst an einen fremden Server geht, ohne dass du es erfährst.",
     "nur_betreiber": "Nur für den Betreiber",
@@ -2192,7 +2142,8 @@
     "nachrichten_zahl_one": "{{zahl}} Nachricht",
     "nachrichten_zahl_other": "{{zahl}} Nachrichten",
     "entfernen_zahlen": "Mit ihm gehen {{postfaecher}} und {{nachrichten}}, dazu Kontakte, Regeln und Signaturen. Auf dem Mailserver bleibt alles unberührt; nexmail vergisst nur.",
-    "entfernen_ohne_zahlen": "Mit ihm gehen seine Postfächer und Nachrichten, dazu Kontakte, Regeln und Signaturen. Auf dem Mailserver bleibt alles unberührt; nexmail vergisst nur."
+    "entfernen_ohne_zahlen": "Mit ihm gehen seine Postfächer und Nachrichten, dazu Kontakte, Regeln und Signaturen. Auf dem Mailserver bleibt alles unberührt; nexmail vergisst nur.",
+    "ki_karte_text": "Gilt für alle Konten. Ob ein einzelnes Konto KI nutzen darf, steht unter „Konten“."
   },
   "wiedervorlage": {
     "menue": "Wiedervorlage",

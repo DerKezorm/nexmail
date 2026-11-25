@@ -1,113 +1,122 @@
-/* Die Bereiche der Einstellungen, aufgebaut wie in nexnotes.
+/* Die Bereiche der Einstellungen nach dem Bauplan „Einstellungen" (nexlore, Development/nexapps/Baupläne), im Gerüst
+ * des Bausatzes ui 1.1.0 (`SettingsNav`, `SettingsPage`).
  *
- * ⚠️ **Wer eine nex-App kennt, findet sich in der anderen zurecht.** Deshalb
- * dieselbe Gliederung wie nexnotes (`/settings/<bereich>`): links oben das
- * Konto, dann „Mein Konto" (Profil, Sicherheit, Darstellung, Benachrichtigungen,
- * Verbindungen), für den Betreiber „Server", ganz unten „Über nexmail".
- * Eigen ist nur die Gruppe „Mail" dazwischen: Postfächer, Regeln, Signaturen
- * und was sonst nur ein Mailprogramm hat.
+ * ⚠️ **Wer eine nex-App kennt, findet sich in der anderen zurecht.** Deshalb dieselben Gruppen und Adressen wie überall
+ * (`/settings/<slug>`, englische Slugs): „Mein Konto" (Profil, Sicherheit, Darstellung, nexmails eigene Bereiche
+ * Kalender und Adressbücher und KI, Benachrichtigungen, Verbindungen), nexmails eigene Gruppe „Mail" (Postfächer,
+ * Regeln, Signaturen, Abwesenheit, Schlagworte), „Server" nur für Betreiber (Allgemein, Anmeldung, Mail, Speicher und
+ * Sicherung, KI-Anbieter, Konten, Log) und abgesetzt „Über nexmail" für jeden.
  *
- * ⚠️ **Die Verwaltung ist keine eigene Seite mehr** (bis 0.30 ein Zahnrad in
- * der Leiste, nur für den Betreiber). Was der Anwendung gehört, steht als
- * Gruppe „Server" in denselben Einstellungen — die Frage „für mich oder für
- * alle?" beantwortet die Überschrift der Gruppe.
- *
- * ⚠️ **Die KI ebenso** (bis 0.30 ein Punkt in der Leiste, siehe `KiSeite.tsx`).
- * Riegel des Betreibers und eigener Zugang bleiben zusammen in EINEM Bereich.
+ * ⚠️ **Die deutschen Namen von vorher bleiben gültig** (`ALTE_NAMEN`): `/settings/postfaecher`,
+ * `/einstellungen/regeln` und jeder Aufruf mit einem alten Namen führt dauerhaft auf den englischen. Die Antwort des
+ * Anmeldeanbieters nach dem Verknüpfen (`/konto/sicherheit`) bleibt, wie sie ist (`lib/kontorueckweg.ts`).
  */
-import type { LucideIcon } from 'lucide-react'
-import {
-  Bell,
-  CalendarDays,
-  HardDrive,
-  Inbox,
-  Info,
-  KeyRound,
-  ListFilter,
-  Mail,
-  Palette,
-  PenLine,
-  Plane,
-  Plug,
-  ScrollText,
-  ShieldCheck,
-  SlidersHorizontal,
-  Sparkles,
-  Tag,
-  UserRound,
-  Users,
-} from 'lucide-react'
+import { CalendarDays, Inbox, ListFilter, PenLine, Plane, Tag } from 'lucide-react'
+
+import type { IconLike } from '../../vendor/nexui'
 import type { Ich } from '../../api/client'
 
 export type Bereich =
-  | 'profil'
-  | 'sicherheit'
-  | 'darstellung'
-  | 'benachrichtigungen'
-  | 'verbindungen'
-  | 'kalender'
-  | 'postfaecher'
-  | 'regeln'
-  | 'signaturen'
-  | 'abwesenheit'
-  | 'schlagworte'
-  | 'ki'
-  | 'allgemein'
-  | 'anmeldung'
-  | 'mailversand'
-  | 'speicher'
-  | 'konten'
+  | 'profile'
+  | 'security'
+  | 'appearance'
+  | 'calendars'
+  | 'ai'
+  | 'notifications'
+  | 'connections'
+  | 'mailboxes'
+  | 'rules'
+  | 'signatures'
+  | 'out-of-office'
+  | 'tags'
+  | 'general'
+  | 'sign-in'
+  | 'mail'
+  | 'storage'
+  | 'ai-provider'
+  | 'accounts'
   | 'log'
-  | 'ueber'
+  | 'about'
 
-export type Gruppe = 'konto' | 'mail' | 'server'
+export type Gruppe = 'account' | 'mail' | 'server'
 
 export interface BereichDef {
   id: Bereich
   gruppe: Gruppe
-  symbol: LucideIcon
+  symbol: IconLike
+  /** Ein Bereich nur von nexmail: Titel und Zeile unter `einstellungen.bereiche.<id>` (sonst aus dem Bausatz). */
+  eigen?: boolean
 }
 
-/** In der Reihenfolge der Navigation. Die Texte stehen unter
- *  `einstellungen.bereiche.<id>.titel` und `.text`. */
+/** In der Reihenfolge der Navigation (Bauplan, „Reihenfolge Mein Konto" und „Reihenfolge Server"). */
 export const BEREICHE: BereichDef[] = [
-  { id: 'profil', gruppe: 'konto', symbol: UserRound },
-  { id: 'sicherheit', gruppe: 'konto', symbol: ShieldCheck },
-  { id: 'darstellung', gruppe: 'konto', symbol: Palette },
-  { id: 'benachrichtigungen', gruppe: 'konto', symbol: Bell },
-  { id: 'verbindungen', gruppe: 'konto', symbol: Plug },
-  /* Seit 23.11.2026: Kalender und Adressbücher anlegen, umbenennen, trennen. */
-  { id: 'kalender', gruppe: 'konto', symbol: CalendarDays },
-  { id: 'postfaecher', gruppe: 'mail', symbol: Inbox },
-  { id: 'regeln', gruppe: 'mail', symbol: ListFilter },
-  { id: 'signaturen', gruppe: 'mail', symbol: PenLine },
-  { id: 'abwesenheit', gruppe: 'mail', symbol: Plane },
-  { id: 'schlagworte', gruppe: 'mail', symbol: Tag },
-  { id: 'ki', gruppe: 'mail', symbol: Sparkles },
-  { id: 'allgemein', gruppe: 'server', symbol: SlidersHorizontal },
-  { id: 'anmeldung', gruppe: 'server', symbol: KeyRound },
-  { id: 'mailversand', gruppe: 'server', symbol: Mail },
-  { id: 'speicher', gruppe: 'server', symbol: HardDrive },
-  { id: 'konten', gruppe: 'server', symbol: Users },
-  { id: 'log', gruppe: 'server', symbol: ScrollText },
+  { id: 'profile', gruppe: 'account', symbol: 'UserRound' },
+  { id: 'security', gruppe: 'account', symbol: 'ShieldCheck' },
+  { id: 'appearance', gruppe: 'account', symbol: 'Palette' },
+  { id: 'calendars', gruppe: 'account', symbol: CalendarDays, eigen: true },
+  { id: 'ai', gruppe: 'account', symbol: 'Sparkles', eigen: true },
+  { id: 'notifications', gruppe: 'account', symbol: 'Bell' },
+  { id: 'connections', gruppe: 'account', symbol: 'Plug' },
+  { id: 'mailboxes', gruppe: 'mail', symbol: Inbox, eigen: true },
+  { id: 'rules', gruppe: 'mail', symbol: ListFilter, eigen: true },
+  { id: 'signatures', gruppe: 'mail', symbol: PenLine, eigen: true },
+  { id: 'out-of-office', gruppe: 'mail', symbol: Plane, eigen: true },
+  { id: 'tags', gruppe: 'mail', symbol: Tag, eigen: true },
+  { id: 'general', gruppe: 'server', symbol: 'SlidersHorizontal' },
+  { id: 'sign-in', gruppe: 'server', symbol: 'KeyRound' },
+  { id: 'mail', gruppe: 'server', symbol: 'Mail' },
+  { id: 'storage', gruppe: 'server', symbol: 'HardDrive' },
+  { id: 'ai-provider', gruppe: 'server', symbol: 'Sparkles' },
+  { id: 'accounts', gruppe: 'server', symbol: 'Users' },
+  { id: 'log', gruppe: 'server', symbol: 'ScrollText' },
 ]
 
-export const GRUPPEN: Gruppe[] = ['konto', 'mail', 'server']
+export const GRUPPEN: Gruppe[] = ['account', 'mail', 'server']
 
 /** „Über nexmail" steht unter den Gruppen, getrennt durch eine Linie. */
-export const UEBER: BereichDef = { id: 'ueber', gruppe: 'server', symbol: Info }
+export const UEBER: BereichDef = { id: 'about', gruppe: 'account', symbol: 'Info' }
+
+/** Die Namen der Bereiche bis zum Bauplan „Einstellungen" (deutsch) und ihr Bereich heute. */
+export const ALTE_NAMEN: Record<string, Bereich> = {
+  profil: 'profile',
+  sicherheit: 'security',
+  darstellung: 'appearance',
+  benachrichtigungen: 'notifications',
+  verbindungen: 'connections',
+  kalender: 'calendars',
+  postfaecher: 'mailboxes',
+  regeln: 'rules',
+  signaturen: 'signatures',
+  abwesenheit: 'out-of-office',
+  schlagworte: 'tags',
+  ki: 'ai',
+  allgemein: 'general',
+  anmeldung: 'sign-in',
+  mailversand: 'mail',
+  speicher: 'storage',
+  konten: 'accounts',
+  ueber: 'about',
+}
+
+const ALLE = new Set<string>([...BEREICHE.map((b) => b.id), UEBER.id])
+
+/** Ein Name (neu oder alt) als Bereich, sonst null. */
+export function bereichVon(name: string | null | undefined): Bereich | null {
+  if (!name) return null
+  if (ALLE.has(name)) return name as Bereich
+  return ALTE_NAMEN[name] ?? null
+}
 
 /** Was dieses Konto öffnen darf.
  *
- * „Über nexmail" sieht jeder, wie in nexnotes (seit 22.11.2026); Schalter und
- * „Jetzt prüfen" darauf nur der Betreiber (`UeberPage`).
- * ⚠️ **KI für den Betreiber immer**, sonst nur mit `ki_erlaubt` — er muss den
- * Riegel finden, bevor irgendetwas eingeschaltet ist. */
+ * „Über nexmail" sieht jeder; Schalter und „Jetzt nachsehen" darauf nur der Betreiber.
+ * ⚠️ **KI (persönlich) für den Betreiber immer**, sonst nur mit `ki_erlaubt`: Er muss den Riegel finden, bevor
+ * irgendetwas eingeschaltet ist. Der Riegel selbst steht seit dem Bauplan unter Server › KI-Anbieter. */
 export function bereicheFuer(ich: Ich | null): BereichDef[] {
   const betreiber = Boolean(ich?.ist_betreiber)
   return BEREICHE.filter((b) => {
     if (b.gruppe === 'server') return betreiber
-    if (b.id === 'ki') return betreiber || Boolean(ich?.ki_erlaubt)
+    if (b.id === 'ai') return betreiber || Boolean(ich?.ki_erlaubt)
     return true
   })
 }
@@ -116,13 +125,34 @@ export function ueberSichtbar(ich: Ich | null): boolean {
   return Boolean(ich)
 }
 
-/** Der Bereich, der wirklich gezeigt wird: Einer, den dieses Konto nicht
- *  öffnen darf (etwa nach einer Betreiber-Übergabe), wird zum Profil. */
+/** Der Bereich, der wirklich gezeigt wird: Einer, den dieses Konto nicht öffnen darf (etwa nachdem es kein Betreiber
+ *  mehr ist), wird zum Profil. */
 export function erlaubterBereich(gewuenscht: Bereich, ich: Ich | null): Bereich {
-  if (gewuenscht === 'ueber') return ueberSichtbar(ich) ? 'ueber' : 'profil'
-  return bereicheFuer(ich).some((b) => b.id === gewuenscht) ? gewuenscht : 'profil'
+  if (gewuenscht === 'about') return ueberSichtbar(ich) ? 'about' : 'profile'
+  return bereicheFuer(ich).some((b) => b.id === gewuenscht) ? gewuenscht : 'profile'
 }
 
 export function bereichDef(id: Bereich): BereichDef {
-  return id === 'ueber' ? UEBER : (BEREICHE.find((b) => b.id === id) ?? BEREICHE[0])
+  return id === 'about' ? UEBER : (BEREICHE.find((b) => b.id === id) ?? BEREICHE[0])
+}
+
+/** Die Adresse eines Bereichs (ohne Vorbau; `appPfad` setzt ihn davor). Ohne Bereich die Liste (Handy). */
+export function pfadVon(bereich: Bereich | null): string {
+  return bereich ? `/settings/${bereich}` : '/settings'
+}
+
+/**
+ * Was eine Adresse über die Einstellungen sagt: `null` (keine Adresse der Einstellungen), `{ liste: true }`
+ * (`/settings` allein: die Liste auf dem Handy, das Profil daneben auf breiter Seite) oder `{ bereich, ersetzen }`,
+ * wobei `ersetzen` heißt, dass die Adresse ein alter Name war und auf den neuen umgeschrieben wird. `/einstellungen`
+ * und `/einstellungen/<alter Name>` führen ebenso hierher.
+ */
+export function bereichAusPfad(pfad: string): { liste: true } | { bereich: Bereich; ersetzen: boolean } | null {
+  const treffer = /^\/(settings|einstellungen)(?:\/([^/?#]+))?\/?$/.exec(pfad)
+  if (!treffer) return null
+  const [, wurzel, name] = treffer
+  if (!name) return wurzel === 'settings' ? { liste: true } : { bereich: 'profile', ersetzen: true }
+  const bereich = bereichVon(decodeURIComponent(name))
+  if (!bereich) return { bereich: 'profile', ersetzen: true }
+  return { bereich, ersetzen: wurzel !== 'settings' || name !== bereich }
 }

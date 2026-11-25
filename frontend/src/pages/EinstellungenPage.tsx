@@ -1,24 +1,17 @@
-/* Die Einstellungen, aufgebaut wie in nexnotes.
+/* Die Einstellungen nach dem Bauplan „Einstellungen" (nexlore, Development/nexapps/Baupläne), im Gerüst des Bausatzes
+ * ui 1.1.0: `SettingsLayout` mit `SettingsNav` (oben das Konto, „Mein Konto", nexmails eigene Gruppe „Mail", „Server"
+ * nur für Betreiber, abgesetzt „Über nexmail") und je Bereich eine `SettingsPage`: Titel, eine Zeile, darunter nur
+ * Karten. Jeder Bereich hat seine Adresse (`/settings/<slug>`, `einstellungen/bereiche.ts`); die deutschen Namen von
+ * vorher führen dorthin. `/settings` allein ist auf dem Handy die Liste, auf breiter Seite das Profil neben der
+ * Navigation.
  *
- * ⚠️ **Wer eine nex-App kennt, findet sich in der anderen zurecht**
- * (22.11.2026). Deshalb dieselbe Seite: links oben das eigene Konto mit Bild und
- * Rolle, darunter die Gruppen „Mein Konto", „Mail" und (für den Betreiber)
- * „Server", ganz unten „Über nexmail". Rechts Titel, ein Satz dazu und der
- * Inhalt. Ist die Seite schmal (unter 700 px eigene Breite, nicht Fenster),
- * steht statt der Navigation eine Auswahl über dem Inhalt. Die Bereiche
- * stehen in `einstellungen/bereiche.ts`.
- *
- * Bis 0.30 waren das zwei Seiten mit Reitern (Einstellungen und Verwaltung)
- * plus KI und „Über" als eigene Punkte der Leiste.
- *
- * Eigene Seite und kein Fenster: Das Konto-Formular trägt zwei Serverblöcke
- * und einen Verbindungstest — in einem Fenster über der Mail-Ansicht wäre das
- * ein Guckloch.
+ * Eigene Seite und kein Fenster: Das Postfach-Formular trägt zwei Serverblöcke und einen Verbindungstest; in einem
+ * Fenster über der Mail-Ansicht wäre das ein Guckloch.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Building2, FileText, Info, KeyRound, ListChecks, Mail, RefreshCw, Smartphone } from 'lucide-react'
-import { Button, Dialog } from '../ds'
+import { Building2, FileText, Inbox, ListChecks, ListFilter, RefreshCw, Tag } from 'lucide-react'
+import { Dialog } from '../ds'
 import { Beschriftung } from '../ds/beschriftung'
 import type { Ich } from '../api/client'
 import { Postfachkacheln } from '../components/Postfachkacheln'
@@ -26,6 +19,19 @@ import { PostfachHinzufuegen } from '../components/PostfachHinzufuegen'
 import { useNachfrage } from '../components/Nachfrage'
 import { Profilbild } from '../components/Profilbild'
 import { FaktorAusHinweis } from '../components/FaktorAusHinweis'
+import { appPfad, ohneBasis } from '../lib/basis'
+import {
+  Button,
+  NEXUI_TEXTS,
+  NexuiLanguage,
+  SettingsLayout,
+  SettingsNav,
+  SettingsPage,
+  areaText,
+  languageOf,
+  type SettingsGroup,
+  type SettingsLink,
+} from '../vendor/nexui'
 import { Benachrichtigungen } from './Benachrichtigungen'
 import { Darstellung } from './Darstellung'
 import { KontoFormular } from './KontoFormular'
@@ -38,7 +44,7 @@ import { Abwesenheit } from './Abwesenheit'
 import { Signaturen } from './Signaturen'
 import { Textvorlagen } from './Textvorlagen'
 import { TodoApps } from './TodoApps'
-import { KiSeite } from './KiSeite'
+import { KiAnbieter, KiSeite } from './KiSeite'
 import { UeberPage } from './UeberPage'
 import { Benutzerverwaltung } from './Benutzerverwaltung'
 import { OauthVerwaltung } from './OauthVerwaltung'
@@ -53,23 +59,28 @@ import { Karte } from './einstellungen/Karte'
 import {
   GRUPPEN,
   UEBER,
+  bereichAusPfad,
   bereichDef,
   bereicheFuer,
   erlaubterBereich,
-  ueberSichtbar,
+  pfadVon,
   type Bereich,
+  type BereichDef,
 } from './einstellungen/bereiche'
 import { api } from '../api/client'
+import type { KontoZeile } from '../api/client'
+
+const APP = 'nexmail'
 
 /** Wo der Hinweis „Zweiter Faktor ist abgeschaltet“ oben steht (`NOTICES` im Kontenmodul). */
-const NOTHAMMER_BEREICHE: string[] = ['profil', 'sicherheit', 'anmeldung']
-import type { KontoZeile } from '../api/client'
+const NOTHAMMER_BEREICHE: Bereich[] = ['profile', 'security', 'sign-in']
 
 export type { Bereich } from './einstellungen/bereiche'
 
 interface Props {
-  bereich: Bereich
-  aufBereich: (b: Bereich) => void
+  /** Der gezeigte Bereich; `null` ist `/settings` allein (auf dem Handy die Liste). */
+  bereich: Bereich | null
+  aufBereich: (b: Bereich | null) => void
   formularOffen: boolean
   aufFormular: (offen: boolean) => void
   /** Das Fenster hinter der (+)-Kachel. Es steht in `App`, weil auch die
@@ -100,11 +111,6 @@ interface Props {
   aufWasNeu?: () => void
 }
 
-const EINTRAG =
-  'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px] transition-colors duration-[var(--dur-fast)] '
-const LEISE = 'text-fg-2 hover:bg-surface-3 hover:text-fg-1'
-const GEWAEHLT = 'bg-accent-soft font-medium text-accent-text ring-1 ring-accent/40'
-
 export function EinstellungenPage({
   bereich: gewuenscht,
   aufBereich,
@@ -128,7 +134,7 @@ export function EinstellungenPage({
   // ⚠️ Bearbeiten und Anlegen benutzen dasselbe Formular. Getrennt zu
   // pflegen hieße zwei Stellen, an denen ein Feld fehlen kann.
   const [bearbeitet, setBearbeitet] = useState<KontoZeile | null>(null)
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   /* Ob im Postfach-Fenster etwas Ungespeichertes steht. ⚠️ Kreuz, Escape und
      Klick daneben gehen alle über `fensterZu`: Wer etwas eingetragen hat,
      wird gefragt, bevor es verloren geht. */
@@ -177,20 +183,59 @@ export function EinstellungenPage({
     }
   }
 
-  // ⚠️ Solange `ich` fehlt, weiß niemand, ob „Server" erlaubt ist. Ohne diese
-  // Wartezeit sprang ein Betreiber beim Laden kurz aufs Profil.
-  const bereich = ich ? erlaubterBereich(gewuenscht, ich) : gewuenscht
-  const Symbol = bereichDef(bereich).symbol
-  const titel = t(`einstellungen.bereiche.${bereich}.titel`)
-  const text = bereich === 'ki' ? t('ki.seite_lede') : t(`einstellungen.bereiche.${bereich}.text`)
+  // ⚠️ Solange `ich` fehlt, weiß niemand, ob „Server" erlaubt ist. Ohne diese Wartezeit sprang ein Betreiber beim
+  // Laden kurz aufs Profil.
+  const gewollt = gewuenscht ?? 'profile'
+  const bereich = ich ? erlaubterBereich(gewollt, ich) : gewollt
+  const dinge = t('einstellungen.dinge')
+  const kit = NEXUI_TEXTS[languageOf(i18n.language)]
+  const worte = (def: BereichDef) =>
+    def.eigen || def.id === 'ai-provider'
+      ? { titel: t(`einstellungen.bereiche.${def.id}.titel`), text: t(`einstellungen.bereiche.${def.id}.text`) }
+      : { titel: areaText(kit, def.id, { app: APP, things: dinge })?.title ?? def.id, text: '' }
+  const eigen = bereichDef(bereich)
+  const eigeneWorte = eigen.eigen || eigen.id === 'ai-provider' ? worte(eigen) : null
+
+  /* Der Link der Navigation: eine echte Adresse (Mittelklick, neuer Tab), ein gewöhnlicher Klick bleibt in der Seite. */
+  const Verweis: SettingsLink = useCallback(
+    ({ to, className, children, ...rest }) => (
+      <a
+        href={to}
+        className={className}
+        {...rest}
+        onClick={(e: MouseEvent<HTMLAnchorElement>) => {
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+          e.preventDefault()
+          const ziel = bereichAusPfad(ohneBasis(to) ?? to)
+          aufBereich(ziel && 'bereich' in ziel ? ziel.bereich : null)
+        }}
+      >
+        {children}
+      </a>
+    ),
+    [aufBereich],
+  )
+
+  const gruppen: SettingsGroup[] = GRUPPEN.map((g) => ({
+    id: g,
+    title: g === 'mail' ? t('einstellungen.gruppe_mail') : undefined,
+    areas: bereicheFuer(ich)
+      .filter((b) => b.gruppe === g)
+      .map((b) => ({
+        slug: b.id,
+        icon: b.symbol,
+        href: appPfad(pfadVon(b.id)),
+        title: b.eigen || b.id === 'ai-provider' ? worte(b).titel : undefined,
+      })),
+  }))
 
   function inhalt(): ReactNode {
     switch (bereich) {
-      case 'profil':
+      case 'profile':
         return <Profil ich={ich} ichNeuLaden={ichNeuLaden} aufAbmelden={aufAbmelden} />
-      case 'sicherheit':
+      case 'security':
         return <Sicherheit ich={ich} ichNeuLaden={ichNeuLaden} />
-      case 'darstellung':
+      case 'appearance':
         return (
           <Darstellung
             ichNeuLaden={ichNeuLaden}
@@ -198,11 +243,11 @@ export function EinstellungenPage({
             aufModus={aufDarstellung ?? ((m) => m !== 'system' && aufModus(m))}
           />
         )
-      case 'benachrichtigungen':
+      case 'notifications':
         return <Benachrichtigungen />
-      case 'kalender':
+      case 'calendars':
         return <KalenderUndBuecher />
-      case 'verbindungen':
+      case 'connections':
         return (
           <>
             {/* MAIL-1 AC-2: die nex-Apps zuerst, als Karten wie in nextime. */}
@@ -211,20 +256,21 @@ export function EinstellungenPage({
               {/* nextasks steht in seiner Karte oben (Befund 1 vom 24.11.2026). */}
               <TodoApps teil="ohne-nextasks" />
             </Karte>
-            <Karte id="iphone" symbol={Smartphone} titel={t('einstellungen.iphone')}>
+            <Karte id="iphone" symbol="Smartphone" titel={t('einstellungen.iphone')}>
               <IphoneVerbinden istBetreiber={Boolean(ich?.ist_betreiber)} />
             </Karte>
-            <Karte id="api" symbol={KeyRound} titel={t('einstellungen.api')}>
+            <Karte id="api" symbol="KeyRound" titel={t('einstellungen.api')}>
               <ApiSchluessel istBetreiber={Boolean(ich?.ist_betreiber)} />
             </Karte>
           </>
         )
-      case 'postfaecher':
+      case 'mailboxes':
         /* ⚠️ **Die Kacheln bleiben stehen, auch wenn ein Formular offen
            ist.** Vorher tauschte der Reiter seinen ganzen Inhalt aus; wer
            ein Postfach anlegte, sah den Bestand nicht mehr und danach
            eine Liste, von der er nicht wusste, ob sie neu geladen war. */
         return (
+          <Karte id="mailboxes" symbol={Inbox} titel={t('einstellungen.postfaecher')} text={t('einstellungen.bereiche.mailboxes.text')}>
           <Postfaecher
             konten={konten}
             aufHinzufuegen={() => {
@@ -240,10 +286,15 @@ export function EinstellungenPage({
               aufKontenGeaendert?.()
             }}
           />
+          </Karte>
         )
-      case 'regeln':
-        return <Regeln vorlage={regelvorlage} aufVorlageGenommen={aufRegelvorlageGenommen} />
-      case 'signaturen':
+      case 'rules':
+        return (
+          <Karte id="rules" symbol={ListFilter} titel={t('einstellungen.regeln')} text={t('einstellungen.bereiche.rules.text')}>
+            <Regeln vorlage={regelvorlage} aufVorlageGenommen={aufRegelvorlageGenommen} />
+          </Karte>
+        )
+      case 'signatures':
         /* Die Textvorlagen wohnen im selben Bereich, als eigene Karte —
            beides sind Textbausteine für das Schreiben. */
         return (
@@ -261,20 +312,26 @@ export function EinstellungenPage({
             </Karte>
           </>
         )
-      case 'abwesenheit':
+      case 'out-of-office':
         return <Abwesenheit />
-      case 'schlagworte':
-        return <Schlagworte aufGeaendert={aufSchlagworteGeaendert} />
-      case 'ki':
-        return <KiSeite istBetreiber={Boolean(ich?.ist_betreiber)} ichNeuLaden={ichNeuLaden} />
-      case 'allgemein':
+      case 'tags':
+        return (
+          <Karte id="tags" symbol={Tag} titel={t('einstellungen.schlagworte')} text={t('einstellungen.bereiche.tags.text')}>
+            <Schlagworte aufGeaendert={aufSchlagworteGeaendert} />
+          </Karte>
+        )
+      case 'ai':
+        return <KiSeite ichNeuLaden={ichNeuLaden} />
+      case 'ai-provider':
+        return <KiAnbieter ichNeuLaden={ichNeuLaden} />
+      case 'general':
         return <ServerAllgemein />
-      case 'anmeldung':
+      case 'sign-in':
         return <OidcVerwaltung />
-      case 'mailversand':
+      case 'mail':
         return (
           <>
-            <Karte id="postausgang" symbol={Mail} titel={t('verwaltung.postausgang')}>
+            <Karte id="postausgang" symbol="Mail" titel={t('verwaltung.postausgang')}>
               <Postausgang />
             </Karte>
             <Karte id="oauth" symbol={Building2} titel={t('verwaltung.oauth')}>
@@ -282,13 +339,13 @@ export function EinstellungenPage({
             </Karte>
           </>
         )
-      case 'speicher':
+      case 'storage':
         return <Sicherungen />
-      case 'konten':
+      case 'accounts':
         return <Benutzerverwaltung ich={ich} ichNeuLaden={ichNeuLaden} />
       case 'log':
         return <Protokoll />
-      case 'ueber':
+      case 'about':
         return <UeberPage istBetreiber={Boolean(ich?.ist_betreiber)} aufWasNeu={aufWasNeu} />
     }
   }
@@ -296,28 +353,39 @@ export function EinstellungenPage({
   return (
     /* Beschriftungen normal geschrieben wie in nexnotes, auch in den Fenstern, die von hier aufgehen (25.11.2026). */
     <Beschriftung.Provider value="normal">
-      <div className="@container min-h-0 flex-1 overflow-y-auto bg-canvas">
-        <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-          <div className="flex flex-col gap-5 @min-[700px]:flex-row @min-[700px]:items-start @min-[700px]:gap-8">
-            <Navigation ich={ich} bereich={bereich} aufBereich={aufBereich} />
-            <Sprungwahl ich={ich} bereich={bereich} aufBereich={aufBereich} />
-
-            <div className="flex min-w-0 flex-1 flex-col gap-5" data-testid={`einstellungen-${bereich}`}>
-              <div>
-                <h1 className="mb-0 flex items-center gap-2 font-display text-[24px] font-semibold tracking-tight text-fg-1">
-                  <Symbol className="size-5 text-fg-4 @min-[700px]:hidden" aria-hidden />
-                  {titel}
-                </h1>
-                {text && <p className="mt-1 mb-0 max-w-[720px] text-[14px] text-fg-3">{text}</p>}
-              </div>
-              <div className="flex flex-col gap-6" data-testid="einstellungen-inhalt">
-                {/* konten 0.3.3: Der Nothammer ist unten, deutlich oben auf den Kontoseiten und bei der Anmeldung. */}
-                {ich?.zwei_faktor_aus && NOTHAMMER_BEREICHE.includes(bereich) && <FaktorAusHinweis />}
-                {inhalt()}
-              </div>
-            </div>
-          </div>
-        </div>
+      <div className="min-h-0 flex-1 overflow-y-auto bg-canvas">
+        <NexuiLanguage language={i18n.language}>
+          <SettingsLayout
+            list={gewuenscht === null}
+            back={appPfad(pfadVon(null))}
+            link={Verweis}
+            nav={
+              <SettingsNav
+                app={APP}
+                things={dinge}
+                groups={gruppen}
+                about={{ href: appPfad(pfadVon(UEBER.id)), slug: UEBER.id }}
+                current={gewuenscht === null ? undefined : bereich}
+                account={
+                  ich
+                    ? {
+                        name: ich.anzeigename,
+                        role: ich.ist_betreiber ? t('profil.rolle_betreiber') : t('profil.rolle_benutzer'),
+                        picture: <Profilbild id={ich.id} name={ich.anzeigename} stand={ich.profilbild} groesse={40} />,
+                      }
+                    : undefined
+                }
+                link={Verweis}
+              />
+            }
+          >
+            <SettingsPage slug={bereich} app={APP} things={dinge} title={eigeneWorte?.titel} subtitle={eigeneWorte?.text || undefined}>
+              {/* konten 0.3.3: Der Nothammer ist unten, deutlich oben auf den Kontoseiten und bei der Anmeldung. */}
+              {ich?.zwei_faktor_aus && NOTHAMMER_BEREICHE.includes(bereich) && <FaktorAusHinweis />}
+              {inhalt()}
+            </SettingsPage>
+          </SettingsLayout>
+        </NexuiLanguage>
 
         {/* ⚠️ **Ein Fenster, nicht eine zweite Seite.** Anlegen und Bearbeiten
             gehen durch dieselbe Maske; sie einmal als Seite und einmal als
@@ -371,125 +439,6 @@ export function EinstellungenPage({
   )
 }
 
-/** Die Navigation links, wie in nexnotes (`settings/SettingsNav.tsx`). */
-function Navigation({
-  ich,
-  bereich,
-  aufBereich,
-}: {
-  ich: Ich | null
-  bereich: Bereich
-  aufBereich: (b: Bereich) => void
-}) {
-  const { t } = useTranslation()
-  const bereiche = bereicheFuer(ich)
-  const gruppen = GRUPPEN.filter((g) => bereiche.some((b) => b.gruppe === g))
-  return (
-    <nav
-      aria-label={t('einstellungen.titel')}
-      className="hidden w-60 shrink-0 @min-[700px]:sticky @min-[700px]:top-0 @min-[700px]:block"
-      data-testid="einstellungen-navigation"
-    >
-      {ich && (
-        <div className="mb-4 flex items-center gap-3 px-2.5">
-          <Profilbild id={ich.id} name={ich.anzeigename} stand={ich.profilbild} groesse={40} />
-          <div className="min-w-0">
-            <p className="mb-0 truncate font-semibold text-fg-1" title={ich.anzeigename}>
-              {ich.anzeigename}
-            </p>
-            <p className="mb-0 text-[12px] text-fg-4">
-              {ich.ist_betreiber ? t('profil.rolle_betreiber') : t('profil.rolle_benutzer')}
-            </p>
-          </div>
-        </div>
-      )}
-      {gruppen.map((g) => (
-        <div key={g} className="mb-4">
-          <p
-            id={`einstellungen-gruppe-${g}`}
-            className="mb-0 px-2.5 pb-1.5 text-[11px] font-semibold tracking-wider text-fg-4 uppercase"
-          >
-            {t(`einstellungen.gruppen.${g}`)}
-          </p>
-          <ul aria-labelledby={`einstellungen-gruppe-${g}`} className="m-0 flex list-none flex-col gap-0.5 p-0">
-            {bereiche
-              .filter((b) => b.gruppe === g)
-              .map(({ id, symbol: Symbol }) => {
-                const hier = id === bereich
-                return (
-                  <li key={id}>
-                    <button
-                      type="button"
-                      aria-current={hier ? 'page' : undefined}
-                      onClick={() => aufBereich(id)}
-                      className={EINTRAG + (hier ? GEWAEHLT : LEISE)}
-                      data-testid={`einstellungen-nav-${id}`}
-                    >
-                      <Symbol className="size-4 shrink-0" strokeWidth={1.8} aria-hidden />
-                      <span className="min-w-0 truncate">{t(`einstellungen.bereiche.${id}.titel`)}</span>
-                    </button>
-                  </li>
-                )
-              })}
-          </ul>
-        </div>
-      ))}
-      {ueberSichtbar(ich) && (
-        <div className="border-t border-line-subtle pt-2">
-          <button
-            type="button"
-            aria-current={bereich === UEBER.id ? 'page' : undefined}
-            onClick={() => aufBereich(UEBER.id)}
-            className={EINTRAG + (bereich === UEBER.id ? GEWAEHLT : LEISE)}
-            data-testid="einstellungen-nav-ueber"
-          >
-            <Info className="size-4 shrink-0" strokeWidth={1.8} aria-hidden />
-            <span className="min-w-0 truncate">{t('einstellungen.bereiche.ueber.titel')}</span>
-          </button>
-        </div>
-      )}
-    </nav>
-  )
-}
-
-/** Die schmale Seite: eine Auswahl mit den Gruppen, wie in nexnotes. */
-function Sprungwahl({
-  ich,
-  bereich,
-  aufBereich,
-}: {
-  ich: Ich | null
-  bereich: Bereich
-  aufBereich: (b: Bereich) => void
-}) {
-  const { t } = useTranslation()
-  const bereiche = bereicheFuer(ich)
-  const gruppen = GRUPPEN.filter((g) => bereiche.some((b) => b.gruppe === g))
-  return (
-    <label className="block @min-[700px]:hidden" data-testid="einstellungen-sprung">
-      <span className="sr-only">{t('einstellungen.springen')}</span>
-      <select
-        value={bereich}
-        onChange={(e) => aufBereich(e.target.value as Bereich)}
-        className="h-10 w-full rounded-md border border-line bg-surface-2 px-3 text-[14px] text-fg-1"
-      >
-        {gruppen.map((g) => (
-          <optgroup key={g} label={t(`einstellungen.gruppen.${g}`)}>
-            {bereiche
-              .filter((b) => b.gruppe === g)
-              .map((b) => (
-                <option key={b.id} value={b.id}>
-                  {t(`einstellungen.bereiche.${b.id}.titel`)}
-                </option>
-              ))}
-          </optgroup>
-        ))}
-        {ueberSichtbar(ich) && <option value={UEBER.id}>{t('einstellungen.bereiche.ueber.titel')}</option>}
-      </select>
-    </label>
-  )
-}
-
 interface ListenProps {
   konten: KontoZeile[] | null
   aufHinzufuegen: () => void
@@ -523,7 +472,7 @@ function Postfaecher({ konten, aufHinzufuegen, aufBearbeiten, aufNeuLaden }: Lis
 
       {konten.length > 0 && (
         <div>
-          <Button variant="ghost" iconLeft={<RefreshCw className="size-4" />} onClick={aufNeuLaden}>
+          <Button kind="secondary" icon={RefreshCw} onClick={aufNeuLaden}>
             {t('aktion.aktualisieren')}
           </Button>
         </div>

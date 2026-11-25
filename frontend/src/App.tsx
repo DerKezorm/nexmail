@@ -141,7 +141,8 @@ import { lesemodusAus } from './lib/lesemodus'
 import type { Lesemodus } from './lib/lesemodus'
 import { danachAus, danachWaehlen } from './lib/danach'
 import { absenderbildQuelle } from './lib/absenderbild'
-import { appPfad } from './lib/basis'
+import { appPfad, ohneBasis } from './lib/basis'
+import { bereichAusPfad, pfadVon } from './pages/einstellungen/bereiche'
 import type { Danach } from './lib/danach'
 import { ZUWEISBARE_ROLLEN } from './lib/ordnerrollen'
 import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from './lib/wischen'
@@ -180,6 +181,10 @@ interface AppProps {
  *  deshalb hier oben und nicht mitten im Code. */
 /** Vorgabe, bis jemand etwas anderes einstellt: zwei Sekunden. */
 const GELESEN_NACH_VORGABE = 2
+
+/** Kam die App mit einer Adresse der Einstellungen (`/settings/<slug>`, auch ein alter Name)? Einmal beim Laden. */
+const START_EINSTELLUNGEN =
+  typeof window === 'undefined' ? null : bereichAusPfad(ohneBasis(window.location.pathname) ?? '')
 
 /** Ordner gibt es Dutzende; sie erscheinen in der Palette erst beim Suchen. */
 const NUR_GESUCHT = new Set(['ordner'])
@@ -233,7 +238,7 @@ export default function App({ modus, aufModus, darstellung, aufDarstellung, ich,
    *  bleibt links stehen. */
   const [einstellungenVon, setEinstellungenVon] = useState<Ansicht>('mail')
   const [ansicht, setAnsicht] = useState<Ansicht>(
-    RUECKWEG.weiter === 'postfach' || KONTO_RUECKWEG.da ? 'einstellungen' : 'mail',
+    RUECKWEG.weiter === 'postfach' || KONTO_RUECKWEG.da || START_EINSTELLUNGEN ? 'einstellungen' : 'mail',
   )
   const [ziel, setZiel] = useState<Ziel>({ typ: 'alle' })
   const [paletteOffen, setPaletteOffen] = useState(false)
@@ -541,7 +546,45 @@ export default function App({ modus, aufModus, darstellung, aufDarstellung, ich,
   }, [])
 
   // Zurück vom Anmeldeanbieter nach dem Verknüpfen: gleich unter Sicherheit (lib/kontorueckweg.ts).
-  const [reiter, setReiter] = useState<Bereich>(KONTO_RUECKWEG.da ? 'sicherheit' : 'postfaecher')
+  /* Der Bereich der Einstellungen; `null` ist `/settings` allein (auf dem Handy die Liste). */
+  const [reiter, setReiter] = useState<Bereich | null>(
+    KONTO_RUECKWEG.da
+      ? 'security'
+      : START_EINSTELLUNGEN
+        ? 'bereich' in START_EINSTELLUNGEN
+          ? START_EINSTELLUNGEN.bereich
+          : null
+        : 'mailboxes',
+  )
+
+  /* ⚠️ **Jeder Bereich hat seine Adresse** (`/settings/<slug>`, Bauplan „Einstellungen"): Lesezeichen, Neuladen und
+     der Zurück-Knopf des Browsers führen dorthin. Ein alter deutscher Name in der Adresse wird ersetzt, nicht
+     angehängt. Wer die Einstellungen verlässt, bekommt wieder die Adresse der App. */
+  useEffect(() => {
+    const jetzt = ohneBasis(window.location.pathname) ?? ''
+    const dort = bereichAusPfad(jetzt)
+    if (ansicht === 'einstellungen') {
+      const soll = pfadVon(reiter)
+      if (jetzt === soll) return
+      if (dort && 'ersetzen' in dort && dort.ersetzen) window.history.replaceState(null, '', appPfad(soll))
+      else window.history.pushState(null, '', appPfad(soll))
+    } else if (dort) {
+      window.history.pushState(null, '', appPfad('/'))
+    }
+  }, [ansicht, reiter])
+  useEffect(() => {
+    const zurueck = () => {
+      const dort = bereichAusPfad(ohneBasis(window.location.pathname) ?? '')
+      if (dort) {
+        setReiter('bereich' in dort ? dort.bereich : null)
+        setAnsicht('einstellungen')
+      } else {
+        setAnsicht((a) => (a === 'einstellungen' ? einstellungenVon : a))
+      }
+    }
+    window.addEventListener('popstate', zurueck)
+    return () => window.removeEventListener('popstate', zurueck)
+  }, [einstellungenVon])
   const [formularOffen, setFormularOffen] = useState(false)
   /* Das Fenster hinter der (+)-Kachel — die Weiche zwischen IMAP, Google und
      Microsoft. ⚠️ **Beim Rückweg vom Anbieter steht es sofort offen:** Die
@@ -1904,7 +1947,7 @@ export default function App({ modus, aufModus, darstellung, aufDarstellung, ich,
           tun: () => {
             setRegelvorlage({ kontoId: n.kontoId, absender: n.von.adresse })
             setAnsicht('einstellungen')
-            setReiter('regeln')
+            setReiter('rules')
             setSchubladeOffen(false)
           },
         },
@@ -2235,7 +2278,7 @@ export default function App({ modus, aufModus, darstellung, aufDarstellung, ich,
     // Zum Reiter Postfaecher - die betroffene Zeile traegt dort denselben
     // roten Hinweis, der Stift daneben oeffnet das Formular.
     setAnsicht('einstellungen')
-    setReiter('postfaecher')
+    setReiter('mailboxes')
     setSchubladeOffen(false)
   }
 
@@ -2249,7 +2292,7 @@ export default function App({ modus, aufModus, darstellung, aufDarstellung, ich,
      den Einstellungen; links bleibt stehen, woher man kam. */
   useEffect(() => {
     const zu = () => {
-      setReiter('verbindungen')
+      setReiter('connections')
       if (ansicht !== 'einstellungen') setEinstellungenVon(ansicht)
       setAnsicht('einstellungen')
       setSchubladeOffen(false)
@@ -2259,7 +2302,7 @@ export default function App({ modus, aufModus, darstellung, aufDarstellung, ich,
   }, [ansicht])
 
   function einstellungenOeffnen() {
-    setReiter('profil')
+    setReiter('profile')
     // ⚠️ Woher man kommt, bleibt links stehen (gemeldet am 23.11.2026: aus dem
     // Kalender heraus sprang die Spalte auf die Ordner der Mail).
     if (ansicht !== 'einstellungen') setEinstellungenVon(ansicht)
@@ -2470,7 +2513,7 @@ export default function App({ modus, aufModus, darstellung, aufDarstellung, ich,
               text: t('nav.verwaltung'),
               // Seit dem 22.11.2026 die Gruppe „Server" der Einstellungen.
               tun: () => {
-                setReiter('allgemein')
+                setReiter('general')
                 setAnsicht('einstellungen')
               },
             },
