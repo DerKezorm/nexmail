@@ -106,6 +106,13 @@ export function protokollzeit(roh: string, sprache: string): string {
   )
 }
 
+/** Eine Uhrzeit („14:05") in der eingestellten Zone, etwa das Ende einer tiefen Protokollstufe. */
+export function uhrzeit(iso: string, sprache: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleTimeString(sprache, mitZone({ hour: '2-digit', minute: '2-digit' }))
+}
+
 /** Der Zeitpunkt eines geplanten Versands — Wochentag, Tag und Uhrzeit.
  *  In der eingestellten Zone wie jedes andere Datum; „18:00" soll hier
  *  dasselbe heissen wie in der Liste daneben. */

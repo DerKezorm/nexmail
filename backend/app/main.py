@@ -482,10 +482,21 @@ async def lebenslauf(_: FastAPI):
 
     postfachwache.starten()
 
+    # Der Wächter des Protokolls (Modul log): beendet eine tiefe Stufe nach ihrer Zeit, jede Minute, auch wenn der
+    # Abgleich-Takt aus ist; räumt einmal am Tag ältere Dateien weg.
+    import asyncio
+
+    from .vendor import nexlog
+
+    protokoll_halt = asyncio.Event()
+    protokoll_waechter = asyncio.create_task(nexlog.run_forever(protokoll_halt))
+
     logger.info("nexmail %s is ready.", __version__)
     try:
         yield
     finally:
+        protokoll_halt.set()
+        protokoll_waechter.cancel()
         postfachwache.anhalten()
         taktdienst.anhalten()
 
@@ -576,6 +587,8 @@ app.include_router(absenderbild_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(regeln.router, dependencies=NUR_ANGEMELDET)
 app.include_router(schlagworte_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(protokoll_router.router, dependencies=NUR_ANGEMELDET)
+# Die Wege des Moduls log (``/api/logs``); ``nur_betreiber`` hängt schon am Router selbst.
+app.include_router(protokoll_router.modul_router, dependencies=NUR_ANGEMELDET)
 app.include_router(verfassen.router, dependencies=NUR_ANGEMELDET)
 app.include_router(suche.router, dependencies=NUR_ANGEMELDET)
 app.include_router(benutzer_router.router, dependencies=NUR_ANGEMELDET)

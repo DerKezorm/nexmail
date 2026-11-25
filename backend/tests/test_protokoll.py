@@ -61,12 +61,13 @@ def test_der_zensor_haengt_an_jedem_handler(tmp_path, monkeypatch):
         h for h in wurzel.handlers if not type(h).__module__.startswith("_pytest")
     ]
 
-    assert any(getattr(h, "_nexmail", False) for h in ausgebende), (
+    # Seit dem Modul log heißen Marke und Filter wie dort: ``_nexlog`` und ``_ContextFilter`` (der schwärzt).
+    assert any(getattr(h, "_nexlog", False) for h in ausgebende), (
         "Kein eigener Handler eingerichtet."
     )
     for handler in ausgebende:
         arten = {type(f).__name__ for f in handler.filters}
-        assert "_Zensor" in arten, (
+        assert "_ContextFilter" in arten, (
             f"{type(handler).__name__} hängt ohne Zensor an der Wurzel — "
             "dort käme ein Passwort durch."
         )
@@ -194,6 +195,15 @@ def test_die_vorgangsnummer_steht_in_der_zeile():
     assert passend[0].benutzer == "betreiber"
 
 
+def test_der_filter_haengt_an_uvicorns_logger():
+    """Der Filter nützt nur, wenn er an ``uvicorn.error`` hängt (dort schreibt uvicorn den zweiten Rückverfolg)."""
+    from app.vendor.nexlog import handlers
+
+    protokoll.einrichten()
+    filter_arten = {type(f) for f in logging.getLogger("uvicorn.error").filters}
+    assert handlers._NoDuplicateAsgiTraceback in filter_arten  # noqa: SLF001
+
+
 def test_eine_anfrage_bekommt_eine_vorgangsnummer(klient):
     """Die Nummer geht auch zurück — die Oberfläche zeigt sie im Fehlerfall."""
     antwort = klient.get("/api/health")
@@ -213,7 +223,9 @@ def test_uvicorns_zweiter_rueckverfolg_faellt_weg():
     und die Adresse, dieser Rückverfolg nicht. Zweimal dasselbe Ereignis, und
     nur eines davon lässt sich zuordnen.
     """
-    filter_ = protokoll._KeinDoppelterStacktrace()  # noqa: SLF001 - genau das ist der Prüfling
+    from app.vendor.nexlog import handlers
+
+    filter_ = handlers._NoDuplicateAsgiTraceback()  # noqa: SLF001 - genau das ist der Prüfling (seit dem Modul log)
 
     def zeile(text: str) -> logging.LogRecord:
         return logging.LogRecord("uvicorn.error", logging.ERROR, __file__, 1, text, (), None)
@@ -224,3 +236,50 @@ def test_uvicorns_zweiter_rueckverfolg_faellt_weg():
     assert filter_.filter(zeile("Exception in ASGI application")) is False
     # Und die Gegenprobe: Alles andere bleibt stehen.
     assert filter_.filter(zeile("Something else entirely")) is True
+
+
+# --- Der alte Weg /api/protokoll bleibt (seit dem Modul log) ------------------ #
+
+
+def test_der_alte_weg_antwortet_in_seiner_alten_form(klient):
+    """``/api/protokoll`` kennt weiter die deutschen Stufen und „0 Minuten" (heißt jetzt 30); der Download ist Text."""
+    from conftest import einrichten
+
+    einrichten(klient)
+    stand = klient.get("/api/protokoll/stand")
+    assert stand.status_code == 200, stand.text
+    assert stand.json()["stufe"] == "normal"
+    assert set(stand.json()["stufen"]) == {"leise", "normal", "ausfuehrlich", "alles"}
+
+    gesetzt = klient.put("/api/protokoll/stufe", json={"stufe": "alles", "minuten": 0})
+    assert gesetzt.status_code == 200, gesetzt.text
+    assert gesetzt.json()["stufe"] == "alles"
+    assert gesetzt.json()["bis"], "Eine tiefe Stufe ohne Ablauf über den alten Weg."
+    # Derselbe Stand über den neuen Weg des Moduls.
+    assert klient.get("/api/logs/level").json()["mode"] == "trace"
+
+    assert klient.put("/api/protokoll/stufe", json={"stufe": "sehr-laut"}).status_code == 400
+
+    logging.getLogger("nexmail.test").warning("Old route line.")
+    zeilen = klient.get("/api/protokoll", params={"stufe": "WARNING"}).json()
+    assert any(z["meldung"] == "Old route line." and z["stufe"] == "WARNING" for z in zeilen)
+
+    text = klient.get("/api/protokoll/download")
+    assert text.status_code == 200
+    assert text.headers["content-type"].startswith("text/plain")
+    assert "Old route line." in text.text
+
+    assert klient.delete("/api/protokoll").status_code == 204
+    assert klient.put("/api/protokoll/stufe", json={"stufe": "normal"}).json()["stufe"] == "normal"
+
+
+def test_der_alte_weg_ist_nur_fuer_den_betreiber(klient, zweiter_klient, db):
+    from conftest import anmelden, einrichten, zweiten_benutzer_anlegen
+
+    einrichten(klient)
+    _person, geheimnis = zweiten_benutzer_anlegen(db)
+    anmelden(zweiter_klient, "zweiter", "auch-geheim-456", geheimnis)
+    for methode, pfad in (("get", "/api/protokoll"), ("get", "/api/protokoll/stand"),
+                          ("get", "/api/protokoll/download"), ("delete", "/api/protokoll"),
+                          ("get", "/api/logs"), ("get", "/api/logs/download")):
+        assert getattr(zweiter_klient, methode)(pfad).status_code == 403, pfad

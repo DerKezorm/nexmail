@@ -337,3 +337,63 @@ export interface KontoZeile {
   /** Was die Wache gerade tut: 'lauscht', 'getrennt', 'kein_idle' oder leer. */
   idle_zustand?: string
 }
+
+// --- Der Weg der gemeinsamen Module (log, sicherung, post, schluessel) --- //
+
+/** Eine Ablehnung, wie die Karten der Module sie lesen: `status`, `code` (aus `detail.code` oder dem Wort in
+ *  `detail`), dazu `detail` roh. Zugleich ein `ApiFehler`, damit nexmails eigene Meldungen sie verstehen. */
+export class ModulFehler extends ApiFehler {
+  constructor(
+    status: number,
+    readonly code: string,
+    readonly rohdetail: unknown,
+    werte: Record<string, unknown> = {},
+  ) {
+    super(status, code, undefined, werte)
+  }
+}
+
+export interface ModulInit {
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  query?: Record<string, string | number | boolean | undefined | null>
+  body?: unknown
+  headers?: Record<string, string>
+}
+
+/** Der Client für die Karten der Module: `<T>(path, {method, query, body}) => Promise<T>`, JSON hin und zurück. */
+export async function modulAnfrage<T>(pfad: string, init: ModulInit = {}): Promise<T> {
+  const frage = new URLSearchParams()
+  for (const [schluessel, wert] of Object.entries(init.query ?? {})) {
+    if (wert !== undefined && wert !== null && wert !== '') frage.set(schluessel, String(wert))
+  }
+  const ziel = frage.toString() ? `${pfad}?${frage}` : pfad
+  const roh = init.body instanceof Blob || init.body instanceof FormData
+  const antwort = await fetch(`${BASIS}${ziel}`, {
+    method: init.method ?? 'GET',
+    credentials: 'include',
+    headers: roh ? { ...(init.headers ?? {}) } : { 'content-type': 'application/json', ...(init.headers ?? {}) },
+    body: init.body === undefined ? undefined : roh ? (init.body as BodyInit) : JSON.stringify(init.body),
+  })
+  if (antwort.status === 204) return undefined as T
+  let daten: unknown = null
+  try {
+    daten = await antwort.json()
+  } catch {
+    // Ohne JSON bei einem Fehler (502 vom Proxy).
+  }
+  if (!antwort.ok) {
+    const detail = (daten as { detail?: unknown } | null)?.detail
+    const code =
+      typeof detail === 'string'
+        ? detail
+        : detail && typeof detail === 'object' && 'code' in detail
+          ? String((detail as { code: unknown }).code)
+          : ''
+    if (antwort.status === 401 && (code === 'nicht_angemeldet' || code === 'zweiter_faktor_noetig')) {
+      window.dispatchEvent(new Event('nexmail:sitzung-weg'))
+    }
+    const werte = (daten as { werte?: Record<string, unknown> } | null)?.werte ?? {}
+    throw new ModulFehler(antwort.status, code, detail, werte)
+  }
+  return daten as T
+}

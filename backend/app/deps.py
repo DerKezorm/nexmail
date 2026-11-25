@@ -20,6 +20,7 @@ from .models import ApiSchluessel, Benutzer, Sitzung
 from .services import apischluessel as apidienst
 from .services import app_kopplung
 from .services import sitzung as sitzungsdienst
+from .vendor import nexlog
 
 DbSession = Annotated[Session, Depends(get_db)]
 
@@ -68,6 +69,8 @@ def angemeldete_sitzung(request: Request, db: DbSession) -> Sitzung:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="zweiter_faktor_noetig",
         )
+    # Wer handelt, steht ab hier in jeder Zeile dieser Anfrage (Modul log): ``[vorgang u:benutzername]``.
+    nexlog.set_actor(lage.benutzer.benutzername)
     return lage
 
 

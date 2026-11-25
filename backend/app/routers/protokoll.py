@@ -1,27 +1,32 @@
-"""Das Protokoll ansehen, umschalten und herunterladen.
+"""Das Protokoll ansehen, umschalten, herunterladen und leeren, nur für Betreiber.
 
-⚠️ **Nur für den Betreiber.** Im Protokoll steht, wer wann was getan hat —
-bei mehreren Benutzern wäre das ein Fenster in fremde Vorgänge. Das
-Betreiberkonto ist ohnehin das erste; später entscheidet der Haken.
+Seit dem Modul ``log`` (bauplaene/log 1.0.0) zwei Wege auf dieselben Funktionen:
 
-⚠️ **Der Download nimmt die alten Stände mit.** Wer beim Suchen hilft, braucht
-mehr als die letzten zweihundert Zeilen — und soll nicht darum bitten müssen.
+``/api/logs``       die Wege des Moduls (``nexlog.api``), wie in allen nex-Apps; die Karte „Log" ruft sie.
+``/api/protokoll``  der alte Weg in seiner alten Form (deutsche Stufen, ``minuten`` 0 = 30), für alles, was ihn
+                    schon kennt. Der Download ist jetzt ein Text statt eines ZIP (E21): ältere Datei zuerst, je Datei
+                    eine Kopfzeile, wie überall.
+
+⚠️ **Nur für den Betreiber.** Im Protokoll steht, wer wann was getan hat; bei mehreren Benutzern wäre das ein Fenster
+in fremde Vorgänge.
 """
 
 from __future__ import annotations
 
-import io
 import logging
-import zipfile
 
 from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
-from ..deps import AngemeldeterBenutzer, DbSession
+from ..deps import Betreiber, nur_betreiber
 from ..services import protokoll as dienst
-from ..meldung import MeldungHttp
+from ..vendor import nexlog
+from ..vendor.nexlog import api as nexlog_api
 
 logger = logging.getLogger("nexmail.protokoll")
+
+#: Die Wege des Moduls unter ``/api/logs``.
+modul_router = nexlog_api.router(operator=nur_betreiber, prefix="/api/logs", tags=["logs"])
 
 router = APIRouter(prefix="/api/protokoll", tags=["protokoll"])
 
@@ -38,8 +43,7 @@ class Zeile(BaseModel):
 class StandAntwort(BaseModel):
     stufe: str
     bis: str | None
-    #: ``True`` heißt: ``NEXMAIL_LOG_STUFE`` ist gesetzt und die Oberfläche
-    #: kann nichts umstellen. Das muss dastehen, sonst klickt man ins Leere.
+    #: ``True`` heißt: ``NEXMAIL_LOG_STUFE`` ist gesetzt und die Oberfläche kann nichts umstellen.
     durch_umgebung: bool
     stufen: list[str]
     minuten: list[int]
@@ -47,103 +51,59 @@ class StandAntwort(BaseModel):
 
 class StufenWunsch(BaseModel):
     stufe: str
-    #: 0 heißt „bis zum Neustart" — bei den tiefen Stufen nicht erlaubt.
+    #: 0 hieß „bis zum Neustart"; eine tiefe Stufe läuft dann 30 Minuten.
     minuten: int = Field(default=30, ge=0, le=1440)
 
 
-def _nur_betreiber(person) -> None:
-    if not getattr(person, "ist_betreiber", False):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="nur_betreiber",
-        )
+def _antwort(s: dienst.Stand) -> StandAntwort:
+    return StandAntwort(
+        stufe=s.stufe,
+        bis=s.bis,
+        durch_umgebung=s.durch_umgebung,
+        stufen=list(dienst.STUFEN),
+        minuten=list(dienst.ERLAUBTE_MINUTEN),
+    )
 
 
 @router.get("/stand", response_model=StandAntwort)
-def stand(person: AngemeldeterBenutzer, db: DbSession) -> StandAntwort:
-    _nur_betreiber(person)
-    s = dienst.stand(db)
-    return StandAntwort(
-        stufe=s.stufe,
-        bis=s.bis,
-        durch_umgebung=s.durch_umgebung,
-        stufen=list(dienst.STUFEN),
-        minuten=list(dienst.ERLAUBTE_MINUTEN),
-    )
+def stand(person: Betreiber) -> StandAntwort:
+    return _antwort(dienst.stand())
 
 
 @router.put("/stufe", response_model=StandAntwort)
-def stufe_setzen(
-    wunsch: StufenWunsch, person: AngemeldeterBenutzer, db: DbSession
-) -> StandAntwort:
-    _nur_betreiber(person)
-    if dienst.stand(db).durch_umgebung:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="stufe_aus_der_umgebung",
-        )
+def stufe_setzen(wunsch: StufenWunsch, person: Betreiber) -> StandAntwort:
+    if dienst.stand().durch_umgebung:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stufe_aus_der_umgebung")
     try:
-        s = dienst.stufe_setzen(db, wunsch.stufe, wunsch.minuten)
+        s = dienst.stufe_setzen(None, wunsch.stufe, wunsch.minuten)
     except ValueError as fehler:
-        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
-    return StandAntwort(
-        stufe=s.stufe,
-        bis=s.bis,
-        durch_umgebung=s.durch_umgebung,
-        stufen=list(dienst.STUFEN),
-        minuten=list(dienst.ERLAUBTE_MINUTEN),
-    )
+        # Vor dem Modul fiel das hier mit 500 um (``MeldungHttp.aus`` nimmt keinen ValueError).
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unbekannte_stufe") from fehler
+    return _antwort(s)
 
 
 @router.get("", response_model=list[Zeile])
-def lesen(
-    person: AngemeldeterBenutzer,
-    grenze: int = 200,
-    stufe: str = "",
-    suche: str = "",
-) -> list[Zeile]:
-    _nur_betreiber(person)
+def lesen(person: Betreiber, grenze: int = 200, stufe: str = "", suche: str = "") -> list[Zeile]:
     return [
         Zeile(
-            zeit=z.zeit,
-            stufe=z.stufe,
-            modul=z.modul,
-            meldung=z.meldung,
-            vorgang=z.vorgang,
-            benutzer=z.benutzer,
+            zeit=z.zeit, stufe=z.stufe, modul=z.modul, meldung=z.meldung, vorgang=z.vorgang, benutzer=z.benutzer
         )
-        for z in dienst.lesen(min(grenze, 1000), stufe or None, suche or None)
+        for z in dienst.lesen(max(1, min(grenze, 1000)), stufe or None, suche or None)
     ]
 
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)
-def leeren(person: AngemeldeterBenutzer) -> None:
-    _nur_betreiber(person)
+def leeren(person: Betreiber) -> None:
     dienst.leeren()
-    logger.warning("The log was cleared by the operator.")
 
 
 @router.get("/download")
-def herunterladen(person: AngemeldeterBenutzer) -> Response:
-    """Alle Stände als ZIP — das, was man beim Melden eines Fehlers mitschickt.
-
-    ⚠️ **Im Arbeitsspeicher gebaut, nicht als Datei im Datenverzeichnis.**
-    Eine Zwischendatei dort landete sonst in der nächsten Sicherung und
-    verdoppelte sie — und niemand räumt sie weg.
-    """
-    _nur_betreiber(person)
-
-    puffer = io.BytesIO()
-    with zipfile.ZipFile(puffer, "w", zipfile.ZIP_DEFLATED) as archiv:
-        aktuell = dienst.datei()
-        if aktuell.is_file():
-            archiv.write(aktuell, aktuell.name)
-        for alt in dienst.alte_dateien():
-            archiv.write(alt, alt.name)
-
-    logger.info("The log was downloaded by the operator.")
+def herunterladen(person: Betreiber) -> Response:
+    """Alle Stände als ein Text, wie der Weg des Moduls (``/api/logs/download``)."""
+    text = nexlog.download_text()
+    logger.info("Log downloaded by operator")
     return Response(
-        content=puffer.getvalue(),
-        media_type="application/zip",
-        headers={"content-disposition": 'attachment; filename="nexmail-protokoll.zip"'},
+        content=text,
+        media_type="text/plain; charset=utf-8",
+        headers={"content-disposition": f'attachment; filename="{nexlog.download_name()}"'},
     )
