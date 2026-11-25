@@ -135,6 +135,29 @@ Lokal geblieben: das Einrichten des Authenticators in nexmails eigenen Routen (`
 `/code`; Wiederherstellungscodes im alten Format), weil dort der QR-Code ohne Ablauf wieder abrufbar ist, und nexmails
 Bremse an den übrigen Türen.
 
+## 0d. `konten` 0.3.4 bis 0.3.6
+
+Nachgezogen am 25.11.2026 auf demselben Zweig, alle drei Fassungen zusammen.
+
+| Teil | Wo |
+|---|---|
+| Bremse an allen Türen (0.3.4) | Das Modul zählt `confirm:<Konto>` (Adresse, Benutzername, angebotene Adresse, Betreiber-Handlungen, Faktor), `code:<Konto>` (`/api/auth/code`, `/wiederherstellung` über `factor.check_code`), `mail:<Konto>` („Link nochmal schicken“, Passwort vergessen) und `forgot:<Absender>` (`forgot_in_background(..., sender=…)`; ohne `NEXMAIL_CLIENT_IP` je Eingabe, `none:<Konto oder Eingabe>`). nexmails `anmeldebremse.torwaechter` ist an diesen Türen weg. Eigene Routen, die ein Passwort selbst prüfen (Passwort ändern, Betreiber übergeben, Anbieter verknüpfen), zählen mit `anmeldebremse.bestaetigen` an `confirm:<Konto>`. Die Bremse bleibt bei nexmail an den Links mit Schlüssel, Einrichtung, Kopplung, Webhooks |
+| Authenticator (0.3.4) | `/zwei-faktor/starten` → `factor.begin_totp` (Felder `geheimnis`, `otpauth`, `qr_svg` wie bisher, neu `gilt_bis`), neu `GET /zwei-faktor/einrichtung` → `pending_setup` (410 `enrolment_expired`, die Seite beginnt dann neu), `/zwei-faktor/bestaetigen` → `confirm_totp` (Code allein wie bisher; mit `passwort` prüft das Modul es), `/einrichtung` und `/code` beim Anmelden → `pending_setup`/`begin_totp` und `confirm_totp(actor_confirmed=True)`, `/code` und `/wiederherstellung` → `check_code`. Bestand: alte Geheimnisse, Codes und eine angefangene Einrichtung der Vorfassung gelten (`pending_totp` des Stores) |
+| Angebotene Adresse (0.3.4) | Spalten `benutzer.angebotene_adresse_von` und `abgelehnte_adresse`, Store `set_offered_email(..., provider)` und `set_declined_email`; `touch_link` gibt den Anzeigenamen des Anbieters mit. „Nein, danke“ gilt für genau diese Adresse |
+| Zurücksetzen (0.3.4) | Dialog in der Benutzerverwaltung aus `factorResetParts(überblick)` |
+| Einladen (0.3.5) | `invite_values(..., request_base=str(request.base_url))`, Link über `invite_link`: ohne öffentliche Adresse die, unter der der Betreiber nexmail geöffnet hat (vorher 400 `oeffentliche_adresse_fehlt`) |
+| Sitzung abgelaufen (0.3.5) | `components/SitzungAbgelaufen.tsx`: `api/client.ts` meldet ein 401 `nicht_angemeldet` außerhalb der Anmeldewege, der Dialog zeigt `sessionExpiredParts(next)` (Passwort, Anbieter, Code, Passkey, Einrichten über die Anmeldeseite, Codes); die Seite darunter bleibt |
+| Authenticator aus (0.3.5) | `/zwei-faktor/aus` → `factor.disable_totp` (401 `kennwort_falsch` wie bisher, 409 `factor_required`, 429); nimmt auch die wartende Einrichtung mit, die Codes nur ohne Passkey |
+| Profil und Sicherheit (0.3.6) | nur aus `PAGES` (`PROFIL_TEILE`, `SICHERHEIT_TEILE` mit `pageOrder`); eigene Teile am Ende: Profil „Abmelden“, Sicherheit Anmeldeanbieter und Google/Microsoft. Benutzername direkt im Feld, „Speichern“ fragt das Passwort; Anzeigename gilt beim Verlassen des Feldes; Zweiter Faktor „An“/„Aus“ aus `GET /api/auth/ich` → `zweiter_faktor` (`factor.state`); neu „Neue Codes erzeugen“ (`POST /api/auth/zwei-faktor/codes`, `factor.new_codes`). Einrichtung mit `SETUP_PAGE`/`setupNotes` |
+| Nothammer | `NEXMAIL_SECOND_FACTOR_OFF` ist jetzt auch eine Einstellung (`Settings.second_factor_off`) und steht in `docker-compose.yml` neben `NEXMAIL_ZWEI_FAKTOR_AUS`; einer genügt |
+
+Weggefallene eigene Wortlaute: „Zweiten Faktor ein-/ausschalten“, „Eingerichtet und aktiv“/„Nicht eingerichtet“, der
+Satz über einen fehlenden Faktor unter Sicherheit, „Alle anderen Geräte abmelden“, „Bild wählen“/„Anderes Bild“,
+„Bearbeiten“ am Benutzernamen, „Rolle: …“ (jetzt `account.role`). Tests: `tests/test_konten_routen.py` (wartende
+Einrichtung, Bremse beim Abschalten, Passwort vergessen je Absender, neue Codes), `test_benutzer.py` (Einladen ohne
+öffentliche Adresse), `test_anmeldung.py` (410 statt 400 ohne Einrichtung), vitest `src/nexkonten.test.ts`
+(`APP_PAGES`, Dialog „Sitzung abgelaufen“).
+
 ## 1. Bestand heute (0.33.0)
 
 ### Datenmodell
