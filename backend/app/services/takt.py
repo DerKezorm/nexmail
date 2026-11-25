@@ -86,20 +86,17 @@ def starten() -> None:
 
 
 def _sicherungsschleife() -> None:
-    """Der Zeitplan für Rücksetzpunkte — ein eigener Faden.
+    """Der Zeitplan der Sicherungen (Modul sicherung, ``plan.run_job``): ein eigener Faden, jede Minute.
 
-    ⚠️ **Bewusst nicht im Abgleich-Takt.** Der laesst sich mit
-    ``NEXMAIL_TAKT_SEKUNDEN=0`` abschalten, und wer das tut, meint „nicht
-    dauernd Post holen" — nicht „keine Sicherungen mehr". Haengte der Zeitplan
-    daran, verschwaende er lautlos, und man merkte es an dem Tag, an dem man
-    eine Sicherung braucht.
+    ⚠️ **Bewusst nicht im Abgleich-Takt.** Der laesst sich mit ``NEXMAIL_TAKT_SEKUNDEN=0`` abschalten, und wer das
+    tut, meint „nicht dauernd Post holen" — nicht „keine Sicherungen mehr".
     """
-    from . import sicherungsliste
+    from ..vendor import nexsicherung
 
-    while not _sicherung_halt.wait(sicherungsliste.NACHSEHEN_SEKUNDEN):
+    while not _sicherung_halt.wait(nexsicherung.plan.INTERVAL_SECONDS):
         try:
-            if sicherungsliste.wenn_faellig():
-                logger.info("A scheduled restore point was created.")
+            if nexsicherung.plan.run_job():
+                logger.info("A scheduled backup was made.")
         except Exception as fehler:  # noqa: BLE001
             logger.warning("The backup schedule failed a round: %s", fehler)
 

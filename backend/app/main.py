@@ -279,6 +279,18 @@ async def lebenslauf(_: FastAPI):
 
     protokolldienst.einrichten()
 
+    # Speicher und Sicherung (Modul sicherung): vor der Datenbank konfigurieren und wegräumen, was ein beendeter Lauf
+    # liegen ließ (bei restore = "now" ruft nexmail das selbst, ``apply_pending`` gibt es hier nicht).
+    from .services import sicherung_haken
+    from .vendor import nexsicherung
+
+    sicherung_haken.konfigurieren()
+    try:
+        nexsicherung.archives.tidy_at_start()
+    except Exception:  # noqa: BLE001 - Aufräumen darf den Start nicht aufhalten
+        logger.exception("Tidying the backups folder at the start failed.")
+    nexsicherung.space.warn_at_start()
+
     init_db()
     # Ohne Konto: der Einrichtungscode ins Protokoll, bei jedem Start (Kontenmodul).
     from .services import konten_store
@@ -406,18 +418,11 @@ async def lebenslauf(_: FastAPI):
         if weg:
             logger.info("Removed %s expired session(s).", weg)
 
-        # ⚠️ **Der einzige Ort, an dem Ruecksetzpunkte weggeworfen werden.**
-        # ``db._sichern`` legt beim Schemawechsel einen an, kann aber nicht
-        # aufraeumen: Es laeuft, bevor die Datenbank lesbar ist, und kennt die
-        # eingestellte Zahl nicht. Gaebe es dort einen zweiten Aufraeumer mit
-        # einer festen Zahl, waere die Zahl in der Oberflaeche eine Behauptung,
-        # die das naechste Update stillschweigend widerruft.
-        from .services import sicherungsliste
-
-        behalten = einstellung_lesen(db, sicherungsliste.SCHLUESSEL_BEHALTEN)
-        sicherungsliste.aufraeumen(
-            int(behalten) if behalten.isdigit() else sicherungsliste.BEHALTEN_VORGABE
-        )
+        # ⚠️ **Der einzige Ort beim Start, an dem automatische Sicherungen weggeworfen werden.** ``db._sichern`` legt
+        # beim Schemawechsel einen Rücksetzpunkt an, kann aber nicht aufräumen: Es läuft, bevor die Datenbank lesbar
+        # ist, und kennt die eingestellte Zahl nicht. Seit dem Modul sicherung gehen nur automatische (geplant, vor
+        # einer Änderung); von Hand gemachte und hochgeladene bleiben, bis jemand sie löscht.
+        nexsicherung.archives.prune(nexsicherung.plan.load().keep)
 
         # ⚠️ **Abgebrochene Versandvorgaenge wieder aufnehmen.** Ohne das
         # bliebe eine Mail, die beim Herunterfahren mitten im Senden war,
@@ -626,6 +631,8 @@ app.include_router(einladung_router.router)
 # vor der Einrichtung (ohne Anmeldung, siehe Liste oben) und die beiden
 # Wege danach (mit). Die Abhaengigkeit haengt deshalb am einzelnen Endpunkt.
 app.include_router(sicherung.router)
+# Die Wege des Moduls sicherung (``/api/server/storage``), nur für Betreiber.
+app.include_router(sicherung.modul_router, dependencies=NUR_ANGEMELDET)
 # ⚠️ **Ohne ``NUR_ANGEMELDET``, und das ist keine Nachlaessigkeit.** Die
 # Begruendung steht oben in OEFFENTLICHE_PFADE und ausfuehrlich in
 # routers/bilder.py.

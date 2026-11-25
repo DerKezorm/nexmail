@@ -1,4 +1,10 @@
-"""Die Ruecksetzpunkte auf dem Server.
+"""Die Ruecksetzpunkte auf dem Server, wie nexmail sie bis zum Modul ``sicherung`` anlegte.
+
+⚠️ **Seit dem Modul ``sicherung`` (bauplaene/sicherung 1.0.1) verwaltet das Modul die Liste**, den Zeitplan, das
+Behalten, das Herunterladen und Wiederherstellen (``services/sicherung_haken.py``). Hier bleibt nur, was die alten
+Rücksetzpunkte (``nexmail-YYYYMMDD-HHMMSS.db`` mit ``.json``) lesen lässt, die Schlüssel des Zeitplans und
+``anlegen`` in der Form von vorher (für den Bestand und seine Tests). ``db._sichern`` legt vor einer Schemaänderung
+weiter eine solche ``.db`` an.
 
 ⚠️ **Ein Ruecksetzpunkt und eine Sicherung sind zwei verschiedene Dinge**, und
 sie zu verwechseln ist der Fehler, der im Ernstfall weh tut:
@@ -145,108 +151,3 @@ def anlegen(art: str = "manuell", kommentar: str = "") -> dict:
         "kommentar": kommentar.strip()[:200],
         "version": __version__,
     }
-
-
-def _datei(name: str) -> Path:
-    """Den Pfad zu einem Eintrag — mit Prüfung, dass der Name einer ist.
-
-    ⚠️ **Der Name kommt aus der Adresszeile.** Ohne das Muster stuende hier
-    ein Weg offen, mit ``../../`` jede Datei des Containers zu holen oder zu
-    loeschen. Geprueft wird gegen ``MUSTER``, nicht gegen „enthaelt keine
-    Punkte" — eine Positivliste, keine Verbotsliste.
-    """
-    if not MUSTER.match(name):
-        raise sicherung.SicherungFehler("name_unbekannt")
-    datei = _ordner() / name
-    if not datei.exists():
-        raise sicherung.SicherungFehler("ruecksetzpunkt_weg")
-    return datei
-
-
-def entfernen(name: str) -> None:
-    datei = _datei(name)
-    datei.unlink(missing_ok=True)
-    _beipack(datei).unlink(missing_ok=True)
-    logger.info("A restore point was deleted.")
-
-
-def archiv_aus(name: str, passwort: str) -> bytes:
-    """Einen Ruecksetzpunkt als schlanke, verschluesselte Sicherung ausgeben.
-
-    ⚠️ **Was heruntergeladen wird, ist nicht die Datei aus der Liste.** Die
-    Liste haelt vollstaendige Kopien; hinaus geht die schlanke Fassung, weil
-    ein Archiv, das mit dem Postfach waechst, irgendwann niemand mehr
-    herunterlaedt. Die Groesse in der Tabelle ist deshalb die des
-    Ruecksetzpunkts, nicht die des Downloads — und die Oberflaeche sagt das.
-    """
-    return sicherung.archiv(passwort, quelle=_datei(name))
-
-
-def aufraeumen(behalten: int) -> int:
-    """Die aeltesten wegwerfen, bis nur noch ``behalten`` liegen.
-
-    ⚠️ **Ruecksetzpunkte vor einem Update zaehlen mit.** Sie getrennt zu
-    verschonen klingt fuersorglich und fuehrt dazu, dass die Platte still
-    volllaeuft — die Zahl in der Oberflaeche waere dann eine Behauptung.
-    """
-    behalten = max(1, behalten)
-    dateien = sorted(_ordner().glob("nexmail-*.db"), reverse=True)
-    weg = [d for d in dateien if MUSTER.match(d.name)][behalten:]
-    for datei in weg:
-        datei.unlink(missing_ok=True)
-        _beipack(datei).unlink(missing_ok=True)
-    if weg:
-        logger.info("%s old restore points were removed.", len(weg))
-    return len(weg)
-
-
-# --- Der Zeitplan --------------------------------------------------------- #
-
-#: Wie oft der Wächter nachsieht, ob eine Sicherung fällig ist. Der Vergleich
-#: kostet einen Datenbankzugriff — er darf ruhig oft laufen.
-NACHSEHEN_SEKUNDEN = 900
-
-ABSTAENDE = {"taeglich": 1, "woechentlich": 7, "monatlich": 30}
-
-
-def faellig(db) -> bool:
-    """Ist nach dem eingestellten Takt eine Sicherung dran?
-
-    ⚠️ **Gemessen wird am letzten Lauf, nicht an der Uhrzeit.** „Täglich um
-    3 Uhr" klingt ordentlich und fällt bei einem Rechner aus, der nachts aus
-    ist — auf einem NAS keine Seltenheit. Der Abstand seit der letzten
-    Sicherung greift auch dann.
-    """
-    from ..db import einstellung_lesen
-
-    takt = einstellung_lesen(db, SCHLUESSEL_TAKT)
-    if takt not in ABSTAENDE:
-        return False
-
-    zuletzt = einstellung_lesen(db, SCHLUESSEL_ZULETZT)
-    if not zuletzt:
-        return True
-    try:
-        stand = datetime.fromisoformat(zuletzt)
-    except ValueError:
-        return True
-    if stand.tzinfo is None:
-        stand = stand.replace(tzinfo=timezone.utc)
-
-    return (datetime.now(timezone.utc) - stand).days >= ABSTAENDE[takt]
-
-
-def wenn_faellig() -> bool:
-    """Eine Runde des Zeitplans. Gibt zurück, ob gesichert wurde."""
-    from ..db import SessionLocal, einstellung_lesen, einstellung_schreiben
-
-    with SessionLocal() as db:
-        if not faellig(db):
-            return False
-
-        behalten = einstellung_lesen(db, SCHLUESSEL_BEHALTEN)
-        anlegen("zeitplan", "")
-        aufraeumen(int(behalten) if behalten.isdigit() else BEHALTEN_VORGABE)
-        einstellung_schreiben(db, SCHLUESSEL_ZULETZT, datetime.now(timezone.utc).isoformat())
-        db.commit()
-    return True

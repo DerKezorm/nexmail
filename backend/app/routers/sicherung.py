@@ -1,5 +1,13 @@
 """Sicherung herunterladen und einspielen.
 
+Seit dem Modul ``sicherung`` (bauplaene/sicherung 1.0.1) zwei Wege:
+
+``/api/server/storage``  die Wege des Moduls (Speicher, Liste, Zeitplan, Jetzt sichern, Hochladen, Prüfen,
+                         Herunterladen, Wiederherstellen, Löschen), wie in allen nex-Apps; die Seite ruft sie.
+``/api/sicherung``       nexmails alte Wege in ihrer alten Form, jetzt als dünne Hüllen über dem Modul: die Liste der
+                         Rücksetzpunkte, Anlegen, Entfernen, das schlanke Archiv, der Zeitplan, Erstellen, Prüfen und
+                         Einspielen (auch vor der Einrichtung).
+
 ⚠️ **Einspielen geht auch ohne Anmeldung — aber nur vor der Einrichtung.** Wer
 eine Sicherung hat, will sie auf einer frischen Installation einspielen, und da
 gibt es noch kein Konto. Der Weg schließt zum selben Zeitpunkt wie das Anlegen
@@ -19,9 +27,12 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, Response, Upl
 from pydantic import BaseModel, Field
 
 from ..config import get_settings
-from ..db import einstellung_lesen, einstellung_schreiben, hat_benutzer
-from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
-from ..services import sicherung, sicherungsliste
+from ..db import hat_benutzer
+from ..deps import AktiveSitzung, AngemeldeterBenutzer, Betreiber, DbSession
+from ..models import Benutzer
+from ..services import sicherung, sicherung_haken, sicherungsliste
+from ..vendor import nexsicherung
+from ..vendor.nexsicherung import routes as sicherung_wege
 from ..services.adresse import mit_vorbau
 from ..meldung import MeldungHttp
 
@@ -276,7 +287,18 @@ async def einspielen_angemeldet(
     nicht die gerade entliehene Verbindung.
     """
     db.close()
-    return await _einspielen(datei, passwort, adresse or None)
+    # Seit dem Modul sicherung auch hier: erst der jetzige Stand als Sicherung („vor einer Änderung"), dann das Archiv.
+    daten = await _gelesen(datei)
+    try:
+        sicherung.pruefen(daten, passwort, "")
+    except sicherung.SicherungFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    nexsicherung.archives.create(kind=nexsicherung.UPDATE, note="before restoring an uploaded archive")
+    try:
+        ergebnis = sicherung.wiederherstellen(daten, passwort, adresse or None)
+    except sicherung.SicherungFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+    return Ergebnis(**ergebnis)
 
 
 @router.post("/einspielen-vor-einrichtung", response_model=Ergebnis)
@@ -312,7 +334,8 @@ class Ruecksetzpunkt(BaseModel):
 
 class Zeitplan(BaseModel):
     takt: str = Field(default="aus")
-    behalten: int = Field(default=sicherungsliste.BEHALTEN_VORGABE, ge=1, le=50)
+    #: Seit dem Modul 1 bis 365 (vorher 1 bis 50).
+    behalten: int = Field(default=sicherungsliste.BEHALTEN_VORGABE, ge=1, le=365)
 
 
 class Uebersicht(BaseModel):
@@ -325,69 +348,143 @@ class Anlegen(BaseModel):
     kommentar: str = Field(default="", max_length=200)
 
 
-def _zeitplan_lesen(db) -> Zeitplan:
-    takt = einstellung_lesen(db, sicherungsliste.SCHLUESSEL_TAKT) or "aus"
-    behalten = einstellung_lesen(db, sicherungsliste.SCHLUESSEL_BEHALTEN)
-    return Zeitplan(
-        takt=takt if takt in sicherungsliste.TAKTE else "aus",
-        behalten=int(behalten) if behalten.isdigit() else sicherungsliste.BEHALTEN_VORGABE,
+def _zeitplan_lesen(db=None) -> Zeitplan:  # noqa: ARG001
+    plan = nexsicherung.plan.load()
+    return Zeitplan(takt=sicherung_haken.EVERY_ZU_TAKT.get(plan.every, "aus"), behalten=plan.keep)
+
+
+def _alt(eintrag: nexsicherung.Entry) -> Ruecksetzpunkt:
+    return Ruecksetzpunkt(
+        name=eintrag.name,
+        groesse=eintrag.size,
+        erstellt=eintrag.created,
+        art=sicherung_haken.KIND_ZU_ART.get(eintrag.kind, "manuell"),
+        kommentar=eintrag.note,
+        version=eintrag.version,
     )
 
 
+def _nicht_gefunden(fehler: nexsicherung.BackupError) -> MeldungHttp:
+    kennung = "ruecksetzpunkt_weg" if fehler.code == "not_found" else fehler.code
+    return MeldungHttp(status.HTTP_404_NOT_FOUND, kennung, {})
+
+
 @router.get("/liste", response_model=Uebersicht)
-def uebersicht(_: Betreiber, db: DbSession) -> Uebersicht:
+def uebersicht(_: Betreiber) -> Uebersicht:
+    """Alle Sicherungen in der alten Form (auch die des Moduls); ``zuletzt`` ist die neueste geplante."""
+    eintraege = [e for e in nexsicherung.archives.entries() if e.readable]
+    geplant = next((e for e in eintraege if e.kind == nexsicherung.SCHEDULED), None)
     return Uebersicht(
-        eintraege=[Ruecksetzpunkt(**e) for e in sicherungsliste.liste()],
-        zeitplan=_zeitplan_lesen(db),
-        zuletzt=einstellung_lesen(db, sicherungsliste.SCHLUESSEL_ZULETZT),
+        eintraege=[_alt(e) for e in eintraege],
+        zeitplan=_zeitplan_lesen(),
+        zuletzt=geplant.created if geplant else "",
     )
 
 
 @router.post("/liste", response_model=Ruecksetzpunkt, status_code=status.HTTP_201_CREATED)
-def anlegen(eingabe: Anlegen, _: Betreiber, db: DbSession) -> Ruecksetzpunkt:
-    eintrag = sicherungsliste.anlegen("manuell", eingabe.kommentar)
-    sicherungsliste.aufraeumen(_zeitplan_lesen(db).behalten)
-    return Ruecksetzpunkt(**eintrag)
+def anlegen(eingabe: Anlegen, _: Betreiber) -> Ruecksetzpunkt:
+    try:
+        pfad = nexsicherung.archives.create(kind=nexsicherung.MANUAL, note=eingabe.kommentar, wait=False)
+    except nexsicherung.BackupError as fehler:
+        raise MeldungHttp(fehler.status, fehler.code, {}) from fehler
+    eintrag = next(e for e in nexsicherung.archives.entries() if e.name == pfad.name)
+    return _alt(eintrag)
 
 
 @router.delete("/liste/{name}", status_code=status.HTTP_204_NO_CONTENT)
 def entfernen(name: str, _: Betreiber) -> Response:
     try:
-        sicherungsliste.entfernen(name)
-    except sicherung.SicherungFehler as fehler:
-        raise MeldungHttp.aus(fehler, status.HTTP_404_NOT_FOUND) from fehler
+        nexsicherung.archives.remove(name)
+    except nexsicherung.BackupError as fehler:
+        raise _nicht_gefunden(fehler) from fehler
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/liste/{name}/archiv")
 def archiv_aus_punkt(name: str, eingabe: Passwort, _: Betreiber) -> Response:
-    """Einen Rücksetzpunkt als schlanke, verschlüsselte Sicherung herunterladen.
+    """Eine Sicherung als schlankes, verschlüsseltes Archiv herunterladen (der Haken ``download`` des Moduls).
 
-    ⚠️ Was hinausgeht, ist **nicht** die Datei aus der Liste: Die Nachrichten
-    bleiben draußen. Die Größe in der Tabelle ist die des Rücksetzpunkts.
+    ⚠️ Was hinausgeht, ist **nicht** die Datei aus der Liste: Die Nachrichten bleiben draußen.
     """
     try:
-        daten = sicherungsliste.archiv_aus(name, eingabe.passwort)
+        quelle = nexsicherung.archives.path_of(name)
+        datei = nexsicherung.current().hooks.download(quelle, archive_password=eingabe.passwort)
+    except nexsicherung.BackupError as fehler:
+        # Wie vorher: ein Name, der keiner ist, ist hier eine Ablehnung (400), kein 404.
+        raise MeldungHttp(status.HTTP_400_BAD_REQUEST, "name_unbekannt", {}) from fehler
     except sicherung.SicherungFehler as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
-
+    try:
+        daten = datei.read_bytes()
+    finally:
+        if datei != quelle:
+            datei.unlink(missing_ok=True)
     return Response(
         content=daten,
         media_type="application/zip",
-        headers={"content-disposition": f'attachment; filename="{name[:-3]}.zip"'},
+        headers={"content-disposition": f'attachment; filename="{quelle.stem}.zip"'},
     )
 
 
 @router.put("/zeitplan", response_model=Zeitplan)
-def zeitplan_setzen(eingabe: Zeitplan, _: Betreiber, db: DbSession) -> Zeitplan:
+def zeitplan_setzen(eingabe: Zeitplan, _: Betreiber) -> Zeitplan:
     if eingabe.takt not in sicherungsliste.TAKTE:
         raise MeldungHttp(
             status.HTTP_400_BAD_REQUEST,
             "takt_unbekannt",
             {"moeglich": list(sicherungsliste.TAKTE)},
         )
-    einstellung_schreiben(db, sicherungsliste.SCHLUESSEL_TAKT, eingabe.takt)
-    einstellung_schreiben(db, sicherungsliste.SCHLUESSEL_BEHALTEN, str(eingabe.behalten))
-    db.commit()
-    sicherungsliste.aufraeumen(eingabe.behalten)
+    jetzt = nexsicherung.plan.load()
+    nexsicherung.plan.save(
+        nexsicherung.plan.checked(sicherung_haken.TAKT_ZU_EVERY[eingabe.takt], jetzt.time, eingabe.behalten)
+    )
     return eingabe
+
+
+# --- Die Wege des Moduls (``/api/server/storage``) ------------------------------------------------------------------
+
+
+def betreiber_fuer_sicherung(request: Request, sitzung: AktiveSitzung, db: DbSession) -> Benutzer:
+    """Nur der Betreiber, und **ohne offene Verbindung der Anfrage**.
+
+    ⚠️ Wiederherstellen tauscht die Datenbank im laufenden Betrieb (restore = "now"). Hielte diese Anfrage noch eine
+    Verbindung auf die Datei, bliebe unter Linux ein Schreiber an einer gelöschten Datei zurück (siehe
+    ``db.datenbank_ersetzen``). Deshalb wird die Sitzung der Anfrage hier geschlossen; das Konto bleibt lesbar
+    (``expire_on_commit=False``)."""
+    person = sitzung.benutzer
+    if not person.ist_betreiber:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="nur_betreiber")
+    request.state.nexmail_angemeldet_um = sitzung.angelegt
+    db.close()
+    return person
+
+
+def _bestaetigen(request: Request, person: Benutzer, passwort: str) -> None:
+    """Das Passwort des Betreibers noch einmal (Herunterladen, Wiederherstellen, Löschen, Hochladen), an der Bremse
+    des Kontenmoduls (``confirm:<Konto>``). Ein Konto ohne Passwort braucht eine frische Anmeldung beim Anbieter."""
+    from ..services import anmeldebremse
+    from ..services import benutzer as benutzerdienst
+    from ..vendor import nexkonten
+
+    if not person.passwort_hash:
+        if not nexkonten.common.fresh_sign_in(getattr(request.state, "nexmail_angemeldet_um", None)):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "fresh_sign_in_needed", "message": "Sign in again with your provider first."},
+            )
+        return
+    wache = anmeldebremse.bestaetigen(person.id)
+    if not benutzerdienst.passwort_stimmt(person, passwort):
+        wache.fehlgeschlagen()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "wrong_password", "message": "The password is wrong."},
+        )
+    wache.geschafft()
+
+
+modul_router = sicherung_wege.router(
+    operator=betreiber_fuer_sicherung,
+    confirm=_bestaetigen,
+    prefix="/api/server/storage",
+)

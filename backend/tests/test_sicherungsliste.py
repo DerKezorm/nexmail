@@ -13,7 +13,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.db import SessionLocal, einstellung_lesen, einstellung_schreiben
-from app.services import sicherung, sicherungsliste
+from app.services import sicherung_haken, sicherungsliste
+from app.vendor import nexsicherung
 from conftest import anmelden, einrichten, zweiten_benutzer_anlegen
 
 ARCHIVPASSWORT = "archiv-passwort-1"
@@ -73,8 +74,9 @@ def test_ein_erfundener_name_kommt_nicht_durch(klient, name):
     herunterladen und loeschen.
     """
     einrichten(klient)
-    with pytest.raises(sicherung.SicherungFehler):
-        sicherungsliste._datei(name)
+    # Seit dem Modul sicherung prüft das Modul den Namen (``archives.path_of``), für alte und neue Namen.
+    with pytest.raises(nexsicherung.BackupError):
+        nexsicherung.archives.path_of(name)
 
 
 def test_die_laufende_datenbank_liegt_wirklich_dort(klient):
@@ -125,16 +127,16 @@ def test_nur_der_betreiber_kommt_an_die_liste(klient, db):
 
 
 def test_aufraeumen_behaelt_die_juengsten(klient):
+    """Seit dem Modul sicherung: von den automatischen bleiben die jüngsten; eine von Hand gemachte bleibt immer."""
     einrichten(klient)
-    for n in range(4):
-        sicherungsliste.anlegen("manuell", f"Nummer {n}")
+    von_hand = nexsicherung.archives.create(kind=nexsicherung.MANUAL, note="von Hand").name
+    automatisch = [nexsicherung.archives.create(kind=nexsicherung.SCHEDULED).name for _ in range(4)]
 
-    namen_vorher = [e["name"] for e in sicherungsliste.liste()]
-    sicherungsliste.aufraeumen(2)
-    namen_nachher = [e["name"] for e in sicherungsliste.liste()]
+    nexsicherung.archives.prune(2)
+    namen = [e["name"] for e in klient.get("/api/sicherung/liste").json()["eintraege"]]
 
-    assert len(namen_nachher) == 2
-    assert namen_nachher == namen_vorher[:2], "Es wurden die falschen weggeworfen."
+    assert von_hand in namen
+    assert [n for n in automatisch if n in namen] == automatisch[-2:], "Es wurden die falschen weggeworfen."
 
 
 def test_der_zeitplan_wird_gemerkt(klient):
@@ -156,10 +158,32 @@ def test_ein_unbekannter_takt_wird_abgewiesen(klient):
     assert "taeglich" in antwort.json()["werte"]["moeglich"]
 
 
-def test_ohne_zeitplan_ist_nie_etwas_faellig(klient):
+def test_der_zeitplan_haelt_die_uhrzeit_und_bis_365(klient):
+    """Seit dem Modul: dazu eine Uhrzeit (``sicherung_uhrzeit``), Behalten bis 365; der alte Weg behält seine Form."""
+    einrichten(klient)
+    gesetzt = klient.put("/api/server/storage/backups/schedule", json={"every": "monthly", "time": "04:30", "keep": 200})
+    assert gesetzt.status_code == 200, gesetzt.text
+    assert klient.get("/api/sicherung/liste").json()["zeitplan"] == {"takt": "monatlich", "behalten": 200}
+    with SessionLocal() as db:
+        assert einstellung_lesen(db, sicherung_haken.SCHLUESSEL_UHRZEIT) == "04:30"
+    # Der alte Weg lässt die Uhrzeit stehen.
+    assert klient.put("/api/sicherung/zeitplan", json={"takt": "taeglich", "behalten": 3}).status_code == 200
+    assert klient.get("/api/server/storage/backups").json()["schedule"] == {"every": "daily", "time": "04:30", "keep": 3}
+
+
+def test_ein_gespeicherter_takt_von_vorher_gilt_weiter(klient):
+    """Was 0.33.0 gespeichert hat (deutsche Namen, ohne Uhrzeit), liest das Modul als seinen Zeitplan."""
     einrichten(klient)
     with SessionLocal() as db:
-        assert sicherungsliste.faellig(db) is False
+        einstellung_schreiben(db, sicherungsliste.SCHLUESSEL_TAKT, "woechentlich")
+        einstellung_schreiben(db, sicherungsliste.SCHLUESSEL_BEHALTEN, "7")
+    assert nexsicherung.plan.load() == nexsicherung.Schedule(every="weekly", time="03:00", keep=7)
+
+
+def test_ohne_zeitplan_ist_nie_etwas_faellig(klient):
+    einrichten(klient)
+    assert nexsicherung.plan.run_job() is False
+    assert klient.get("/api/sicherung/liste").json()["eintraege"] == []
 
 
 def test_der_erste_lauf_ist_sofort_faellig(klient):
@@ -168,28 +192,17 @@ def test_der_erste_lauf_ist_sofort_faellig(klient):
     with SessionLocal() as db:
         einstellung_schreiben(db, sicherungsliste.SCHLUESSEL_TAKT, "taeglich")
         db.commit()
-        assert sicherungsliste.faellig(db) is True
+    assert nexsicherung.plan.run_job() is True
 
 
-def test_gemessen_wird_am_letzten_lauf_nicht_an_der_uhrzeit(klient):
-    """⚠️ „Täglich um 3 Uhr" faellt bei einem NAS aus, das nachts aus ist."""
+def test_ein_server_der_aus_war_holt_nach(klient):
+    """⚠️ „Täglich um 3 Uhr" fiel früher bei einem NAS aus, das nachts aus ist. Das Modul holt nach: fällig, sobald
+    die letzte Uhrzeit vorbei ist und seit ihr keine geplante kam (Woche: 6 Tage 18 Stunden Abstand)."""
     einrichten(klient)
-    with SessionLocal() as db:
-        einstellung_schreiben(db, sicherungsliste.SCHLUESSEL_TAKT, "woechentlich")
-
-        vor_sechs_tagen = datetime.now(timezone.utc) - timedelta(days=6)
-        einstellung_schreiben(
-            db, sicherungsliste.SCHLUESSEL_ZULETZT, vor_sechs_tagen.isoformat()
-        )
-        db.commit()
-        assert sicherungsliste.faellig(db) is False
-
-        vor_acht_tagen = datetime.now(timezone.utc) - timedelta(days=8)
-        einstellung_schreiben(
-            db, sicherungsliste.SCHLUESSEL_ZULETZT, vor_acht_tagen.isoformat()
-        )
-        db.commit()
-        assert sicherungsliste.faellig(db) is True
+    woche = nexsicherung.Schedule(every="weekly", time="03:00", keep=5)
+    jetzt = datetime(2026, 11, 26, 12, 0, tzinfo=timezone.utc)
+    assert nexsicherung.plan.due(woche, jetzt - timedelta(days=6), jetzt, timezone.utc) is False
+    assert nexsicherung.plan.due(woche, jetzt - timedelta(days=8), jetzt, timezone.utc) is True
 
 
 def test_eine_faellige_runde_legt_an_und_merkt_sich_das(klient):
@@ -198,17 +211,15 @@ def test_eine_faellige_runde_legt_an_und_merkt_sich_das(klient):
         einstellung_schreiben(db, sicherungsliste.SCHLUESSEL_TAKT, "taeglich")
         db.commit()
 
-    assert sicherungsliste.wenn_faellig() is True
-    eintraege = sicherungsliste.liste()
+    assert nexsicherung.plan.run_job() is True
+    eintraege = klient.get("/api/sicherung/liste").json()["eintraege"]
     assert len(eintraege) == 1
     assert eintraege[0]["art"] == "zeitplan"
 
     # Und beim zweiten Mal passiert nichts mehr.
-    assert sicherungsliste.wenn_faellig() is False
-    assert len(sicherungsliste.liste()) == 1
-
-    with SessionLocal() as db:
-        assert einstellung_lesen(db, sicherungsliste.SCHLUESSEL_ZULETZT) != ""
+    assert nexsicherung.plan.run_job() is False
+    assert len(klient.get("/api/sicherung/liste").json()["eintraege"]) == 1
+    assert klient.get("/api/sicherung/liste").json()["zuletzt"] != ""
 
 
 def test_eine_kopie_ohne_beipackzettel_verschwindet_nicht(klient):
@@ -221,6 +232,8 @@ def test_eine_kopie_ohne_beipackzettel_verschwindet_nicht(klient):
     name = sicherungsliste.anlegen("manuell", "mit Zettel")["name"]
     (sicherungsliste._ordner() / name.replace(".db", ".json")).unlink()
 
-    eintraege = sicherungsliste.liste()
-    assert len(eintraege) == 1
+    eintraege = klient.get("/api/sicherung/liste").json()["eintraege"]
+    assert [e["name"] for e in eintraege] == [name]
     assert eintraege[0]["art"] == "update"
+    modul = klient.get("/api/server/storage/backups").json()["backups"]
+    assert [(e["name"], e["kind"], e["readable"]) for e in modul] == [(name, "update", True)]

@@ -2251,5 +2251,8 @@
     "titel": "Confirm your address",
     "bestaetigen": "Confirm address",
     "weiter": "Go to nexmail"
+  },
+  "speicher": {
+    "enthaelt": "A backup holds the whole database: mailboxes with their access, contacts, calendars, rules, signatures, tasks, accounts and settings. Attachments stay out, they are still in the mailbox. A download is an encrypted archive without messages."
   }
 }

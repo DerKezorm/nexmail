@@ -2251,5 +2251,8 @@
     "titel": "Adresse bestätigen",
     "bestaetigen": "Adresse bestätigen",
     "weiter": "Weiter zu nexmail"
+  },
+  "speicher": {
+    "enthaelt": "Eine Sicherung enthält die ganze Datenbank: Postfächer samt Zugängen, Kontakte, Kalender, Regeln, Signaturen, Aufgaben, Konten und Einstellungen. Anhänge kommen nicht hinein, die liegen noch im Postfach. Herunterladen gibt ein verschlüsseltes Archiv ohne Nachrichten hinaus."
   }
 }

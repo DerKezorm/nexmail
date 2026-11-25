@@ -340,7 +340,7 @@ export function EinstellungenPage({
           </>
         )
       case 'storage':
-        return <Sicherungen />
+        return <Sicherungen ich={ich} />
       case 'accounts':
         return <Benutzerverwaltung ich={ich} ichNeuLaden={ichNeuLaden} />
       case 'log':
