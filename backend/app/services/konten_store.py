@@ -102,8 +102,9 @@ def einrichten() -> None:
             setup_token=lambda: get_settings().setup_token,
             logger_name="nexmail.konten",
             error_codes=ALTE_KENNUNGEN,
-            # Der Nothammer: nexmails alte Variable gilt weiter, ``NEXMAIL_SECOND_FACTOR_OFF`` zaehlt zusaetzlich.
-            second_factor_off=lambda: get_settings().zwei_faktor_aus,
+            # Der Nothammer: nexmails alte Variable gilt weiter, ``NEXMAIL_SECOND_FACTOR_OFF`` zaehlt zusaetzlich (das
+            # Modul liest sie selbst; als Einstellung auch aus einer .env-Datei).
+            second_factor_off=lambda: get_settings().zwei_faktor_aus or get_settings().second_factor_off,
         )
     )
 

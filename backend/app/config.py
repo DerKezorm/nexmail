@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     # der Hammer macht also kein neues Loch auf, er macht ein vorhandenes
     # benutzbar. Beim Start wird er laut protokolliert.
     zwei_faktor_aus: bool = False
+    # Derselbe Hammer unter dem Namen, den das Kontenmodul in jeder App kennt (``<APP>_SECOND_FACTOR_OFF``, konten
+    # 0.3.3); beide gelten, einer genuegt.
+    second_factor_off: bool = False
 
     # --- Ersteinrichtung ----------------------------------------------------
     #
@@ -186,7 +189,7 @@ class Settings(BaseSettings):
             return 0
         return max(30, wert)
 
-    @field_validator("zwei_faktor_aus", mode="before")
+    @field_validator("zwei_faktor_aus", "second_factor_off", mode="before")
     @classmethod
     def _leer_heisst_nein(cls, wert: object) -> object:
         """Eine leere Umgebungsvariable heisst "nicht gesetzt", nicht "kaputt".

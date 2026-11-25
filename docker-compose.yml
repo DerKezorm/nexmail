@@ -47,8 +47,10 @@ services:
       # recovery codes. Set to "1", sign in, set the second factor up again,
       # clear it.
       #
-      # While it is set, nexmail warns on every start in the log.
+      # While it is set, nexmail warns on every start in the log. NEXMAIL_SECOND_FACTOR_OFF is the same switch under
+      # the name every app with the shared accounts module knows; either one is enough.
       NEXMAIL_ZWEI_FAKTOR_AUS: ${NEXMAIL_ZWEI_FAKTOR_AUS:-}
+      NEXMAIL_SECOND_FACTOR_OFF: ${NEXMAIL_SECOND_FACTOR_OFF:-}
 
       # The setup code for the first account. Empty: nexmail makes one at every start while there is no account and
       # writes it to the log (`docker logs nexmail`). Your own needs at least 16 characters. A running installation
