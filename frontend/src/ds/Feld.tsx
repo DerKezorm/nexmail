@@ -53,9 +53,20 @@ export function Input({
   ...rest
 }: InputProps) {
   const kaputt = Boolean(error)
+  /* ⚠️ **Die Beschriftung gehört allein zum Feld** (`htmlFor`/`id`), der Hinweis beschreibt es nur
+     (`aria-describedby`). Vorher umschloss ein `<label>` Beschriftung, Feld und Hinweis: Der Name des Feldes war
+     dann „Anzeigename“ samt Inhalt und Hinweis, und weder ein Vorleseprogramm noch `getByLabel(…, { exact })`
+     fand „Anzeigename“ (Playwright, 25.11.2026). */
+  const eigen = useId()
+  const id = rest.id ?? eigen
+  const hinweisId = hint || error ? `${id}-hinweis` : undefined
   return (
-    <label className="flex min-w-0 flex-col gap-1.5">
-      {label && <span className={BESCHRIFTUNG}>{label}</span>}
+    <div className="flex min-w-0 flex-col gap-1.5">
+      {label && (
+        <label htmlFor={id} className={BESCHRIFTUNG}>
+          {label}
+        </label>
+      )}
       <span className={`${huelle(kaputt)} ${HOEHE[size]} ${rest.disabled ? 'opacity-55' : ''}`}>
         {iconLeft && <span className="shrink-0 text-fg-4">{iconLeft}</span>}
         <input
@@ -64,13 +75,17 @@ export function Input({
             `${mono ? 'font-mono' : ''} ${size === 'sm' ? 'text-[13px]' : 'text-sm'} ${className}`
           }
           {...rest}
+          id={id}
+          aria-describedby={[rest['aria-describedby'], hinweisId].filter(Boolean).join(' ') || undefined}
         />
         {suffix && <span className="shrink-0 font-mono text-[11px] text-fg-4">{suffix}</span>}
       </span>
       {(hint || error) && (
-        <span className={`text-[12px] ${kaputt ? 'text-danger' : 'text-fg-4'}`}>{error || hint}</span>
+        <span id={hinweisId} className={`text-[12px] ${kaputt ? 'text-danger' : 'text-fg-4'}`}>
+          {error || hint}
+        </span>
       )}
-    </label>
+    </div>
   )
 }
 
@@ -87,9 +102,17 @@ export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement
 }
 
 export function Select({ label, hint, size = 'md', options = [], className = '', children, ...rest }: SelectProps) {
+  // Wie beim Input: die Beschriftung allein ist der Name, der Hinweis beschreibt.
+  const eigen = useId()
+  const id = rest.id ?? eigen
+  const hinweisId = hint ? `${id}-hinweis` : undefined
   return (
-    <label className="flex min-w-0 flex-col gap-1.5">
-      {label && <span className={BESCHRIFTUNG}>{label}</span>}
+    <div className="flex min-w-0 flex-col gap-1.5">
+      {label && (
+        <label htmlFor={id} className={BESCHRIFTUNG}>
+          {label}
+        </label>
+      )}
       {/* ⚠️ **Der Pfeil muss zum Klickziel gehoeren.** Er ist ein Geschwister
           des <select>; ohne pointer-events-none faengt er den Klick ab und
           nichts klappt auf - an jeder Auswahl der Anwendung, denn alle
@@ -100,6 +123,8 @@ export function Select({ label, hint, size = 'md', options = [], className = '',
         <select
           className={`min-w-0 flex-1 appearance-none bg-transparent pr-6 text-sm text-fg-1 outline-none ${className}`}
           {...rest}
+          id={id}
+          aria-describedby={[rest['aria-describedby'], hinweisId].filter(Boolean).join(' ') || undefined}
         >
           {options.map((o) => {
             const wert = typeof o === 'string' ? o : o.value
@@ -114,8 +139,12 @@ export function Select({ label, hint, size = 'md', options = [], className = '',
         </select>
         <ChevronAbwaerts />
       </span>
-      {hint && <span className="text-[12px] text-fg-4">{hint}</span>}
-    </label>
+      {hint && (
+        <span id={hinweisId} className="text-[12px] text-fg-4">
+          {hint}
+        </span>
+      )}
+    </div>
   )
 }
 
