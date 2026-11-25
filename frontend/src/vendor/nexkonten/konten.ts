@@ -138,16 +138,92 @@ export type AccountScreen = keyof typeof SCREENS
  * sits under security next to the signed-in devices, not in the profile. ``operatorSignIn``: the operator's switches,
  * each with its hint (``account.factorRequiredSwitchHint``). */
 export const SECTIONS = {
-  profile: ['picture', 'displayName', 'username', 'email', 'providerEmailOffer', 'language'],
-  security: ['secondFactor', 'recoveryCodes', 'passkeys', 'sessions', 'newSignInMail', 'signOutEverywhere'],
+  profile: ['picture', 'displayName', 'username', 'email', 'providerEmailOffer', 'language', 'role'],
+  /** Since 0.3.6: "Sign out everywhere else" is the button of ``sessions`` ("Signed-in devices"), see ``PAGES``. */
+  security: ['password', 'secondFactor', 'recoveryCodes', 'passkeys', 'sessions', 'newSignInMail'],
   operatorSignIn: ['factorRequiredSwitch', 'passkeysAllowed'],
   /** Since 0.3.3: the operator's dialog "Reset the second factor" (``factor.reset_overview``): the account's
    * passkeys by name, then the two boxes, both ticked by default. */
   operatorFactorReset: ['factorResetHint', 'passkeys', 'factorResetPasskeys', 'factorResetDevices'],
 } as const satisfies Record<string, readonly string[]>
 
+/** Since 0.3.4: the parts of the operator's dialog "Reset the second factor" for one account (what
+ * ``factor.reset_overview`` gave): the passkeys and the box "Remove the passkeys too" only when it has passkeys. The
+ * same as ``ResetOverview.parts`` on the server. */
+export function factorResetParts(overview: { passkeys: readonly unknown[] | number }): string[] {
+  const count = typeof overview.passkeys === 'number' ? overview.passkeys : overview.passkeys.length
+  return SECTIONS.operatorFactorReset.filter(
+    (part: string) => count > 0 || (part !== 'passkeys' && part !== 'factorResetPasskeys'),
+  )
+}
+
 /** The boxes of the operator's dialog "Reset the second factor" and how they start. */
 export const FACTOR_RESET_DEFAULTS = { factorResetPasskeys: true, factorResetDevices: true } as const
+
+/** One part of an account page (since 0.3.6): its heading or label, the hint under it, the buttons it may show (text
+ * keys, in their order; which one shows depends on the state, e.g. ``totpSetup`` or ``totpRemove``). */
+export interface PagePart {
+  part: string
+  title: string
+  hint: string
+  buttons: readonly string[]
+}
+
+/** Since 0.3.6: the pages "Profile" and "Security" as every app shows them, so that they look the same everywhere:
+ * the page title, the parts top to bottom (the order of ``SECTIONS``) with their headings, hints and buttons, all
+ * from the module's texts. ``stacked``: the fields stand one under the other, never side by side. In the profile the
+ * username is changed right in its field; saving asks for the password (``account.confirmWithPassword``; without a
+ * password a fresh sign-in, ``account.confirmFresh``). The role shows small at the end. The app's own parts (nexmail
+ * "Google and Microsoft accounts", nexnotes "Links for reading") come after the module's (``pageOrder``). */
+export const PAGES = {
+  profile: {
+    title: 'account.profile',
+    layout: 'stacked',
+    parts: [
+      { part: 'picture', title: 'account.picture', hint: 'account.pictureHint', buttons: ['account.pictureUpload', 'account.pictureRemove'] },
+      { part: 'displayName', title: 'account.displayName', hint: 'account.displayNameHint', buttons: [] },
+      { part: 'username', title: 'account.username', hint: 'account.usernameHintProfile', buttons: ['account.save'] },
+      { part: 'email', title: 'account.email', hint: 'account.emailHint', buttons: ['account.save'] },
+      { part: 'providerEmailOffer', title: 'account.providerEmailOffer', hint: '', buttons: ['account.providerEmailTake', 'account.providerEmailDismiss'] },
+      { part: 'language', title: 'account.language', hint: '', buttons: [] },
+      { part: 'role', title: 'account.role', hint: '', buttons: [] },
+    ],
+  },
+  security: {
+    title: 'account.security',
+    layout: 'stacked',
+    parts: [
+      { part: 'password', title: 'account.password', hint: '', buttons: ['account.passwordChange'] },
+      { part: 'secondFactor', title: 'account.secondFactor', hint: 'account.secondFactorHint', buttons: ['account.totpSetup', 'account.totpRemove'] },
+      { part: 'recoveryCodes', title: 'account.recoveryCodes', hint: 'account.recoveryCodesHint', buttons: ['account.recoveryCodesNew'] },
+      { part: 'passkeys', title: 'account.passkeys', hint: 'account.passkeysHint', buttons: ['account.passkeyAdd'] },
+      { part: 'sessions', title: 'account.sessions', hint: 'account.signOutEverywhereHint', buttons: ['account.signOutEverywhere'] },
+      { part: 'newSignInMail', title: 'account.newSignInMail', hint: 'account.newSignInMailHint', buttons: [] },
+    ],
+  },
+} as const satisfies Record<'profile' | 'security', { title: string; layout: 'stacked'; parts: readonly PagePart[] }>
+
+/** Since 0.3.6: the parts a page shows, top to bottom: the module's first in their order, then the app's own. */
+export function pageOrder(page: keyof typeof PAGES, own: readonly string[] = []): string[] {
+  return [...PAGES[page].parts.map((entry: PagePart) => entry.part), ...own]
+}
+
+/** Since 0.3.6: what the second factor shows next to its heading, by the server's ``second_factor`` state: "Off"
+ * while none is set up (also where one is required and missing), "On" with an authenticator or a passkey. */
+export const SECOND_FACTOR_STATE = {
+  none: 'account.stateOff',
+  required: 'account.stateOff',
+  active: 'account.stateOn',
+  passkey: 'account.stateOn',
+} as const
+
+/** Since 0.3.6: the setup page's title and subtitle, the same in every app. Under the password no word about the
+ * second factor while none is required; where the operator requires one (``factorRequired``), the page says so. */
+export const SETUP_PAGE = { title: 'account.setupTitle', subtitle: 'account.setupSubtitle' } as const
+
+export function setupNotes(options: { factorRequired?: boolean } = {}): string[] {
+  return options.factorRequired ? ['account.factorRequired'] : []
+}
 
 /** Since 0.3.3: notices shown plainly at the top of every account page and of the operator's settings while the
  * server says so. ``secondFactorOff``: the emergency hammer is down (``factor.switched_off()``), with its hint
@@ -180,6 +256,25 @@ export const RESET_DAYS_DEFAULT = 1
 
 /** What the app starts after setup, an invitation or a new password (the server's next). */
 export const NEXT_STEPS = ['session', 'second_factor', 'second_factor_setup', 'sign_in', 'passkey', 'show_codes'] as const
+
+/** Since 0.3.5: the dialog "Session expired" (the session ended while a page was open; the page stays underneath):
+ * its parts for each step, top to bottom, the same as ``common.SESSION_EXPIRED_PARTS`` on the server. It starts at
+ * ``sign_in`` (``or``: "or" and the provider buttons as on the sign-in page; ``password`` and its button only where
+ * the account has a password), then shows what the server's ``next`` says: the code, the passkey ("Sign in with a
+ * passkey"), setting a factor up, the recovery codes. ``session``: the dialog closes and the page goes on. */
+export const SESSION_EXPIRED = {
+  sign_in: ['sessionExpiredHint', 'password', 'signInAgain', 'or'],
+  second_factor: ['code', 'signInAgain'],
+  passkey: ['passkeySignIn'],
+  second_factor_setup: ['factorRequired', 'totpSetup', 'passkeyAdd'],
+  show_codes: ['recoveryCodesHint', 'recoveryCodes'],
+  session: [],
+} as const satisfies Record<(typeof NEXT_STEPS)[number], readonly string[]>
+
+/** Since 0.3.5: the parts of the dialog "Session expired" for the server's ``next``; an unknown one starts over. */
+export function sessionExpiredParts(next: string): readonly string[] {
+  return next in SESSION_EXPIRED ? SESSION_EXPIRED[next as keyof typeof SESSION_EXPIRED] : SESSION_EXPIRED.sign_in
+}
 
 export function normalizeUsername(raw: string): string {
   return raw.trim().toLowerCase()

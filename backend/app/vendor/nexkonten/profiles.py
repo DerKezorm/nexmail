@@ -29,10 +29,11 @@ where a mail server is there); ``dismiss_offered_email`` says no.
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, replace
 from datetime import timedelta
 
-from . import common, names
+from . import brake, common, names
 from .common import acting, address_hint, log, reload, tell
 from .errors import AccountError
 from .model import (
@@ -185,6 +186,8 @@ def change_email(
     if names.email_taken(store, address, except_id=target.id):
         raise AccountError("email_taken", "This address belongs to another account already.", 409)
     if mail:
+        # Every link written counts at the brake (``mail:<id>``, five free): no session sends mail to anybody at will.
+        common.counted((brake.door_key(brake.DOOR_MAIL, target.id),))
         token = common.new_token()
         store.start_email_change(target.id, address, token, common.utcnow() + timedelta(hours=CONFIRM_HOURS))
         store.commit()
@@ -203,10 +206,11 @@ def change_email(
 
 def resend_email_link(store: Store, account_id: AccountId) -> Mail:
     """"Send the link again": a new link for the address that waits (the one before stops counting), 24 hours from
-    now. ``no_pending_email`` when nothing waits. The app's brake holds back a sender who asks too often."""
+    now. ``no_pending_email`` when nothing waits. Counts at the brake (``mail:<id>``, since 0.3.4)."""
     account = common.account_or_404(store, account_id)
     if not account.pending_email:
         raise AccountError("no_pending_email", "No address waits for its link.", 409)
+    common.counted((brake.door_key(brake.DOOR_MAIL, account.id),))
     token = common.new_token()
     store.start_email_change(account.id, account.pending_email, token, common.utcnow() + timedelta(hours=CONFIRM_HOURS))
     store.commit()
@@ -280,16 +284,34 @@ def remove_email(
     return EmailChanged(reload(store, target.id), notice=_notice(target, "") if mail else None)
 
 
+def _keep_offer(store: Store, account_id: AccountId, address: str, provider: str) -> bool:
+    """``Store.set_offered_email`` with the provider's name where the store takes it (0.3.4); False without it."""
+    keep = getattr(store, "set_offered_email", None)
+    if keep is None:
+        return False
+    try:
+        takes_name = "provider" in inspect.signature(keep).parameters
+    except (TypeError, ValueError):
+        takes_name = False
+    if takes_name:
+        keep(account_id, address, provider=provider)
+    else:
+        keep(account_id, address)
+    return True
+
+
 def follow_provider_email(store: Store, account_id: AccountId, raw: str) -> bool:
     """``provider_email`` for callers of 0.3.2: True when the address was taken."""
     return provider_email(store, account_id, raw) == PROVIDER_EMAIL_TAKEN
 
 
-def provider_email(store: Store, account_id: AccountId, raw: str) -> str:
+def provider_email(store: Store, account_id: AccountId, raw: str, *, provider: str = "") -> str:
     """What a provider says about the address of an account at a sign-in or a link, for the OIDC binding (inside its
     transaction: nothing is committed here). An account through a provider only follows it (``taken``) when it has no
     address of its own: none, or one that came from a provider. An account with a password is only offered it
-    (``offered``, decided 25.11.2026): the person takes it in the profile. The provider's address never counts at once
+    (``offered``, decided 25.11.2026): the person takes it in the profile. ``provider`` (since 0.3.4): the
+    provider's name as its button shows it, kept with the offer for "Use the address from <provider>?". An address
+    the person declined is never offered again, only another one. The provider's address never counts at once
     and is never proven (the provider may let anybody set any address), and it is never taken or offered when another
     account has it."""
     account = common.account_or_404(store, account_id)
@@ -300,7 +322,7 @@ def provider_email(store: Store, account_id: AccountId, raw: str) -> str:
     if not address or names.same_address(address, account.email):
         return PROVIDER_EMAIL_NONE
     if account.has_password:
-        return _offer(store, account, address)
+        return _offer(store, account, address, provider)
     if account.email and account.email_source != EMAIL_PROVIDER:
         return PROVIDER_EMAIL_NONE
     if names.email_taken(store, address, except_id=account.id):
@@ -312,13 +334,20 @@ def provider_email(store: Store, account_id: AccountId, raw: str) -> str:
     return PROVIDER_EMAIL_TAKEN
 
 
-def _offer(store: Store, account: Account, address: str) -> str:
-    if names.same_address(address, account.offered_email):
-        return PROVIDER_EMAIL_OFFERED
-    keep = getattr(store, "set_offered_email", None)
-    if keep is None or names.email_taken(store, address, except_id=account.id):
+def _offer(store: Store, account: Account, address: str, provider: str) -> str:
+    if names.same_address(address, account.declined_email):
+        # "No, thanks" holds for this address for good (decided 25.11.2026); a standing offer of another one goes.
+        if account.offered_email:
+            _keep_offer(store, account.id, "", "")
         return PROVIDER_EMAIL_NONE
-    keep(account.id, address)
+    if names.same_address(address, account.offered_email) and (
+        not provider or provider == account.offered_email_provider
+    ):
+        return PROVIDER_EMAIL_OFFERED
+    if names.email_taken(store, address, except_id=account.id) or not _keep_offer(
+        store, account.id, address, provider
+    ):
+        return PROVIDER_EMAIL_NONE
     log().info("Provider address offered name=%s", account.username)
     return PROVIDER_EMAIL_OFFERED
 
@@ -346,8 +375,13 @@ def take_offered_email(
 
 
 def dismiss_offered_email(store: Store, account_id: AccountId) -> None:
-    """The person does not want the offered address."""
+    """The person does not want the offered address ("No, thanks"): for good, for exactly this address (since 0.3.4,
+    ``Store.set_declined_email``); the offer comes back only with another address."""
     account = common.account_or_404(store, account_id)
     if account.offered_email:
+        decline = getattr(store, "set_declined_email", None)
+        if decline is not None:
+            decline(account.id, account.offered_email)
         store.set_offered_email(account.id, "")
         store.commit()
+        log().info("Provider address declined name=%s", account.username)

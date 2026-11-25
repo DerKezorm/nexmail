@@ -154,6 +154,10 @@ class Benutzer(Base):
     totp_wartend: Mapped[str] = mapped_column(Text, default="", server_default="")
     totp_wartend_bis: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
     angebotene_adresse: Mapped[str] = mapped_column(String(320), default="", server_default="")
+    #: konten 0.3.4. ``angebotene_adresse_von``: der Name des Anbieters, der sie anbietet (wie auf seinem Knopf);
+    #: ``abgelehnte_adresse``: die Adresse, zu der jemand „Nein, danke“ sagte, gilt dauerhaft (``""`` keine).
+    angebotene_adresse_von: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    abgelehnte_adresse: Mapped[str] = mapped_column(String(320), default="", server_default="")
 
     # --- Der KI-Dienst dieses Menschen ---------------------------------- #
     #

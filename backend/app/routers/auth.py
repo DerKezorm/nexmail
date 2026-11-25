@@ -657,7 +657,7 @@ def ich(person: Benutzer, db) -> Ich:
         kontaktadresse_zaehlt=bool(person.kontaktadresse_zaehlt) if person.kontaktadresse else True,
         kontaktadresse_wartet=kontenstore.store_fuer(db).get_account(person.id).pending_email,
         angebotene_adresse=person.angebotene_adresse or "",
-        angebotene_adresse_von=_anbieter_der_adresse(db, person),
+        angebotene_adresse_von=person.angebotene_adresse_von or _anbieter_der_adresse(db, person),
         zwei_faktor_aus=nexkonten.factor.switched_off(),
         sprache=person.sprache or "",
         neues_passwort=person.neues_passwort or "",
@@ -824,8 +824,8 @@ def angebotene_adresse_nehmen(
 
 @router.delete("/ich/angebotene-adresse", response_model=Ich)
 def angebotene_adresse_ablehnen(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
-    """„Nein, danke“: das Angebot verwerfen (nennt der Anbieter sie bei einer spaeteren Anmeldung wieder, kommt es
-    wieder)."""
+    """„Nein, danke“: das Angebot verwerfen, dauerhaft fuer genau diese Adresse (konten 0.3.4); angeboten wird erst
+    wieder eine andere."""
     nexkonten.profiles.dismiss_offered_email(kontenstore.store_fuer(db), person.id)
     db.expire(person)
     return ich(person, db)

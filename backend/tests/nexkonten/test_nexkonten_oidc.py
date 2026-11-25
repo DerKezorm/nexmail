@@ -111,3 +111,35 @@ def test_a_provider_address_is_only_offered_to_an_account_with_a_password(app: A
     with app.store() as store:
         kept = store.get_account(own)
     assert (kept.email, kept.offered_email) == ("own@example.com", "")
+
+
+def test_an_offer_keeps_the_providers_name_and_no_thanks_holds_for_that_address(app: Any, konten: Any) -> None:
+    """Decided while building (0.3.4): the module keeps the name of the provider with the offered address ("Use the
+    address from Pocket ID?"), and "No, thanks" holds for good for exactly this address: the offer comes back only
+    with another one."""
+    secret = password()
+    alex = app.seed("alex", password=secret)
+    profiles = konten.profiles
+    with app.store() as store:
+        assert profiles.provider_email(store, alex, "alex@id.example.com", provider="Pocket ID") == "offered"
+        store.commit()
+    with app.store() as store:
+        offered = store.get_account(alex)
+        assert (offered.offered_email, offered.offered_email_provider) == ("alex@id.example.com", "Pocket ID")
+        profiles.dismiss_offered_email(store, alex)
+    for _ in range(2):  # the next sign-ins at the provider
+        with app.store() as store:
+            assert profiles.provider_email(store, alex, "ALEX@id.example.com", provider="Pocket ID") == ""
+            store.commit()
+        with app.store() as store:
+            kept = store.get_account(alex)
+            assert (kept.offered_email, kept.offered_email_provider) == ("", "")
+            assert kept.declined_email == "alex@id.example.com"
+    with app.store() as store:
+        assert profiles.provider_email(store, alex, "new@id.example.com", provider="authentik") == "offered"
+        store.commit()
+    with app.store() as store:
+        again = store.get_account(alex)
+        assert (again.offered_email, again.offered_email_provider) == ("new@id.example.com", "authentik")
+        # Without a name (a caller of 0.3.3) the offer still comes; the name is then the app's to fill.
+        assert profiles.provider_email(store, alex, "new@id.example.com") == "offered"

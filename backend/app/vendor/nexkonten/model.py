@@ -95,6 +95,11 @@ class Account:
     #: Since 0.3.3: an address a provider named for an account with a password, only offered ("Use the address from
     #: <provider>?" in the profile, ``profiles.take_offered_email``); "" for none. Never counts, never signs in.
     offered_email: str = ""
+    #: Since 0.3.4: the name of the provider that offered it (its label, as on its button: "Pocket ID"), for "Use the
+    #: address from <provider>?"; "" when the store does not keep it (the app then names its provider itself).
+    offered_email_provider: str = ""
+    #: Since 0.3.4: the address the person said "No, thanks" to; it is never offered again, only another one is.
+    declined_email: str = ""
 
 
 @dataclass(frozen=True)
@@ -247,9 +252,17 @@ class Store(Protocol):
 
     def get_account(self, account_id: AccountId) -> Account | None: ...
 
-    def set_offered_email(self, account_id: AccountId, address: str) -> None:
+    def set_offered_email(self, account_id: AccountId, address: str, provider: str = "") -> None:
         """Since 0.3.3: keep the address a provider offers an account with a password (``Account.offered_email``),
-        "" takes the offer away. A store without it offers nothing; the contract tests ask for it."""
+        "" takes the offer away. Since 0.3.4 with the provider's name (``Account.offered_email_provider``; a store of
+        0.3.3 without the parameter keeps working, the name is then lost). A store without it offers nothing; the
+        contract tests ask for it."""
+        ...
+
+    def set_declined_email(self, account_id: AccountId, address: str) -> None:
+        """Since 0.3.4: keep the address the person said "No, thanks" to (``Account.declined_email``), for good: it is
+        not offered again. A store without it offers the same address again at the next sign-in; the contract tests
+        ask for it."""
         ...
 
     def find_by_username(self, username: str) -> list[Account]:

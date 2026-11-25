@@ -302,7 +302,7 @@ class SqlStore:
         if konto and email:
             # Ein Konto ohne eigene Adresse folgt der des Anbieters; sie zaehlt nie sofort (Kontenmodul). Einem Konto
             # mit Passwort wird sie nur angeboten (konten 0.3.3): „Adresse von <Anbieter> uebernehmen?“ im Profil.
-            nexkonten.profiles.provider_email(KontenStore(self.db), konto, email)
+            nexkonten.profiles.provider_email(KontenStore(self.db), konto, email, provider=anbieter.anzeigename or "")
 
     # --- Konten ----------------------------------------------------------------------------------------------------
     def account_state(self, account_id: int) -> AccountState | None:

@@ -287,11 +287,20 @@ def test_angebotene_adresse_uebernehmen_und_ablehnen(klient):
     weg = klient.delete("/api/auth/ich/angebotene-adresse")
     assert weg.status_code == 200 and weg.json()["angebotene_adresse"] == ""
 
+    # konten 0.3.4: „Nein, danke“ gilt fuer genau diese Adresse; erst eine andere wird wieder angeboten, mit Anbieter.
     with SessionLocal() as db:
         nexkonten.profiles.provider_email(KontenStore(db), db.query(Benutzer).one().id, "betrieb@id.example.com")
         db.commit()
+    assert klient.get("/api/auth/ich").json()["angebotene_adresse"] == ""
+    with SessionLocal() as db:
+        nexkonten.profiles.provider_email(
+            KontenStore(db), db.query(Benutzer).one().id, "neu@id.example.com", provider="Pocket ID"
+        )
+        db.commit()
+    ich = klient.get("/api/auth/ich").json()
+    assert (ich["angebotene_adresse"], ich["angebotene_adresse_von"]) == ("neu@id.example.com", "Pocket ID")
     genommen = klient.post("/api/auth/ich/angebotene-adresse", json={"passwort": "sehr-geheim-123"})
     assert genommen.status_code == 200, genommen.text
     daten = genommen.json()
     assert daten["angebotene_adresse"] == ""
-    assert "betrieb@id.example.com" in (daten["kontaktadresse"], daten["kontaktadresse_wartet"])
+    assert "neu@id.example.com" in (daten["kontaktadresse"], daten["kontaktadresse_wartet"])

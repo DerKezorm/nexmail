@@ -189,6 +189,8 @@ class KontenStore:
             picture=bild,
             language=zeile.sprache or "",
             offered_email=zeile.angebotene_adresse or "",
+            offered_email_provider=zeile.angebotene_adresse_von or "",
+            declined_email=zeile.abgelehnte_adresse or "",
         )
 
     def count_accounts(self) -> int:
@@ -293,9 +295,19 @@ class KontenStore:
         self.db.execute(update(Benutzer).where(Benutzer.id == str(account_id)).values(sprache=language))
         self._auffrischen(account_id)
 
-    def set_offered_email(self, account_id: AccountId, address: str) -> None:
-        """konten 0.3.3: die Adresse, die ein Anbieter einem Konto mit Passwort nur anbietet (``""`` keine)."""
-        self.db.execute(update(Benutzer).where(Benutzer.id == str(account_id)).values(angebotene_adresse=address))
+    def set_offered_email(self, account_id: AccountId, address: str, provider: str = "") -> None:
+        """konten 0.3.3: die Adresse, die ein Anbieter einem Konto mit Passwort nur anbietet (``""`` keine); seit
+        0.3.4 mit dem Namen des Anbieters (bei ``""`` geht er mit)."""
+        self.db.execute(
+            update(Benutzer)
+            .where(Benutzer.id == str(account_id))
+            .values(angebotene_adresse=address, angebotene_adresse_von=(provider if address else "")[:200])
+        )
+        self._auffrischen(account_id)
+
+    def set_declined_email(self, account_id: AccountId, address: str) -> None:
+        """konten 0.3.4: „Nein, danke“ gilt dauerhaft fuer genau diese Adresse."""
+        self.db.execute(update(Benutzer).where(Benutzer.id == str(account_id)).values(abgelehnte_adresse=address))
         self._auffrischen(account_id)
 
     def _auffrischen(self, account_id: AccountId) -> None:

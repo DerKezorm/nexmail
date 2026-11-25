@@ -28,7 +28,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from . import common, factor
+from . import brake, common, factor
 from .common import expired, log, new_token, next_step, reload, tell, utcnow
 from .errors import AccountError
 from .login import resolve_login
@@ -89,6 +89,11 @@ def forgot(store: Store, typed: str) -> Mail | None:
     account = resolve_login(store, typed)
     if account is None or not account.has_password or account.blocked or not _mailable(account):
         return None
+    if brake.BRAKE.claim((brake.door_key(brake.DOOR_MAIL, account.id),)) > 0:
+        # The brake at the account (``mail:<id>``, five free): nobody fills a mailbox with links. Nobody waits for
+        # this answer, so it stays as quiet as every other.
+        log().warning("Reset link held back by the brake name=%s", account.username)
+        return None
     token = new_token()
     store.start_reset(account.id, token, utcnow() + timedelta(hours=SELF_HOURS), created_by=None, origin=RESET_SELF)
     store.commit()
@@ -102,10 +107,15 @@ def forgot_in_background(
     open_store: Callable[[], AbstractContextManager[Store]],
     send: Callable[[Mail], None],
     later: Callable[[Callable[[], None]], None],
+    sender: str | None = None,
 ) -> None:
     """"Forgot your password?" as the request answers it: at once, the same for every input. ``later`` runs the
     rest in a worker (the app's background tasks): look up, make the link with its own store (``open_store``), mail
-    it (``send``); a mail that fails takes its link with it."""
+    it (``send``); a mail that fails takes its link with it. ``sender`` (since 0.3.4, ``brake.client_address``):
+    the requests of one sender count at the brake (``forgot:<sender>``, ten free), ``too_many_attempts`` then, the
+    same for every input; the account counts in the worker (``mail:<id>``, five links, then quietly none)."""
+    if sender is not None:
+        common.counted((brake.door_key(brake.DOOR_FORGOT, sender),))
 
     def job() -> None:
         with open_store() as store:

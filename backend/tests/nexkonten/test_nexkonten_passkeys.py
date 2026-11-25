@@ -267,6 +267,22 @@ def test_the_operators_reset_shows_the_passkeys_and_removes_them_unless_asked_no
         assert store.passkeys_of(alex) == []
 
 
+def test_the_reset_dialog_offers_to_remove_passkeys_only_for_an_account_that_has_some(
+    app: Any, konten: Any, operator: tuple[Any, str]
+) -> None:
+    """Decided while building (0.3.4): the box "Remove the passkeys too" (and the list of passkeys) shows only when
+    the account has passkeys; ``ResetOverview.parts`` names the parts as ``SECTIONS.operatorFactorReset`` does."""
+    boss, _ = operator
+    alex = app.seed("alex", password=SECRET)
+    kim = app.seed("kim", password=SECRET)
+    _register(app, konten, alex)
+    with app.store() as store:
+        with_keys = konten.factor.reset_overview(store, alex, actor_id=boss)
+        without = konten.factor.reset_overview(store, kim, actor_id=boss)
+    assert with_keys.parts == ("factorResetHint", "passkeys", "factorResetPasskeys", "factorResetDevices")
+    assert without.parts == ("factorResetHint", "factorResetDevices")
+
+
 def test_a_passkey_counts_as_the_second_factor_where_one_is_required(app: Any, konten: Any) -> None:
     """After the password (or the provider) the passkey is the second step; no authenticator is asked of it."""
     alex = app.seed("alex", password=SECRET)
@@ -287,3 +303,30 @@ def test_a_passkey_counts_as_the_second_factor_where_one_is_required(app: Any, k
     plain = app.seed("plain", password=SECRET)
     with app.store() as store:
         assert konten.common.next_step(store, store.get_account(plain)) == konten.NEXT_SECOND_FACTOR_SETUP
+
+
+def test_the_session_expired_dialog_offers_the_passkey_step_where_a_passkey_is_the_second_factor(
+    app: Any, konten: Any
+) -> None:
+    """Decided while building (0.3.5): the dialog "Session expired" knows every second step. After the password it
+    shows what ``next_step`` says: for an account whose second factor is a passkey "Sign in with a passkey", not a
+    code field it could never fill (finding in nexnotes); then the passkey finishes the waiting sign-in."""
+    alex = app.seed("alex", password=SECRET)
+    device, _ = _register(app, konten, alex)
+    app.switch("factor_required", True)
+    assert konten.common.session_expired_parts(konten.NEXT_SIGN_IN) == (
+        "sessionExpiredHint", "password", "signInAgain", "or",
+    )
+    with app.store() as store:
+        account = konten.login.authenticate(store, "alex", SECRET)
+        step = konten.common.next_step(store, account)
+    parts = konten.common.session_expired_parts(step)
+    assert step == konten.NEXT_PASSKEY and "passkeySignIn" in parts and "code" not in parts
+    waiting = konten.factor.start_waiting(alex)
+    done = konten.factor.finish_waiting_by_passkey(waiting, _sign_in(app, konten, device).id)
+    assert done is not None and done.method == "passkey"
+    assert konten.common.session_expired_parts(konten.NEXT_SECOND_FACTOR) == ("code", "signInAgain")
+    assert konten.common.session_expired_parts(konten.NEXT_SESSION) == ()
+    assert konten.common.session_expired_parts("unknown") == konten.common.session_expired_parts(konten.NEXT_SIGN_IN)
+    for step in (konten.NEXT_SECOND_FACTOR_SETUP, konten.NEXT_SHOW_CODES):
+        assert konten.common.session_expired_parts(step)

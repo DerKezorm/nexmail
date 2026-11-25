@@ -6,15 +6,18 @@ from __future__ import annotations
 import logging
 import re
 import secrets
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
-from . import config
+from . import brake, config
 from .errors import AccountError
 from .model import (
     NEXT_PASSKEY,
     NEXT_SECOND_FACTOR,
     NEXT_SECOND_FACTOR_SETUP,
     NEXT_SESSION,
+    NEXT_SHOW_CODES,
     NEXT_SIGN_IN,
     SECOND_FACTOR_ACTIVE,
     SECOND_FACTOR_PASSKEY,
@@ -115,16 +118,44 @@ def fresh_sign_in_needed() -> AccountError:
     )
 
 
+def too_many_attempts(wait: float) -> AccountError:
+    return AccountError(
+        "too_many_attempts", "Too many attempts. Wait a moment.", 429, retry_after=max(1, int(wait + 0.999))
+    )
+
+
+@contextmanager
+def guarded(keys: tuple[str, ...]) -> Iterator[None]:
+    """One attempt at a door behind the brake (``brake.door_key``): refused with ``too_many_attempts`` while a wait
+    runs, counted as a failure, taken back when the body runs through."""
+    wait = brake.BRAKE.claim(keys)
+    if wait > 0:
+        raise too_many_attempts(wait)
+    yield
+    brake.BRAKE.succeeded(keys)
+
+
+def counted(keys: tuple[str, ...]) -> None:
+    """One use of a door that is never taken back (a mail written, a request for a link): ``too_many_attempts``
+    while a wait runs."""
+    wait = brake.BRAKE.claim(keys)
+    if wait > 0:
+        raise too_many_attempts(wait)
+
+
 def confirm(store: Store, account: Account, password: str, actor_confirmed: bool, *, without_password: bool) -> None:
     """The acting person shows it is them: with their password, or, when the app confirmed it already
     (``actor_confirmed``: a fresh sign-in at the provider for an account without a password, or the app's own check
     of the password with its brake), not again. ``without_password``: what an account without a password needs then
-    (True: a fresh sign-in; False: nothing)."""
+    (True: a fresh sign-in; False: nothing). A password typed here counts at the brake (``confirm:<account>``, five
+    free, since 0.3.4 at every door: address, username, factor, the operator's actions), so that a session cannot
+    guess the password through these pages."""
     if actor_confirmed:
         return
     if account.has_password:
-        if not store.check_password(account.id, password or ""):
-            raise wrong_password()
+        with guarded((brake.door_key(brake.DOOR_CONFIRM, account.id),)):
+            if not store.check_password(account.id, password or ""):
+                raise wrong_password()
         return
     if without_password:
         raise fresh_sign_in_needed()
@@ -188,6 +219,27 @@ def next_step(store: Store, account: Account) -> str:
     if state == SECOND_FACTOR_REQUIRED:
         return NEXT_SECOND_FACTOR_SETUP
     return NEXT_SESSION
+
+
+#: Since 0.3.5: the dialog "Session expired" (the session ended while a page was open; the page stays underneath),
+#: its parts for each step, top to bottom, as ``SESSION_EXPIRED`` in ``konten.ts`` names them. It starts at
+#: ``sign_in`` (``or``: "or" and the provider buttons as on the sign-in page; ``password`` and its button only where
+#: the account has a password) and then shows what ``next_step`` answers after the password or the provider: the code,
+#: the passkey, setting a factor up, the recovery codes. ``session``: nothing left, the dialog closes, the page goes
+#: on. An account whose second factor is a passkey gets there too (a code alone would leave it stuck).
+SESSION_EXPIRED_PARTS: dict[str, tuple[str, ...]] = {
+    NEXT_SIGN_IN: ("sessionExpiredHint", "password", "signInAgain", "or"),
+    NEXT_SECOND_FACTOR: ("code", "signInAgain"),
+    NEXT_PASSKEY: ("passkeySignIn",),
+    NEXT_SECOND_FACTOR_SETUP: ("factorRequired", "totpSetup", "passkeyAdd"),
+    NEXT_SHOW_CODES: ("recoveryCodesHint", "recoveryCodes"),
+    NEXT_SESSION: (),
+}
+
+
+def session_expired_parts(step: str) -> tuple[str, ...]:
+    """Since 0.3.5: what the dialog "Session expired" shows for a step (``next_step``); an unknown one starts over."""
+    return SESSION_EXPIRED_PARTS.get(step, SESSION_EXPIRED_PARTS[NEXT_SIGN_IN])
 
 
 def address_hint(address: str) -> str:

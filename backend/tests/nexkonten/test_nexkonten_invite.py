@@ -253,3 +253,32 @@ def test_without_a_public_address_there_is_no_invitation(app: Any, konten: Any, 
         konten.invites.invite_link("", "invite", "abc")
     link = konten.invites.invite_link("https://notes.example.com/", "/invite/", "a/b")
     assert link == "https://notes.example.com/invite/a%2Fb"
+
+
+def test_without_a_public_address_the_link_takes_the_address_the_operator_opened(
+    app: Any, konten: Any, operator: Any
+) -> None:
+    """Decided 25.11.2026 (0.3.5, replaces "refused" of 0.3.2): an installation without an entered public address
+    still invites; the link leads to the address of the operator's request (scheme, host, port, base path), as
+    nexnotes always did. Only without both there is ``public_url_needed``; an entered address always wins."""
+    seen = "http://192.168.1.20:8080/notes/"
+    with app.store() as store:
+        for public_url in ("", "   ", "notes.example.com"):
+            assert konten.invites.invite_values(
+                store, email="kim@example.com", display_name="Kim", public_url=public_url, request_base=seen
+            ) == ("kim@example.com", "Kim")
+            link = konten.invites.invite_link(public_url, "/invite/", "a/b", request_base=seen)
+            assert link == "http://192.168.1.20:8080/notes/invite/a%2Fb"
+        for request_base in ("", None, "192.168.1.20:8080", "ftp://host/"):
+            with pytest.raises(konten.AccountError) as caught:
+                konten.invites.invite_values(
+                    store, email="", display_name="Kim", public_url="", request_base=request_base
+                )
+            assert caught.value.code == "public_url_needed" and caught.value.status == 409
+    assert (
+        konten.invites.invite_link("https://notes.example.com", "invite", "t", request_base=seen)
+        == "https://notes.example.com/invite/t"
+    )
+    assert konten.invites.invite_link("", "invite", "t", request_base="https://h.example/?x=1#y") == (
+        "https://h.example/invite/t"
+    )

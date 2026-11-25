@@ -85,6 +85,58 @@ def test_a_half_set_up_authenticator_waits_sealed_in_the_store_across_a_restart(
         _refused(konten, lambda: konten.factor.confirm_totp(store, kim, code, password=secret), "enrolment_expired")
 
 
+def test_setting_up_shows_the_same_qr_code_again_while_it_waits(
+    app: Any, konten: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Decided while building (0.3.4): one way for every app to set up an authenticator, through the module; while it
+    waits for its first code the page can ask for the QR code again (``pending_setup``), also after a restart, and
+    gets the same seed and address. The factor set up before keeps counting until a code confirms the new one."""
+    secret = password()
+    alex = app.seed("alex", password=secret)
+    kim = app.seed("kim", password=secret)
+    old_seed, _ = _set_up(app, konten, alex, secret)
+    with app.store() as store:
+        assert konten.factor.pending_setup(store, alex, issuer=ISSUER) is None
+        assert konten.factor.pending_setup(store, kim, issuer=ISSUER) is None
+        enrolment = konten.factor.begin_totp(store, alex, issuer=ISSUER)
+    assert enrolment.expires_at is not None
+    konten.factor.forget()  # a restart between the QR code and the first code
+    with app.store() as store:
+        again = konten.factor.pending_setup(store, alex, issuer=ISSUER)
+        assert again is not None and (again.seed, again.uri) == (enrolment.seed, enrolment.uri)
+        assert again.uri.startswith(f"otpauth://totp/{ISSUER}:alex?secret={enrolment.seed}&")
+        assert abs((again.expires_at - enrolment.expires_at).total_seconds()) < 2
+        # Asking again restarts no clock and makes nothing a factor; the old authenticator still counts.
+        assert store.totp_seed(alex) == old_seed
+        assert konten.factor.check_code(store, alex, konten.factor.code_at(old_seed, time.time() + 30)) == "totp"
+    with app.store() as store:
+        code = konten.factor.code_at(enrolment.seed, time.time())
+        konten.factor.confirm_totp(store, alex, code, password=secret)
+    with app.store() as store:
+        assert konten.factor.pending_setup(store, alex, issuer=ISSUER) is None
+        assert store.totp_seed(alex) == enrolment.seed
+        late = konten.factor.begin_totp(store, kim, issuer=ISSUER)
+    now = konten.common.utcnow()
+    monkeypatch.setattr(konten.common, "utcnow", lambda: now + timedelta(minutes=11))
+    with app.store() as store:
+        assert late.seed and konten.factor.pending_setup(store, kim, issuer=ISSUER) is None
+
+
+def test_a_setup_started_over_an_authenticator_of_the_older_version_keeps_it_counting(app: Any, konten: Any) -> None:
+    """Moving an app's own setup routes onto the module (0.3.4): the authenticators and codes the older version set
+    up keep counting while a new one waits, and after it was given up."""
+    legacy = app.legacy()
+    username, seed, codes = legacy.factors[0]
+    with app.store() as store:
+        account = store.find_by_username(username)[0]
+        konten.factor.begin_totp(store, account.id, issuer=ISSUER)
+        assert konten.factor.pending_setup(store, account.id, issuer=ISSUER) is not None
+        assert konten.factor.check_code(store, account.id, konten.factor.code_at(seed, time.time())) == "totp"
+        if codes:
+            assert konten.factor.check_code(store, account.id, codes[0]) == "recovery"
+        assert konten.factor.has_factor(store, account.id)
+
+
 def test_the_emergency_hammer_switches_the_second_factor_off_for_everybody(
     app: Any, konten: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -342,3 +394,38 @@ def test_a_fresh_sign_in_at_the_provider_is_at_most_five_minutes_old(konten: Any
     assert konten.common.fresh_sign_in(now - timedelta(minutes=5, seconds=1), now) is False
     assert konten.common.fresh_sign_in(now + timedelta(minutes=1), now) is False
     assert konten.common.fresh_sign_in(None, now) is False
+
+
+def test_switching_the_authenticator_off_goes_through_the_module_and_means_off(app: Any, konten: Any) -> None:
+    """Decided while building (0.3.5): every app switches the authenticator off with ``factor.disable_totp`` and
+    keeps no route of its own for it. Confirmed with the password (an account through a provider only: a fresh
+    sign-in there), counted at the brake, the codes go with it, a setup that still waits ends too, and the next
+    sign-in asks no code."""
+    secret = password()
+    alex = app.seed("alex", password=secret)
+    _set_up(app, konten, alex, secret)
+    with app.store() as store:
+        konten.factor.begin_totp(store, alex, issuer=ISSUER)
+        assert konten.factor.pending_setup(store, alex, issuer=ISSUER) is not None
+        konten.factor.disable_totp(store, alex, password=secret)
+    with app.store() as store:
+        assert store.totp_seed(alex) is None and store.recovery_hashes(alex) == []
+        assert konten.factor.pending_setup(store, alex, issuer=ISSUER) is None
+        assert konten.common.next_step(store, store.get_account(alex)) == konten.NEXT_SESSION
+    kim = app.seed("kim")
+    with app.store() as store:
+        enrolment = konten.factor.begin_totp(store, kim, issuer=ISSUER)
+        code = konten.factor.code_at(enrolment.seed, time.time())
+        konten.factor.confirm_totp(store, kim, code, actor_confirmed=True)
+    with app.store() as store:
+        _refused(konten, lambda: konten.factor.disable_totp(store, kim), "fresh_sign_in_needed")
+        konten.factor.disable_totp(store, kim, actor_confirmed=True)
+    with app.store() as store:
+        assert store.totp_seed(kim) is None
+    bob = app.seed("bob", password=secret)
+    _set_up(app, konten, bob, secret)
+    with app.store() as store:
+        for _ in range(konten.brake.FREE_OTHER + 1):
+            _refused(konten, lambda: konten.factor.disable_totp(store, bob, password=password()), "wrong_password")
+        _refused(konten, lambda: konten.factor.disable_totp(store, bob, password=secret), "too_many_attempts")
+        assert store.totp_seed(bob)

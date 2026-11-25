@@ -39,7 +39,7 @@ import struct
 import threading
 import time
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from urllib.parse import quote
 
@@ -74,6 +74,10 @@ RECOVERY_CODES = 10
 RECOVERY_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
 RECOVERY_LENGTH = 10
 RECOVERY_MARK = "h1:"
+#: The operator's dialog "Reset the second factor", as ``SECTIONS.operatorFactorReset`` in ``konten.ts``; the
+#: passkey parts show only for an account with passkeys (0.3.4).
+FACTOR_RESET_PARTS = ("factorResetHint", "passkeys", "factorResetPasskeys", "factorResetDevices")
+FACTOR_RESET_PASSKEY_PARTS = ("passkeys", "factorResetPasskeys")
 
 
 class AppStore(Store, FactorStore, PasskeyStore, Protocol):
@@ -203,26 +207,16 @@ def state(store: AppStore, account_id: AccountId) -> str:
 # --- Confirming a change -------------------------------------------------------------------------------------------
 
 
-def too_many_attempts(wait: float) -> AccountError:
-    return AccountError(
-        "too_many_attempts", "Too many attempts. Wait a moment.", 429, retry_after=max(1, int(wait + 0.999))
-    )
+#: Since 0.3.4 in ``common`` (every door counts at the brake); kept here for callers of 0.3.3.
+too_many_attempts = common.too_many_attempts
 
 
 def confirmed(
     store: Store, account: Account, password: str, actor_confirmed: bool, *, without_password: bool
 ) -> None:
-    """``common.confirm`` behind the brake: a wrong password here counts at the account (``confirm:<id>``, five free)
-    as a sign-in would, so that a session cannot guess the password through these pages."""
-    if actor_confirmed or not account.has_password:
-        common.confirm(store, account, password, actor_confirmed, without_password=without_password)
-        return
-    keys = (f"confirm:{account.id}",)
-    wait = brake.BRAKE.claim(keys)
-    if wait > 0:
-        raise too_many_attempts(wait)
+    """``common.confirm``, which counts a wrong password at the brake (``confirm:<id>``, five free) as a sign-in
+    would. Kept for callers of 0.3.3."""
     common.confirm(store, account, password, actor_confirmed, without_password=without_password)
-    brake.BRAKE.succeeded(keys)
 
 
 # --- Setting up -------------------------------------------------------------------------------------------------------
@@ -230,8 +224,12 @@ def confirmed(
 
 @dataclass(frozen=True)
 class Enrolment:
+    """An authenticator waiting for its first code: the seed (to type in by hand), the ``otpauth://`` address (the
+    app draws the QR code from it) and, since 0.3.4, until when it waits."""
+
     seed: str
     uri: str
+    expires_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -252,27 +250,48 @@ def begin_totp(store: AppStore, account_id: AccountId, *, issuer: str) -> Enrolm
     without ``set_pending_totp`` keeps it in memory). It is no factor yet."""
     account = common.account_or_404(store, account_id)
     seed = new_seed()
+    until = common.utcnow() + timedelta(seconds=ENROLMENT_SECONDS)
     keep = getattr(store, "set_pending_totp", None)
     if keep is not None:
-        keep(account.id, seed, common.utcnow() + timedelta(seconds=ENROLMENT_SECONDS))
+        keep(account.id, seed, until)
         store.commit()
     else:
         with _enrolments_lock:
             _enrolments[account.id] = (seed, time.monotonic() + ENROLMENT_SECONDS)
-    return Enrolment(seed, provisioning_uri(seed, issuer, account.username))
+    return Enrolment(seed, provisioning_uri(seed, issuer, account.username), until)
 
 
-def _waiting_seed(store: AppStore, account_id: AccountId) -> str | None:
-    """The seed that waits for its first code, None when there is none or it waited too long."""
+def pending_setup(store: AppStore, account_id: AccountId, *, issuer: str) -> Enrolment | None:
+    """Since 0.3.4: the authenticator that waits for its first code, once more (the page was reloaded, the QR code
+    closed, another tab): the same seed and address as ``begin_totp`` gave, until it expires; None when nothing waits
+    (the page offers "Set up" again). Reading it changes nothing: the clock is not restarted, and a factor already set
+    up keeps counting until a code confirms the new one."""
+    account = common.account_or_404(store, account_id)
+    held = _enrolment_held(store, account.id)
+    if held is None:
+        return None
+    seed, until = held
+    return Enrolment(seed, provisioning_uri(seed, issuer, account.username), until)
+
+
+def _enrolment_held(store: AppStore, account_id: AccountId) -> tuple[str, datetime] | None:
+    """The seed that waits for its first code and until when, None when there is none or it waited too long."""
     pending = getattr(store, "pending_totp", None)
     if pending is not None:
         held = pending(account_id)
         if held is None or common.expired(held[1]):
             return None
-        return held[0]
+        seed, until = held
+        return seed, until if until.tzinfo is not None else until.replace(tzinfo=UTC)
     with _enrolments_lock:
         kept = _enrolments.get(account_id)
-    return kept[0] if kept is not None and kept[1] >= time.monotonic() else None
+    left = kept[1] - time.monotonic() if kept is not None else -1.0
+    return (kept[0], common.utcnow() + timedelta(seconds=left)) if kept is not None and left >= 0 else None
+
+
+def _waiting_seed(store: AppStore, account_id: AccountId) -> str | None:
+    held = _enrolment_held(store, account_id)
+    return held[0] if held is not None else None
 
 
 def _drop_waiting_seed(store: AppStore, account_id: AccountId) -> None:
@@ -338,11 +357,15 @@ def _last_factor_guard(store: AppStore, account_id: AccountId, *, removing_totp:
 def disable_totp(
     store: AppStore, account_id: AccountId, *, password: str = "", actor_confirmed: bool = False
 ) -> None:
-    """The owner takes the time-based code away (not the last factor where one is required)."""
+    """The owner takes the time-based code away (not the last factor where one is required). The one way for every
+    app (since 0.3.5 the apps keep no route of their own for it): confirmed with the password or a fresh sign-in at
+    the provider, counted at the brake (``confirm:<id>``), the recovery codes go with it unless a passkey stays, and
+    a setup that waits for its first code ends too (since 0.3.5), so that switched off means off."""
     account = common.account_or_404(store, account_id)
     confirmed(store, account, password, actor_confirmed, without_password=True)
     _last_factor_guard(store, account.id, removing_totp=True, removing_passkey=False)
     store.set_totp(account.id, None)
+    _drop_waiting_seed(store, account.id)
     if not store.passkeys_of(account.id):
         store.set_recovery(account.id, [])
     store.commit()
@@ -359,6 +382,15 @@ class ResetOverview:
     recovery_codes: int
     passkeys: list[Passkey]
     devices: list[Session]
+
+    @property
+    def parts(self) -> tuple[str, ...]:
+        """Since 0.3.4: the parts of the dialog, top to bottom, as ``SECTIONS.operatorFactorReset`` names them, for
+        this account: the passkeys and the box "Remove the passkeys too" only when it has passkeys (the same as
+        ``factorResetParts`` in ``konten.ts``)."""
+        return tuple(
+            part for part in FACTOR_RESET_PARTS if self.passkeys or part not in FACTOR_RESET_PASSKEY_PARTS
+        )
 
 
 def reset_overview(store: AppStore, account_id: AccountId, *, actor_id: AccountId) -> ResetOverview:
@@ -394,16 +426,9 @@ def operator_reset(
     hears of it."""
     if account_id == actor_id:
         raise AccountError("use_account_page", "Change your own second factor in your profile.", 409)
-    keys = (f"confirm:{actor_id}",)
-    if not actor_confirmed:
-        wait = brake.BRAKE.claim(keys)
-        if wait > 0:
-            raise too_many_attempts(wait)
     target, actor = common.acting(
         store, account_id, actor_id, password, confirm_self=True, actor_confirmed=actor_confirmed
     )
-    if not actor_confirmed:
-        brake.BRAKE.succeeded(keys)
     store.set_totp(target.id, None)
     _drop_waiting_seed(store, target.id)
     store.set_recovery(target.id, [])
@@ -429,7 +454,22 @@ def operator_reset(
 
 def check_code(store: AppStore, account_id: AccountId, typed: str) -> str:
     """A time-based code or a recovery code of the account: ``"totp"`` or ``"recovery"``; ``code_wrong`` else.
-    Each counts once, also for two requests at the same moment. Commits what it used up."""
+    Each counts once, also for two requests at the same moment. Commits what it used up. Every code counts at the
+    brake (``code:<account>``, five free, since 0.3.4): also across waiting sign-ins, each of which ends after five."""
+    keys = (brake.door_key(brake.DOOR_CODE, account_id),)
+    wait = brake.BRAKE.claim(keys)
+    if wait > 0:
+        store.rollback()
+        raise too_many_attempts(wait)
+    method = _matching_code(store, account_id, typed)
+    if method is None:
+        store.rollback()
+        raise AccountError("code_wrong", "The code is wrong.", 422)
+    brake.BRAKE.succeeded(keys)
+    return method
+
+
+def _matching_code(store: AppStore, account_id: AccountId, typed: str) -> str | None:
     seed = store.totp_seed(account_id)
     if seed:
         step = matching_step(seed, typed)
@@ -446,8 +486,7 @@ def check_code(store: AppStore, account_id: AccountId, typed: str) -> str:
                     log().warning("Recovery code used account=%s left=%s", account_id, len(hashes) - 1)
                     return "recovery"
                 break
-    store.rollback()
-    raise AccountError("code_wrong", "The code is wrong.", 422)
+    return None
 
 
 # --- The sign-in that waits for the code ------------------------------------------------------------------------------

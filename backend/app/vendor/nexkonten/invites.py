@@ -91,25 +91,47 @@ def public_url_needed() -> AccountError:
     )
 
 
-def invite_link(public_url: str, path: str, token: str) -> str:
-    """The link of an invitation (or any link the app mails): the public address, the app's path, the token.
-    ``public_url_needed`` without a public address: a link to nowhere helps nobody."""
-    base = (public_url or "").strip().rstrip("/")
-    parts = urlsplit(base)
+def _base(raw: str | None) -> str:
+    """Scheme, host, port and path of an address, without query and fragment; "" when it is no http(s) address."""
+    parts = urlsplit((raw or "").strip())
     if parts.scheme not in ("http", "https") or not parts.hostname:
+        return ""
+    return f"{parts.scheme}://{parts.netloc}{parts.path}".rstrip("/")
+
+
+def link_base(public_url: str | None, request_base: str | None = None) -> str:
+    """Since 0.3.5: where the links of the app lead. The public address when one is entered, else the address the
+    operator opened the app under right now (``request_base``: scheme, host, port and base path of the request, as
+    nexnotes always did), so that an installation without an entered address can still invite. ``public_url_needed``
+    only when both are missing."""
+    base = _base(public_url) or _base(request_base)
+    if not base:
         raise public_url_needed()
-    return f"{base}/{path.strip('/')}/{quote(token, safe='')}"
+    return base
+
+
+def invite_link(public_url: str, path: str, token: str, *, request_base: str | None = None) -> str:
+    """The link of an invitation (or any link the app mails): the public address (else ``request_base``, since
+    0.3.5), the app's path, the token. ``public_url_needed`` without either: a link to nowhere helps nobody."""
+    return f"{link_base(public_url, request_base)}/{path.strip('/')}/{quote(token, safe='')}"
 
 
 def invite_values(
-    store: Store, *, email: str, display_name: str, existing_ok: bool = False, public_url: str | None = None
+    store: Store,
+    *,
+    email: str,
+    display_name: str,
+    existing_ok: bool = False,
+    public_url: str | None = None,
+    request_base: str | None = None,
 ) -> tuple[str, str]:
     """What the operator typed for a new invitation, checked: an address in the right form that no account has
     (``existing_ok``: an invitation into a space may go to an account's address, it joins with it), and a display
-    name as people write it. ``public_url`` (since 0.3.2): the app's public address; empty refuses the invitation
-    (``public_url_needed``), None leaves it unchecked as before."""
-    if public_url is not None and not urlsplit((public_url or "").strip()).hostname:
-        raise public_url_needed()
+    name as people write it. ``public_url`` (since 0.3.2): the app's public address, None leaves it unchecked as
+    before. Since 0.3.5 an empty one no longer refuses when ``request_base`` (the address of the operator's request)
+    is there: the link takes that (``invite_link(..., request_base=…)``); ``public_url_needed`` only without both."""
+    if public_url is not None:
+        link_base(public_url, request_base)
     address = clean_email(email)
     if address and not existing_ok and email_taken(store, address):
         raise AccountError("email_taken", "This address belongs to another account already.", 409)

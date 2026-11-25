@@ -15,6 +15,13 @@ right passwords. A browser that knows the account (``sessions.known_mark``) coun
 owner never brakes the owner's own browser, also not from behind the same router (decided 25.11.2026; until 0.3.2
 such a browser counted at the sender, which ``known_browser=True`` without a mark still does for older callers).
 
+Every other door counts through the same brake (since 0.3.4), each with a key ``door_key(<door>, <what>)``:
+``confirm:<account>`` a password typed to confirm a change (one's own address, username, factor, or an operator's
+action on another account: counted at the operator), ``code:<account>`` a code of the second factor at sign-in,
+``mail:<account>`` a mail a person makes the module write (a forgotten password, the link for a new address; these are
+never taken back), ``forgot:<sender>`` the requests to "Forgot your password?" from one sender. The module claims them
+itself (``common.guarded``); an app with a route of its own uses the same keys.
+
 At most 50 000 counts are kept; when full, the ones whose hour is over go first, then senders and typed text before
 accounts, the least recently failed first.
 
@@ -30,7 +37,9 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-FREE = {"sender": 30, "account": 5, "typed": 5, "browser": 5}
+FREE = {
+    "sender": 30, "account": 5, "typed": 5, "browser": 5, "confirm": 5, "code": 5, "mail": 5, "forgot": 10,
+}
 FREE_OTHER = 5
 FIRST_WAIT = 5.0
 LONGEST_WAIT = 15 * 60.0
@@ -38,6 +47,20 @@ FORGET_AFTER = 3600.0
 MAX_COUNTS = 50_000
 SENDER = "sender:"
 BROWSER = "browser:"
+
+#: The doors besides the sign-in (since 0.3.4); ``door_key`` makes their keys.
+DOOR_CONFIRM = "confirm"
+DOOR_CODE = "code"
+DOOR_MAIL = "mail"
+DOOR_FORGOT = "forgot"
+DOORS = (DOOR_CONFIRM, DOOR_CODE, DOOR_MAIL, DOOR_FORGOT)
+
+
+def door_key(door: str, what: object) -> str:
+    """The count of one door: ``<door>:<account id>``, or ``forgot:<sender>`` (an empty sender counts as ``none``)."""
+    if door not in DOORS:
+        raise ValueError(f"unknown door {door!r}")
+    return f"{door}:{str(what).strip() or 'none'}"
 
 
 @dataclass
