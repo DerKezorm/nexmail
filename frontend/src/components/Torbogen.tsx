@@ -12,6 +12,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Moon, Sun } from 'lucide-react'
 import { Logo } from './Logo'
+import { Beschriftung } from '../ds/beschriftung'
 import { SPRACHEN, spracheSetzen } from '../i18n'
 import type { Sprachcode } from '../i18n'
 
@@ -93,7 +94,8 @@ export function Torbogen({
             {titel}
           </h1>
           {untertitel && <div className="mb-6 text-[13px] text-fg-3">{untertitel}</div>}
-          {children}
+          {/* Anmelden, Einrichten, Einladung, Passwort: Beschriftungen normal geschrieben wie in nexnotes. */}
+          <Beschriftung.Provider value="normal">{children}</Beschriftung.Provider>
         </main>
       </div>
     </div>
