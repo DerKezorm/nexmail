@@ -500,6 +500,34 @@ def passwort_link(
 class FaktorZuruecksetzen(MitPasswort):
     #: „Gekoppelte Geraete auch trennen“ (konten 0.3.1), ab Werk an: Ein verlorenes Handy ist sonst noch angemeldet.
     geraete_trennen: bool = True
+    #: „Passkeys auch entfernen“ (konten 0.3.3), ab Werk an: Ein verlorenes Handy traegt vielleicht einen.
+    passkeys_entfernen: bool = True
+
+
+class FaktorUeberblick(BaseModel):
+    """Was ein Zuruecksetzen wegnaehme (``factor.reset_overview``), fuer den Dialog davor."""
+
+    authenticator: bool
+    codes: int
+    passkeys: list[str]
+    geraete: list[str]
+
+
+@router.get("/{benutzer_id}/zweiter-faktor-ueberblick", response_model=FaktorUeberblick)
+def zweiter_faktor_ueberblick(benutzer_id: str, ich: Betreiber, db: DbSession) -> FaktorUeberblick:
+    """konten 0.3.3: Authenticator, Codes, Passkeys (mit Namen) und gekoppelte Geraete des Kontos."""
+    from ..vendor.nexkonten import factor
+
+    try:
+        stand = factor.reset_overview(kontenstore.store_fuer(db), benutzer_id, actor_id=ich.id)
+    except nexkonten.AccountError as fehler:
+        raise kontenstore.http(fehler) from fehler
+    return FaktorUeberblick(
+        authenticator=stand.authenticator,
+        codes=stand.recovery_codes,
+        passkeys=[p.name for p in stand.passkeys],
+        geraete=[g.label for g in stand.devices],
+    )
 
 
 @router.post("/{benutzer_id}/zweiter-faktor-zuruecksetzen", response_model=BenutzerZeile)
@@ -511,8 +539,9 @@ def zweiten_faktor_zuruecksetzen(
     request: Request,
     db: DbSession,
 ) -> BenutzerZeile:
-    """„Zweiten Faktor zuruecksetzen“ (Kontenmodul Teil 2): Authenticator-App, Wiederherstellungscodes und Passkeys
-    des Kontos fallen weg, seine Browser-Anmeldungen enden; mit Adresse hoert es davon. Fuer jemanden, dessen Telefon
+    """„Zweiten Faktor zuruecksetzen“ (Kontenmodul Teil 2): Authenticator-App, Wiederherstellungscodes und (mit
+    ``passkeys_entfernen``, ab Werk an) Passkeys des Kontos fallen weg, seine Browser-Anmeldungen enden; mit Adresse
+    hoert es davon. Fuer jemanden, dessen Telefon
     weg ist. Mit dem eigenen Passwort des Betreibers; fuer sich selbst nicht (``use_account_page``)."""
     from ..vendor.nexkonten import factor
 
@@ -525,6 +554,7 @@ def zweiten_faktor_zuruecksetzen(
             password=eingabe.passwort,
             actor_confirmed=_bestaetigt(ich, sitzung),
             disconnect_devices=eingabe.geraete_trennen,
+            remove_passkeys=eingabe.passkeys_entfernen,
         )
     except nexkonten.AccountError as fehler:
         raise _abgelehnt(fehler, wache) from fehler

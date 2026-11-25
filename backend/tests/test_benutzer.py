@@ -522,6 +522,30 @@ def test_der_betreiber_setzt_den_zweiten_faktor_zurueck(klient, zweiter_klient, 
     assert wieder.status_code == 200 and wieder.json()["schritt"] == "fertig", wieder.text
 
 
+def test_der_dialog_zeigt_die_passkeys_und_laesst_sie_auf_wunsch_stehen(klient, db):
+    """konten 0.3.3: der Ueberblick vor dem Zuruecksetzen nennt Authenticator, Codes und Passkeys; ohne den Haken
+    „Passkeys auch entfernen“ bleiben sie."""
+    from app.models import Passkey
+
+    einrichten(klient)
+    person, _ = zweiten_benutzer_anlegen(db)
+    db.add(Passkey(benutzer_id=person.id, credential_id=b"kennung-1", public_key=b"schluessel", name="Laptop"))
+    db.commit()
+
+    stand = klient.get(f"/api/benutzer/{person.id}/zweiter-faktor-ueberblick")
+    assert stand.status_code == 200, stand.text
+    assert stand.json()["authenticator"] is True and stand.json()["passkeys"] == ["Laptop"]
+
+    antwort = klient.post(
+        f"/api/benutzer/{person.id}/zweiter-faktor-zuruecksetzen",
+        json={"passwort": PASSWORT, "passkeys_entfernen": False},
+    )
+    assert antwort.status_code == 200, antwort.text
+    db.expire_all()
+    assert not db.get(Benutzer, person.id).totp_geheimnis
+    assert db.query(Passkey).filter_by(benutzer_id=person.id).count() == 1
+
+
 def test_den_eigenen_zweiten_faktor_setzt_niemand_hier_zurueck(klient, db):
     einrichten(klient)
     ich = db.query(Benutzer).filter(Benutzer.ist_betreiber.is_(True)).one()
