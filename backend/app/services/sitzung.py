@@ -283,10 +283,16 @@ def _markengeheimnis() -> bytes:
 def bekannt(request: Request, store, konto_id: str) -> bool:
     """Ob dieser Browser eine gueltige Marke fuer das Konto traegt. Er ist dann von der Kontosperre ausgenommen, und
     die Mail „Neue Anmeldung“ bleibt aus."""
+    return bool(bekannte_marke(request, store, konto_id))
+
+
+def bekannte_marke(request: Request, store, konto_id: str) -> str:
+    """Die gueltige Marke dieses Browsers fuer das Konto, ``""`` ohne (``sessions.known_mark``): der eigene Topf an
+    der Bremse."""
     zeile = store.db.get(Benutzer, str(konto_id))
     if zeile is None or not zeile.geraete_schluessel:
-        return False
-    return kontensitzungen.is_known(
+        return ""
+    return kontensitzungen.known_mark(
         request.cookies.get(BEKANNT_COOKIE, ""), _markengeheimnis(), zeile.geraete_schluessel
     )
 

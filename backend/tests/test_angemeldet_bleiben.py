@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.db import SessionLocal, einstellung_schreiben
 from app.main import app
 from app.models import Benutzer, Sitzung, utcnow
+from app.vendor.nexkonten import brake
 from app.services import anmeldebremse, systempost
 from app.services import sitzung as sitzungsdienst
 from conftest import einrichten
@@ -125,7 +126,7 @@ def test_ein_browser_von_vor_dem_update_wird_still_bekannt(klient, db, post):
 def test_der_bekannte_browser_ist_von_der_kontosperre_ausgenommen(klient, db, monkeypatch):
     einrichten(klient)
     # Die Bremse ist ein eigener Riegel; hier geht es um die Sperre am Konto.
-    monkeypatch.setattr(anmeldebremse, "torwaechter", lambda *a, **k: _OhneBremse())
+    monkeypatch.setattr(brake.BRAKE, "claim", lambda *a, **k: 0.0)
 
     fremd = _neuer_browser()
     for _ in range(10):
@@ -136,22 +137,12 @@ def test_der_bekannte_browser_ist_von_der_kontosperre_ausgenommen(klient, db, mo
     assert _anmelden(klient).status_code == 200
 
 
-class _OhneBremse:
-    def fehlgeschlagen(self) -> None:
-        pass
-
-    def geschafft(self) -> None:
-        pass
-
-
 def test_der_bekannte_browser_kommt_auch_an_der_bremse_vorbei(klient, db):
-    """konten 0.3.1: Wer fremd das Passwort durchprobiert, fuellt den Topf des Kontos; der Besitzer an seinem Rechner
-    hat einen eigenen."""
+    """konten 0.3.3: Wer fremd das Passwort durchprobiert, fuellt den Topf des Kontos; der Besitzer an seinem Rechner
+    hat einen eigenen (``brake.BRAKE.claim(..., browser=<Marke>)``), auch hinter demselben Absender."""
     einrichten(klient)
     fremd = _neuer_browser()
-    for _ in range(anmeldebremse.SPERRE_AB_VERSUCH):
-        for zaehler in anmeldebremse._zaehler.values():
-            zaehler.frei_ab = 0
+    for _ in range(brake.FREE["account"] + 1):
         fremd.post("/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": "falsch-falsch"})
     assert _anmelden(_neuer_browser()).status_code == 429
     assert _anmelden(klient).status_code == 200

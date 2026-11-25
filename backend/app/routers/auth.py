@@ -13,6 +13,7 @@ ausser dem zweiten Schritt nichts aufrufen kann.
 from __future__ import annotations
 
 import logging
+import math
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
@@ -135,11 +136,29 @@ def bremsschluessel(store, eingetippt: str, request: Request) -> str:
     return konto_oder_eingabe
 
 
-def _markenhash(request: Request) -> str:
-    """Kurz und ohne Inhalt: der Topf eines bekannten Browsers an der Bremse."""
-    import hashlib
+class _Bremse:
+    """Die Bremse des Kontenmoduls an der Anmeldung (``brake.BRAKE``): zwei Toepfe (Absender, Konto oder Eingabe),
+    ein bekannter Browser nur in seinem eigenen. Prueft und zaehlt beim Anlegen in einem Schritt (sonst 429), wie
+    ``anmeldebremse.torwaechter`` an den anderen Tueren; ``geschafft`` nimmt den Versuch zurueck. Ohne
+    ``NEXMAIL_CLIENT_IP`` zaehlt der Absender je Ziel (``sender:none:<ziel>``), nie in einem Topf fuer alle."""
 
-    return hashlib.sha256(request.cookies.get(sitzungsdienst.BEKANNT_COOKIE, "").encode("utf-8")).hexdigest()[:16]
+    def __init__(self, schluessel: tuple[str, str], marke: str) -> None:
+        self.schluessel = schluessel
+        self.marke = marke
+        warten = nexkonten.brake.BRAKE.claim(schluessel, browser=marke)
+        if warten > 0:
+            logger.info("Rate limit hit at sign-in (%s s left).", math.ceil(warten))
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="zu_viele_versuche",
+                headers={"Retry-After": str(math.ceil(warten))},
+            )
+
+    def fehlgeschlagen(self) -> None:
+        """Schon beim Anlegen gezaehlt."""
+
+    def geschafft(self) -> None:
+        nexkonten.brake.BRAKE.succeeded(self.schluessel, browser=self.marke)
 
 
 def _konto_schluessel(person: Benutzer) -> str:
@@ -162,15 +181,13 @@ def anmelden(
     store = kontenstore.store_fuer(db)
     gemeint = nexkonten.login.resolve_login(store, eingabe.benutzername)
     # Ein Browser, den das Konto kennt, ist von der Kontosperre ausgenommen (Teil 2): Wer die Sperre ausloest,
-    # sperrt so nicht den Besitzer an seinem eigenen Rechner aus. Dasselbe an der Bremse (konten 0.3.1: „bekannter
-    # Browser zaehlt nur am Absender“): Er zaehlt in einem Topf fuer sich statt im Topf des Kontos.
-    vertraut = gemeint.id if gemeint is not None and sitzungsdienst.bekannt(request, store, gemeint.id) else None
-    topf = (
-        f"known:{gemeint.id}:{_markenhash(request)}"
-        if vertraut is not None
-        else bremsschluessel(store, eingabe.benutzername, request)
+    # sperrt so nicht den Besitzer an seinem eigenen Rechner aus. An der Bremse des Moduls (konten 0.3.3) zaehlt er in
+    # einem Topf fuer sich, weder am Absender noch am Konto: Ein Fremder hinter demselben Router sperrt ihn nicht aus.
+    marke = sitzungsdienst.bekannte_marke(request, store, gemeint.id) if gemeint is not None else ""
+    vertraut = gemeint.id if marke else None
+    wache = _Bremse(
+        nexkonten.login.attempt_key(store, eingabe.benutzername, anmeldebremse.adresse_von(request)), marke
     )
-    wache = anmeldebremse.torwaechter(request, "anmelden", topf)
 
     # ⚠️ **„Anmeldung mit Passwort" aus** (Verwaltung → Anmeldung): Nur die Anbieter lassen herein. Der Betreiber
     # kommt immer mit seinem Passwort hinein, sonst stuende er vor der Tuer, sobald der Anbieter ausfaellt. Die

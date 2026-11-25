@@ -10,6 +10,7 @@ import pytest
 from app.db import SessionLocal, einstellung_schreiben
 from app.models import Benutzer, FruehererName
 from app.services import anmeldebremse, systempost
+from app.vendor.nexkonten import brake
 from conftest import EINRICHTUNGSCODE, einrichten
 
 PASSWORT = "sehr-geheim-123"
@@ -88,13 +89,13 @@ def test_die_bremse_zaehlt_name_und_adresse_zusammen(klient, zweiter_klient):
     """Entwurf, Entscheidung „Anmeldebremse“: ein Konto, ein Zaehler, egal was getippt wird."""
     einrichten(klient)
     _mitglied(klient, zweiter_klient)
+    frei = brake.FREE["account"]
     codes = []
-    for i in range(12):
-        for zaehler in anmeldebremse._zaehler.values():
-            zaehler.frei_ab = 0.0 if zaehler.versuche < anmeldebremse.SPERRE_AB_VERSUCH else zaehler.frei_ab
+    for i in range(frei + 2):
         eingabe = "anna" if i % 2 else "anna@example.com"
         codes.append(klient.post("/api/auth/anmelden", json={"benutzername": eingabe, "passwort": "falsch-1234"}).status_code)
-    assert codes[-1] == 429 and codes.count(401) == anmeldebremse.SPERRE_AB_VERSUCH
+    # Die Bremse des Kontenmoduls (seit konten 0.3.3 auch an nexmails Anmeldung): beide Eingaben, ein Topf.
+    assert codes == [401] * (frei + 1) + [429]
 
 
 # --- Passwort vergessen und der Link vom Betreiber ---------------------------------------------------------------

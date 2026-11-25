@@ -172,8 +172,11 @@ def torwaechter(request: Request, tuer: str, kennung: str) -> Torwaechter:
 
 
 def zuruecksetzen() -> None:
-    """Nur fuer Tests - der Merkposten ist prozessweit."""
+    """Nur fuer Tests - der Merkposten ist prozessweit (auch der des Kontenmoduls an der Anmeldung)."""
+    from ..vendor.nexkonten import brake
+
     _zaehler.clear()
+    brake.BRAKE.forget()
 
 
 # --- Anmeldung ueber einen Anbieter ------------------------------------------ #
