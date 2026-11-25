@@ -1,4 +1,48 @@
 {
+  "0.34.0": {
+    "lead": "Anmelden, Profil und Sicherheit sind neu aufgebaut: Anmelden mit Benutzername oder E-Mail, Passkeys, zwei Wege zurück bei einem vergessenen Passwort und Systemmails, die es bei einem Fehler noch einmal versuchen. Deine bisherige Anmeldung gilt weiter.",
+    "sections": [
+      {
+        "title": "Anmelden mit Benutzername oder E-Mail",
+        "where": "Anmeldeseite",
+        "body": "Du meldest dich mit deinem Benutzernamen oder der E-Mail-Adresse deines Kontos an. „Angemeldet bleiben“ ist ab Werk an; ohne den Haken endet die Anmeldung, wenn du den Browser schließt. Läuft eine Anmeldung ab, meldest du dich im Fenster darüber neu an, und die offene Seite bleibt stehen."
+      },
+      {
+        "title": "Name, Benutzername und Adresse selbst ändern",
+        "where": "Einstellungen → Profil",
+        "body": "Anzeigename, Benutzername und E-Mail änderst du selbst und speicherst alles mit einem Knopf; für Benutzername und Adresse fragt nexmail nach deinem Passwort. Gibt es einen Postausgang, gilt eine neue Adresse, sobald du den Link in der Bestätigungsmail geöffnet hast. Die Sprache gehört jetzt zum Konto und gilt auf jedem Gerät. Ohne Profilbild steht ein Buchstabe auf einer Farbe."
+      },
+      {
+        "title": "Passwort vergessen",
+        "where": "Anmeldeseite; Einstellungen → Server → Konten",
+        "body": "Den Link für ein neues Passwort forderst du mit Benutzername oder E-Mail an; er kommt an die Adresse deines Kontos und gilt eine Stunde. Geht das nicht, erstellt der Betreiber unter „Konten“ einen Link und schickt ihn per Mail oder gibt ihn dir weiter. Ein neues Passwort meldet alle Browser ab; danach zeigt nexmail, welche Geräte noch Zugriff haben, und trennt sie auf Wunsch."
+      },
+      {
+        "title": "Passkeys und zweiter Faktor",
+        "where": "Einstellungen → Sicherheit",
+        "body": "Passwort, zweiter Faktor, Passkeys und angemeldete Geräte stehen jetzt je in einem eigenen Kasten. Mit einem Passkey meldest du dich ohne Passwort und Code an (nur über https). Neue Wiederherstellungscodes erzeugst du dort selbst. Meldet sich jemand aus einem Browser an, den nexmail noch nicht kennt, bekommst du eine Mail; das lässt sich abschalten."
+      },
+      {
+        "title": "Einladen ohne vorgegebenen Namen",
+        "where": "Einstellungen → Server → Konten",
+        "body": "Beim Einladen genügen E-Mail und Name, beide frei, und du wählst, wie lange der Link gilt (1, 7 oder 30 Tage). Den Benutzernamen sucht sich die eingeladene Person selbst aus. Ohne eigenen Postausgang zeigt nexmail den Link zum Weitergeben."
+      },
+      {
+        "title": "Für den Betreiber",
+        "where": "Einstellungen → Server → Anmeldung, Konten und Mail",
+        "body": "Unter „Anmeldung“ verlangst du auf Wunsch einen zweiten Faktor von allen und schaltest Passkeys ab. Hat jemand sein Handy verloren, setzt du unter „Konten“ seinen zweiten Faktor zurück. Systemmails versucht nexmail bei einem Fehler später noch einmal; unter „Mail“ siehst du den letzten Versand, den letzten Fehler und was noch wartet."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Nach dem Update läuft alles weiter: Anmeldungen, Passwörter, zweite Faktoren, gekoppelte iPhones und API-Schlüssel. Neue Passwörter brauchen mindestens 12 Zeichen, ältere kürzere gelten weiter.",
+      "Nach einem Einrichtungscode fragt nur ein neuer Server, auf dem es noch kein Konto gibt. Er steht im Protokoll („docker logs nexmail“) oder kommt aus NEXMAIL_SETUP_TOKEN; eine laufende Installation fragt nie danach.",
+      "NEXMAIL_ZWEI_FAKTOR_AUS gilt weiter; NEXMAIL_SECOND_FACTOR_OFF ist derselbe Schalter unter einem zweiten Namen.",
+      "Nach zehn falschen Passwörtern ist ein Konto 15 Minuten gesperrt; ein Browser, in dem du dich schon angemeldet hast, ist davon ausgenommen.",
+      "Profilbilder sehen jetzt alle Angemeldeten, nicht nur du und der Betreiber.",
+      "„Kennwort“ heißt überall „Passwort“."
+    ]
+  },
   "0.33.0": {
     "lead": "nexmail arbeitet jetzt mit nextime und nextasks zusammen: alle Kalender über eine Verbindung, Aufgaben aus nextasks direkt in nexmail. Dazu Symbole für deine Postfächer und die Darstellung „Wie das System“.",
     "sections": [

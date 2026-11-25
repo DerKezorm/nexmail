@@ -1,4 +1,48 @@
 {
+  "0.34.0": {
+    "lead": "Signing in, your profile and security are rebuilt: sign in with your username or email, passkeys, two ways back from a forgotten password, and system mails that try again after an error. The way you sign in today keeps working.",
+    "sections": [
+      {
+        "title": "Sign in with username or email",
+        "where": "Sign-in page",
+        "body": "You sign in with your username or your account's email address. “Stay signed in” is on by default; without the tick, the sign-in ends when you close the browser. When a sign-in runs out, you sign in again in a window on top, and the open page stays where it was."
+      },
+      {
+        "title": "Change your name, username and address",
+        "where": "Settings → Profile",
+        "body": "You change your display name, username and email yourself and save them with one button; for the username and the address nexmail asks for your password. With an outgoing mail server, a new address counts once you have opened the link in the confirmation mail. Your language now belongs to the account and applies on every device. Without a profile picture, a letter on a colour stands in."
+      },
+      {
+        "title": "Forgot your password",
+        "where": "Sign-in page; Settings → Server → Accounts",
+        "body": "You ask for a link to a new password with your username or email; it goes to your account's address and lasts one hour. If that is not possible, the operator makes a link under “Accounts” and sends it by mail or passes it on to you. A new password signs out every browser; afterwards nexmail shows which devices still have access and disconnects them if you want."
+      },
+      {
+        "title": "Passkeys and second factor",
+        "where": "Settings → Security",
+        "body": "Password, second factor, passkeys and signed-in devices now each have a box of their own. With a passkey you sign in without password or code (over https only). You make new recovery codes there yourself. When somebody signs in from a browser nexmail does not know yet, you get a mail; you can switch that off."
+      },
+      {
+        "title": "Invitations without a set name",
+        "where": "Settings → Server → Accounts",
+        "body": "An invitation needs only an email address and a name, both optional, and you choose how long the link lasts (1, 7 or 30 days). The person invited picks their own username. Without an outgoing mail server of its own, nexmail shows the link for you to pass on."
+      },
+      {
+        "title": "For the operator",
+        "where": "Settings → Server → Sign-in, Accounts and Mail",
+        "body": "Under “Sign-in” you can require a second factor of everybody and switch passkeys off. If somebody lost their phone, you reset their second factor under “Accounts”. nexmail tries system mails again later after an error; under “Mail” you see the last mail sent, the last error and what is still waiting."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "Everything keeps working after the update: sign-ins, passwords, second factors, paired iPhones and API keys. New passwords need at least 12 characters; older, shorter ones stay valid.",
+      "Only a new server without any account asks for a setup code. It is in the log (“docker logs nexmail”) or comes from NEXMAIL_SETUP_TOKEN; a running installation never asks for it.",
+      "NEXMAIL_ZWEI_FAKTOR_AUS still works; NEXMAIL_SECOND_FACTOR_OFF is the same switch under a second name.",
+      "After ten wrong passwords an account is locked for 15 minutes; a browser you have signed in with before is exempt.",
+      "Every signed-in account now sees profile pictures, not only you and the operator.",
+      "“Kennwort” is now called “Passwort” everywhere in German."
+    ]
+  },
   "0.33.0": {
     "lead": "nexmail now works with nextime and nextasks: all calendars through one connection, tasks from nextasks right in nexmail. Plus symbols for your mailboxes and the appearance “Like the system”.",
     "sections": [

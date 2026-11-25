@@ -26,7 +26,7 @@ Roundcube is webmail bolted onto one mailbox. Thunderbird does not run in a
 browser. Commercial clients want to pull your mail onto their servers. nexmail
 is the third option — and if you can use Outlook, you should feel at home.
 
-> **Version 0.33.0.** It reads, writes, searches, sorts, labels, sends,
+> **Version 0.34.0.** It reads, writes, searches, sorts, labels, sends,
 > schedules, prints, answers for you while you are away, keeps a calendar and
 > your address books in sync with iCloud or Google, invites people to your own
 > appointments, rephrases a draft with an AI service of your choice, backs
@@ -695,16 +695,24 @@ host's address on your network, for example `http://10.0.0.20:8080/hook`.
 **Two-factor is available and optional.** TOTP with replay protection, ten
 single-use recovery codes, and a per-user switch — including for the operator.
 On a purely local network it is reasonable to leave it off; reachable from the
-internet it is not, and nexmail says so where you make the choice.
+internet it is not, and nexmail says so where you make the choice. The operator
+can require a second factor of everybody under *Settings → Server → Sign-in*;
+whoever has none sets it up at the next sign-in. Passkeys (over https) sign in
+without password or code and count as a second factor; the operator can switch
+them off. A lost phone is handled by the operator, who resets that account's
+second factor under *Accounts*.
 
 **Sessions live on the server, not in a token.** That costs one query per
 request and buys *sign out everywhere* with immediate effect. Devices are listed
-and can be revoked individually.
+and can be revoked individually. *Stay signed in* keeps a browser signed in for
+30 days of use; without it, the sign-in ends with the browser. A sign-in from a
+browser nexmail does not know yet sends you a mail, which you can switch off.
 
 ![The security tab with two-factor and signed-in devices](docs/screenshots/sicherheit-en.webp)
 
 **Passwords use Argon2id**, sign-ins are rate-limited, and a spent recovery code
-stays spent.
+stays spent. Ten wrong passwords lock an account for 15 minutes; a browser that
+has signed in to it before is exempt, so a stranger guessing cannot lock you out.
 
 **What two factors cannot do — plainly.** Mailbox passwords must be decryptable
 on disk, because syncing runs while nobody is signed in. The key sits in
