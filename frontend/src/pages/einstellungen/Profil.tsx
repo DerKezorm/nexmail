@@ -137,8 +137,12 @@ export function Profil({
     picture: () => {
       const p = teil('picture')
       return (
-        <div className="flex flex-col gap-1.5" data-testid="profil-bild">
-          <span className="text-[12px] font-medium text-fg-3">{t(p.title)}</span>
+        <div className="flex flex-col gap-2" data-testid="profil-bild">
+          {/* Wie nexnotes: Überschrift und Hinweis oben, darunter Bild und Knöpfe. */}
+          <div>
+            <h3 className="mb-0 text-sm font-medium text-fg-1">{t(p.title)}</h3>
+            <p className="mt-0.5 mb-0 text-[12px] text-fg-3">{t(p.hint)}</p>
+          </div>
           <div className="flex flex-wrap items-center gap-3">
             <Profilbild id={person.id} name={person.anzeigename} stand={person.profilbild} groesse={64} />
             <div className="flex flex-wrap gap-2">
@@ -171,7 +175,6 @@ export function Profil({
               )}
             </div>
           </div>
-          <span className="text-[12px] text-fg-4">{t(p.hint)}</span>
         </div>
       )
     },
