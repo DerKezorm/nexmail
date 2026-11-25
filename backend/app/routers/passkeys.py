@@ -43,10 +43,11 @@ def _ort(db, request: Request) -> passkeys.Party:
     """Der Host, zu dem ein Passkey gehoert: die oeffentliche Adresse. ⚠️ **Auf localhost die Seite selbst**
     (``Origin``, sonst die Adresse der Anfrage): Browser erlauben WebAuthn dort ohne https, und die Seite laeuft beim
     Ausprobieren oft unter einem anderen Port als die eingetragene Adresse. Ein Passkey fuer localhost taugt nirgends
-    sonst, deshalb gibt es diesen Weg nur dort."""
-    # ``origin``: die Kopfzeile, bei einem GET ohne sie die Adresse der Anfrage (das Modul nimmt nur localhost).
-    seite = request.headers.get("origin") or str(request.base_url).rstrip("/")
-    return passkeys.party(kontenpost.oeffentliche_adresse(db), origin=seite)
+    sonst, deshalb gibt es diesen Weg nur dort. Bei einem GET ohne ``Origin`` nimmt das Modul die Adresse der Anfrage
+    (``request_url``, konten 0.3.3)."""
+    return passkeys.party(
+        kontenpost.oeffentliche_adresse(db), origin=request.headers.get("origin", ""), request_url=str(request.url)
+    )
 
 
 def _cookie(request: Request, response: Response, name: str, wert: str) -> None:
