@@ -11,15 +11,31 @@
  * (APP_RENDER) and checks that every field is found by exactly its label and that the profile saves with one button;
  * this needs `@testing-library/dom` among the app's devDependencies and vitest's `environment: 'jsdom'`.
  */
-import { fireEvent, getAllByRole, getByLabelText, waitFor } from '@testing-library/dom'
+import { fireEvent, getAllByRole, getByLabelText, queryByRole, waitFor } from '@testing-library/dom'
 import i18next from 'i18next'
 import { createElement, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { I18nextProvider } from 'react-i18next'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { BUTTONS, FIELDS, kontenVariables, PAGES, pageOrder, SCREENS, screenFields, sessionExpiredParts, suggestUsername } from './vendor/nexkonten/konten'
-import type { AccountField } from './vendor/nexkonten/konten'
+import {
+  ACCOUNT_NAMESPACE,
+  accountActions,
+  BUTTONS,
+  FIELDS,
+  kontenVariables,
+  MANAGE_DIALOG,
+  MANAGE_GROUPS,
+  NOT_ON_SELF,
+  PAGES,
+  pageOrder,
+  passwordChanged,
+  SCREENS,
+  screenFields,
+  sessionExpiredParts,
+  suggestUsername,
+} from './vendor/nexkonten/konten'
+import type { AccountCaps, AccountField, ListedAccount, OwnAction } from './vendor/nexkonten/konten'
 import type { Ich } from './api/client'
 import { naechster } from './components/SitzungAbgelaufen'
 // nexmail: the order the pages really use (pages/einstellungen/Profil, pages/Sicherheit).
@@ -29,6 +45,9 @@ import { EinrichtungPage } from './pages/EinrichtungPage'
 import { EinladungPage } from './pages/EinladungPage'
 import { AnmeldePage } from './pages/AnmeldePage'
 import { KennwortNeuPage, VergessenPage } from './pages/KennwortPage'
+// nexmail (since 0.3.9): the operator's account list (pages/Benutzerverwaltung) and what it passes to accountActions.
+import { Benutzerverwaltung } from './pages/Benutzerverwaltung'
+import { APP_CAPS as NEXMAIL_CAPS, APP_OWN as NEXMAIL_OWN } from './pages/kontenliste'
 import de from './vendor/nexkonten/konten.de.json'
 import en from './vendor/nexkonten/konten.en.json'
 // nexmail: the resources and settings exactly as `spracheHochfahren` gives them to i18next (`i18n/index.ts` merges the
@@ -81,7 +100,20 @@ async function server(input: RequestInfo | URL, init?: RequestInit): Promise<Res
   if (address.includes('/api/einladung/')) return json({ anzeigename: 'Kim', benutzername: 'kim', kontaktadresse: 'kim@example.com', passwort: true })
   if (address.includes('/api/oidc/anmeldeseite')) return json({ providers: [], password: true })
   if (address.includes('/api/oidc/providers')) return json([])
+  if (new URL(address, 'http://nexmail.example').pathname.endsWith('/api/benutzer')) return json(LISTE)
   return json({ detail: 'not_found' }, 404)
+}
+
+/** nexmail (since 0.3.9): the operator's list as `GET /api/benutzer` gives it: the operator's own account first, Kim
+ * last with an address, an authenticator and a provider labelled 'Pocket ID'. */
+const LISTE = {
+  benutzer: [
+    { id: 'chef', benutzername: 'chef', anzeigename: 'Chef', ist_betreiber: true, zwei_faktor_aktiv: false, angelegt: '2026-11-01T10:00:00Z', postfaecher: 1, ki_erlaubt: true, nummer: 1, anbieter: [], kontaktadresse: '', hat_kennwort: true, passkeys: 0, zuletzt_gesehen: '2026-11-25T10:00:00Z', profilbild: null },
+    { id: 'kim', benutzername: 'kim', anzeigename: 'Kim', ist_betreiber: false, zwei_faktor_aktiv: true, angelegt: '2026-11-02T10:00:00Z', postfaecher: 2, ki_erlaubt: false, nummer: 2, anbieter: [{ id: 7, slug: 'pocket-id', label: 'Pocket ID' }], kontaktadresse: 'kim@example.com', kontaktadresse_zaehlt: true, hat_kennwort: true, passkeys: 1, zuletzt_gesehen: null, profilbild: null },
+  ],
+  einladungen: [{ id: 'e1', benutzername: '', anzeigename: 'Late', adresse: 'late@example.com', laeuft_ab: '2026-11-20T10:00:00Z', abgelaufen: true, expired: true }],
+  postausgang_da: false,
+  adresse_da: true,
 }
 
 /** nexmail: an account with a password, as the profile gets it from `/api/auth/ich`. */
@@ -134,6 +166,30 @@ const APP_PAGE_RENDER: { security?: () => Promise<Shown> } = {
   },
 }
 
+// nexmail (since 0.3.9): what nexmail's server can do in the account list (no roles, no blocking, no signing out
+// everywhere, no bringing back), its own button "Hand over operator" and its box "AI allowed", as
+// pages/Benutzerverwaltung passes them to accountActions.
+const APP_CAPS: AccountCaps = NEXMAIL_CAPS
+const APP_OWN: readonly OwnAction[] = NEXMAIL_OWN
+
+// nexmail (since 0.3.9): the operator's account list, signed in as the operator 'chef' (LISTE above).
+const APP_ACCOUNTS_RENDER: { list?: () => Promise<Shown> } = {
+  list: async () => {
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const react = createRoot(root)
+    react.render(createElement(I18nextProvider, { i18n }, createElement(Benutzerverwaltung, { ich: { ...KIM, id: 'chef', ist_betreiber: true } as Ich })))
+    await waitFor(() => getAllByRole(root, 'button', { name: i18n.t('account.manageTitle', { name: 'Kim' }) }))
+    return {
+      root,
+      unmount: () => {
+        react.unmount()
+        root.remove()
+      },
+    }
+  },
+}
+
 // nexmail (since 0.3.8): the text keys of the buttons nexmail words itself, by their role in BUTTONS.
 const APP_BUTTON_WORDS: Partial<Record<keyof typeof BUTTONS, string>> = {
   signIn: 'anmeldung.weiter',
@@ -164,7 +220,8 @@ function leaves(tree: Tree, prefix = ''): [string, string][] {
   })
 }
 
-const values = { username: 'kim', email: 'kim@example.com', provider: 'Pocket ID' }
+// Every value a text of the module asks for (since 0.3.10 also name, day and providers, the words of 0.3.9).
+const values = { username: 'kim', email: 'kim@example.com', provider: 'Pocket ID', name: 'Kim', day: '25.11.2026', providers: 'Pocket ID, Entra' }
 const fill: Record<string, string | number> = { ...kontenVariables(APP_NAME), ...values }
 
 describe('the konten texts', () => {
@@ -180,6 +237,17 @@ describe('the konten texts', () => {
         const filled: Record<string, string | number> = { ...fill, ...given }
         const expected = text.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(filled[name] ?? ''))
         expect(i18n.t(asked, given), key).toBe(expected)
+      }
+    })
+
+    it(`keep the namespace account to the module in ${language}, no text of the app's own there (since 0.3.10)`, () => {
+      const module = new Set(leaves(tree as Tree).map(([key]) => key))
+      const data = (i18n.getDataByLanguage(language) ?? {}) as Record<string, Tree>
+      for (const [namespace, resources] of Object.entries(data)) {
+        const own = namespace === ACCOUNT_NAMESPACE ? resources : resources[ACCOUNT_NAMESPACE]
+        if (own === undefined || typeof own === 'string') continue
+        const extra = leaves(own, ACCOUNT_NAMESPACE).map(([key]) => key).filter((key) => !module.has(key))
+        expect(extra, `${namespace}: the app's own keys under ${ACCOUNT_NAMESPACE}`).toEqual([])
       }
     })
   }
@@ -332,7 +400,7 @@ describe('every button of the account pages has its kind and symbol (since 0.3.8
         const words = new Map<string, keyof typeof BUTTONS>()
         for (const name of Object.keys(BUTTONS) as (keyof typeof BUTTONS)[]) {
           const own = APP_BUTTON_WORDS[name]
-          const text = name.includes('.') ? i18n.t(name, { name: 'Pocket ID' }) : own && i18n.t(own)
+          const text = name.includes('.') ? i18n.t(name, { name: 'Pocket ID', provider: 'Pocket ID' }) : own && i18n.t(own)
           if (text && !words.has(text)) words.set(text, name)
         }
         let found = 0
@@ -350,4 +418,117 @@ describe('every button of the account pages has its kind and symbol (since 0.3.8
       }
     })
   }
+})
+
+/** Every account the tests ask accountActions about: the operator's own, another with everything, blocked, deleted. */
+function sample(change: Partial<ListedAccount> = {}): ListedAccount {
+  return {
+    id: 2,
+    username: 'kim',
+    displayName: 'Kim',
+    email: 'kim@example.com',
+    emailConfirmed: true,
+    operator: false,
+    self: false,
+    hasPassword: true,
+    authenticator: true,
+    passkeys: 1,
+    providers: [{ id: 7, label: 'Pocket ID' }],
+    blocked: false,
+    lastSeenAt: null,
+    ...change,
+  }
+}
+
+/** The words of every button of BUTTONS as the app says them (the provider named 'Pocket ID'), the app's own too. */
+function buttonWords(): Map<string, keyof typeof BUTTONS> {
+  const words = new Map<string, keyof typeof BUTTONS>()
+  for (const name of Object.keys(BUTTONS) as (keyof typeof BUTTONS)[]) {
+    const own = APP_BUTTON_WORDS[name]
+    const text = name.includes('.') ? i18n.t(name, { name: 'Pocket ID', provider: 'Pocket ID' }) : own && i18n.t(own)
+    if (text && !words.has(text)) words.set(text, name)
+  }
+  for (const entry of APP_OWN) {
+    if (entry.group !== 'rights' && !words.has(i18n.t(entry.label))) words.set(i18n.t(entry.label), entry.button)
+  }
+  return words
+}
+
+/** Checks kind and symbol of every button in an element whose words are a button of BUTTONS; gives how many. */
+function checkButtons(root: HTMLElement, where: string): number {
+  const words = buttonWords()
+  let found = 0
+  for (const element of Array.from(root.querySelectorAll<HTMLElement>('button, [role="button"], [data-kind]'))) {
+    const name = words.get(said(element))
+    if (!name) continue
+    found += 1
+    expect(element.getAttribute('data-kind'), `${where}: ${said(element)}`).toBe(BUTTONS[name].kind)
+    expect(element.getAttribute('data-icon'), `${where}: ${said(element)}`).toBe(BUTTONS[name].icon)
+  }
+  return found
+}
+
+describe('the box Password says when it was changed last (since 0.3.10)', () => {
+  it('shows "Last changed on …" or that it is not known, on the page "Security"', async () => {
+    const render = APP_PAGE_RENDER.security
+    if (!render) throw new Error('APP_PAGE_RENDER.security is missing')
+    await i18n.changeLanguage('de')
+    const { root, unmount } = await render()
+    try {
+      const text = (root.textContent ?? '').replace(/\s+/g, ' ')
+      const known = i18n.t(passwordChanged('x').text, { day: '' }).trim()
+      const unknown = i18n.t(passwordChanged(null).text)
+      expect(text.includes(known) || text.includes(unknown), `"${known}" or "${unknown}"`).toBe(true)
+    } finally {
+      unmount()
+    }
+  })
+})
+
+describe('the account list and its dialog "Manage" (since 0.3.9)', () => {
+  it('never offers on the own account what belongs in the profile', () => {
+    for (const row of [sample({ self: true, operator: true }), sample({ self: true, operator: true, blocked: true })]) {
+      const names = accountActions(row, APP_CAPS, APP_OWN).map((action) => action.name.split(':')[0])
+      for (const forbidden of NOT_ON_SELF) expect(names, forbidden).not.toContain(forbidden)
+      for (const entry of APP_OWN) if (entry.notSelf) expect(names, entry.name).not.toContain(entry.name)
+    }
+  })
+
+  it("takes every button of the dialog, the app's own too, with its kind and symbol from BUTTONS", () => {
+    const rows = [sample(), sample({ blocked: true, operator: true }), sample({ deletedAt: '2026-11-25T10:00:00Z', purgeAt: '2026-12-25T10:00:00Z' })]
+    for (const row of rows) {
+      for (const action of accountActions(row, APP_CAPS, APP_OWN)) {
+        if (action.type !== 'button') continue
+        expect(action.button in BUTTONS, action.name).toBe(true)
+        expect([action.kind, action.icon], action.name).toEqual([BUTTONS[action.button].kind, BUTTONS[action.button].icon])
+      }
+    }
+  })
+
+  it('shows one row per account with "Manage", and the dialog with its groups in order, every button as BUTTONS says', async () => {
+    const render = APP_ACCOUNTS_RENDER.list
+    if (!render) throw new Error('APP_ACCOUNTS_RENDER.list is missing')
+    await i18n.changeLanguage('de')
+    const { root, unmount } = await render()
+    try {
+      expect(checkButtons(root, 'list'), 'list: no button of BUTTONS found').toBeGreaterThan(0)
+      const manage = Array.from(root.querySelectorAll<HTMLElement>('button')).filter((button) => said(button) === i18n.t('account.manage'))
+      expect(manage.length, 'one "Verwalten" per account').toBeGreaterThan(1)
+      fireEvent.click(manage[manage.length - 1] as HTMLElement)
+      await new Promise((done) => setTimeout(done, 50))
+      const title = i18n.t('account.manageTitle', { name: '' }).trim()
+      const dialog = getAllByRole(document.body, 'dialog').find((element) => (element.textContent ?? '').includes(title))
+      if (!dialog) throw new Error('the dialog "Manage" did not open')
+      expect(checkButtons(dialog, 'manage'), 'manage: no button of BUTTONS found').toBeGreaterThan(0)
+      const titles = MANAGE_GROUPS.map((group) => i18n.t(MANAGE_DIALOG.groups[group].title))
+      const shown = Array.from(dialog.querySelectorAll('h3'))
+        .map((heading) => heading.textContent ?? '')
+        .filter((text) => titles.includes(text))
+      expect(shown.length, 'the dialog shows its groups').toBeGreaterThan(0)
+      expect(shown, 'groups in their order').toEqual(titles.filter((text) => shown.includes(text)))
+      expect(queryByRole(dialog, 'menu'), 'no menu in the dialog').toBeNull()
+    } finally {
+      unmount()
+    }
+  })
 })

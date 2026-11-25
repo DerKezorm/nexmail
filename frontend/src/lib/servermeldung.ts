@@ -17,7 +17,7 @@
 import i18next from 'i18next'
 import { ApiFehler } from '../api/client'
 import { oidcErrorKey, oidcFormErrorKey } from '../vendor/nexoidc/oidc'
-import { accountErrorKey } from '../vendor/nexkonten/konten'
+import { accountErrorKeyOf } from '../vendor/nexkonten/konten'
 
 /** nexmails alte Kennungen zurück auf die des Kontenmoduls (der Server sendet die alten, `ALTE_KENNUNGEN` in
  *  `services/konten_store.py`); die meisten haben schon einen eigenen Satz unter `serverfehler`. */
@@ -51,13 +51,23 @@ export function servermeldung(fehler: unknown, rueckfall?: string): string {
 
   const kennung = fehler.detail
   const schluessel = `serverfehler.${kennung}`
+  const { account_code: kontoKennung, ...werte } = fehler.werte ?? {}
+  const antwort = { code: kennung, account_code: typeof kontoKennung === 'string' ? kontoKennung : null }
+
+  /* konten 0.3.10: Hinter einer alten Kennung mit zwei Bedeutungen (`einladung_abgelaufen`, `ruecksetzung_ungueltig`)
+     nennt der Server die des Moduls daneben (`werte.account_code`). Sagt sie mehr als die alte (abgelaufen statt
+     ungültig), gilt ihr Satz (`accountErrorKeyOf`). */
+  if (antwort.account_code && antwort.account_code !== ALTE_KENNUNGEN[kennung]) {
+    const genauer = accountErrorKeyOf(antwort, ALTE_KENNUNGEN)
+    if (genauer !== 'account.error.unknown') return i18next.t(genauer, werte)
+  }
 
   /* ⚠️ **`exists` statt eines blinden `t`.** i18next gibt bei einem unbekannten
      Schlüssel den Schlüssel selbst zurück — der Benutzer läse dann
      „serverfehler.ordner_name_fehlt". Ein Rückfall ist hässlich, das ist
      kaputt. */
   if (kennung && i18next.exists(schluessel)) {
-    return i18next.t(schluessel, werteUebersetzt(fehler.werte ?? {}))
+    return i18next.t(schluessel, werteUebersetzt(werte))
   }
 
   /* Die Anmeldung über Anbieter nennt die Kennungen des gemeinsamen Moduls (`routers/oidc.abgelehnt`); ihre Sätze
@@ -67,8 +77,8 @@ export function servermeldung(fehler: unknown, rueckfall?: string): string {
 
   /* Das Kontenmodul nennt seine Kennungen (`display_name_taken`, `setup_code_wrong` …); die Sätze stehen in seinen
      Wortlauten (`account.*`). */
-  const konto = accountErrorKey(kennung, ALTE_KENNUNGEN)
-  if (konto !== 'account.error.unknown') return i18next.t(konto, fehler.werte ?? {})
+  const konto = accountErrorKeyOf(antwort, ALTE_KENNUNGEN)
+  if (konto !== 'account.error.unknown') return i18next.t(konto, werte)
 
   /* ⚠️ **Eine unbekannte Kennung ist ein Fehler bei uns, kein Betriebsfall.**
      Sie kommt nur vor, wenn der Server etwas nennt, das im Katalog fehlt —

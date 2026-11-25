@@ -1,44 +1,83 @@
-/* Wer nexmail benutzen darf — der Reiter „Benutzer" in der Verwaltung.
+/* Wer nexmail benutzen darf — der Reiter „Konten" in der Verwaltung, die Kontenliste des Betreibers aus dem
+ * Kontenmodul (konten 0.3.9, `ACCOUNT_LIST`): je Konto eine Zeile mit Bild, Namen, Marken und „Benutzername · E-Mail“,
+ * rechts „Verwalten“. Das öffnet das Fenster mit allen Angaben und beschrifteten Knöpfen (`MANAGE_DIALOG`: Ändern,
+ * Rechte, Zugang, Beenden). In jeder nex-App gleich.
+ *
+ * nexmails Eigenes an den festen Plätzen des Moduls (`pages/kontenliste.ts`): „Betreiber übergeben“ in „Ändern“ vor
+ * „Adresse entfernen“, nie am eigenen Konto; „KI erlaubt“ als Haken in „Rechte“; die Zahl der Postfächer als Angabe;
+ * beim Löschen die Zahlen der Postfächer und Nachrichten und dass auf dem Mailserver alles bleibt.
  *
  * ⚠️ **Kein offenes Anmelden.** Wer hineindarf, entscheidet der Betreiber
  * einzeln. nexmail ist der Mail-Client eines Haushalts, keine Plattform.
  *
- * ⚠️ **Was fehlt, steht oben — bevor jemand tippt.** Ohne Postausgang und
- * ohne öffentliche Adresse geht keine Einladung hinaus. Das erst beim
- * Absenden zu melden, hieße: Formular ausgefüllt, Fehler kassiert, und der
- * Weg zur Abhilfe liegt in einem anderen Reiter.
+ * ⚠️ **Was fehlt, steht oben — bevor jemand tippt.** Ohne Postausgang geht
+ * keine Mail hinaus; eine Einladung geht trotzdem, der Link steht dann zum
+ * Weitergeben da.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  AtSign,
-  Crown,
-  KeyRound,
-  Mail,
-  Pencil,
-  ShieldCheck,
-  ShieldOff,
-  Sparkles,
-  SparklesIcon,
-  Trash2,
-  Unlink,
-  UserPen,
-  Users,
-} from 'lucide-react'
+import { Mail, Users } from 'lucide-react'
 import { api } from '../api/client'
-import { useNachfrage } from '../components/Nachfrage'
+import type { Ich } from '../api/client'
 import { AccountButton } from '../components/AccountButton'
-import { Badge as Marke, IconButton } from '../ds'
-import { Badge, Button, Card, Dialog, Field, Notice, Row, Rows, SelectField } from '../vendor/nexui'
+import { confirmOf } from '../lib/accountButton'
 import { servermeldung } from '../lib/servermeldung'
 import {
+  ACCOUNT_LIST,
+  accountActions,
+  accountBadges,
+  accountCount,
+  accountFacts,
+  accountLine,
+  accountName,
+  accountPicture,
+  confirmLine,
+  DISPLAY_NAME_MAX,
   FACTOR_RESET_DEFAULTS,
   factorResetParts,
-  INVITE_DAYS,
-  INVITE_DAYS_DEFAULT,
+  INVITE_DIALOG,
+  inviteFields,
+  inviteRow,
+  linkSubmit,
+  MANAGE_CONFIRM,
+  MANAGE_DIALOG,
+  manageGroups,
+  OPEN_INVITES,
   RESET_DAYS,
   RESET_DAYS_DEFAULT,
+  RESET_LINK_DIALOG,
+  removeLines,
+  USERNAME_MAX,
+  type AccountAction,
+  type BadgeShown,
+  type FactShown,
+  type ListedAccount,
 } from '../vendor/nexkonten/konten'
+import {
+  Avatar,
+  Badge,
+  ButtonGroup,
+  Button,
+  Card,
+  CheckboxRow,
+  ConfirmDialog,
+  Dialog,
+  Facts,
+  Field,
+  Notice,
+  Row,
+  Rows,
+  SelectField,
+  type IconName,
+} from '../vendor/nexui'
+import { alsEinladung, alsKonto, APP_CAPS, eigenes, KI_ERLAUBT, UEBERGEBEN, type BenutzerZeile, type EinladungsZeile } from './kontenliste'
+
+interface Bestand {
+  benutzer: BenutzerZeile[]
+  einladungen: EinladungsZeile[]
+  postausgang_da: boolean
+  adresse_da: boolean
+}
 
 /** Was ein Zurücksetzen des zweiten Faktors wegnähme (`GET /api/benutzer/{id}/zweiter-faktor-ueberblick`). */
 interface FaktorUeberblick {
@@ -48,43 +87,7 @@ interface FaktorUeberblick {
   geraete: string[]
 }
 
-interface BenutzerZeile {
-  id: string
-  benutzername: string
-  anzeigename: string
-  ist_betreiber: boolean
-  zwei_faktor_aktiv: boolean
-  angelegt: string
-  postfaecher: number
-  ki_erlaubt: boolean
-  /** Die Kennung im Anmeldemodul, für „Verknüpfung lösen“. */
-  nummer: number
-  /** Die Anmeldeanbieter, mit denen das Konto verknüpft ist. */
-  anbieter: Array<{ id: number; slug: string; label: string }>
-  /** Kontenmodul: die Adresse, ob ein anderes Konto sie auch hat, ob es ein Passwort gibt. */
-  kontaktadresse?: string
-  adresse_doppelt?: boolean
-  hat_kennwort?: boolean
-}
-
-interface EinladungsZeile {
-  id: string
-  benutzername: string
-  anzeigename: string
-  adresse: string
-  laeuft_ab: string
-  abgelaufen: boolean
-  /** Der Link, einmal, wenn er nicht per Mail hinausging. */
-  link?: string
-}
-
-interface Bestand {
-  benutzer: BenutzerZeile[]
-  einladungen: EinladungsZeile[]
-  postausgang_da: boolean
-  adresse_da: boolean
-}
-
+/** Was am Konto hängt (`GET /api/benutzer/{id}/umfang`), für die Rückfrage vor dem Löschen. */
 interface Umfang {
   postfaecher: number
   nachrichten: number
@@ -93,14 +96,68 @@ interface Umfang {
   signaturen: number
 }
 
-export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }) {
+/** Ein Tag in der eingestellten Sprache, ohne Uhrzeit. */
+function tag(wann: string, sprache: string): string {
+  return new Date(wann).toLocaleDateString(sprache, { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+/** Tag und Uhrzeit, ohne Sekunden (wie unter Sicherheit). */
+function tagUndZeit(wann: string, sprache: string): string {
+  return new Date(wann).toLocaleString(sprache, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+/** Ein Aufruf mit „läuft“ und dem Fehler als Satz. */
+function useVorgang() {
+  const { t } = useTranslation()
+  const [laeuft, setLaeuft] = useState(false)
+  const [fehler, setFehler] = useState('')
+  const los = useCallback(
+    async (aufruf: () => Promise<unknown>) => {
+      setFehler('')
+      setLaeuft(true)
+      try {
+        await aufruf()
+        return true
+      } catch (f) {
+        setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
+        return false
+      } finally {
+        setLaeuft(false)
+      }
+    },
+    [t],
+  )
+  return { laeuft, fehler, setFehler, los }
+}
+
+/** Die Marken einer Zeile oder Einladung im Aussehen des Bausatzes; ein Tag in nexmails Schreibweise. */
+function Marken({ marken }: { marken: BadgeShown[] }) {
   const { t, i18n } = useTranslation()
-  const { fragen, fenster: nachfrage } = useNachfrage()
+  return (
+    <>
+      {marken.map((marke, i) => (
+        <Badge key={`${marke.badge}-${i}`} tone={marke.tone}>
+          {marke.label ?? t(marke.text, marke.date ? { day: tag(marke.date, i18n.language) } : undefined)}
+        </Badge>
+      ))}
+    </>
+  )
+}
+
+/** Das Bild eines Kontos: das eigene, sonst der Buchstabe auf dem Farbton des Namens (wie überall in nexmail). */
+function Bild({ konto, groesse }: { konto: ListedAccount; groesse: 32 | 48 }) {
+  const bild = accountPicture(konto)
+  return <Avatar src={bild.src} letter={bild.letter} hue={bild.hue} color={bild.color} size={groesse} />
+}
+
+export function Benutzerverwaltung({ ich, ichNeuLaden }: { ich?: Ich | null; ichNeuLaden?: () => void }) {
+  const { t } = useTranslation()
   const [bestand, setBestand] = useState<Bestand | null>(null)
   const [fehler, setFehler] = useState('')
   const [einladen, setEinladen] = useState(false)
-  /** Ein Link zum Weitergeben (Einladung oder neues Passwort), einmal gezeigt. */
-  const [weitergeben, setWeitergeben] = useState<{ titel: string; link: string } | null>(null)
+  const [offen, setOffen] = useState<string | null>(null)
+  const [zuruecknehmen, setZuruecknehmen] = useState<EinladungsZeile | null>(null)
+  const vorgang = useVorgang()
 
   const laden = useCallback(async () => {
     try {
@@ -114,507 +171,641 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
     void laden()
   }, [laden])
 
-  /** Den Betreiber-Haken weitergeben.
-   *
-   * ⚠️ **Danach ist man selbst keiner mehr.** Der Haken wandert, er wird nicht
-   * vergeben; zwei Betreiber wären nicht schlimm, aber null sind das Ende. Die
-   * Rückfrage sagt genau das, und sie verlangt das eigene Passwort — eine
-   * geklaute Sitzung soll dafür nicht reichen.
-   */
-  async function uebergeben(p: BenutzerZeile) {
-    const wer = p.anzeigename || p.benutzername
-    const kennwort = await fragen({
-      titel: t('verwaltung.uebergeben_frage', { wer }),
-      text: t('verwaltung.uebergeben_text', { wer }),
-      eingabe: { beschriftung: t('anmeldung.passwort'), typ: 'password' },
-      knopf: t('verwaltung.uebergeben_knopf'),
-      gefaehrlich: true,
-    })
-    if (typeof kennwort !== 'string' || !kennwort) return
-    try {
-      await api.senden(`/api/benutzer/${p.id}/betreiber`, { passwort: kennwort })
-      await laden()
-      ichNeuLaden?.()
-    } catch (f) {
-      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
-    }
-  }
-
-  /** Einem einzelnen Konto KI-Dienste erlauben oder verbieten.
-   *
-   * ⚠️ **Ohne Rückfrage, anders als beim Entfernen und beim Übergeben.** Es
-   * ist mit demselben Klick umkehrbar und kostet niemandem seinen Zugang —
-   * die Schlüssel bleiben stehen. Eine Rückfrage für jeden Haken macht die
-   * Verwaltung unbenutzbar, und dann wird sie umgangen.
-   */
-  async function kiUmlegen(p: BenutzerZeile) {
-    try {
-      await api.aendern(`/api/benutzer/${p.id}/ki`, { erlaubt: !p.ki_erlaubt })
-      await laden()
-    } catch (e) {
-      setFehler(servermeldung(e))
-    }
-  }
-
-  /** Eine Verknüpfung eines Kontos lösen: mit dem eigenen
-   *  Passwort des Betreibers, und die Rückfrage nennt Konto und Anbieter. */
-  async function verknuepfungLoesen(p: BenutzerZeile, a: { id: number; label: string }) {
-    const wer = p.anzeigename || p.benutzername
-    const kennwort = await fragen({
-      titel: t('anmeldeweg.verknuepfung_loesen'),
-      text: t('anmeldeweg.verknuepfung_loesen_text', { wer, name: a.label }),
-      eingabe: { beschriftung: t('anmeldung.passwort'), typ: 'password' },
-      knopf: t('anmeldeweg.verknuepfung_loesen'),
-      gefaehrlich: true,
-    })
-    if (typeof kennwort !== 'string' || !kennwort) return
-    try {
-      await api.loeschen(`/api/oidc/admin/accounts/${p.nummer}/links/${a.id}`, { password: kennwort })
-      await laden()
-    } catch (f) {
-      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
-    }
-  }
-
-  /** Das eigene Passwort des Betreibers vor jeder Änderung an einem fremden Konto (Kontenmodul). */
-  async function eigenesPasswort(titel: string): Promise<string | null> {
-    const kennwort = await fragen({
-      titel,
-      text: t('account.confirmWithPassword'),
-      eingabe: { beschriftung: t('account.password'), typ: 'password' },
-      knopf: t('aktion.weiter'),
-    })
-    return typeof kennwort === 'string' && kennwort ? kennwort : null
-  }
-
-  async function handeln(aufruf: () => Promise<unknown>) {
-    setFehler('')
-    try {
-      await aufruf()
-      await laden()
-      ichNeuLaden?.()
-    } catch (f) {
-      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
-    }
-  }
-
-  async function namenAendern(p: BenutzerZeile, feld: 'benutzername' | 'anzeigename') {
-    const titel = t(feld === 'benutzername' ? 'account.username' : 'account.displayName')
-    const neu = await fragen({
-      titel,
-      text: feld === 'benutzername' ? t('account.usernameRules') : t('account.displayNameHint'),
-      eingabe: { beschriftung: titel, vorgabe: feld === 'benutzername' ? p.benutzername : p.anzeigename },
-      knopf: t('aktion.weiter'),
-    })
-    if (typeof neu !== 'string' || !neu) return
-    const kennwort = await eigenesPasswort(titel)
-    if (kennwort === null) return
-    await handeln(() => api.aendern(`/api/benutzer/${p.id}/${feld}`, { [feld]: neu, passwort: kennwort }))
-  }
-
-  /** „Zweiten Faktor zurücksetzen“ (Kontenmodul Teil 2): für jemanden, dessen Telefon weg ist. Seit konten 0.3.3
-   *  zeigt der Dialog vorher die Passkeys des Kontos (`factor.reset_overview`) und fragt „Passkeys auch entfernen“;
-   *  beide Haken ab Werk an (`FACTOR_RESET_DEFAULTS`). Seit 0.3.4 kommen die Teile aus `factorResetParts`: Liste und
-   *  „Passkeys auch entfernen“ nur bei einem Konto mit Passkeys. */
-  async function faktorZuruecksetzen(p: BenutzerZeile) {
-    let stand: FaktorUeberblick
-    try {
-      stand = await api.holen<FaktorUeberblick>(`/api/benutzer/${p.id}/zweiter-faktor-ueberblick`)
-    } catch (f) {
-      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
-      return
-    }
-    const teile = factorResetParts(stand)
-    const ja = await fragen({
-      titel: t('account.factorReset'),
-      text: teile.includes('factorResetHint') ? t('account.factorResetHint') : undefined,
-      knopf: t('aktion.weiter'),
-      gefaehrlich: true,
-      liste: teile.includes('passkeys') ? { titel: t('account.passkeys'), eintraege: stand.passkeys } : undefined,
-      weitereHaken: [
-        ...(teile.includes('factorResetPasskeys')
-          ? [
-              {
-                schluessel: 'passkeys',
-                beschriftung: t('account.factorResetPasskeys'),
-                vorgabe: FACTOR_RESET_DEFAULTS.factorResetPasskeys,
-              },
-            ]
-          : []),
-        // konten 0.3.1: ab Werk an, ein verlorenes Handy ist sonst noch angemeldet.
-        ...(teile.includes('factorResetDevices')
-          ? [
-              {
-                schluessel: 'geraete',
-                beschriftung: t('account.factorResetDevices'),
-                vorgabe: FACTOR_RESET_DEFAULTS.factorResetDevices,
-              },
-            ]
-          : []),
-      ],
-    })
-    if (typeof ja !== 'object' || ja === null || !ja.ja) return
-    const kennwort = await eigenesPasswort(t('account.factorReset'))
-    if (kennwort === null) return
-    await handeln(() =>
-      api.senden(`/api/benutzer/${p.id}/zweiter-faktor-zuruecksetzen`, {
-        passwort: kennwort,
-        geraete_trennen: ja.weitere.geraete ?? true,
-        passkeys_entfernen: ja.weitere.passkeys ?? true,
-      }),
-    )
-  }
-
-  async function adresseEntfernen(p: BenutzerZeile) {
-    const kennwort = await eigenesPasswort(t('account.emailRemove'))
-    if (kennwort === null) return
-    await handeln(() => api.senden(`/api/benutzer/${p.id}/kontaktadresse-entfernen`, { passwort: kennwort }))
-  }
-
-  /** „Link für ein neues Passwort“: wie lange er gilt, dann das eigene Passwort. Mit Postausgang und Adresse geht er
-   *  per Mail hin, sonst steht er einmal zum Weitergeben da. Der Betreiber setzt nie selbst ein Passwort. */
-  async function passwortLink(p: BenutzerZeile) {
-    const dauer = await fragen({
-      titel: t('account.resetLink'),
-      text: p.anzeigename || p.benutzername,
-      auswahl: {
-        beschriftung: t('account.validFor'),
-        werte: RESET_DAYS.map((tage) => ({ wert: String(tage), text: t('account.days', { count: tage }) })),
-        vorgabe: String(RESET_DAYS_DEFAULT),
-      },
-      knopf: t('aktion.weiter'),
-    })
-    if (!dauer || typeof dauer !== 'object') return
-    const kennwort = await eigenesPasswort(t('account.resetLink'))
-    if (kennwort === null) return
-    setFehler('')
-    try {
-      const antwort = await api.senden<{ link: string; an: string }>(`/api/benutzer/${p.id}/passwort-link`, {
-        passwort: kennwort,
-        tage: Number(dauer.wert),
-      })
-      if (antwort.link) setWeitergeben({ titel: t('account.resetLink'), link: antwort.link })
-      else await fragen({ titel: t('account.resetLink'), text: t('account.resetLinkSent', { email: antwort.an }), knopf: t('aktion.fertig') })
-    } catch (f) {
-      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
-    }
-  }
-
-  async function entfernen(person: BenutzerZeile) {
-    setFehler('')
-    let umfang: Umfang | null
-    try {
-      umfang = await api.holen<Umfang>(`/api/benutzer/${person.id}/umfang`)
-    } catch {
-      umfang = null
-    }
-
-    /* ⚠️ **Zahlen statt „alle Daten".** „Wirklich entfernen?" beantwortet man
-       mit Ja, ohne nachzudenken. „3 Postfächer und 12.418 Nachrichten" liest
-       man. Und der Satz sagt ausdrücklich, dass auf dem Mailserver nichts
-       passiert — sonst traut sich niemand. */
-    const ja = await fragen({
-      titel: t('verwaltung.benutzer_entfernen'),
-      text: umfang
-        ? t('verwaltung.benutzer_entfernen_text', {
-            name: person.anzeigename || person.benutzername,
-            postfaecher: umfang.postfaecher,
-            nachrichten: umfang.nachrichten.toLocaleString(i18n.language),
-          })
-        : t('verwaltung.benutzer_entfernen_kurz', {
-            name: person.anzeigename || person.benutzername,
-          }),
-      knopf: t('verwaltung.benutzer_entfernen'),
-      gefaehrlich: true,
-    })
-    if (ja !== true) return
-
-    try {
-      await api.loeschen(`/api/benutzer/${person.id}`)
-      await laden()
-    } catch (f) {
-      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
-    }
-  }
-
-  async function zuruecknehmen(e: EinladungsZeile) {
-    const ja = await fragen({
-      titel: t('verwaltung.einladung_zuruecknehmen'),
-      text: t('verwaltung.einladung_zuruecknehmen_text', { name: e.anzeigename || e.adresse || e.benutzername }),
-      knopf: t('verwaltung.einladung_zuruecknehmen'),
-      gefaehrlich: true,
-    })
-    if (ja !== true) return
-    await api.loeschen(`/api/benutzer/einladungen/${e.id}`)
-    await laden()
-  }
-
   if (bestand === null) return <div className="h-24" />
 
-  /* Seit dem Kontenmodul geht eine Einladung auch ohne Postausgang: Der Link steht dann zum Weitergeben da. Seit
-     konten 0.3.5 auch ohne öffentliche Adresse: Der Link nimmt die Adresse, unter der diese Seite offen ist. */
+  const eigeneId = ich?.id
+  // Das eigene Konto zuerst, die anderen, wie der Server sie ordnet.
+  const zeilen = [...bestand.benutzer.filter((z) => z.id === eigeneId), ...bestand.benutzer.filter((z) => z.id !== eigeneId)]
+  const konten = zeilen.map((z) => alsKonto(z, eigeneId))
+  const geoeffnet = offen === null ? null : (zeilen.find((z) => z.id === offen) ?? null)
 
   return (
     <div className="flex max-w-[720px] flex-col gap-6">
       {!bestand.postausgang_da && <Notice tone="warn">{t('verwaltung.kein_postausgang')}</Notice>}
 
-      {/* Eine Karte aus dem gemeinsamen Bausatz wie die Kontenliste in nexnotes: oben „Einladen“, darunter die Konten. */}
-      <Card id="benutzer" icon={Users} title={t('verwaltung.benutzer')}>
+      <Card id="benutzer" icon={Users} title={t(ACCOUNT_LIST.title)} subtitle={t(ACCOUNT_LIST.subtitle, { count: accountCount(konten) })} testId="kontenliste">
         <div>
-          <AccountButton name="invite" onClick={() => setEinladen(true)}>
-            {t('verwaltung.einladen')}
-          </AccountButton>
+          <AccountButton name="account.invite" testId="einladen" onClick={() => setEinladen(true)} />
         </div>
         {fehler && <Notice tone="danger">{fehler}</Notice>}
-
-        <ul className="flex list-none flex-col gap-2 p-0">
-          {bestand.benutzer.map((p) => (
-            <li
-              key={p.id}
-              className="flex items-center gap-3 rounded-lg border border-line bg-surface-1 px-4 py-3"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-center gap-2">
-                  <p className="mb-0 truncate text-sm font-medium text-fg-1">
-                    {p.anzeigename || p.benutzername}
-                  </p>
-                  {p.ist_betreiber && <Marke tone="accent">{t('verwaltung.betreiber')}</Marke>}
-                  {p.zwei_faktor_aktiv && (
-                    <ShieldCheck
-                      className="size-3.5 shrink-0 text-success"
-                      aria-label={t('sicherheit.aktiv')}
-                    />
-                  )}
-                </div>
-                <p className="mb-0 truncate text-[12px] text-fg-4">
-                  <span className="font-mono">{p.benutzername}</span>
-                  {p.kontaktadresse ? ` · ${p.kontaktadresse}` : ''}
-                </p>
-                {p.adresse_doppelt && (
-                  <div className="mt-1">
-                    <Marke tone="warning">{t('account.emailDuplicate')}</Marke>
-                  </div>
-                )}
-                {/* Die Anbieter, mit denen das Konto verknüpft ist, als kleine Marken; das Kreuz daneben löst. */}
-                {p.anbieter.length > 0 && (
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5" data-testid="konto-anbieter">
-                    {p.anbieter.map((a) => (
-                      <span key={a.id} className="inline-flex items-center gap-0.5">
-                        <Marke tone="neutral">{a.label}</Marke>
-                        <IconButton
-                          icon={<Unlink />}
-                          size="sm"
-                          label={t('anmeldeweg.verknuepfung_loesen_mit', { wer: p.anzeigename || p.benutzername, name: a.label })}
-                          onClick={() => void verknuepfungLoesen(p, a)}
-                        />
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <p className="mb-0 truncate text-[11px] text-fg-4">
-                  {t('verwaltung.postfaecher_zahl', { count: p.postfaecher })}
-                </p>
-              </div>
-
-              {/* ⚠️ Der Betreiber hat keinen Papierkorb: Danach könnte niemand
-                  mehr die Verwaltung öffnen, und aus der Anwendung heraus führt
-                  kein Weg zurück. */}
-              {/* ⚠️ **Der teuerste Knopf der Verwaltung.** Wer ihn drückt,
-                  gibt die Verwaltung ab und kann sie sich nicht zurückholen.
-                  Deshalb steht das eigene Passwort davor — und deshalb ist er
-                  ein stiller Knopf, kein bunter. */}
-              {/* ⚠️ **Die Ausnahmeliste, nicht die Einladungsliste.** Ab Werk
-                  darf jedes Konto; wer einzelne aussperren will, tut es hier.
-                  Der Riegel der Installation steht darüber und ist ab Werk zu —
-                  solange der nicht offen ist, ändert dieser Haken nichts, und
-                  die Zeile darunter sagt das auch. */}
-              <IconButton
-                icon={<Pencil />}
-                label={`${t('account.username')}: ${p.anzeigename || p.benutzername}`}
-                onClick={() => void namenAendern(p, 'benutzername')}
-              />
-              <IconButton
-                icon={<UserPen />}
-                label={`${t('account.displayName')}: ${p.anzeigename || p.benutzername}`}
-                onClick={() => void namenAendern(p, 'anzeigename')}
-              />
-              {p.kontaktadresse && (
-                <IconButton
-                  icon={<AtSign />}
-                  label={`${t('account.emailRemove')}: ${p.anzeigename || p.benutzername}`}
-                  onClick={() => void adresseEntfernen(p)}
-                />
-              )}
-              {p.zwei_faktor_aktiv && !p.ist_betreiber && (
-                <IconButton
-                  icon={<ShieldOff />}
-                  label={`${t('account.factorReset')}: ${p.anzeigename || p.benutzername}`}
-                  onClick={() => void faktorZuruecksetzen(p)}
-                />
-              )}
-              {!p.ist_betreiber && (
-                <IconButton
-                  icon={<KeyRound />}
-                  label={`${t('account.resetLink')}: ${p.anzeigename || p.benutzername}`}
-                  onClick={() => void passwortLink(p)}
-                />
-              )}
-              <IconButton
-                icon={p.ki_erlaubt ? <Sparkles /> : <SparklesIcon className="opacity-40" />}
-                label={t(p.ki_erlaubt ? 'verwaltung.ki_konto_aus' : 'verwaltung.ki_konto_an', {
-                  wer: p.anzeigename || p.benutzername,
-                })}
-                onClick={() => void kiUmlegen(p)}
-              />
-
-              {!p.ist_betreiber && (
-                <IconButton
-                  icon={<Crown />}
-                  label={t('verwaltung.betreiber_uebergeben', {
-                    wer: p.anzeigename || p.benutzername,
-                  })}
-                  onClick={() => void uebergeben(p)}
-                />
-              )}
-              {!p.ist_betreiber && (
-                <IconButton
-                  icon={<Trash2 />}
-                  label={t('verwaltung.benutzer_entfernen')}
-                  onClick={() => void entfernen(p)}
-                />
-              )}
-            </li>
+        <Rows label={t(ACCOUNT_LIST.title)} testId="konten">
+          {konten.map((konto) => (
+            <Row
+              key={konto.id}
+              testId={`konto-${konto.username}`}
+              lead={<Bild konto={konto} groesse={32} />}
+              name={accountName(konto)}
+              badge={<Marken marken={accountBadges(konto)} />}
+              sub={accountLine(konto)}
+              action={
+                <AccountButton
+                  name="account.manage"
+                  aria-label={t(ACCOUNT_LIST.manageLabel, { name: accountName(konto) })}
+                  testId="verwalten"
+                  onClick={() => setOffen(String(konto.id))}
+                >
+                  {t(ACCOUNT_LIST.manage)}
+                </AccountButton>
+              }
+            />
           ))}
-        </ul>
+        </Rows>
       </Card>
 
       {bestand.einladungen.length > 0 && (
-        <Card id="einladungen" icon={Mail} title={t('verwaltung.offene_einladungen')}>
-          <Rows label={t('verwaltung.offene_einladungen')}>
-            {bestand.einladungen.map((e) => (
-              <Row
-                key={e.id}
-                icon={Mail}
-                // Neue Einladungen tragen keinen Benutzernamen; Einladungen von vorher zeigen ihren.
-                name={e.anzeigename || e.benutzername || e.adresse || t('verwaltung.einladung_ohne_namen')}
-                detail={e.adresse}
-                badge={
-                  /* ⚠️ Abgelaufene bleiben sichtbar — sonst verschwindet eine Einladung lautlos und der Betreiber
-                     wartet auf jemanden, der nie einen gültigen Link hatte. */
-                  <Badge tone={e.abgelaufen ? 'warn' : 'off'}>
-                    {e.abgelaufen ? t('verwaltung.abgelaufen') : t('verwaltung.gilt_bis', { wann: new Date(e.laeuft_ab).toLocaleDateString(i18n.language) })}
-                  </Badge>
-                }
-                action={
-                  <Button kind="danger" icon="Undo2" onClick={() => void zuruecknehmen(e)}>
-                    {t('verwaltung.einladung_zuruecknehmen')}
-                  </Button>
-                }
-              />
-            ))}
+        <Card id="einladungen" icon={Mail} title={t(OPEN_INVITES.title)} testId="offene-einladungen">
+          <Rows label={t(OPEN_INVITES.title)}>
+            {bestand.einladungen.map((e) => {
+              /* ⚠️ Abgelaufene bleiben sichtbar — sonst verschwindet eine Einladung lautlos und der Betreiber
+                 wartet auf jemanden, der nie einen gültigen Link hatte. */
+              const zeile = inviteRow(alsEinladung(e))
+              return (
+                <Row
+                  key={e.id}
+                  testId="einladung"
+                  icon={Mail}
+                  name={zeile.name || t(zeile.nameText)}
+                  badge={<Marken marken={zeile.badges} />}
+                  sub={zeile.sub || undefined}
+                  action={<AccountButton name="account.inviteWithdraw" onClick={() => setZuruecknehmen(e)} />}
+                />
+              )
+            })}
           </Rows>
         </Card>
       )}
 
-      {einladen && (
-        <Einladungsfenster
-          aufSchliessen={() => setEinladen(false)}
-          aufFertig={(link) => {
-            setEinladen(false)
-            if (link) setWeitergeben({ titel: t('verwaltung.einladen'), link })
+      {geoeffnet && (
+        <Verwalten
+          zeile={geoeffnet}
+          konto={alsKonto(geoeffnet, eigeneId)}
+          betreiberHatPasswort={ich?.hat_kennwort !== false}
+          postausgang={bestand.postausgang_da}
+          aufSchliessen={() => setOffen(null)}
+          aufGeaendert={(ichAuch) => {
+            void laden()
+            if (ichAuch) ichNeuLaden?.()
+          }}
+          aufWeg={() => {
+            setOffen(null)
             void laden()
           }}
         />
       )}
 
-      {weitergeben && (
-        <Dialog title={weitergeben.titel} onClose={() => setWeitergeben(null)} closeLabel={t('aktion.schliessen')}>
-          <div className="flex flex-col gap-3">
-            <div className="flex items-end gap-2">
-              <div className="min-w-0 flex-1">
-                <Field label={t('account.resetLinkShown')} value={weitergeben.link} readOnly mono onFocus={(e) => e.target.select()} />
-              </div>
-              <AccountButton name="copy" onClick={() => void navigator.clipboard?.writeText(weitergeben.link)}>
-                {t('aktion.kopieren')}
-              </AccountButton>
-            </div>
-            <div className="flex justify-end">
-              <AccountButton name="done" onClick={() => setWeitergeben(null)}>
-                {t('aktion.fertig')}
-              </AccountButton>
-            </div>
-          </div>
-        </Dialog>
+      {einladen && (
+        <Einladungsfenster
+          postausgang={bestand.postausgang_da}
+          aufSchliessen={() => setEinladen(false)}
+          aufGemacht={() => void laden()}
+        />
       )}
 
-      {nachfrage}
+      {zuruecknehmen && (
+        <ConfirmDialog
+          title={t('account.inviteWithdraw')}
+          text={t(MANAGE_CONFIRM['account.inviteWithdraw'].text)}
+          confirm={confirmOf('account.inviteWithdraw', t('account.inviteWithdraw'))}
+          cancel={t('aktion.abbrechen')}
+          closeLabel={t('aktion.schliessen')}
+          busy={vorgang.laeuft}
+          error={vorgang.fehler || undefined}
+          onCancel={() => {
+            vorgang.setFehler('')
+            setZuruecknehmen(null)
+          }}
+          onConfirm={() =>
+            void vorgang
+              .los(() => api.loeschen(`/api/benutzer/einladungen/${zuruecknehmen.id}`))
+              .then((gut) => {
+                if (!gut) return
+                setZuruecknehmen(null)
+                void laden()
+              })
+          }
+        />
+      )}
     </div>
   )
 }
 
-function Einladungsfenster({
-  aufSchliessen,
-  aufFertig,
-}: {
-  aufSchliessen: () => void
-  aufFertig: (link: string) => void
-}) {
-  const { t } = useTranslation()
-  const [adresse, setAdresse] = useState('')
-  const [anzeigename, setAnzeigename] = useState('')
-  const [tage, setTage] = useState(String(INVITE_DAYS_DEFAULT))
-  const [fehler, setFehler] = useState('')
-  const [laeuft, setLaeuft] = useState(false)
+/** Eine Handlung des Fensters, die auf ihre Bestätigung wartet. */
+type Wartend = { handlung: Extract<AccountAction, { type: 'button' }>; umfang?: Umfang | null; ueberblick?: FaktorUeberblick | null }
 
-  async function abschicken() {
-    setFehler('')
-    setLaeuft(true)
-    try {
-      const zeile = await api.senden<EinladungsZeile>('/api/benutzer/einladungen', {
-        adresse: adresse.trim(),
-        anzeigename: anzeigename.trim(),
-        tage: Number(tage),
-      })
-      aufFertig(zeile.link ?? '')
-    } catch (f) {
-      setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
-    } finally {
-      setLaeuft(false)
+/** Das Fenster „Verwalten“ (`MANAGE_DIALOG`): Kopf mit Bild, Namen, Marken und Zeile; die Angaben mit nexmails
+ *  Postfächern; dann die Gruppen mit beschrifteten Knöpfen. Jede Handlung fragt, wie `MANAGE_CONFIRM` sagt. */
+function Verwalten({
+  zeile,
+  konto,
+  betreiberHatPasswort,
+  postausgang,
+  aufSchliessen,
+  aufGeaendert,
+  aufWeg,
+}: {
+  zeile: BenutzerZeile
+  konto: ListedAccount
+  betreiberHatPasswort: boolean
+  postausgang: boolean
+  aufSchliessen: () => void
+  aufGeaendert: (ichAuch: boolean) => void
+  aufWeg: () => void
+}) {
+  const { t, i18n } = useTranslation()
+  const sprache = i18n.language
+  const name = accountName(konto)
+  const vorgang = useVorgang()
+  const [wartend, setWartend] = useState<Wartend | null>(null)
+  const [benennen, setBenennen] = useState<'benutzername' | 'anzeigename' | null>(null)
+  const [link, setLink] = useState(false)
+
+  const postfaecher: FactShown = { fact: 'mailboxes', label: 'verwaltung.postfaecher', raw: String(zeile.postfaecher) }
+  const angaben = accountFacts(konto, [postfaecher]).map((angabe) => ({
+    label: t(angabe.label),
+    value: (
+      <>
+        {angabe.raw ?? (angabe.date ? tagUndZeit(angabe.date, sprache) : angabe.text ? t(angabe.text, angabe.values) : '')}
+        {angabe.state && <span className="text-[var(--nexui-text-muted)]"> · {t(angabe.state)}</span>}
+      </>
+    ),
+    note: angabe.note ? t(angabe.note) : undefined,
+    testId: `angabe-${angabe.fact}`,
+  }))
+  const gruppen = manageGroups(accountActions(konto, APP_CAPS, eigenes(zeile)))
+
+  const beginnen = (handlung: Extract<AccountAction, { type: 'button' }>) => {
+    const grund = handlung.name.split(':')[0]
+    if (grund === 'account.changeUsername') return setBenennen('benutzername')
+    if (grund === 'account.changeDisplayName') return setBenennen('anzeigename')
+    if (grund === 'account.resetLink') return setLink(true)
+    if (grund === 'account.remove') {
+      // ⚠️ **Zahlen statt „alle Daten".** „Wirklich entfernen?" beantwortet man mit Ja, ohne nachzudenken.
+      // „3 Postfächer und 12.418 Nachrichten" liest man.
+      return void api.holen<Umfang>(`/api/benutzer/${zeile.id}/umfang`).then(
+        (umfang) => setWartend({ handlung, umfang }),
+        () => setWartend({ handlung, umfang: null }),
+      )
     }
+    if (grund === 'account.factorReset') {
+      return void api.holen<FaktorUeberblick>(`/api/benutzer/${zeile.id}/zweiter-faktor-ueberblick`).then(
+        (ueberblick) => setWartend({ handlung, ueberblick }),
+        () => setWartend({ handlung, ueberblick: null }),
+      )
+    }
+    setWartend({ handlung })
   }
 
-  /* Kontenmodul (`SCREENS.operatorInvite`): E-Mail und Anzeigename, beide freiwillig, dazu wie lange der Link gilt.
-     Einen Benutzernamen legt der Betreiber nicht mehr fest; den wählt der Eingeladene selbst. */
+  /** Ein Haken in „Rechte“: sofort gespeichert, ohne Rückfrage.
+   *
+   * ⚠️ **„KI erlaubt“ ohne Rückfrage, anders als Löschen und Übergeben.** Es ist mit demselben Klick umkehrbar und
+   * kostet niemandem seinen Zugang; die Schlüssel bleiben stehen. Eine Rückfrage für jeden Haken macht die
+   * Verwaltung unbenutzbar, und dann wird sie umgangen. */
+  const haken = (name: string, an: boolean) => {
+    if (name !== KI_ERLAUBT) return
+    void vorgang.los(() => api.aendern(`/api/benutzer/${zeile.id}/ki`, { erlaubt: an })).then((gut) => gut && aufGeaendert(konto.self))
+  }
+
   return (
-    <Dialog title={t('verwaltung.einladen')} onClose={aufSchliessen} closeLabel={t('aktion.schliessen')}>
-      <div className="flex flex-col gap-3">
+    <>
+      <Dialog title={t(MANAGE_DIALOG.title, { name })} onClose={aufSchliessen} closeLabel={t('aktion.schliessen')} testId="verwalten-fenster">
+        <div className="flex flex-col gap-4">
+          <Rows>
+            <Row lead={<Bild konto={konto} groesse={48} />} name={name} badge={<Marken marken={accountBadges(konto)} />} sub={accountLine(konto)} />
+          </Rows>
+          <Facts items={angaben} label={t(MANAGE_DIALOG.title, { name })} testId="verwalten-angaben" />
+          {gruppen.map((gruppe) => (
+            <ButtonGroup key={gruppe.group} title={t(gruppe.title)} layout={gruppe.layout} testId={`verwalten-${gruppe.group}`}>
+              {gruppe.actions.map((handlung) =>
+                handlung.type === 'button' ? (
+                  <Button
+                    key={handlung.name}
+                    kind={handlung.kind}
+                    icon={handlung.icon as IconName}
+                    disabled={vorgang.laeuft}
+                    onClick={() => beginnen(handlung)}
+                    testId={`verwalten-${handlung.name}`}
+                  >
+                    {t(handlung.label, handlung.values)}
+                  </Button>
+                ) : (
+                  <CheckboxRow
+                    key={handlung.name}
+                    label={t(handlung.label)}
+                    checked={handlung.checked}
+                    disabled={vorgang.laeuft}
+                    onChange={(an) => haken(handlung.name, an)}
+                    testId={`verwalten-${handlung.name}`}
+                  />
+                ),
+              )}
+            </ButtonGroup>
+          ))}
+          {vorgang.fehler && <Notice tone="danger">{vorgang.fehler}</Notice>}
+        </div>
+      </Dialog>
+      {wartend && (
+        <Bestaetigen
+          zeile={zeile}
+          name={name}
+          wartend={wartend}
+          betreiberHatPasswort={betreiberHatPasswort}
+          aufAbbrechen={() => setWartend(null)}
+          aufFertig={(weg, ichAuch) => {
+            setWartend(null)
+            if (weg) aufWeg()
+            else aufGeaendert(ichAuch)
+          }}
+        />
+      )}
+      {benennen && (
+        <Benennen
+          zeile={zeile}
+          feld={benennen}
+          betreiberHatPasswort={betreiberHatPasswort}
+          aufSchliessen={() => setBenennen(null)}
+          aufGespeichert={() => aufGeaendert(konto.self)}
+        />
+      )}
+      {link && (
+        <PasswortLink zeile={zeile} name={name} postausgang={postausgang} betreiberHatPasswort={betreiberHatPasswort} aufSchliessen={() => setLink(false)} />
+      )}
+    </>
+  )
+}
+
+/** Die Rückfrage einer Handlung: Titel und Knopf mit den Worten, der Art und dem Symbol der Handlung, der Satz des
+ *  Moduls (`MANAGE_CONFIRM`), beim Löschen nexmails Zahlen und „auf dem Mailserver bleibt alles“, beim Zurücksetzen
+ *  des zweiten Faktors seine Teile (`factorResetParts`); mit dem eigenen Passwort, wo sie eins verlangt. */
+function Bestaetigen({
+  zeile,
+  name,
+  wartend,
+  betreiberHatPasswort,
+  aufAbbrechen,
+  aufFertig,
+}: {
+  zeile: BenutzerZeile
+  name: string
+  wartend: Wartend
+  betreiberHatPasswort: boolean
+  aufAbbrechen: () => void
+  aufFertig: (weg: boolean, ichAuch: boolean) => void
+}) {
+  const { t, i18n } = useTranslation()
+  const [passwort, setPasswort] = useState('')
+  const [geraete, setGeraete] = useState<boolean>(FACTOR_RESET_DEFAULTS.factorResetDevices)
+  const [passkeysWeg, setPasskeysWeg] = useState<boolean>(FACTOR_RESET_DEFAULTS.factorResetPasskeys)
+  const vorgang = useVorgang()
+  const handlung = wartend.handlung
+  const grund = handlung.name.split(':')[0]
+  const uebergeben = grund === UEBERGEBEN
+  const spec = grund in MANAGE_CONFIRM ? MANAGE_CONFIRM[grund as keyof typeof MANAGE_CONFIRM] : null
+  const fragtPasswort = (spec?.confirm ?? 'password') === 'password'
+  // ⚠️ Übergeben prüft das Passwort selbst (`POST /api/benutzer/{id}/betreiber`); ohne Passwort geht es nicht.
+  const feldZeigen = fragtPasswort && (betreiberHatPasswort || uebergeben)
+  const werte = { name, provider: handlung.values?.provider ?? '', email: zeile.kontaktadresse ?? '', app: 'nexmail' }
+  const passkeys = wartend.ueberblick?.passkeys ?? []
+
+  const zeilen: ReactNode[] = []
+  if (uebergeben) {
+    // ⚠️ **Danach ist man selbst keiner mehr.** Der Haken wandert, er wird nicht vergeben.
+    zeilen.push(<p key="text" className="m-0 text-sm">{t('verwaltung.uebergeben_text', { wer: name })}</p>)
+  } else if (spec?.text && grund !== 'account.factorReset') {
+    zeilen.push(<p key="text" className="m-0 text-sm">{t(spec.text, werte)}</p>)
+  }
+  if (grund === 'account.remove') {
+    zeilen.push(
+      <p key="zahlen" className="m-0 text-sm" data-testid="entfernen-zahlen">
+        {wartend.umfang
+          ? t('verwaltung.entfernen_zahlen', {
+              postfaecher: t('verwaltung.postfaecher_zahl', { count: wartend.umfang.postfaecher }),
+              nachrichten: t('verwaltung.nachrichten_zahl', {
+                count: wartend.umfang.nachrichten,
+                zahl: wartend.umfang.nachrichten.toLocaleString(i18n.language),
+              }),
+            })
+          : t('verwaltung.entfernen_ohne_zahlen')}
+      </p>,
+    )
+    for (const satz of removeLines(APP_CAPS)) zeilen.push(<p key={satz} className="m-0 text-sm">{t(satz)}</p>)
+  }
+  if (grund === 'account.factorReset') {
+    for (const teil of factorResetParts({ passkeys })) {
+      if (teil === 'factorResetHint') zeilen.push(<p key={teil} className="m-0 text-sm">{t('account.factorResetHint')}</p>)
+      if (teil === 'passkeys') zeilen.push(<p key={teil} className="m-0 text-sm">{t('account.passkeys')}: {passkeys.join(', ')}</p>)
+      if (teil === 'factorResetPasskeys') zeilen.push(<CheckboxRow key={teil} label={t('account.factorResetPasskeys')} checked={passkeysWeg} onChange={setPasskeysWeg} />)
+      if (teil === 'factorResetDevices') zeilen.push(<CheckboxRow key={teil} label={t('account.factorResetDevices')} checked={geraete} onChange={setGeraete} />)
+    }
+  }
+  if (fragtPasswort) zeilen.push(<p key="bestaetigen" className="m-0 text-sm text-[var(--nexui-text-muted)]">{t(confirmLine(betreiberHatPasswort || uebergeben))}</p>)
+
+  async function ausfuehren(): Promise<{ weg: boolean; ichAuch: boolean }> {
+    const id = zeile.id
+    if (uebergeben) {
+      await api.senden(`/api/benutzer/${id}/betreiber`, { passwort })
+      return { weg: false, ichAuch: true }
+    }
+    if (grund === 'account.emailRemove') await api.senden(`/api/benutzer/${id}/kontaktadresse-entfernen`, { passwort })
+    if (grund === 'account.factorReset') {
+      await api.senden(`/api/benutzer/${id}/zweiter-faktor-zuruecksetzen`, {
+        passwort,
+        geraete_trennen: geraete,
+        passkeys_entfernen: passkeysWeg && passkeys.length > 0,
+      })
+    }
+    if (grund === 'account.unlinkProvider' && handlung.provider) {
+      await api.loeschen(`/api/oidc/admin/accounts/${zeile.nummer}/links/${handlung.provider.id}`, { password: passwort })
+    }
+    if (grund === 'account.remove') {
+      await api.loeschen(`/api/benutzer/${id}`, { passwort })
+      return { weg: true, ichAuch: false }
+    }
+    return { weg: false, ichAuch: false }
+  }
+
+  return (
+    <ConfirmDialog
+      title={t(handlung.label, handlung.values)}
+      confirm={confirmOf(handlung.button, t(handlung.label, handlung.values))}
+      cancel={t('aktion.abbrechen')}
+      closeLabel={t('aktion.schliessen')}
+      busy={vorgang.laeuft}
+      error={vorgang.fehler || undefined}
+      confirmDisabled={feldZeigen && !passwort}
+      onCancel={aufAbbrechen}
+      onConfirm={() => {
+        let ergebnis = { weg: false, ichAuch: false }
+        void vorgang
+          .los(async () => {
+            ergebnis = await ausfuehren()
+          })
+          .then((gut) => gut && aufFertig(ergebnis.weg, ergebnis.ichAuch))
+      }}
+      testId="verwalten-frage"
+    >
+      {zeilen}
+      {feldZeigen && (
         <Field
-          type="email"
-          label={t('account.email')}
-          hints={[t('verwaltung.einladung_adresse_hinweis')]}
-          placeholder="name@example.com"
-          value={adresse}
-          onChange={(e) => setAdresse(e.target.value)}
+          label={t('account.currentPassword')}
+          type="password"
+          autoComplete="current-password"
+          value={passwort}
+          onChange={(e) => setPasswort(e.target.value)}
         />
-        <Field label={t('account.displayName')} value={anzeigename} onChange={(e) => setAnzeigename(e.target.value)} />
-        <SelectField
-          label={t('account.validFor')}
-          value={tage}
-          onChange={(e) => setTage(e.target.value)}
-          options={INVITE_DAYS.map((d) => ({ value: String(d), label: t('account.days', { count: d }) }))}
+      )}
+    </ConfirmDialog>
+  )
+}
+
+/** „Anzeigenamen ändern“ oder „Benutzernamen ändern“ (Felder und Hinweise des Moduls), mit dem eigenen Passwort. */
+function Benennen({
+  zeile,
+  feld,
+  betreiberHatPasswort,
+  aufSchliessen,
+  aufGespeichert,
+}: {
+  zeile: BenutzerZeile
+  feld: 'benutzername' | 'anzeigename'
+  betreiberHatPasswort: boolean
+  aufSchliessen: () => void
+  aufGespeichert: () => void
+}) {
+  const { t } = useTranslation()
+  const [wert, setWert] = useState(feld === 'benutzername' ? zeile.benutzername : zeile.anzeigename)
+  const [passwort, setPasswort] = useState('')
+  const vorgang = useVorgang()
+  const titel = feld === 'benutzername' ? t('account.changeUsername') : t('account.changeDisplayName')
+  return (
+    <Dialog title={titel} onClose={aufSchliessen} closeLabel={t('aktion.schliessen')} testId="benennen">
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void vorgang
+            .los(() => api.aendern(`/api/benutzer/${zeile.id}/${feld}`, { [feld]: wert.trim(), passwort }))
+            .then((gut) => {
+              if (!gut) return
+              aufGespeichert()
+              aufSchliessen()
+            })
+        }}
+      >
+        {feld === 'benutzername' && <p className="m-0 text-sm">{t('account.askChangeUsername', { name: zeile.anzeigename || zeile.benutzername })}</p>}
+        <Field
+          label={feld === 'benutzername' ? t('account.username') : t('account.displayName')}
+          value={wert}
+          onChange={(e) => setWert(e.target.value)}
+          maxLength={feld === 'benutzername' ? USERNAME_MAX : DISPLAY_NAME_MAX}
+          hints={[feld === 'benutzername' ? t('account.usernameRules') : t('account.displayNameHint')]}
         />
-
-        {fehler && <Notice tone="danger">{fehler}</Notice>}
-
+        <p className="m-0 text-sm text-[var(--nexui-text-muted)]">{t(confirmLine(betreiberHatPasswort))}</p>
+        {betreiberHatPasswort && (
+          <Field label={t('account.currentPassword')} type="password" autoComplete="current-password" value={passwort} onChange={(e) => setPasswort(e.target.value)} />
+        )}
+        {vorgang.fehler && <Notice tone="danger">{vorgang.fehler}</Notice>}
         <div className="flex flex-wrap justify-end gap-2">
           <AccountButton name="cancel" onClick={aufSchliessen}>
             {t('aktion.abbrechen')}
           </AccountButton>
-          <AccountButton name="invite" busy={laeuft} disabled={Boolean(adresse.trim()) && !adresse.includes('@')} onClick={() => void abschicken()}>
-            {t('verwaltung.einladung_abschicken')}
-          </AccountButton>
+          <AccountButton
+            name="account.save"
+            type="submit"
+            busy={vorgang.laeuft}
+            disabled={(betreiberHatPasswort && !passwort) || (feld === 'benutzername' && !wert.trim())}
+          />
         </div>
+      </form>
+    </Dialog>
+  )
+}
+
+/** Ein Link zum Weitergeben: das Feld zum Lesen und der Knopf, der kopiert. */
+function Kopierfeld({ wert, beschriftung, hinweis }: { wert: string; beschriftung: string; hinweis?: string }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex items-end gap-2">
+      <div className="min-w-0 flex-1">
+        <Field label={beschriftung} value={wert} readOnly mono hints={hinweis ? [hinweis] : undefined} onFocus={(e) => e.target.select()} />
       </div>
+      <AccountButton name="copy" onClick={() => void navigator.clipboard?.writeText(wert)}>
+        {t('aktion.kopieren')}
+      </AccountButton>
+    </div>
+  )
+}
+
+/** „Link für ein neues Passwort“ (`RESET_LINK_DIALOG`): Der Betreiber setzt nie selbst ein Passwort. Mit Postausgang
+ *  und einer Adresse geht der Link per Mail hin, sonst steht er einmal zum Weitergeben da. */
+function PasswortLink({
+  zeile,
+  name,
+  postausgang,
+  betreiberHatPasswort,
+  aufSchliessen,
+}: {
+  zeile: BenutzerZeile
+  name: string
+  postausgang: boolean
+  betreiberHatPasswort: boolean
+  aufSchliessen: () => void
+}) {
+  const { t } = useTranslation()
+  const [tage, setTage] = useState(String(RESET_DAYS_DEFAULT))
+  const [passwort, setPasswort] = useState('')
+  const [fertig, setFertig] = useState<{ link: string; an: string } | null>(null)
+  const vorgang = useVorgang()
+  const sendet = postausgang && Boolean(zeile.kontaktadresse) && zeile.kontaktadresse_zaehlt !== false
+  return (
+    <Dialog title={t(RESET_LINK_DIALOG.title)} onClose={aufSchliessen} closeLabel={t('aktion.schliessen')} testId="passwort-link">
+      {fertig ? (
+        <div className="flex flex-col gap-3">
+          {fertig.link ? (
+            <>
+              <p className="m-0 text-sm">{t(RESET_LINK_DIALOG.shown, { name })}</p>
+              <Kopierfeld wert={fertig.link} beschriftung={t(RESET_LINK_DIALOG.title)} />
+            </>
+          ) : (
+            <Notice tone="ok">{t(RESET_LINK_DIALOG.sent, { email: fertig.an, name })}</Notice>
+          )}
+          <div className="flex justify-end">
+            <AccountButton name="done" onClick={aufSchliessen}>
+              {t('aktion.fertig')}
+            </AccountButton>
+          </div>
+        </div>
+      ) : (
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void vorgang.los(async () => {
+              setFertig(await api.senden<{ link: string; an: string }>(`/api/benutzer/${zeile.id}/passwort-link`, { passwort, tage: Number(tage) }))
+            })
+          }}
+        >
+          <p className="m-0 text-sm">{t(RESET_LINK_DIALOG.text, { name })}</p>
+          <SelectField
+            label={t(RESET_LINK_DIALOG.days.label)}
+            value={tage}
+            onChange={(e) => setTage(e.target.value)}
+            options={RESET_DAYS.map((d) => ({ value: String(d), label: t('account.days', { count: d }) }))}
+          />
+          <p className="m-0 text-sm text-[var(--nexui-text-muted)]">{t(confirmLine(betreiberHatPasswort))}</p>
+          {betreiberHatPasswort && (
+            <Field label={t('account.currentPassword')} type="password" autoComplete="current-password" value={passwort} onChange={(e) => setPasswort(e.target.value)} />
+          )}
+          {vorgang.fehler && <Notice tone="danger">{vorgang.fehler}</Notice>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <AccountButton name="cancel" onClick={aufSchliessen}>
+              {t('aktion.abbrechen')}
+            </AccountButton>
+            <AccountButton name={linkSubmit(sendet)} type="submit" busy={vorgang.laeuft} disabled={betreiberHatPasswort && !passwort} />
+          </div>
+        </form>
+      )}
+    </Dialog>
+  )
+}
+
+/** „Person einladen“ (`INVITE_DIALOG`): Adresse, Anzeigename, wie lange es gilt, „Per Mail senden“ nur mit
+ *  Postausgang und Adresse; danach immer der Link zum Kopieren. Keine Rolle (nexmail lädt Mitglieder ein) und kein
+ *  Benutzername: den wählt die Person selbst. */
+function Einladungsfenster({
+  postausgang,
+  aufSchliessen,
+  aufGemacht,
+}: {
+  postausgang: boolean
+  aufSchliessen: () => void
+  aufGemacht: () => void
+}) {
+  const { t, i18n } = useTranslation()
+  const [adresse, setAdresse] = useState('')
+  const [anzeigename, setAnzeigename] = useState('')
+  const [tage, setTage] = useState(String(INVITE_DIALOG.days.default))
+  const [senden, setSenden] = useState(true)
+  const [gemacht, setGemacht] = useState<EinladungsZeile | null>(null)
+  const vorgang = useVorgang()
+  const felder = inviteFields(APP_CAPS, { mailServer: postausgang, email: adresse })
+  const sendet = felder.includes('sendMail') && senden
+
+  return (
+    <Dialog title={t(INVITE_DIALOG.title)} onClose={aufSchliessen} closeLabel={t('aktion.schliessen')} testId="einladen-fenster">
+      {gemacht ? (
+        <div className="flex flex-col gap-3">
+          {gemacht.gemailt && (
+            <Notice tone="ok" testId="einladung-gesendet">
+              {t(INVITE_DIALOG.done.sent, { email: gemacht.adresse })}
+            </Notice>
+          )}
+          {gemacht.link && (
+            <Kopierfeld
+              wert={gemacht.link}
+              beschriftung={t(INVITE_DIALOG.done.link)}
+              hinweis={t(INVITE_DIALOG.done.linkHint, { day: tag(gemacht.laeuft_ab, i18n.language) })}
+            />
+          )}
+          <div className="flex justify-end">
+            <AccountButton name="done" onClick={aufSchliessen}>
+              {t('aktion.fertig')}
+            </AccountButton>
+          </div>
+        </div>
+      ) : (
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void vorgang.los(async () => {
+              const zeile = await api.senden<EinladungsZeile>('/api/benutzer/einladungen', {
+                adresse: adresse.trim(),
+                anzeigename: anzeigename.trim(),
+                tage: Number(tage),
+                senden: sendet,
+              })
+              setGemacht(zeile)
+              aufGemacht()
+            })
+          }}
+        >
+          {felder.includes('email') && (
+            <Field
+              type="email"
+              label={t('account.email')}
+              hints={[t(INVITE_DIALOG.emailHint)]}
+              placeholder="name@example.com"
+              value={adresse}
+              onChange={(e) => setAdresse(e.target.value)}
+            />
+          )}
+          {felder.includes('displayName') && (
+            <Field label={t('account.displayName')} value={anzeigename} maxLength={DISPLAY_NAME_MAX} onChange={(e) => setAnzeigename(e.target.value)} />
+          )}
+          {felder.includes('days') && (
+            <SelectField
+              label={t(INVITE_DIALOG.days.label)}
+              value={tage}
+              onChange={(e) => setTage(e.target.value)}
+              options={INVITE_DIALOG.days.options.map((d) => ({ value: String(d), label: t('account.days', { count: d }) }))}
+            />
+          )}
+          {felder.includes('sendMail') && <CheckboxRow label={t(INVITE_DIALOG.sendMail)} checked={senden} onChange={setSenden} />}
+          {vorgang.fehler && <Notice tone="danger">{vorgang.fehler}</Notice>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <AccountButton name="cancel" onClick={aufSchliessen}>
+              {t('aktion.abbrechen')}
+            </AccountButton>
+            <AccountButton
+              name={linkSubmit(sendet)}
+              type="submit"
+              testId="einladung-abschicken"
+              busy={vorgang.laeuft}
+              disabled={Boolean(adresse.trim()) && !adresse.includes('@')}
+            />
+          </div>
+        </form>
+      )}
     </Dialog>
   )
 }

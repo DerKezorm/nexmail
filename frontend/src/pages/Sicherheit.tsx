@@ -29,7 +29,7 @@ import { CodesZeigen, ZweiterFaktor } from '../components/ZweiterFaktor'
 import { confirmOf } from '../lib/accountButton'
 import { servermeldung } from '../lib/servermeldung'
 import { alsJson, anlegeOptionen, geraetename, passkeyMoeglich } from '../lib/passkey'
-import { PAGES, pageOrder, SECOND_FACTOR_STATE, type PagePart } from '../vendor/nexkonten/konten'
+import { PAGES, pageOrder, passwordChanged, SECOND_FACTOR_STATE, type PagePart } from '../vendor/nexkonten/konten'
 import { Badge, Box, Card, CheckboxRow, ConfirmDialog, Dialog, Field, Notice, Row, Rows } from '../vendor/nexui'
 
 /** nexmails eigene Teile der Sicherheit, nach denen des Moduls. */
@@ -212,6 +212,11 @@ export function Sicherheit({
     password: () => {
       if (ich?.hat_kennwort === false) return null
       const p = teil('password')
+      // konten 0.3.10: „Zuletzt geändert am …“ (Tag ohne Uhrzeit), bei Konten von vorher „unbekannt“.
+      const geaendert = passwordChanged(ich?.passwort_geaendert)
+      const tag = geaendert.date
+        ? new Date(geaendert.date).toLocaleDateString(i18n.language, { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : ''
       return (
         <Box
           title={t(p.title)}
@@ -227,6 +232,9 @@ export function Sicherheit({
             />
           }
         >
+          <p className="m-0 text-sm text-[var(--nexui-text-muted)]" data-testid="passwort-geaendert">
+            {t(geaendert.text, { day: tag })}
+          </p>
           {gewechselt ? <Notice tone="ok">{gewechselt}</Notice> : null}
         </Box>
       )

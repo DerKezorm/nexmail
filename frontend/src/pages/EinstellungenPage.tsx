@@ -285,7 +285,7 @@ export function EinstellungenPage({
       case 'speicher':
         return <Sicherungen />
       case 'konten':
-        return <Benutzerverwaltung ichNeuLaden={ichNeuLaden} />
+        return <Benutzerverwaltung ich={ich} ichNeuLaden={ichNeuLaden} />
       case 'log':
         return <Protokoll />
       case 'ueber':

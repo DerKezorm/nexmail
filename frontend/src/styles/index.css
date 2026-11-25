@@ -134,6 +134,10 @@
   --nexui-disabled-bg: var(--surface-3);
   --nexui-disabled-text: var(--text-4);
   --nexui-scrim: var(--surface-overlay);
+  /* Bilder ohne Foto (Kontenliste, konten 0.3.9): wie nexmails eigenes `Profilbild`, in beiden Modi gleich. */
+  --nexui-avatar-saturation: 45%;
+  --nexui-avatar-lightness: 45%;
+  --nexui-avatar-text: #ffffff;
 }
 [data-theme='light'] {
   --nexui-surface-hover: var(--gray-100);

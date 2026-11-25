@@ -177,7 +177,7 @@ test('Jeder Bereich geht auf, mit Inhalt und ohne Fehler', async ({ page }, info
     ['Anmeldung', [/authentik/i]],
     ['Mail', [/Probemail schicken/, /Client-ID/]],
     ['Speicher und Sicherung', [/Rücksetzpunkte/]],
-    ['Konten', [/Benutzer einladen/]],
+    ['Konten', [/^Einladen$/, /^Verwalten$/]],
     ['Log', [/Ausführlichkeit/]],
     ['Über nexmail', [/AGPL-3\.0/]],
   ]

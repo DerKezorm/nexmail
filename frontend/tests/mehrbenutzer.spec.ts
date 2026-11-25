@@ -1,4 +1,5 @@
-/* Mehrbenutzer: einladen, annehmen, entfernen — durchgetragen bis zur Wirkung.
+/* Mehrbenutzer: einladen, annehmen, entfernen — durchgetragen bis zur Wirkung. Seit konten 0.3.9 die Kontenliste des
+ * Moduls: je Konto eine Zeile mit „Verwalten“, alles Weitere im Fenster; „Einladen“ öffnet „Person einladen“.
  *
  * ⚠️ **Der Test verschickt eine echte Mail** über den Systempostausgang, der
  * in `data-dev` eingerichtet ist, und **liest sie nicht ab**: Den Schlüssel
@@ -29,6 +30,10 @@ const BETREIBER = process.env.NEXMAIL_TEST_USER ?? 'betreiber'
    den guten Weg prüfen will. */
 const ZIEL = process.env.NEXMAIL_TEST_EINLADUNG_AN ?? ''
 
+/* Löschen verlangt seit der Kontenliste des Moduls das eigene Passwort des Betreibers (dieselbe Quelle wie die
+   Anmeldung). */
+const PASSWORT = process.env.NEXMAIL_TEST_PASS ?? ''
+
 test.describe.configure({ mode: 'serial' })
 
 test.beforeEach(async ({ page }, info) => {
@@ -54,7 +59,7 @@ test('Einladen, annehmen, entfernen', async ({ page }) => {
   await zurVerwaltung(page)
   await bereich(page, 'Konten')
 
-  const einladen = page.getByRole('button', { name: 'Benutzer einladen' })
+  const einladen = page.getByRole('button', { name: 'Einladen', exact: true })
   await expect(einladen).toBeVisible({ timeout: 10_000 })
 
   /* ⚠️ Ist der Knopf gesperrt, fehlt der Postausgang oder die öffentliche
@@ -69,7 +74,12 @@ test('Einladen, annehmen, entfernen', async ({ page }) => {
   const fenster = page.getByRole('dialog')
   await fenster.getByRole('textbox', { name: 'E-Mail' }).fill(ZIEL)
   await fenster.getByRole('textbox', { name: 'Anzeigename' }).fill(NAME)
-  await fenster.getByRole('button', { name: 'Einladung verschicken' }).click()
+  // „Per Mail senden“ ist ab Werk angehakt; der Knopf heißt dann „Link senden“.
+  await expect(fenster.getByRole('checkbox', { name: 'Per Mail senden' })).toBeChecked()
+  await fenster.getByRole('button', { name: 'Link senden' }).click()
+  // Danach steht da, wohin sie ging, und immer der Link zum Kopieren.
+  await expect(fenster.getByRole('status')).toContainText(ZIEL, { timeout: 30_000 })
+  await fenster.getByRole('button', { name: 'Fertig' }).click()
 
   // ⚠️ **Die Wirkung, nicht der Klick.** Die Einladung muss in der Liste
   // stehen — und nur dann, wenn die Mail wirklich hinausging.
@@ -80,10 +90,11 @@ test('Einladen, annehmen, entfernen', async ({ page }) => {
 
   // Zurücknehmen und prüfen, dass sie verschwindet.
   await page
-    .getByRole('button', { name: 'Einladung zurücknehmen' })
-    .first()
+    .getByTestId('einladung')
+    .filter({ hasText: NAME })
+    .getByRole('button', { name: 'Zurücknehmen' })
     .click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Einladung zurücknehmen' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Zurücknehmen' }).click()
   await expect(page.getByText(NAME, { exact: true })).toHaveCount(0, { timeout: 15_000 })
 })
 
@@ -99,7 +110,7 @@ test('Eine abgelehnte Adresse sagt warum — und lässt keine Leiche zurück', a
   await zurVerwaltung(page)
   await bereich(page, 'Konten')
 
-  const einladen = page.getByRole('button', { name: 'Benutzer einladen' })
+  const einladen = page.getByRole('button', { name: 'Einladen', exact: true })
   await expect(einladen).toBeVisible({ timeout: 10_000 })
   /* Seit konten 0.3.5 ist der Knopf immer an (ohne Postausgang steht danach der Link zum Weitergeben da); ob eine
      Mail hinausgeht, sagt der Server. */
@@ -110,7 +121,7 @@ test('Eine abgelehnte Adresse sagt warum — und lässt keine Leiche zurück', a
   const fenster = page.getByRole('dialog')
   await fenster.getByRole('textbox', { name: 'E-Mail' }).fill('zz@example.com')
   await fenster.getByRole('textbox', { name: 'Anzeigename' }).fill(NAME)
-  await fenster.getByRole('button', { name: 'Einladung verschicken' }).click()
+  await fenster.getByRole('button', { name: 'Link senden' }).click()
 
   const meldung = fenster.getByRole('alert')
   await expect(meldung).toBeVisible({ timeout: 30_000 })
@@ -139,13 +150,52 @@ test('Der Betreiber hat keinen Papierkorb an sich selbst', async ({ page }) => {
      Anwendung heraus führt kein Weg zurück. */
   await zurVerwaltung(page)
   await bereich(page, 'Konten')
-  await expect(page.getByText(BETREIBER, { exact: false }).first()).toBeVisible({ timeout: 10_000 })
+  const zeile = page.getByTestId(`konto-${BETREIBER}`)
+  await expect(zeile, 'Der Betreiber steht nicht in der Kontenliste.').toBeVisible({ timeout: 10_000 })
+  await expect(zeile.getByText('Du', { exact: true })).toBeVisible()
 
-  const zeile = page.locator('li').filter({ hasText: BETREIBER }).first()
+  /* Am eigenen Konto bietet „Verwalten“ weder „Konto löschen“ noch „Betreiber übergeben“ (konten 0.3.9
+     `NOT_ON_SELF`, nexmails `notSelf`), wohl aber „KI erlaubt“. */
+  await zeile.getByRole('button', { name: /verwalten$/ }).click()
+  const fenster = page.getByRole('dialog')
+  await expect(fenster.getByRole('heading', { name: /verwalten$/ })).toBeVisible()
   expect(
-    await zeile.getByRole('button', { name: 'Benutzer entfernen' }).count(),
+    await fenster.getByRole('button', { name: 'Konto löschen' }).count(),
     'Der Betreiber lässt sich in der Oberfläche entfernen.',
   ).toBe(0)
+  expect(await fenster.getByRole('button', { name: 'Betreiber übergeben' }).count()).toBe(0)
+  await expect(fenster.getByRole('checkbox', { name: 'KI erlaubt' })).toBeVisible()
+  await keineRohenSchluessel(page)
+  await page.keyboard.press('Escape')
+})
+
+test('Verwalten zeigt die Angaben und Knöpfe des Kontos, ohne Menü', async ({ page }) => {
+  await zurVerwaltung(page)
+  await bereich(page, 'Konten')
+  await expect(page.getByTestId(`konto-${BETREIBER}`)).toBeVisible({ timeout: 10_000 })
+  const zeilen = page.getByTestId('konten').getByRole('button', { name: /verwalten$/ })
+  test.skip((await zeilen.count()) < 2, 'Nur der Betreiber hat ein Konto.')
+
+  await zeilen.last().click()
+  const fenster = page.getByRole('dialog')
+  for (const angabe of ['Benutzername', 'E-Mail', 'Rolle', 'Anmeldung', 'Postfächer']) {
+    await expect(fenster.getByText(angabe, { exact: true }).first(), `Die Angabe „${angabe}“ fehlt.`).toBeVisible()
+  }
+  for (const gruppe of ['Ändern', 'Rechte', 'Beenden']) {
+    await expect(fenster.getByRole('heading', { name: gruppe, exact: true })).toBeVisible()
+  }
+  await expect(fenster.getByRole('button', { name: 'Betreiber übergeben' })).toBeVisible()
+  await expect(fenster.getByRole('button', { name: 'Konto löschen' })).toBeVisible()
+  await expect(fenster.getByRole('menu')).toHaveCount(0)
+
+  // Löschen fragt mit Postfächern und Nachrichten, sagt, dass auf dem Mailserver alles bleibt, und will das Passwort.
+  await fenster.getByRole('button', { name: 'Konto löschen' }).click()
+  const frage = page.getByTestId('verwalten-frage')
+  await expect(frage.getByTestId('entfernen-zahlen')).toContainText('Mailserver')
+  await expect(frage.locator('input[type="password"]')).toBeVisible()
+  await expect(frage.getByRole('button', { name: 'Konto löschen' })).toBeDisabled()
+  await frage.getByRole('button', { name: 'Abbrechen' }).click()
+  await keineRohenSchluessel(page)
 })
 
 test('Der zweite Faktor lässt sich ein- und ausschalten', async ({ page }) => {
@@ -183,7 +233,7 @@ async function zurVerwaltung(page: import('@playwright/test').Page) {
 }
 
 async function aufraeumen(page: import('@playwright/test').Page) {
-  await page.evaluate(async (name) => {
+  await page.evaluate(async ({ name, passwort }) => {
     const r = await fetch('/api/benutzer', { credentials: 'include' })
     if (!r.ok) return
     const b = await r.json()
@@ -197,8 +247,13 @@ async function aufraeumen(page: import('@playwright/test').Page) {
     }
     for (const p of b.benutzer ?? []) {
       if (p.benutzername === name) {
-        await fetch(`/api/benutzer/${p.id}`, { method: 'DELETE', credentials: 'include' })
+        await fetch(`/api/benutzer/${p.id}`, {
+          method: 'DELETE',
+          credentials: 'include',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ passwort }),
+        })
       }
     }
-  }, NAME)
+  }, { name: NAME, passwort: PASSWORT })
 }

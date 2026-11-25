@@ -196,6 +196,8 @@ export interface Ich {
   absenderlogos: boolean
   /** Ob es ein Passwort gibt. Ein Konto aus OIDC hat keins. */
   hat_kennwort?: boolean
+  /** konten 0.3.10: wann das Passwort zuletzt gesetzt wurde; `null` unbekannt (Konten von vorher). */
+  passwort_geaendert?: string | null
   /** Die laufende Version. Die `package.json` kennt sie nicht, nur der Server. */
   version: string
   /** Bis zu welcher Version dieses Konto „Was ist neu“ gesehen hat. */
