@@ -1,7 +1,8 @@
 # Anbindung des Kontenmoduls (`nexkonten`) an nexmail
 
-Stand 24.11.2026, Zweig `konten`. **Gebaut** mit `konten` 0.2.1 und `oidc` 1.1.0 (Abschnitt 0), Teil 2 mit `konten` 0.3.1 und `post` 0.1.1 (Abschnitt 0b); die Abschnitte
-ab 1 sind der Plan der Vorbereitung (gegen `konten` 0.1.0) und bleiben als Begründung stehen. Maßgeblich sind der
+Stand 25.11.2026, Zweig `konten`: **`konten` 0.3.10, `ui` 0.1.2, `oidc` 1.1.1, `post` 0.1.2** (Abschnitt 0f). Gebaut
+mit `konten` 0.2.1 und `oidc` 1.1.0 (Abschnitt 0), Teil 2 mit `konten` 0.3.1 und `post` 0.1.1 (Abschnitt 0b), nachgezogen
+in 0c bis 0f; die Abschnitte ab 1 sind der Plan der Vorbereitung (gegen `konten` 0.1.0) und bleiben als Begründung stehen. Maßgeblich sind der
 Entwurf in nexlore (`Development/nexapps/Baupläne/Entwurf Konten, Einrichtung und Anmeldung.md`, Tabelle
 „Entscheidungen“) und die Schnittstelle des Moduls (`bauplaene/konten/SCHNITTSTELLE.md`).
 
@@ -168,6 +169,29 @@ Nachgezogen am 25.11.2026 auf demselben Zweig; Server und Store unverändert (nu
 | Regeln am Benutzernamen | beide Hinweise (`usernameHintProfile`, `rules`) im Hinweis des Felds, per `aria-describedby` |
 | Beschriftung und Feld | `ds/Feld.tsx` seit `4fc817f`: `<label for>` mit genau der Beschriftung, Hinweis per `aria-describedby` |
 | vitest | `src/nexkonten.test.ts` zeigt die sechs Bildschirme (`APP_RENDER`: Einrichtung, Einladung, Anmeldung, Passwort vergessen, neues Passwort, Profil) mit einem `fetch`-Ersatz und prüft Beschriftungen, Hinweise und den einen Knopf; dafür `@testing-library/dom` als devDependency |
+
+## 0f. `konten` 0.3.9 und 0.3.10, `ui` 0.1.2, `oidc` 1.1.1, `post` 0.1.2
+
+Nachgezogen am 25.11.2026 auf demselben Zweig, kopiert aus `bauplaene` (Zweig `konten`, `4f714a8`) mit
+`sync.py copy`, `check` für alle vier sauber. `e2e/nexoidc.spec.ts` bleibt (nexmail hat Playwright).
+
+| Teil | Wo |
+|---|---|
+| Anmeldung (0.3.10) | `POST /api/auth/anmelden` über `login.sign_in(store, eingabe, passwort, sender=anmeldebremse.adresse_von(request), browser=<bekannte Marke>)`. Wartet nur der Topf des Kontos oder der Eingabe: 401 `anmeldung_falsch`, das Passwort ungeprüft; 429 `zu_viele_versuche` mit `Retry-After` nur bei vollem Topf des Absenders (ohne `NEXMAIL_CLIENT_IP` je Ziel, `sender:none:<ziel>`). Die eigene Klasse `_Bremse` ist weg; `login.succeeded` bleibt nach der ganzen Anmeldung. „Anmeldung mit Passwort“ aus: Antwort immer 401, gezählt wird weiter an der Bremse des Moduls (`auth._gehalten`) |
+| Passwort zuletzt geändert (0.3.10) | Spalte `benutzer.passwort_geaendert` (ergänzend, Bestand leer = „unbekannt“), gesetzt von `Store.set_password`, `add_account` mit Passwort, `benutzerdienst.passwort_aendern` und `anlegen`; das Auffrischen des Hashes beim Anmelden zählt nicht. `GET /api/auth/ich` → `passwort_geaendert`; Sicherheit, Kasten Passwort: Zeile aus `passwordChanged(...)` |
+| Passwort vergessen (0.3.10) | `kontenpost.sofort_senden` (`nexpost.send.deliver`), nie über die Outbox; scheitert die Mail, nimmt das Modul den Link zurück. Die übrigen Kontomails gehen weiter über die Outbox |
+| Fehlerkennungen (0.3.10) | Nach außen bleiben die alten. Steht hinter einer alten Kennung mehr als eine des Moduls (`einladung_abgelaufen`, `ruecksetzung_ungueltig`; `konten_store.MEHRDEUTIG`), trägt die Antwort die des Moduls in `werte.account_code`; `lib/servermeldung.ts` nimmt dann deren Satz („abgelaufen“) über `accountErrorKeyOf` |
+| Zugänge (0.3.10) | `list_access` gab schon nur `device` und `api_key` |
+| Kontenliste (0.3.9) | `pages/Benutzerverwaltung.tsx` (Reiter „Konten“) aus `ACCOUNT_LIST`, `MANAGE_DIALOG`, `INVITE_DIALOG`, `RESET_LINK_DIALOG`, `OPEN_INVITES` und den Bausteinen von `ui`; nexmails Seite in `pages/kontenliste.ts`: `APP_CAPS` (`rename`, `emailRemove`, `resetLink`, `factorReset`, `unlink`, `remove`; keine Rollen, kein Sperren, kein „Überall abmelden“, kein Zurückholen), eigener Knopf `handOver` „Betreiber übergeben“ in „Ändern“ vor „Adresse entfernen“ mit `notSelf`, Haken „KI erlaubt“ in „Rechte“ (sofort gespeichert, `PUT /api/benutzer/{id}/ki`), Angabe „Postfächer“, beim Löschen die Zahlen Postfächer und Nachrichten und „Auf dem Mailserver bleibt alles unberührt“, dann `account.askRemoveFinal`. Der Hinweis „kein Postausgang“ steht weiter oben. Das eigene Konto steht zuerst; am eigenen Konto fehlen, was `NOT_ON_SELF` sagt (auch Lösen) und „Betreiber übergeben“ |
+| Server zur Liste | `GET /api/benutzer` je Konto zusätzlich `kontaktadresse_zaehlt`, `passkeys`, `gesperrt` (Kontosperre), `zuletzt_gesehen` (jüngste bestätigte Sitzung oder gekoppeltes Gerät; ohne: keine Angabe statt „Nie“), `profilbild`; Einladungen mit `expired` neben `abgelaufen`. `POST /api/benutzer/einladungen` mit `senden` (ab Werk an, wie bisher) und in der Antwort immer `link` und `gemailt` („danach immer der Link zum Kopieren“). `DELETE /api/benutzer/{id}` verlangt `{"passwort": …}` (401 `kennwort_falsch`, gezählt an `confirm:<Betreiber>`; ohne Passwort frische Anmeldung beim Anbieter) |
+| Bild ohne Foto | `--nexui-avatar-*` in `styles/index.css`, wie nexmails `Profilbild` (45 %, 45 %, weiß) |
+| Vertragsadapter | `sign_in_from` über die eigene Anmelderoute vom Absender aus (`NEXMAIL_CLIENT_IP=direct` für diese eine Anfrage), `listed_invites` über `routers.benutzer.liste` |
+| Tests | `test_konten_routen.py` (Passwort-Datum, Felder der Liste, Löschen mit Passwort, Passwort vergessen sofort), Bremstests auf „genau 5“ und 401 statt 429 (`test_anmeldung`, `test_konten_routen`, `test_angemeldet_bleiben`, im Test „Bestand“ eine Zeile: zehn falsche, dann richtig = 401), `test_ruecksetzung` (gleiche Kennung, daneben `account_code`), Löschen mit Passwort in `test_benutzer`, `test_betreiber_uebergeben`, `test_apischluessel`; vitest `src/nexkonten.test.ts` mit den Blöcken der Vorlage 0.3.9 und 0.3.10 (`APP_CAPS`, `APP_OWN`, `APP_ACCOUNTS_RENDER`, Namensraum `account`, „Zuletzt geändert“) |
+| Playwright (angepasst, nicht ausgeführt) | `tests/mehrbenutzer.spec.ts` (Einladen, „Link senden“, Zurücknehmen, Verwalten am eigenen und an einem anderen Konto, Aufräumen mit Passwort aus `NEXMAIL_TEST_PASS`), `tests/einstellungen.spec.ts` (Merkmal des Bereichs Konten) |
+
+**Geprüft am 25.11.2026:** Backend voll einmal (`pytest -n 2`: 3086 bestanden, 4 übersprungen), darin Vertrag
+`tests/nexkonten` (232 gesammelt) und Test „Bestand“ (62); Frontend `npx vitest run --maxWorkers=2` 303 grün in 36
+Dateien, `npm run lint` und `npm run build` (mit `tsc -b`) grün. Kein Playwright, keine Server.
 
 ## 1. Bestand heute (0.33.0)
 
