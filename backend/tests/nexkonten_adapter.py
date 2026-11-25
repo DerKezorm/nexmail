@@ -348,3 +348,37 @@ class Adapter(StandardAdapter):
         with self.store() as store:
             konto = package.login.resolve_login(store, typed)
         return konto.id if konto is not None else None
+
+    def sign_in_from(self, typed: str, password: str, sender: str) -> tuple[int, Any]:
+        """konten 0.3.10: through ``POST /api/auth/anmelden`` from the address ``sender``, without emptying the brake.
+        nexmail reads a sender only with ``NEXMAIL_CLIENT_IP``; here ``direct`` (the peer's address) for this one
+        request. 200 in or at the second factor, 401 refused like a wrong password, 429 too many attempts."""
+        from fastapi.testclient import TestClient
+
+        from app.config import get_settings
+        from app.main import app
+
+        einstellungen = get_settings()
+        vorher = einstellungen.client_ip
+        object.__setattr__(einstellungen, "client_ip", "direct")
+        try:
+            klient = TestClient(app, base_url="https://mail.example.com", client=(sender, 50000))
+            antwort = klient.post("/api/auth/anmelden", json={"benutzername": typed, "passwort": password})
+        finally:
+            object.__setattr__(einstellungen, "client_ip", vorher)
+        if antwort.status_code != 200:
+            return antwort.status_code, None
+        package = __import__(self.package, fromlist=["login"])
+        with self.store() as store:
+            konto = package.login.resolve_login(store, typed)
+        return 200, konto.id if konto is not None else None
+
+    def listed_invites(self) -> list[dict[str, Any]]:
+        """konten 0.3.10: the open invitations as the route ``GET /api/benutzer`` (``routers/benutzer.liste``) gives
+        them to the operator's list, ``adresse`` as ``email`` next to ``expired``."""
+        from app.db import SessionLocal
+        from app.routers.benutzer import liste
+
+        with SessionLocal() as db:
+            bestand = liste(None, db)
+        return [{**zeile.model_dump(), "email": zeile.adresse} for zeile in bestand.einladungen]

@@ -65,7 +65,7 @@ def test_danach_laesst_sich_der_alte_entfernen(klient, db, welt):
     )
     assert an.status_code == 200, an.text
 
-    weg = klient.delete(f"/api/benutzer/{alte_id}")
+    weg = klient.request("DELETE", f"/api/benutzer/{alte_id}", json={"passwort": KENNWORT})
     assert weg.status_code == 204, weg.text
     # ⚠️ Die eigene Sitzung haelt sonst die alte Kopie im Gedaechtnis.
     db.expire_all()

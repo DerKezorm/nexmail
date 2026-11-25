@@ -91,11 +91,15 @@ def test_die_bremse_zaehlt_name_und_adresse_zusammen(klient, zweiter_klient):
     _mitglied(klient, zweiter_klient)
     frei = brake.FREE["account"]
     codes = []
-    for i in range(frei + 2):
+    for i in range(frei):
         eingabe = "anna" if i % 2 else "anna@example.com"
         codes.append(klient.post("/api/auth/anmelden", json={"benutzername": eingabe, "passwort": "falsch-1234"}).status_code)
-    # Die Bremse des Kontenmoduls (seit konten 0.3.3 auch an nexmails Anmeldung): beide Eingaben, ein Topf.
-    assert codes == [401] * (frei + 1) + [429]
+    assert codes == [401] * frei
+    # Die Bremse des Kontenmoduls (seit konten 0.3.10 ``login.sign_in``): beide Eingaben, ein Topf. Er wartet jetzt,
+    # und solange antwortet auch das richtige Passwort wie ein falsches (401, ungeprueft), unter Name wie Adresse.
+    for eingabe in ("anna", "anna@example.com"):
+        antwort = klient.post("/api/auth/anmelden", json={"benutzername": eingabe, "passwort": "annas-passwort-1"})
+        assert (antwort.status_code, antwort.json()["detail"]) == (401, "anmeldung_falsch")
 
 
 # --- Passwort vergessen und der Link vom Betreiber ---------------------------------------------------------------
@@ -324,7 +328,7 @@ def test_abschalten_zaehlt_an_der_bremse_des_moduls(klient):
 
     einrichten(klient)
     zwei_faktor_an(klient)
-    for _ in range(brake.FREE["confirm"] + 1):
+    for _ in range(brake.FREE["confirm"]):
         assert klient.post("/api/auth/zwei-faktor/aus", json={"passwort": "falsch-falsch-1"}).status_code == 401
     gebremst = klient.post("/api/auth/zwei-faktor/aus", json={"passwort": PASSWORT})
     assert (gebremst.status_code, gebremst.json()["detail"]) == (429, "zu_viele_versuche")
@@ -338,7 +342,7 @@ def test_abschalten_zaehlt_an_der_bremse_des_moduls(klient):
 def test_passwort_vergessen_zaehlt_je_absender_im_modul(klient):
     einrichten(klient)
     klient.post("/api/auth/abmelden")
-    for _ in range(brake.FREE["forgot"] + 1):
+    for _ in range(brake.FREE["forgot"]):
         assert klient.post("/api/auth/kennwort-vergessen", json={"benutzername": "betreiber"}).status_code == 202
     gebremst = klient.post("/api/auth/kennwort-vergessen", json={"benutzername": "betreiber"})
     assert (gebremst.status_code, gebremst.json()["detail"]) == (429, "zu_viele_versuche")
@@ -356,3 +360,87 @@ def test_neue_wiederherstellungscodes_ersetzen_die_alten(klient):
     assert neue.status_code == 200, neue.text
     assert len(neue.json()["codes"]) == 10 and not set(neue.json()["codes"]) & set(alte)
     assert klient.get("/api/auth/ich").json()["offene_codes"] == 10
+
+
+# --- konten 0.3.9 und 0.3.10 -------------------------------------------------------------------------------------
+
+
+def test_das_passwort_sagt_wann_es_zuletzt_gesetzt_wurde(klient):
+    """konten 0.3.10: „Zuletzt geändert am …“ unter Sicherheit; das Auffrischen des Hashes beim Anmelden zaehlt nicht."""
+    einrichten(klient)
+    zuerst = klient.get("/api/auth/ich").json()["passwort_geaendert"]
+    assert zuerst
+    with SessionLocal() as db:
+        person = db.query(Benutzer).one()
+        person.passwort_geaendert = None
+        db.commit()
+    assert klient.get("/api/auth/ich").json()["passwort_geaendert"] is None
+    neu = klient.put("/api/auth/passwort", json={"altes": PASSWORT, "neues": "ein-ganz-neues-1"})
+    assert neu.status_code == 200, neu.text
+    assert klient.get("/api/auth/ich").json()["passwort_geaendert"]
+
+
+def test_die_liste_traegt_was_die_kontenliste_des_moduls_zeigt(klient, zweiter_klient):
+    """konten 0.3.9: je Konto Bestaetigung der Adresse, Passkeys, Sperre, zuletzt da, Profilbild; die Einladungen mit
+    ``expired`` neben ``abgelaufen`` (0.3.10)."""
+    einrichten(klient)
+    anna = _mitglied(klient, zweiter_klient)
+    from datetime import datetime, timedelta, timezone
+
+    from app.models import Einladung
+
+    klient.post("/api/benutzer/einladungen", json={"adresse": "spaet@example.com", "anzeigename": "Spaet"})
+    with SessionLocal() as db:
+        db.query(Einladung).filter(Einladung.adresse == "spaet@example.com").one().laeuft_ab = datetime.now(
+            timezone.utc
+        ) - timedelta(minutes=1)
+        db.commit()
+    stand = klient.get("/api/benutzer").json()
+    zeile = next(z for z in stand["benutzer"] if z["id"] == anna)
+    assert (zeile["kontaktadresse"], zeile["kontaktadresse_zaehlt"], zeile["passkeys"], zeile["gesperrt"]) == (
+        "anna@example.com",
+        True,
+        0,
+        False,
+    )
+    assert zeile["zuletzt_gesehen"] and zeile["profilbild"] is None
+    spaet = next(e for e in stand["einladungen"] if e["adresse"] == "spaet@example.com")
+    assert spaet["expired"] is True and spaet["abgelaufen"] is True
+
+
+def test_entfernen_verlangt_das_eigene_passwort(klient, zweiter_klient):
+    """konten 0.3.9: Loeschen beendet ein Konto und verlangt darum das eigene Passwort des Betreibers."""
+    einrichten(klient)
+    anna = _mitglied(klient, zweiter_klient)
+    for rumpf in (None, {"passwort": "falsch-falsch-1"}):
+        antwort = klient.request("DELETE", f"/api/benutzer/{anna}", json=rumpf)
+        assert (antwort.status_code, antwort.json()["detail"]) == (401, "kennwort_falsch")
+    assert klient.request("DELETE", f"/api/benutzer/{anna}", json={"passwort": PASSWORT}).status_code == 204
+    with SessionLocal() as db:
+        assert db.get(Benutzer, anna) is None
+
+
+def test_passwort_vergessen_schickt_sofort_und_nimmt_den_link_bei_einem_fehler_zurueck(klient, post, monkeypatch):
+    """konten 0.3.10: „Passwort vergessen“ geht nie ueber die Outbox. Scheitert die Mail, bleibt kein Link liegen."""
+    from app.models import Kennwortruecksetzung, PostAusgang
+
+    einrichten(klient)
+    with SessionLocal() as db:
+        db.query(Benutzer).one().kontaktadresse = "chef@example.com"
+        db.commit()
+    klient.post("/api/auth/abmelden")
+    assert klient.post("/api/auth/kennwort-vergessen", json={"benutzername": "betreiber"}).status_code == 202
+    assert len(post) == 1 and _link(post[0], "kennwort")
+    with SessionLocal() as db:
+        assert db.query(PostAusgang).count() == 0
+        assert db.query(Kennwortruecksetzung).count() == 1
+
+    def kaputt(*args, **kwargs):
+        raise systempost.PostFehler("postausgang_nicht_erreichbar")
+
+    monkeypatch.setattr(systempost, "senden", kaputt)
+    anmeldebremse.zuruecksetzen()
+    assert klient.post("/api/auth/kennwort-vergessen", json={"benutzername": "betreiber"}).status_code == 202
+    with SessionLocal() as db:
+        assert db.query(Kennwortruecksetzung).count() == 0
+        assert db.query(PostAusgang).count() == 0

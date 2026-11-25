@@ -142,9 +142,10 @@ def test_der_bekannte_browser_kommt_auch_an_der_bremse_vorbei(klient, db):
     hat einen eigenen (``brake.BRAKE.claim(..., browser=<Marke>)``), auch hinter demselben Absender."""
     einrichten(klient)
     fremd = _neuer_browser()
-    for _ in range(brake.FREE["account"] + 1):
+    for _ in range(brake.FREE["account"]):
         fremd.post("/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": "falsch-falsch"})
-    assert _anmelden(_neuer_browser()).status_code == 429
+    # konten 0.3.10: Der wartende Topf des Kontos antwortet wie ein falsches Passwort (401), nicht mit 429.
+    assert _anmelden(_neuer_browser()).status_code == 401
     assert _anmelden(klient).status_code == 200
 
 

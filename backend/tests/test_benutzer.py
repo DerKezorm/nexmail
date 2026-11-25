@@ -398,7 +398,12 @@ def test_entfernen_nimmt_alles_mit(klient, db):
     db.add(Kontakt(benutzer_id=ihre_id, name="Wer", adresse="wer@example.com"))
     db.commit()
 
-    assert klient.delete(f"/api/benutzer/{ihre_id}").status_code == 204
+    ohne = klient.delete(f"/api/benutzer/{ihre_id}")
+    assert (ohne.status_code, ohne.json()["detail"]) == (401, "kennwort_falsch")
+    falsch = klient.request("DELETE", f"/api/benutzer/{ihre_id}", json={"passwort": "falsch-falsch-1"})
+    assert (falsch.status_code, falsch.json()["detail"]) == (401, "kennwort_falsch")
+    assert db.query(Benutzer).filter(Benutzer.id == ihre_id).count() == 1
+    assert klient.request("DELETE", f"/api/benutzer/{ihre_id}", json={"passwort": PASSWORT}).status_code == 204
 
     reste = {}
     for tabelle in Base.metadata.sorted_tables:
@@ -425,7 +430,7 @@ def test_die_eigenen_daten_bleiben_unberuehrt(klient, db):
     db.add(Kontakt(benutzer_id=person.id, name="Ihrer", adresse="ihrer@example.com"))
     db.commit()
 
-    klient.delete(f"/api/benutzer/{person.id}")
+    assert klient.request("DELETE", f"/api/benutzer/{person.id}", json={"passwort": PASSWORT}).status_code == 204
 
     uebrig = db.query(Kontakt).all()
     assert [k.name for k in uebrig] == ["Meiner"]

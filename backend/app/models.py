@@ -158,6 +158,10 @@ class Benutzer(Base):
     #: ``abgelehnte_adresse``: die Adresse, zu der jemand „Nein, danke“ sagte, gilt dauerhaft (``""`` keine).
     angebotene_adresse_von: Mapped[str] = mapped_column(String(200), default="", server_default="")
     abgelehnte_adresse: Mapped[str] = mapped_column(String(320), default="", server_default="")
+    #: konten 0.3.10. Wann das Passwort zuletzt gesetzt wurde (Sicherheit: „Zuletzt geändert am …“); leer bei Konten
+    #: von vorher (dann „unbekannt“) und bei Konten ohne Passwort. Das Auffrischen des Hashes nach einer Anmeldung
+    #: zaehlt nicht als Aenderung.
+    passwort_geaendert: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
 
     # --- Der KI-Dienst dieses Menschen ---------------------------------- #
     #

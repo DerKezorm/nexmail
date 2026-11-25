@@ -55,6 +55,15 @@ class BenutzerZeile(BaseModel):
     kontaktadresse: str = ""
     adresse_doppelt: bool = False
     hat_kennwort: bool = True
+    #: Seit der Kontenliste des Moduls (konten 0.3.9, ``ListedAccount``): ob die Adresse zaehlt (bestaetigt), wie
+    #: viele Passkeys das Konto hat (ein Passkey zaehlt als zweiter Faktor), ob die Kontosperre nach Fehlversuchen
+    #: gerade haelt, wann eine Sitzung oder ein gekoppeltes Geraet zuletzt da war (``None``: keine laufende, also
+    #: unbekannt) und der Stand des Profilbilds (``None``: keins; wie ``Ich.profilbild``).
+    kontaktadresse_zaehlt: bool = True
+    passkeys: int = 0
+    gesperrt: bool = False
+    zuletzt_gesehen: datetime | None = None
+    profilbild: str | None = None
 
 
 class EinladungsZeile(BaseModel):
@@ -66,8 +75,14 @@ class EinladungsZeile(BaseModel):
     angelegt: datetime
     laeuft_ab: datetime
     abgelaufen: bool
-    #: Der Link, einmal, wenn er nicht per Mail hinausging (keine Adresse oder kein Postausgang).
+    #: Dasselbe unter dem Namen des Kontenmoduls (``ListedInvite.expired``, konten 0.3.10): abgelaufene bleiben in der
+    #: Liste, bis der Betreiber sie zuruecknimmt.
+    expired: bool = False
+    #: Der Link, einmal in der Antwort auf das Einladen (seit der Kontenliste des Moduls auch, wenn er per Mail ging:
+    #: „danach immer der Link zum Kopieren“); in der Liste nie.
     link: str = ""
+    #: Ob die Einladung per Mail hinausging (nur in der Antwort auf das Einladen).
+    gemailt: bool = False
 
 
 class Bestand(BaseModel):
@@ -89,6 +104,8 @@ class Einladen(BaseModel):
     anzeigename: str = Field(default="", max_length=200)
     #: Wie lange der Link gilt: 1, 7 oder 30 Tage.
     tage: int = nexkonten.invites.INVITE_DAYS_DEFAULT
+    #: „Per Mail senden“ (konten 0.3.9, ``INVITE_DIALOG.sendMail``): ab Werk an wie bisher; aus, nur der Link.
+    senden: bool = True
 
 
 class Umfang(BaseModel):
@@ -100,7 +117,9 @@ class Umfang(BaseModel):
 
 
 def _zeile(db, person: Benutzer, verknuepft: dict | None = None) -> BenutzerZeile:
-    from ..models import Konto
+    from sqlalchemy import func
+
+    from ..models import Konto, Passkey, Sitzung
     from ..routers.oidc import verknuepfungen_je_konto
 
     if verknuepft is None:
@@ -123,10 +142,20 @@ def _zeile(db, person: Benutzer, verknuepft: dict | None = None) -> BenutzerZeil
         kontaktadresse=person.kontaktadresse or "",
         adresse_doppelt=nexkonten.login.duplicate_email(store, konto) if konto is not None else False,
         hat_kennwort=bool(person.passwort_hash),
+        kontaktadresse_zaehlt=bool(person.kontaktadresse_zaehlt) if person.kontaktadresse else True,
+        passkeys=int(db.scalar(select(func.count(Passkey.id)).where(Passkey.benutzer_id == person.id)) or 0),
+        gesperrt=store.is_locked(person.id),
+        zuletzt_gesehen=db.scalar(
+            select(func.max(Sitzung.zuletzt_gesehen)).where(
+                Sitzung.benutzer_id == person.id, Sitzung.bestaetigt.is_(True)
+            )
+        ),
+        profilbild=person.profilbild_am.isoformat() if person.profilbild_am else None,
     )
 
 
 def _einladungszeile(e: Einladung, link: str = "") -> EinladungsZeile:
+    abgelaufen = einladungsdienst.abgelaufen(e)
     return EinladungsZeile(
         link=link,
         id=e.id,
@@ -135,7 +164,8 @@ def _einladungszeile(e: Einladung, link: str = "") -> EinladungsZeile:
         adresse=e.adresse,
         angelegt=e.angelegt,
         laeuft_ab=e.laeuft_ab,
-        abgelaufen=einladungsdienst.abgelaufen(e),
+        abgelaufen=abgelaufen,
+        expired=abgelaufen,
     )
 
 
@@ -158,10 +188,10 @@ def einladen(eingabe: Einladen, _: Betreiber, request: Request, db: DbSession) -
     """Einladen: Adresse und Anzeigename freiwillig, **kein Benutzername** (Kontenmodul), Gueltigkeit 1, 7 oder 30
     Tage.
 
-    ⚠️ **Mit Adresse und Postausgang: anlegen und verschicken sind eins.** Eine Einladung, die in der Liste steht,
-    deren Mail aber nie hinausging, ist die schlimmste Sorte. Geht der Versand schief, wird die Zeile wieder
-    entfernt und der Grund gemeldet. **Ohne Adresse oder ohne Postausgang** zeigt die Antwort den Link einmal
-    (``link``); der Betreiber gibt ihn selbst weiter.
+    ⚠️ **Mit Adresse und Postausgang: anlegen und verschicken sind eins** (``senden``, ab Werk an). Eine Einladung,
+    die in der Liste steht, deren Mail aber nie hinausging, ist die schlimmste Sorte. Geht der Versand schief, wird
+    die Zeile wieder entfernt und der Grund gemeldet. Die Antwort zeigt den Link einmal (``link``, seit der
+    Kontenliste des Moduls immer, ``gemailt`` sagt, ob er auch per Mail ging); der Betreiber kann ihn weitergeben.
 
     ⚠️ **Ohne oeffentliche Adresse geht es auch** (konten 0.3.5): Der Link nimmt dann die Adresse, unter der der
     Betreiber nexmail gerade geoeffnet hat (``request_base``; hinter einem Proxy mit dessen weitergeleiteten
@@ -189,7 +219,7 @@ def einladen(eingabe: Einladen, _: Betreiber, request: Request, db: DbSession) -
     )
     einladung.gemailt = False
     db.commit()
-    if adresse and systempost.lesen(db).eingerichtet:
+    if adresse and eingabe.senden and systempost.lesen(db).eingerichtet:
         try:
             kontenpost.einladung_senden(db, einladung, link, eingabe.tage)
         except systempost.PostFehler as fehler:
@@ -198,8 +228,9 @@ def einladen(eingabe: Einladen, _: Betreiber, request: Request, db: DbSession) -
             raise MeldungHttp.aus(fehler, status.HTTP_502_BAD_GATEWAY) from fehler
         einladung.gemailt = True
         db.commit()
-        return _einladungszeile(einladung)
-    return _einladungszeile(einladung, link)
+    zeile = _einladungszeile(einladung, link)
+    zeile.gemailt = bool(einladung.gemailt)
+    return zeile
 
 
 @router.delete("/einladungen/{einladung_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -268,9 +299,25 @@ def betreiber_uebergeben(
     logger.warning("The operator flag was handed over to another user.")
 
 
+class Entfernen(BaseModel):
+    #: ⚠️ Das eigene Passwort des Betreibers (konten 0.3.9: alles, was ein Konto beendet, verlangt es); ein Betreiber
+    #: ohne Passwort ist frisch beim Anbieter angemeldet.
+    passwort: str = Field(default="", max_length=300)
+
+
 @router.delete("/{benutzer_id}", status_code=status.HTTP_204_NO_CONTENT)
-def entfernen(benutzer_id: str, ich: Betreiber, db: DbSession) -> None:
-    """Einen Benutzer mit allem entfernen, was ihm gehoert.
+def entfernen(
+    benutzer_id: str,
+    ich: Betreiber,
+    sitzung: AktiveSitzung,
+    db: DbSession,
+    eingabe: Entfernen | None = None,
+) -> None:
+    """Einen Benutzer mit allem entfernen, was ihm gehoert. Auf dem Mailserver bleibt alles.
+
+    ⚠️ **Mit dem eigenen Passwort des Betreibers** (seit der Kontenliste des Moduls, konten 0.3.9), im Rumpf
+    ``{"passwort": …}``; falsch oder fehlend: 401 ``kennwort_falsch``, gezaehlt an der Bremse des Moduls
+    (``confirm:<Betreiber>``). Eine geklaute Sitzung soll fuer das Teuerste der Verwaltung nicht reichen.
 
     ⚠️ **Der Betreiber selbst geht nicht.** Danach haette nexmail niemanden,
     der die Verwaltung oeffnen kann — und aus der Anwendung heraus fuehrt kein
@@ -290,6 +337,17 @@ def entfernen(benutzer_id: str, ich: Betreiber, db: DbSession) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="betreiber_entfernen",
         )
+    try:
+        nexkonten.common.acting(
+            kontenstore.store_fuer(db),
+            person.id,
+            ich.id,
+            eingabe.passwort if eingabe is not None else "",
+            confirm_self=False,
+            actor_confirmed=_bestaetigt(ich, sitzung),
+        )
+    except nexkonten.AccountError as fehler:
+        raise _abgelehnt(fehler) from fehler
     benutzerdienst.entfernen(db, person)
 
 

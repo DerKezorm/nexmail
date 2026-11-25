@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import __version__
-from ..models import Benutzer
+from ..models import Benutzer, utcnow
 from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.benutzer")
@@ -118,6 +118,7 @@ def passwort_aendern(
     passwort_pruefen_regeln(neues)
 
     benutzer.passwort_hash = hashen(neues)
+    benutzer.passwort_geaendert = utcnow()
     db.commit()
     logger.info("A user changed their password.")
 
@@ -161,6 +162,7 @@ def anlegen(
         benutzername=benutzername,
         anzeigename=anzeigename.strip() or benutzername,
         passwort_hash="" if ohne_passwort else hashen(passwort),
+        passwort_geaendert=None if ohne_passwort else utcnow(),
         ist_betreiber=ist_betreiber,
         wasneu_gesehen=__version__,
     )

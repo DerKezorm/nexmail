@@ -6,7 +6,7 @@ ueber den Systempostausgang (``services/systempost``), mit Link aus der oeffentl
 
 Seit Teil 2 baut das gemeinsame Mailmodul (``vendor/nexpost``) die Briefe: Text und HTML mit Logo, einzeilige
 Kopfzeilen, die Sprache des Kontos (DE, EN, FR), sonst die des Betreibers, sonst Englisch. Verschickt wird ueber die
-Outbox mit Wiederholung (``services/post_store``).
+Outbox mit Wiederholung (``services/post_store``); nur „Passwort vergessen“ geht sofort (``sofort_senden``).
 """
 
 from __future__ import annotations
@@ -50,17 +50,27 @@ def _sprache(db: Session, benutzer_id: object = None) -> str:
 _PFADE = {MAIL_RESET: "/kennwort/", MAIL_CONFIRM_EMAIL: "/adresse/"}
 
 
-def senden(db: Session, mail: Mail, *, where: str = "") -> None:
-    """Eine Mail des Kontenmoduls: als Brief des Mailmoduls (Logo, Text und HTML, Sprache des Kontos) in die Outbox.
-    Der erste Versuch laeuft gleich, weitere holt der Takt nach (``services/post_store``)."""
+def _brief(db: Session, mail: Mail, where: str = ""):
     pfad = _PFADE.get(mail.kind)
-    brief = nexpost.letters.from_account_mail(
+    return nexpost.letters.from_account_mail(
         mail,
         language=_sprache(db, mail.account_id),
         link=link(db, f"{pfad}{mail.token}") if pfad and mail.token else "",
         where=where,
     )
-    post_store.einreihen(db, brief)
+
+
+def senden(db: Session, mail: Mail, *, where: str = "") -> None:
+    """Eine Mail des Kontenmoduls: als Brief des Mailmoduls (Logo, Text und HTML, Sprache des Kontos) in die Outbox.
+    Der erste Versuch laeuft gleich, weitere holt der Takt nach (``services/post_store``)."""
+    post_store.einreihen(db, _brief(db, mail, where))
+
+
+def sofort_senden(db: Session, mail: Mail) -> None:
+    """„Passwort vergessen“ (konten 0.3.10): **sofort, nie ueber die Outbox.** Geht die Mail nicht hinaus, wirft
+    das, und das Modul nimmt den Link wieder weg (``resets.forgot_in_background``); ueber die Outbox bliebe ein Link,
+    den niemand bekam, und der Mensch wartete auf eine Mail, die erst eine Stunde spaeter oder nie kommt."""
+    nexpost.send.deliver(post_store.PostStore(db).mail_settings(), _brief(db, mail))
 
 
 def einladung_senden(db: Session, einladung: Einladung, einladungslink: str, tage: int) -> None:

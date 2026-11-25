@@ -315,7 +315,9 @@ def test_the_brake_still_locks_after_ten_wrong_passwords(bestand):
             zaehler.frei_ab = 0
         klient.post("/api/auth/anmelden", json={"benutzername": _name(konto), "passwort": "falsch-falsch-falsch"})
     antwort = klient.post("/api/auth/anmelden", json={"benutzername": _name(konto), "passwort": konto["passwort"]})
-    assert antwort.status_code == 429, antwort.text
+    # konten 0.3.10: Wartet nur der Topf des Kontos (oder die Sperre haelt), antwortet die Anmeldung wie bei einem
+    # falschen Passwort; 429 kommt nur bei vollem Topf des Absenders.
+    assert antwort.status_code == 401, antwort.text
 
 
 # --- Providers ------------------------------------------------------------------------------------------------------

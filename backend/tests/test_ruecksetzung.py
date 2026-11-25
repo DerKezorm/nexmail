@@ -230,7 +230,13 @@ def test_erfunden_und_abgelaufen_sehen_gleich_aus(klient, db, welt):
     )
 
     assert alt.status_code == erfunden.status_code
-    assert alt.json() == erfunden.json()
+    assert alt.json()["detail"] == erfunden.json()["detail"] == "ruecksetzung_ungueltig"
+    # konten 0.3.10 (``AccountError.as_dict``): Nach aussen dieselbe alte Kennung; daneben die des Moduls, damit die
+    # Seite „abgelaufen“ sagen kann. Ein Schluessel ist zu lang zum Durchprobieren.
+    assert (alt.json()["werte"]["account_code"], erfunden.json()["werte"]["account_code"]) == (
+        "reset_expired",
+        "reset_invalid",
+    )
 
 
 def test_ein_zu_kurzes_kennwort_wird_benannt(klient, db, welt):

@@ -512,5 +512,5 @@ def test_der_schluessel_geht_mit_seinem_benutzer(klient, zweiter_klient, db, ohn
     konto = _postfach(zweiter_klient, "zweiter@example.com")
     klartext = _schluessel(zweiter_klient, [konto])["schluessel"]
 
-    assert klient.delete(f"/api/benutzer/{person.id}").status_code == 204
+    assert klient.request("DELETE", f"/api/benutzer/{person.id}", json={"passwort": "sehr-geheim-123"}).status_code == 204
     assert klient.get("/api/v1/me", headers=_mit(klartext)).status_code == 401

@@ -94,6 +94,12 @@ ALTE_KENNUNGEN = {
 }
 
 
+#: Alte Kennungen, hinter denen mehr als eine des Moduls steht (``einladung_abgelaufen`` fuer ungueltig und abgelaufen).
+#: Dort traegt die Antwort die des Moduls daneben (``werte.account_code``, konten 0.3.10 ``AccountError.as_dict``),
+#: damit die Seiten „abgelaufen“ sagen koennen; nach aussen bleibt die alte Kennung.
+MEHRDEUTIG = frozenset(alt for alt in ALTE_KENNUNGEN.values() if list(ALTE_KENNUNGEN.values()).count(alt) > 1)
+
+
 def einrichten() -> None:
     """Das Modul kennt danach nexmails Namen, Protokoll und Kennungen. Beim Import und von Tests."""
     nexkonten.configure(
@@ -125,6 +131,8 @@ def http(fehler: AccountError, status_code: int | None = None) -> MeldungHttp:
         warten = int(werte.get("retry_after") or 1)
         return MeldungHttp(429, "zu_viele_versuche", werte, headers={"Retry-After": str(warten)})
     status = status_code or (400 if fehler.status == 422 else fehler.status)
+    if fehler.public_code in MEHRDEUTIG:
+        werte["account_code"] = fehler.code
     return MeldungHttp(status, fehler.public_code, werte)
 
 
@@ -192,6 +200,7 @@ class KontenStore:
             offered_email=zeile.angebotene_adresse or "",
             offered_email_provider=zeile.angebotene_adresse_von or "",
             declined_email=zeile.abgelehnte_adresse or "",
+            password_changed_at=zeile.passwort_geaendert,
         )
 
     def count_accounts(self) -> int:
@@ -253,6 +262,7 @@ class KontenStore:
             benutzername=new.username,
             anzeigename=new.display_name,
             passwort_hash=benutzerdienst.hashen(new.password) if new.password else "",
+            passwort_geaendert=utcnow() if new.password else None,
             ist_betreiber=new.operator,
             kontaktadresse=new.email,
             kontaktadresse_zaehlt=new.email_confirmed,
@@ -329,7 +339,12 @@ class KontenStore:
         self.db.execute(
             update(Benutzer)
             .where(Benutzer.id == str(account_id))
-            .values(passwort_hash=benutzerdienst.hashen(password), fehlversuche=0, gesperrt_bis=None)
+            .values(
+                passwort_hash=benutzerdienst.hashen(password),
+                passwort_geaendert=utcnow(),
+                fehlversuche=0,
+                gesperrt_bis=None,
+            )
         )
         self._auffrischen(account_id)
 

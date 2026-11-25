@@ -13,7 +13,6 @@ ausser dem zweiten Schritt nichts aufrufen kann.
 from __future__ import annotations
 
 import logging
-import math
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
@@ -92,6 +91,9 @@ class Ich(BaseModel):
     #: Der Zustand des zweiten Faktors im Modul (``factor.state``): ``none``, ``required``, ``active``, ``passkey``;
     #: daran haengt „An“/„Aus“ unter Sicherheit (``SECOND_FACTOR_STATE``, konten 0.3.6).
     zweiter_faktor: str = "none"
+    #: Wann das Passwort zuletzt gesetzt wurde (konten 0.3.10, „Zuletzt geändert am …“ unter Sicherheit); ``None``
+    #: unbekannt (Konten von vorher) oder kein Passwort.
+    passwort_geaendert: datetime | None = None
     #: Wohin ein Ruecksetz-Link ginge. Leer heisst: **kein Weg zurueck**, und
     #: die Sicherheitsseite sagt das auch so.
     kontaktadresse: str = ""
@@ -157,29 +159,15 @@ def bremsschluessel(store, eingetippt: str, request: Request) -> str:
     return konto_oder_eingabe
 
 
-class _Bremse:
-    """Die Bremse des Kontenmoduls an der Anmeldung (``brake.BRAKE``): zwei Toepfe (Absender, Konto oder Eingabe),
-    ein bekannter Browser nur in seinem eigenen. Prueft und zaehlt beim Anlegen in einem Schritt (sonst 429), wie
-    ``anmeldebremse.torwaechter`` an den anderen Tueren; ``geschafft`` nimmt den Versuch zurueck. Ohne
-    ``NEXMAIL_CLIENT_IP`` zaehlt der Absender je Ziel (``sender:none:<ziel>``), nie in einem Topf fuer alle."""
-
-    def __init__(self, schluessel: tuple[str, str], marke: str) -> None:
-        self.schluessel = schluessel
-        self.marke = marke
-        warten = nexkonten.brake.BRAKE.claim(schluessel, browser=marke)
-        if warten > 0:
-            logger.info("Rate limit hit at sign-in (%s s left).", math.ceil(warten))
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="zu_viele_versuche",
-                headers={"Retry-After": str(math.ceil(warten))},
-            )
-
-    def fehlgeschlagen(self) -> None:
-        """Schon beim Anlegen gezaehlt."""
-
-    def geschafft(self) -> None:
-        nexkonten.brake.BRAKE.succeeded(self.schluessel, browser=self.marke)
+def _gehalten(store, eingetippt: str, absender: str, marke: str) -> None:
+    """„Anmeldung mit Passwort“ aus und kein Betreiber: Die Antwort ist immer die eines falschen Passworts, gezaehlt
+    wird trotzdem an der Bremse des Moduls (zwei Toepfe, ein bekannter Browser in seinem eigenen), damit niemand hier
+    ungebremst Passwoerter probiert. 429 nur, wenn der Topf des Absenders (oder des Browsers) voll ist, wie bei
+    ``login.sign_in`` (konten 0.3.10)."""
+    schluessel = nexkonten.login.attempt_key(store, eingetippt, absender)
+    warten = nexkonten.brake.BRAKE.claim(schluessel, browser=marke)
+    if warten > 0 and (marke or nexkonten.brake.BRAKE.wait(schluessel[:1]) > 0):
+        raise kontenstore.http(nexkonten.common.too_many_attempts(warten))
 
 
 @router.post("/anmelden", response_model=Schritt)
@@ -200,26 +188,27 @@ def anmelden(
     # sperrt so nicht den Besitzer an seinem eigenen Rechner aus. An der Bremse des Moduls (konten 0.3.3) zaehlt er in
     # einem Topf fuer sich, weder am Absender noch am Konto: Ein Fremder hinter demselben Router sperrt ihn nicht aus.
     marke = sitzungsdienst.bekannte_marke(request, store, gemeint.id) if gemeint is not None else ""
-    vertraut = gemeint.id if marke else None
-    wache = _Bremse(
-        nexkonten.login.attempt_key(store, eingabe.benutzername, anmeldebremse.adresse_von(request)), marke
-    )
+    absender = anmeldebremse.adresse_von(request)
 
     # ⚠️ **„Anmeldung mit Passwort" aus** (Verwaltung → Anmeldung): Nur die Anbieter lassen herein. Der Betreiber
     # kommt immer mit seinem Passwort hinein, sonst stuende er vor der Tuer, sobald der Anbieter ausfaellt. Die
     # Antwort ist dieselbe wie bei einem falschen Passwort und dauert genauso lange.
     if gemeint is not None and not gemeint.operator and not passwort_anmeldung_an(db):
+        _gehalten(store, eingabe.benutzername, absender, marke)
         store.check_password(None, eingabe.passwort)
-        wache.fehlgeschlagen()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="anmeldung_falsch")
+    # konten 0.3.10: Bremse und Pruefung in einem (``login.sign_in``). Wartet nur der Topf des Kontos oder der
+    # Eingabe, kommt die Antwort eines falschen Passworts (401 ``anmeldung_falsch``), ohne das Passwort zu pruefen;
+    # 429 ``zu_viele_versuche`` nur bei vollem Topf des Absenders. Ohne ``NEXMAIL_CLIENT_IP`` kennt nexmail keinen
+    # Absender; dann zaehlt er je Ziel (``sender:none:<ziel>``), nie in einem Topf fuer alle.
     try:
-        konto = nexkonten.login.authenticate(store, eingabe.benutzername, eingabe.passwort, known_browser=vertraut)
+        konto = nexkonten.login.sign_in(
+            store, eingabe.benutzername, eingabe.passwort, sender=absender, browser=marke
+        )
     except nexkonten.AccountError as fehler:
-        wache.fehlgeschlagen()
         raise kontenstore.http(fehler, status.HTTP_401_UNAUTHORIZED) from fehler
 
     person = db.get(Benutzer, str(konto.id))
-    wache.geschafft()
     benutzerdienst.hash_auffrischen(db, person, eingabe.passwort)
 
     # ⚠️ Der Nothammer. Er ueberspringt den zweiten Faktor vollstaendig -
@@ -397,7 +386,7 @@ def kennwort_vergessen(
         from ..db import SessionLocal
 
         with SessionLocal() as eigene:
-            kontenpost.senden(eigene, mail)
+            kontenpost.sofort_senden(eigene, mail)
 
     try:
         nexkonten.resets.forgot_in_background(
@@ -715,6 +704,7 @@ def ich(person: Benutzer, db) -> Ich:
         ki_erlaubt=kidienst.erlaubt_fuer(db, person),
         ki_fremde_post=kidienst.fremde_post_fuer(db, person),
         hat_kennwort=bool(person.passwort_hash),
+        passwort_geaendert=person.passwort_geaendert if person.passwort_hash else None,
         version=__version__,
         wasneu_gesehen=person.wasneu_gesehen,
         profilbild=person.profilbild_am.isoformat() if person.profilbild_am else None,

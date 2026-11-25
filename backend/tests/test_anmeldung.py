@@ -110,22 +110,23 @@ def test_bremse_greift_am_passwort(klient):
     einrichten(klient)
     klient.cookies.clear()
 
-    gebremst = False
-    for _ in range(20):
+    # konten 0.3.10: Nach fuenf falschen wartet der Topf des Kontos; solange kommt auch das richtige Passwort nicht
+    # herein und bekommt dieselbe Antwort wie ein falsches (401), ungeprueft.
+    for _ in range(5):
         antwort = klient.post(
             "/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": "falsch-falsch"}
         )
-        if antwort.status_code == 429:
-            gebremst = True
-            break
-    assert gebremst, "Die Bremse hat am Passwort nicht gegriffen."
+        assert antwort.status_code == 401
+    richtig = klient.post("/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": PASSWORT})
+    assert (richtig.status_code, richtig.json()["detail"]) == (401, "anmeldung_falsch"), "Die Bremse hat am Passwort nicht gegriffen."
 
 
 def test_bremse_antwortet_sofort(klient):
     """⚠️ Es wird nicht geschlafen — sonst legt ein Angreifer den Dienst lahm."""
     einrichten(klient)
     klient.cookies.clear()
-    for _ in range(12):
+    # konten 0.3.10: 429 nur bei vollem Topf des Absenders (ohne ``NEXMAIL_CLIENT_IP`` je Ziel, 30 frei).
+    for _ in range(40):
         klient.post("/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": "falsch"})
 
     start = time.monotonic()
