@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db import einstellung_lesen
 from ..models import Benutzer, Einladung
-from ..vendor.nexkonten import MAIL_CONFIRM_EMAIL, MAIL_RESET, Mail
+from ..vendor.nexkonten import MAIL_CONFIRM_EMAIL, MAIL_NEW_SIGN_IN, MAIL_RESET, Mail
 from ..vendor import nexpost
 from . import post_store, systempost
 from .adresse import fuer_modul
@@ -49,8 +49,28 @@ def _sprache(db: Session, benutzer_id: object = None) -> str:
 
 _PFADE = {MAIL_RESET: "/kennwort/", MAIL_CONFIRM_EMAIL: "/adresse/"}
 
+#: Die Seite Sicherheit (``frontend/src/lib/kontorueckweg.ts`` ``KONTOSEITE``): Ziel des Knopfs „Angemeldete Geraete
+#: ansehen“ in der Mail „Neue Anmeldung“ (post 1.0.0).
+SEITE_SICHERHEIT = "/konto/sicherheit"
+
+
+def zeitzone(db: Session) -> str:
+    """Die Zeitzone der Installation (Verwaltung → Allgemein, sonst ``NEXMAIL_ZEITZONE``); Personen fuehren in nexmail
+    keine eigene. ``""``: die des Servers."""
+    return einstellung_lesen(db, "zeitzone") or get_settings().zeitzone
+
 
 def _brief(db: Session, mail: Mail, where: str = ""):
+    if mail.kind == MAIL_NEW_SIGN_IN:
+        # post 1.0.0: Browser auf System und Uhrzeit in der Zone der Installation, der Knopf zur Seite Sicherheit;
+        # nie eine Netzadresse (``where`` ist nur der User-Agent).
+        return nexpost.letters.from_account_mail(
+            mail,
+            language=_sprache(db, mail.account_id),
+            link=link(db, SEITE_SICHERHEIT),
+            where=where,
+            time_zone=zeitzone(db) or None,
+        )
     pfad = _PFADE.get(mail.kind)
     return nexpost.letters.from_account_mail(
         mail,

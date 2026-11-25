@@ -382,3 +382,69 @@ class Adapter(StandardAdapter):
         with SessionLocal() as db:
             bestand = liste(None, db)
         return [{**zeile.model_dump(), "email": zeile.adresse} for zeile in bestand.einladungen]
+
+    def forgot_through_route(self, typed: str, *, mail_fails: bool) -> tuple[list[str], int]:
+        """konten 1.0.0: "Forgot your password?" through ``POST /api/auth/kennwort-vergessen`` with a mail server and the
+        public address set up; the background work runs in the ``TestClient``. The mail is caught with
+        ``nexpost.testing.catch_mail`` (``fail=True``: the mail server cannot be reached)."""
+        from fastapi.testclient import TestClient
+
+        from app.db import SessionLocal
+        from app.main import app
+        from app.models import PostAusgang
+        from app.services import anmeldebremse
+        from app.vendor.nexpost import testing
+
+        _postausgang_einrichten()
+        anmeldebremse.zuruecksetzen()
+        with SessionLocal() as db:
+            vorher = db.query(PostAusgang).count()
+        with testing.catch_mail(fail=mail_fails) as gefangen:
+            antwort = TestClient(app, base_url="https://mail.example.com").post(
+                "/api/auth/kennwort-vergessen", json={"benutzername": typed}
+            )
+        assert antwort.status_code == 202, antwort.text
+        with SessionLocal() as db:
+            neu = db.query(PostAusgang).count() - vorher
+        return [brief.to for brief in gefangen.sent], neu
+
+    def picture_status(self, owner: Any, viewer: Any | None) -> int:
+        """konten 1.0.0: ``GET /api/auth/profilbild/{owner}``, signed in as ``viewer`` (a browser session of
+        nexmail's table) or as nobody."""
+        import secrets
+
+        from fastapi.testclient import TestClient
+
+        from app.db import SessionLocal
+        from app.main import app
+        from app.models import Sitzung, utcnow
+        from app.services import sitzung as sitzungsdienst
+
+        klient = TestClient(app, base_url="https://mail.example.com")
+        if viewer is not None:
+            token = secrets.token_urlsafe(24)
+            with SessionLocal() as db:
+                db.add(
+                    Sitzung(
+                        benutzer_id=str(viewer),
+                        token_hash=sitzungsdienst._hash(token),
+                        bestaetigt=True,
+                        art="browser",
+                        geraet="Probe",
+                        gueltig_bis=utcnow() + timedelta(days=1),
+                    )
+                )
+                db.commit()
+            klient.cookies.set(sitzungsdienst.COOKIE_NAME, token)
+        return klient.get(f"/api/auth/profilbild/{owner}").status_code
+
+
+def _postausgang_einrichten() -> None:
+    """Ein Postausgang und die oeffentliche Adresse sind eingetragen (verschickt wird nichts: ``catch_mail``)."""
+    from app.db import SessionLocal, einstellung_schreiben
+    from app.services import systempost
+
+    with SessionLocal() as db:
+        einstellung_schreiben(db, "oeffentliche_adresse", "https://mail.example.com")
+        einstellung_schreiben(db, systempost.S_SERVER, "smtp.example.com")
+        einstellung_schreiben(db, systempost.S_ABSENDER, "nexmail@example.com")

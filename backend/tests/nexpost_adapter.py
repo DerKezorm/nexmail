@@ -84,3 +84,51 @@ class Adapter(StandardAdapter):
             ),
             queued=0,
         )
+
+    def new_sign_in_letter(self, where: str, sender: str) -> Any:
+        """post 1.0.0: an account with a confirmed address signs in through ``POST /api/auth/anmelden`` from a browser
+        it does not know (User-Agent ``where``, from ``sender`` with ``NEXMAIL_CLIENT_IP=direct``); the letter
+        "New sign-in" is caught on its way into the outbox (``nexpost.testing.catch_mail``)."""
+        from fastapi.testclient import TestClient
+
+        from app.config import get_settings
+        from app.db import SessionLocal, einstellung_schreiben
+        from app.main import app
+        from app.models import Benutzer
+        from app.services import anmeldebremse, systempost
+        from app.services import benutzer as benutzerdienst
+        from app.vendor.nexpost import testing
+
+        geheim = password()
+        with SessionLocal() as db:
+            einstellung_schreiben(db, "oeffentliche_adresse", "https://mail.example.com")
+            einstellung_schreiben(db, systempost.S_SERVER, "smtp.example.com")
+            einstellung_schreiben(db, systempost.S_ABSENDER, "nexmail@example.com")
+            db.add(
+                Benutzer(
+                    benutzername="kim",
+                    anzeigename="Kim",
+                    passwort_hash=benutzerdienst.hashen(geheim),
+                    kontaktadresse="kim@example.com",
+                    kontaktadresse_zaehlt=True,
+                )
+            )
+            db.commit()
+        anmeldebremse.zuruecksetzen()
+        einstellungen = get_settings()
+        vorher = einstellungen.client_ip
+        object.__setattr__(einstellungen, "client_ip", "direct")
+        try:
+            with testing.catch_mail() as gefangen:
+                klient = TestClient(app, base_url="https://mail.example.com", client=(sender, 50000))
+                antwort = klient.post(
+                    "/api/auth/anmelden",
+                    json={"benutzername": "kim", "passwort": geheim},
+                    headers={"User-Agent": where},
+                )
+        finally:
+            object.__setattr__(einstellungen, "client_ip", vorher)
+        assert antwort.status_code == 200, antwort.text
+        briefe = [brief for brief in gefangen.letters if brief.kind == "new_sign_in"]
+        assert briefe, [brief.kind for brief in gefangen.letters]
+        return briefe[0]
