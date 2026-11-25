@@ -24,6 +24,7 @@ from ..deps import DbSession
 from ..models import Benutzer
 from ..services import anmeldebremse
 from ..services import konten_store as kontenstore
+from ..vendor import nexkonten
 from ..services import sitzung as sitzungsdienst
 from ..vendor import nexkonten
 
@@ -69,7 +70,7 @@ def status_lesen(db: DbSession) -> Stand:
     eingerichtet = hat_benutzer(db)
     return Stand(
         eingerichtet=eingerichtet,
-        zwei_faktor_aus=get_settings().zwei_faktor_aus,
+        zwei_faktor_aus=nexkonten.factor.switched_off(),
         code_noetig=not eingerichtet,
     )
 

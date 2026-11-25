@@ -289,13 +289,8 @@ async def lebenslauf(_: FastAPI):
     # Den TLS-Kontext des Anmeldemoduls einmal ausserhalb der Ereignisschleife lesen.
     await nexoidc.warm()
 
-    if einstellungen_.zwei_faktor_aus:
-        # ⚠️ Laut, bei jedem Start. Ein Notausgang, den man vergisst
-        # zurückzustellen, ist kein Notausgang mehr.
-        logger.warning(
-            "NEXMAIL_ZWEI_FAKTOR_AUS is set: the second factor is DISABLED for every "
-            "sign-in. Unset it as soon as the authenticator app works again."
-        )
+    # ⚠️ Der Nothammer, laut bei jedem Start: Ein Notausgang, den man vergisst zurückzustellen, ist keiner mehr.
+    nexkonten.factor.announce_switched_off()
 
     with SessionLocal() as db:
         # Die gemerkte Stufe gilt erst jetzt: Beim allerersten Start gibt es

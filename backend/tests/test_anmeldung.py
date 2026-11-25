@@ -313,6 +313,18 @@ def test_notausgang_ueberspringt_den_faktor(klient, monkeypatch):
     assert klient.get("/api/auth/ich").status_code == 200
 
 
+def test_notausgang_auch_unter_dem_namen_des_moduls(klient, monkeypatch):
+    """konten 0.3.3: ``NEXMAIL_SECOND_FACTOR_OFF`` gilt neben der alten Variable; der Stand sagt es der Oberflaeche."""
+    einrichten(klient)
+    klient.cookies.clear()
+    assert klient.get("/api/setup/status").json()["zwei_faktor_aus"] is False
+    monkeypatch.setenv("NEXMAIL_SECOND_FACTOR_OFF", "yes")
+
+    antwort = klient.post("/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": PASSWORT})
+    assert antwort.json()["schritt"] == "fertig"
+    assert klient.get("/api/setup/status").json()["zwei_faktor_aus"] is True
+
+
 @pytest.mark.parametrize("zu_kurz", ["", "kurz", "neunzeich", "elf-zeichen"])
 def test_passwortlaenge_wird_geprueft(klient, zu_kurz):
     """Neue Passwoerter brauchen 12 Zeichen (Kontenmodul); die Kennung bleibt die alte."""

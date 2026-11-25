@@ -209,11 +209,11 @@ def anmelden(
     # ⚠️ Der Nothammer. Er ueberspringt den zweiten Faktor vollstaendig -
     # gedacht fuer den Fall, dass Telefon und Wiederherstellungscodes weg sind.
     merken = eingabe.angemeldet_bleiben
-    if get_settings().zwei_faktor_aus:
+    if nexkonten.factor.switched_off():
         sitzungsdienst.anlegen(db, person, request, response, bestaetigt=True, merken=merken)
         nexkonten.login.succeeded(store, person.id)
         sitzungsdienst.angemeldet(db, person, request, response)
-        logger.warning("Signed in with the second factor disabled (NEXMAIL_ZWEI_FAKTOR_AUS).")
+        logger.warning("Signed in with the second factor switched off for everybody.")
         return Schritt(schritt="fertig")
 
     # ⚠️ **Der zweite Faktor ist eine Wahl, keine Pflicht:** Wer nexmail rein

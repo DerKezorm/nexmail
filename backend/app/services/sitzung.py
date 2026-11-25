@@ -339,13 +339,11 @@ def angemeldet(db: Session, benutzer: Benutzer, request: Request, response: Resp
 def naechster_schritt(db: Session, benutzer: Benutzer) -> str:
     """Was nach Passwort oder Anbieter kommt: entscheidet das Modul (``common.next_step``, konten 0.3.2) aus
     ``factor.state``: ``second_factor`` (Code), ``passkey`` (bei „fuer alle verlangen“ ein Passkey statt einer App),
-    ``second_factor_setup`` (verlangt, keiner da), ``session``. ``NEXMAIL_ZWEI_FAKTOR_AUS`` schlaegt alles (nexmails
-    Nothammer, das Modul kennt ihn nicht)."""
-    from ..vendor.nexkonten import NEXT_SESSION, common
+    ``second_factor_setup`` (verlangt, keiner da), ``session``. Der Nothammer (``NEXMAIL_ZWEI_FAKTOR_AUS`` oder
+    ``NEXMAIL_SECOND_FACTOR_OFF``) schlaegt alles, im Modul selbst (konten 0.3.3)."""
+    from ..vendor.nexkonten import common
     from . import konten_store
 
-    if get_settings().zwei_faktor_aus:
-        return NEXT_SESSION
     store = konten_store.store_fuer(db)
     return common.next_step(store, store.get_account(benutzer.id))
 
@@ -356,7 +354,8 @@ def faktor_einrichten(db: Session, benutzer: Benutzer) -> bool:
     weiter passt), die Anmeldung wird eine halbe Sitzung, und ``/api/auth/code`` bestaetigt beides zugleich.
 
     ⚠️ **Das Einrichten selbst bleibt nexmails** (``services/zwei_faktor``): Das Geheimnis liegt versiegelt in der
-    Datenbank und ueberlebt einen Neustart; ``factor.begin_totp`` haelt es nur im Speicher."""
+    Datenbank und ueberlebt einen Neustart, ohne Ablauf (ein eingescannter QR-Code passt auch morgen noch). Der Store
+    zeigt es dem Modul als ``pending_totp``."""
     from ..vendor.nexkonten import NEXT_SECOND_FACTOR_SETUP
     from . import zwei_faktor
 
