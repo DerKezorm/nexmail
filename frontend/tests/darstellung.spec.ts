@@ -297,7 +297,8 @@ test('Reiter Sicherheit zeigt Geräte und Wiederherstellungscodes', async ({ pag
   await expect(page.getByText(/Wiederherstellungscode/)).toBeVisible()
   // Die eigene Sitzung ist als solche gekennzeichnet und nicht kündbar —
   // sonst meldet man sich hier versehentlich selbst ab.
-  await expect(page.getByText('dieses Gerät')).toBeVisible()
+  // Wie in nexnotes: das Abzeichen „Dieser Browser“ der Kontenmodul-Wortlaute (`account.sessionThis`).
+  await expect(page.getByText('Dieser Browser', { exact: true })).toBeVisible()
 
   await keinTextLaeuftUeber(page)
 })

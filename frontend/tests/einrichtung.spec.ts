@@ -62,7 +62,7 @@ test('Mit zwölf Zeichen geht es weiter', async ({ page }, info) => {
   await felder.nth(1).fill('123456789012')
 
   await expect(
-    page.getByRole('button', { name: 'Weiter' }),
+    page.getByRole('button', { name: 'Konto anlegen' }),
     'Zwölf Zeichen, gleich getippt — der Knopf muss frei sein.',
   ).toBeEnabled()
 })

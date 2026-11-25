@@ -289,7 +289,7 @@
     "passwort_hinweis": "At least 12 characters. No rules about special characters: they make provably worse passwords, not better ones.",
     "passwort_wiederholen": "Repeat password",
     "passwort_ungleich": "The two entries do not match.",
-    "weiter": "Continue",
+    "weiter": "Create account",
     "geheimnis_abtippen": "Or enter it by hand",
     "codes_titel": "Recovery codes",
     "codes_text": "These ten codes replace your app if the phone is gone. Each works exactly once. **You will only see them now.**",

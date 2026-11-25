@@ -40,7 +40,7 @@
     "frontend/src/vendor/nexkonten/konten.de.json": "sha256-01XQeuE38YMp39FOKSwnnxlFt4SkgvaicFQq//q8N24=",
     "frontend/src/vendor/nexkonten/konten.en.json": "sha256-wEZGAyaFNVe4SvtkAV22DBHHhO3b5UspmmuHjm3vhVg=",
     "frontend/src/vendor/nexkonten/konten.fr.json": "sha256-B6Tm3WKJMv31fgbeqLZ5gDalPgR2dDWBLAFHz3aRTFQ=",
-    "frontend/src/vendor/nexkonten/konten.ts": "sha256-Ru5nJyvVbOCCkLu7HBEnfD5yaxX+UKtytARYtghWUC0="
+    "frontend/src/vendor/nexkonten/konten.ts": "sha256-woXygHvvulbkUTJoaC1/aLvlNJCvboG0oz1lVrguA8s="
   },
   "module": "konten",
   "requires": {

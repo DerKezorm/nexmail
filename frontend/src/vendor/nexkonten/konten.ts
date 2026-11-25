@@ -282,7 +282,7 @@ export const BUTTONS = {
   // Buttons the app words, by their role
   signIn: { kind: 'primary', icon: 'LogIn' },
   setupSubmit: { kind: 'primary', icon: 'Check' },
-  inviteSubmit: { kind: 'primary', icon: 'UserPlus' },
+  inviteSubmit: { kind: 'primary', icon: 'Check' },
   resetSubmit: { kind: 'primary', icon: 'KeyRound' },
   codeSubmit: { kind: 'primary', icon: 'LogIn' },
   signOut: { kind: 'danger', icon: 'LogOut' },
