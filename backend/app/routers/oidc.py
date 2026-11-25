@@ -347,8 +347,8 @@ class PasswortIn(BaseModel):
 
 
 def _passwort_pruefen(request: Request, person: Benutzer, passwort: str) -> None:
-    """Das eigene Passwort noch einmal, mit derselben Bremse wie an der Anmeldung."""
-    wache = anmeldebremse.torwaechter(request, "passwort-bestaetigen", f"account:{person.id}")
+    """Das eigene Passwort noch einmal, an der Bremse des Kontenmoduls (``confirm:<Konto>``, konten 0.3.4)."""
+    wache = anmeldebremse.bestaetigen(person.id)
     if not person.passwort_hash or not benutzerdienst.passwort_stimmt(person, passwort):
         wache.fehlgeschlagen()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="kennwort_falsch")

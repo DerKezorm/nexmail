@@ -304,3 +304,41 @@ def test_angebotene_adresse_uebernehmen_und_ablehnen(klient):
     daten = genommen.json()
     assert daten["angebotene_adresse"] == ""
     assert "neu@id.example.com" in (daten["kontaktadresse"], daten["kontaktadresse_wartet"])
+
+
+# --- konten 0.3.4/0.3.5: Authenticator und Bremse ueber das Modul -------------------------------------------------
+
+
+def test_die_wartende_einrichtung_zeigt_denselben_qr_code_noch_einmal(klient):
+    einrichten(klient)
+    assert klient.get("/api/auth/zwei-faktor/einrichtung").status_code == 410
+    start = klient.post("/api/auth/zwei-faktor/starten").json()
+    assert start["gilt_bis"]
+    nochmal = klient.get("/api/auth/zwei-faktor/einrichtung")
+    assert nochmal.status_code == 200
+    assert (nochmal.json()["geheimnis"], nochmal.json()["otpauth"]) == (start["geheimnis"], start["otpauth"])
+
+
+def test_abschalten_zaehlt_an_der_bremse_des_moduls(klient):
+    from conftest import zwei_faktor_an
+
+    einrichten(klient)
+    zwei_faktor_an(klient)
+    for _ in range(brake.FREE["confirm"] + 1):
+        assert klient.post("/api/auth/zwei-faktor/aus", json={"passwort": "falsch-falsch-1"}).status_code == 401
+    gebremst = klient.post("/api/auth/zwei-faktor/aus", json={"passwort": PASSWORT})
+    assert (gebremst.status_code, gebremst.json()["detail"]) == (429, "zu_viele_versuche")
+    assert gebremst.headers["Retry-After"]
+    anmeldebremse.zuruecksetzen()
+    assert klient.post("/api/auth/zwei-faktor/aus", json={"passwort": PASSWORT}).status_code == 204
+    assert klient.get("/api/auth/ich").json()["zwei_faktor_aktiv"] is False
+    assert klient.get("/api/auth/zwei-faktor/einrichtung").status_code == 410
+
+
+def test_passwort_vergessen_zaehlt_je_absender_im_modul(klient):
+    einrichten(klient)
+    klient.post("/api/auth/abmelden")
+    for _ in range(brake.FREE["forgot"] + 1):
+        assert klient.post("/api/auth/kennwort-vergessen", json={"benutzername": "betreiber"}).status_code == 202
+    gebremst = klient.post("/api/auth/kennwort-vergessen", json={"benutzername": "betreiber"})
+    assert (gebremst.status_code, gebremst.json()["detail"]) == (429, "zu_viele_versuche")

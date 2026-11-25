@@ -1,7 +1,10 @@
 """Die Bremse an jeder Tuer, hinter der ein Geheimnis geprueft wird.
 
 Ohne sie kann eine Maschine Passwoerter durchprobieren, so schnell die
-Verbindung hergibt. Bei nexmail sind das drei Tueren:
+Verbindung hergibt. Seit konten 0.3.4 zaehlt das Kontenmodul an seinen Tueren selbst (Anmeldung, Bestaetigen mit
+Passwort, Code des zweiten Faktors, Links per Mail, „Passwort vergessen?“); hier bleiben nexmails uebrige Tueren
+(Links mit Schluessel, Einrichtung, Kopplung …) und ``ModulTuer`` fuer eigene Routen an einer Tuer des Moduls.
+Urspruenglich waren es drei Tueren:
 
 1. ``/api/auth/anmelden`` - das nexmail-Passwort.
 2. ``/api/auth/code`` - der sechsstellige TOTP-Code. **Die wichtigste von
@@ -169,6 +172,41 @@ def torwaechter(request: Request, tuer: str, kennung: str) -> Torwaechter:
             )
 
     return Torwaechter(schluessel=schluessel)
+
+
+class ModulTuer:
+    """Eine Tuer des Kontenmoduls (konten 0.3.4: ``confirm``, ``code``, ``mail``, ``forgot``), die eine eigene Route
+    nexmails prueft (eigenes Passwort beim Betreiber-Uebergeben, beim neuen Passwort, beim Verknuepfen). Zaehlt an
+    denselben Schluesseln wie das Modul (``brake.door_key``), damit nichts doppelt und nichts an zwei Stellen zaehlt.
+    Wie ``torwaechter``: 429 ``zu_viele_versuche`` mit ``Retry-After``; der Versuch zaehlt schon beim Anlegen,
+    ``geschafft`` nimmt ihn zurueck."""
+
+    def __init__(self, tuer: str, was: object) -> None:
+        from ..vendor.nexkonten import brake
+
+        self.schluessel = (brake.door_key(tuer, was),)
+        warten = brake.BRAKE.claim(self.schluessel)
+        if warten > 0:
+            rest = math.ceil(warten)
+            logger.info("Rate limit hit at %s (%s s left).", tuer, rest)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="zu_viele_versuche",
+                headers={"Retry-After": str(rest)},
+            )
+
+    def fehlgeschlagen(self) -> None:
+        """Schon beim Anlegen gezaehlt."""
+
+    def geschafft(self) -> None:
+        from ..vendor.nexkonten import brake
+
+        brake.BRAKE.succeeded(self.schluessel)
+
+
+def bestaetigen(konto_id: object) -> ModulTuer:
+    """Ein Passwort, das eine Aenderung bestaetigt (``confirm:<Konto>``), in einer Route, die es selbst prueft."""
+    return ModulTuer("confirm", konto_id)
 
 
 def zuruecksetzen() -> None:

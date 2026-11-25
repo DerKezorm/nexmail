@@ -154,7 +154,7 @@ def liste(_: Betreiber, db: DbSession) -> Bestand:
 
 
 @router.post("/einladungen", response_model=EinladungsZeile, status_code=status.HTTP_201_CREATED)
-def einladen(eingabe: Einladen, _: Betreiber, db: DbSession) -> EinladungsZeile:
+def einladen(eingabe: Einladen, _: Betreiber, request: Request, db: DbSession) -> EinladungsZeile:
     """Einladen: Adresse und Anzeigename freiwillig, **kein Benutzername** (Kontenmodul), Gueltigkeit 1, 7 oder 30
     Tage.
 
@@ -162,19 +162,20 @@ def einladen(eingabe: Einladen, _: Betreiber, db: DbSession) -> EinladungsZeile:
     deren Mail aber nie hinausging, ist die schlimmste Sorte. Geht der Versand schief, wird die Zeile wieder
     entfernt und der Grund gemeldet. **Ohne Adresse oder ohne Postausgang** zeigt die Antwort den Link einmal
     (``link``); der Betreiber gibt ihn selbst weiter.
+
+    ⚠️ **Ohne oeffentliche Adresse geht es auch** (konten 0.3.5): Der Link nimmt dann die Adresse, unter der der
+    Betreiber nexmail gerade geoeffnet hat (``request_base``; hinter einem Proxy mit dessen weitergeleiteten
+    Kopfzeilen).
     """
-    if not kontenpost.oeffentliche_adresse(db):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="oeffentliche_adresse_fehlt",
-        )
     store = kontenstore.store_fuer(db)
+    basis = str(request.base_url)
     try:
         adresse, anzeigename = nexkonten.invites.invite_values(
             store,
             email=eingabe.adresse,
             display_name=eingabe.anzeigename,
             public_url=kontenpost.oeffentliche_adresse(db),
+            request_base=basis,
         )
         laeuft_ab = nexkonten.invites.invite_expires_at(eingabe.tage)
     except nexkonten.AccountError as fehler:
@@ -183,11 +184,14 @@ def einladen(eingabe: Einladen, _: Betreiber, db: DbSession) -> EinladungsZeile:
     einladung, schluessel = einladungsdienst.aussprechen(
         db, adresse=adresse, anzeigename=anzeigename, laeuft_ab=laeuft_ab
     )
+    link = nexkonten.invites.invite_link(
+        kontenpost.oeffentliche_adresse(db), "/einladung", schluessel, request_base=basis
+    )
     einladung.gemailt = False
     db.commit()
     if adresse and systempost.lesen(db).eingerichtet:
         try:
-            kontenpost.einladung_senden(db, einladung, schluessel, eingabe.tage)
+            kontenpost.einladung_senden(db, einladung, link, eingabe.tage)
         except systempost.PostFehler as fehler:
             db.delete(einladung)
             db.commit()
@@ -195,7 +199,7 @@ def einladen(eingabe: Einladen, _: Betreiber, db: DbSession) -> EinladungsZeile:
         einladung.gemailt = True
         db.commit()
         return _einladungszeile(einladung)
-    return _einladungszeile(einladung, kontenpost.link(db, f"/einladung/{schluessel}"))
+    return _einladungszeile(einladung, link)
 
 
 @router.delete("/einladungen/{einladung_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -242,7 +246,7 @@ def betreiber_uebergeben(
     es diesen Weg: Wer die Wohnung wechselt, hinterlaesst sonst eine
     Installation, an die niemand mehr herankommt.
     """
-    wache = anmeldebremse.torwaechter(request, "betreiber-uebergeben", f"account:{ich.id}")
+    wache = anmeldebremse.bestaetigen(ich.id)
     if not benutzerdienst.passwort_stimmt(ich, eingabe.passwort):
         wache.fehlgeschlagen()
         raise HTTPException(
@@ -349,13 +353,8 @@ def _bestaetigt(ich: Benutzer, sitzung) -> bool:
     return bestaetigt(ich, sitzung)
 
 
-def _handeln(request: Request, ich: Benutzer, tuer: str):
-    return anmeldebremse.torwaechter(request, tuer, f"account:{ich.id}")
-
-
-def _abgelehnt(fehler: nexkonten.AccountError, wache) -> MeldungHttp:
-    if fehler.code == "wrong_password":
-        wache.fehlgeschlagen()
+def _abgelehnt(fehler: nexkonten.AccountError) -> MeldungHttp:
+    """Seit konten 0.3.4 zaehlt das Modul das Passwort des Betreibers selbst (``confirm:<Betreiber>``)."""
     return kontenstore.http(fehler)
 
 
@@ -369,7 +368,6 @@ def benutzername_aendern(
     db: DbSession,
 ) -> BenutzerZeile:
     """Den Benutzernamen eines Kontos aendern. Gilt sofort; Sitzungen und Geraete bleiben."""
-    wache = _handeln(request, ich, "betreiber-handelt")
     try:
         mail = nexkonten.profiles.change_username(
             kontenstore.store_fuer(db),
@@ -380,8 +378,7 @@ def benutzername_aendern(
             actor_confirmed=_bestaetigt(ich, sitzung),
         )
     except nexkonten.AccountError as fehler:
-        raise _abgelehnt(fehler, wache) from fehler
-    wache.geschafft()
+        raise _abgelehnt(fehler) from fehler
     if mail is not None and kontenpost.mail_moeglich(db):
         try:
             kontenpost.senden(db, mail)
@@ -402,7 +399,6 @@ def anzeigename_aendern(
     db: DbSession,
 ) -> BenutzerZeile:
     """Den Anzeigenamen eines Kontos aendern (leer: der Benutzername wird gezeigt)."""
-    wache = _handeln(request, ich, "betreiber-handelt")
     try:
         nexkonten.profiles.change_display_name(
             kontenstore.store_fuer(db),
@@ -413,8 +409,7 @@ def anzeigename_aendern(
             actor_confirmed=_bestaetigt(ich, sitzung),
         )
     except nexkonten.AccountError as fehler:
-        raise _abgelehnt(fehler, wache) from fehler
-    wache.geschafft()
+        raise _abgelehnt(fehler) from fehler
     person = db.get(Benutzer, benutzer_id)
     db.refresh(person)
     return _zeile(db, person)
@@ -430,7 +425,6 @@ def adresse_entfernen(
     db: DbSession,
 ) -> BenutzerZeile:
     """Die Adresse eines Kontos wegnehmen (nie setzen). Die alte Adresse hoert davon, wenn Post hinaus kann."""
-    wache = _handeln(request, ich, "betreiber-handelt")
     try:
         ergebnis = nexkonten.profiles.remove_email(
             kontenstore.store_fuer(db),
@@ -441,8 +435,7 @@ def adresse_entfernen(
             mail=kontenpost.mail_moeglich(db),
         )
     except nexkonten.AccountError as fehler:
-        raise _abgelehnt(fehler, wache) from fehler
-    wache.geschafft()
+        raise _abgelehnt(fehler) from fehler
     if ergebnis.notice is not None:
         try:
             kontenpost.senden(db, ergebnis.notice)
@@ -471,7 +464,6 @@ def passwort_link(
     """
     from .oidc import passwort_anmeldung_an
 
-    wache = _handeln(request, ich, "betreiber-handelt")
     store = kontenstore.store_fuer(db)
     try:
         ergebnis = nexkonten.resets.reset_link(
@@ -485,8 +477,7 @@ def passwort_link(
             days=eingabe.tage,
         )
     except nexkonten.AccountError as fehler:
-        raise _abgelehnt(fehler, wache) from fehler
-    wache.geschafft()
+        raise _abgelehnt(fehler) from fehler
     if ergebnis.mail is not None:
         try:
             kontenpost.senden(db, ergebnis.mail)
@@ -545,7 +536,6 @@ def zweiten_faktor_zuruecksetzen(
     weg ist. Mit dem eigenen Passwort des Betreibers; fuer sich selbst nicht (``use_account_page``)."""
     from ..vendor.nexkonten import factor
 
-    wache = _handeln(request, ich, "betreiber-handelt")
     try:
         mail = factor.operator_reset(
             kontenstore.store_fuer(db),
@@ -557,8 +547,7 @@ def zweiten_faktor_zuruecksetzen(
             remove_passkeys=eingabe.passkeys_entfernen,
         )
     except nexkonten.AccountError as fehler:
-        raise _abgelehnt(fehler, wache) from fehler
-    wache.geschafft()
+        raise _abgelehnt(fehler) from fehler
     if mail is not None and kontenpost.mail_moeglich(db):
         kontenpost.senden(db, mail)
     person = db.get(Benutzer, benutzer_id)

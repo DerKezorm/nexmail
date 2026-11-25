@@ -69,6 +69,17 @@ class Einrichtung(BaseModel):
     geheimnis: str
     otpauth: str
     qr_svg: str
+    #: Bis wann die Einrichtung auf ihren ersten Code wartet (konten 0.3.4, ``Enrolment.expires_at``).
+    gilt_bis: datetime | None = None
+
+
+def _einrichtung(e: nexkonten.factor.Enrolment) -> Einrichtung:
+    """Das Geheimnis und die Adresse des Moduls unter nexmails Feldnamen; den QR-Code zeichnet nexmail selbst."""
+    return Einrichtung(geheimnis=e.seed, otpauth=e.uri, qr_svg=zwei_faktor.qr_svg(e.uri), gilt_bis=e.expires_at)
+
+
+#: Der Aussteller in der Authenticator-App, wie bisher.
+AUSSTELLER = "nexmail"
 
 
 class Ich(BaseModel):
@@ -168,11 +179,6 @@ class _Bremse:
         nexkonten.brake.BRAKE.succeeded(self.schluessel, browser=self.marke)
 
 
-def _konto_schluessel(person: Benutzer) -> str:
-    """Der Bremsschluessel eines angemeldeten Kontos, derselbe wie beim Anmelden."""
-    return f"account:{person.id}"
-
-
 @router.post("/anmelden", response_model=Schritt)
 def anmelden(
     eingabe: Anmeldung, request: Request, response: Response, db: DbSession
@@ -247,12 +253,14 @@ def anmelden(
 
 
 @router.get("/einrichtung", response_model=Einrichtung)
-def einrichtung_holen(sitzung: HalbeSitzung) -> Einrichtung:
-    """Den QR-Code noch einmal zeigen - solange der Faktor unbestaetigt ist.
+def einrichtung_holen(sitzung: HalbeSitzung, db: DbSession) -> Einrichtung:
+    """Den QR-Code noch einmal zeigen - solange der Faktor unbestaetigt ist (konten 0.3.4: ``factor.pending_setup``).
 
     ⚠️ **Das ist die Rettung vor dem haeufigsten Selbstausschluss:** Konto
     angelegt, Browser geschlossen, QR nie eingescannt. Ohne diesen Weg waere
-    das Konto tot, obwohl niemand etwas falsch gemacht hat.
+    das Konto tot, obwohl niemand etwas falsch gemacht hat. Wartet nichts mehr
+    (zehn Minuten vorbei), beginnt diese halbe Sitzung die Einrichtung neu
+    (``begin_totp``): Sie kann nichts anderes, als den Faktor einzurichten.
 
     Sobald der Faktor bestaetigt ist, gibt es hier nichts mehr - das Geheimnis
     verlaesst den Server danach nie wieder.
@@ -260,10 +268,16 @@ def einrichtung_holen(sitzung: HalbeSitzung) -> Einrichtung:
     person = sitzung.benutzer
     if person.totp_bestaetigt:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    store = kontenstore.store_fuer(db)
+    wartet = nexkonten.factor.pending_setup(store, person.id, issuer=AUSSTELLER)
+    return _einrichtung(wartet or nexkonten.factor.begin_totp(store, person.id, issuer=AUSSTELLER))
 
-    geheimnis = zwei_faktor.geheimnis_lesen(person)
-    adresse = zwei_faktor.otpauth_adresse(person, geheimnis)
-    return Einrichtung(geheimnis=geheimnis, otpauth=adresse, qr_svg=zwei_faktor.qr_svg(adresse))
+
+def _code_abgelehnt(fehler: nexkonten.AccountError, kennung: str) -> Exception:
+    """Ein falscher Code mit nexmails bisheriger Kennung (401), alles andere (429, 410) wie das Modul es sagt."""
+    if fehler.code == "code_wrong":
+        return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=kennung)
+    return kontenstore.http(fehler)
 
 
 @router.post("/code", response_model=Schritt)
@@ -272,27 +286,25 @@ def code_pruefen(
 ) -> Schritt:
     """Schritt zwei: der sechsstellige Code.
 
-    ⚠️ **Hier haengt dieselbe Bremse wie am Passwort.** Sechs Stellen sind
-    eine Million Moeglichkeiten - ohne Bremse in Minuten durchprobiert, und
-    das Cookie fuer diesen Schritt hat jeder, der das Passwort kennt.
+    ⚠️ **Hier haengt eine Bremse wie am Passwort**, die des Moduls (``factor.check_code``, ``code:<Konto>``, konten
+    0.3.4). Sechs Stellen sind eine Million Moeglichkeiten - ohne Bremse in Minuten durchprobiert, und das Cookie
+    fuer diesen Schritt hat jeder, der das Passwort kennt.
+
+    Beim Einrichten waehrend der Anmeldung („fuer alle verlangen“) bestaetigt der Code den neuen Faktor
+    (``factor.confirm_totp``; die halbe Sitzung kann nur das, ``actor_confirmed``), die Codes kommen gleich hier.
     """
     person = sitzung.benutzer
-    wache = anmeldebremse.torwaechter(request, "code", _konto_schluessel(person))
-
-    if not zwei_faktor.code_pruefen(db, person, eingabe.code.strip()):
-        wache.fehlgeschlagen()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="code_falsch"
-        )
-
+    store = kontenstore.store_fuer(db)
     codes: list[str] = []
-    if not person.totp_bestaetigt:
-        # Eingerichtet beim Anmelden („fuer alle verlangen“): die Codes gleich hier, wie unter Sicherheit.
-        person.totp_bestaetigt = True
-        db.commit()
-        codes = zwei_faktor.codes_neu(db, person)
+    try:
+        if person.totp_bestaetigt:
+            nexkonten.factor.check_code(store, person.id, eingabe.code.strip())
+        else:
+            codes = nexkonten.factor.confirm_totp(store, person.id, eingabe.code.strip(), actor_confirmed=True).codes
+    except nexkonten.AccountError as fehler:
+        raise _code_abgelehnt(fehler, "code_falsch") from fehler
+    db.expire(person)
 
-    wache.geschafft()
     sitzungsdienst.bestaetigen(db, sitzung, request, response)
     nexkonten.login.succeeded(kontenstore.store_fuer(db), person.id)
     sitzungsdienst.angemeldet(db, person, request, response)
@@ -308,18 +320,17 @@ def wiederherstellung(
     """Der Weg zurueck, wenn das Telefon weg ist.
 
     ⚠️ Ein verbrauchter Code ist verbraucht. Und die Bremse zaehlt hier
-    genauso - sonst waere dies die bequemere Tuer zum Durchprobieren.
+    genauso, an derselben Stelle wie am Code (``code:<Konto>``) - sonst waere
+    dies die bequemere Tuer zum Durchprobieren. Codes der Vorfassung erkennt
+    das Modul (SHA-256, Gross- oder Kleinbuchstaben).
     """
     person = sitzung.benutzer
-    wache = anmeldebremse.torwaechter(request, "wiederherstellung", _konto_schluessel(person))
+    try:
+        nexkonten.factor.check_code(kontenstore.store_fuer(db), person.id, eingabe.code.strip())
+    except nexkonten.AccountError as fehler:
+        raise _code_abgelehnt(fehler, "code_ungueltig") from fehler
+    db.expire(person)
 
-    if not zwei_faktor.code_einloesen(db, person, eingabe.code.strip()):
-        wache.fehlgeschlagen()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="code_ungueltig"
-        )
-
-    wache.geschafft()
     sitzungsdienst.bestaetigen(db, sitzung, request, response)
     nexkonten.login.succeeded(kontenstore.store_fuer(db), person.id)
     sitzungsdienst.angemeldet(db, person, request, response)
@@ -362,16 +373,22 @@ def kennwort_vergessen(
     der Antwort (``forgot_in_background``). Eine Adresse, die zwei Konten haben, findet keines; mit dem Benutzernamen
     geht der Link trotzdem an die eigene Adresse.
 
-    ⚠️ **Die Bremse zaehlt trotzdem**, am Konto oder an der Eingabe. Ohne sie schickt eine Maschine tausend Mails
-    los, und der Postausgang landet auf einer Sperrliste.
+    ⚠️ **Die Bremse zaehlt trotzdem**, im Modul (konten 0.3.4): je Absender ``forgot:<Absender>`` (zehn frei), je
+    Konto ``mail:<Konto>`` (fuenf Links, danach still keiner). Ohne sie schickt eine Maschine tausend Mails los, und
+    der Postausgang landet auf einer Sperrliste. Ohne ``NEXMAIL_CLIENT_IP`` kennt nexmail keinen Absender; dann
+    zaehlt er je Eingabe (``none:<Konto oder Eingabe>``), nie in einem Topf fuer alle.
     """
     store = kontenstore.store_fuer(db)
-    wache = anmeldebremse.torwaechter(request, "vergessen", bremsschluessel(store, eingabe.benutzername, request))
-    wache.fehlgeschlagen()
-
-    if not _per_mail(db):
-        logger.info("A password link was asked for, but there is no system mail, public address or password sign-in.")
-        return Response(status_code=status.HTTP_202_ACCEPTED)
+    absender = anmeldebremse.adresse_von(request) or "none:" + bremsschluessel(store, eingabe.benutzername, request)
+    try:
+        if not _per_mail(db):
+            nexkonten.common.counted((nexkonten.brake.door_key(nexkonten.brake.DOOR_FORGOT, absender),))
+            logger.info(
+                "A password link was asked for, but there is no system mail, public address or password sign-in."
+            )
+            return Response(status_code=status.HTTP_202_ACCEPTED)
+    except nexkonten.AccountError as fehler:
+        raise kontenstore.http(fehler) from fehler
 
     def senden(mail: nexkonten.Mail) -> None:
         from ..db import SessionLocal
@@ -379,12 +396,16 @@ def kennwort_vergessen(
         with SessionLocal() as eigene:
             kontenpost.senden(eigene, mail)
 
-    nexkonten.resets.forgot_in_background(
-        eingabe.benutzername,
-        open_store=kontenstore.eigener_store,
-        send=senden,
-        later=background.add_task,
-    )
+    try:
+        nexkonten.resets.forgot_in_background(
+            eingabe.benutzername,
+            open_store=kontenstore.eigener_store,
+            send=senden,
+            later=background.add_task,
+            sender=absender,
+        )
+    except nexkonten.AccountError as fehler:
+        raise kontenstore.http(fehler) from fehler
     return Response(status_code=status.HTTP_202_ACCEPTED)
 
 
@@ -508,8 +529,8 @@ def passwort_aendern(
     andere angemeldet bleibt, hilft nicht. Das eigene Gerät bleibt drin —
     sonst wirft sich der Betreiber gerade selbst hinaus.
     """
-    # ``torwaechter`` sperrt selbst mit 429, wenn zu oft angeklopft wurde.
-    wache = anmeldebremse.torwaechter(request, "passwort", _konto_schluessel(person))
+    # Das alte Passwort bestaetigt die Aenderung: an der Bremse des Moduls (``confirm:<Konto>``), 429 bei zu vielen.
+    wache = anmeldebremse.bestaetigen(person.id)
     try:
         benutzerdienst.passwort_aendern(db, person, wunsch.altes, wunsch.neues)
     except benutzerdienst.BenutzerFehler as fehler:
@@ -526,6 +547,7 @@ class Anschalten(BaseModel):
     geheimnis: str
     otpauth: str
     qr_svg: str
+    gilt_bis: datetime | None = None
 
 
 class Bestaetigung(BaseModel):
@@ -533,93 +555,110 @@ class Bestaetigung(BaseModel):
     codes: list[str]
 
 
-class MitKennwort(BaseModel):
-    passwort: str = Field(min_length=1, max_length=200)
-
-
 @router.post("/zwei-faktor/starten", response_model=Anschalten)
 def zwei_faktor_starten(person: AngemeldeterBenutzer, db: DbSession) -> Anschalten:
-    """Den zweiten Faktor einschalten - Schritt eins: der QR-Code.
+    """Den zweiten Faktor einschalten - Schritt eins: der QR-Code (``factor.begin_totp``, konten 0.3.4).
 
     ⚠️ **Bestaetigt wird er erst im zweiten Schritt.** Wer hier abbricht, weil
     die Kamera nicht will oder das Telefon nicht da ist, aendert nichts an
     seinem Zugang. Genau daran scheitern Assistenten, die den Faktor mitten in
-    der Anmeldung erzwingen: Man kommt weder vor noch zurueck.
+    der Anmeldung erzwingen: Man kommt weder vor noch zurueck. Die Einrichtung
+    wartet zehn Minuten (``gilt_bis``) und ist so lange ueber
+    ``GET /zwei-faktor/einrichtung`` wieder abrufbar.
     """
     if person.totp_bestaetigt:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="zwei_faktor_schon_an",
         )
+    e = nexkonten.factor.begin_totp(kontenstore.store_fuer(db), person.id, issuer=AUSSTELLER)
+    return Anschalten(**_einrichtung(e).model_dump())
 
-    geheimnis = zwei_faktor.geheimnis_erzeugen()
-    zwei_faktor.geheimnis_speichern(person, geheimnis)
-    db.commit()
 
-    adresse = zwei_faktor.otpauth_adresse(person, geheimnis)
-    return Anschalten(geheimnis=geheimnis, otpauth=adresse, qr_svg=zwei_faktor.qr_svg(adresse))
+@router.get("/zwei-faktor/einrichtung", response_model=Anschalten)
+def zwei_faktor_wartend(person: AngemeldeterBenutzer, db: DbSession) -> Anschalten:
+    """Die Einrichtung, die auf ihren ersten Code wartet, noch einmal (Seite neu geladen, anderer Reiter): dasselbe
+    Geheimnis, dieselbe Frist (``factor.pending_setup``). 410 ``enrolment_expired``, wenn nichts wartet; die Seite
+    beginnt dann neu (``/zwei-faktor/starten``)."""
+    if person.totp_bestaetigt:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="zwei_faktor_schon_an")
+    wartet = nexkonten.factor.pending_setup(kontenstore.store_fuer(db), person.id, issuer=AUSSTELLER)
+    if wartet is None:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="enrolment_expired")
+    return Anschalten(**_einrichtung(wartet).model_dump())
+
+
+class Einrichtungsprobe(BaseModel):
+    code: str = Field(min_length=4, max_length=20)
+    #: Seit konten 0.3.4 kann das Passwort das Einrichten bestaetigen (``factor.confirm_totp``, Bremse
+    #: ``confirm:<Konto>``). ⚠️ **Ohne bleibt es wie bisher** (Schnittstelle der iPhone-App und von Skripten): Den
+    #: ersten Faktor richtet eine angemeldete Sitzung mit dem Code allein ein; einen eingerichteten ersetzt diese
+    #: Route nie (409).
+    passwort: str = Field(default="", max_length=300)
 
 
 @router.post("/zwei-faktor/bestaetigen", response_model=Bestaetigung)
 def zwei_faktor_bestaetigen(
-    eingabe: Codeeingabe, person: AngemeldeterBenutzer, request: Request, db: DbSession
+    eingabe: Einrichtungsprobe, person: AngemeldeterBenutzer, sitzung: AktiveSitzung, db: DbSession
 ) -> Bestaetigung:
-    """Schritt zwei: einmal den Code tippen, dann gilt er.
+    """Schritt zwei: einmal den Code tippen, dann gilt er (``factor.confirm_totp``).
 
     ⚠️ **Ohne diesen Schritt wird nichts eingeschaltet.** Ein Faktor, der ohne
     Probe gilt, sperrt jeden aus, bei dem die Uhr des Telefons falsch geht oder
     der QR-Code nicht ankam - und zwar beim naechsten Anmelden, wenn niemand
-    mehr weiss, woran es lag.
+    mehr weiss, woran es lag. Das Passwort zaehlt an der Bremse des Moduls
+    (``confirm:<Konto>``).
     """
     if person.totp_bestaetigt:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="zwei_faktor_schon_an",
         )
-    if not zwei_faktor.geheimnis_lesen(person):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="qr_code_fehlt",
+    try:
+        bestaetigt = nexkonten.factor.confirm_totp(
+            kontenstore.store_fuer(db),
+            person.id,
+            eingabe.code.strip(),
+            password=eingabe.passwort,
+            actor_confirmed=not eingabe.passwort or _bestaetigt(person, sitzung),
         )
-
-    wache = anmeldebremse.torwaechter(request, "code", _konto_schluessel(person))
-    if not zwei_faktor.code_pruefen(db, person, eingabe.code.strip()):
-        wache.fehlgeschlagen()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="code_falsch"
-        )
-    wache.geschafft()
-
-    person.totp_bestaetigt = True
-    db.commit()
-    codes = zwei_faktor.codes_neu(db, person)
+    except nexkonten.AccountError as fehler:
+        raise _code_abgelehnt(fehler, "code_falsch") from fehler
+    db.expire(person)
     logger.info("The second factor was switched on for a user.")
-    return Bestaetigung(codes=codes)
+    return Bestaetigung(codes=bestaetigt.codes)
+
+
+class MitKennwort(BaseModel):
+    #: Ein Konto ohne Passwort bestaetigt mit einer frischen Anmeldung beim Anbieter.
+    passwort: str = Field(default="", max_length=200)
 
 
 @router.post("/zwei-faktor/aus", status_code=status.HTTP_204_NO_CONTENT)
 def zwei_faktor_aus(
-    eingabe: MitKennwort, person: AngemeldeterBenutzer, request: Request, db: DbSession
+    eingabe: MitKennwort, person: AngemeldeterBenutzer, sitzung: AktiveSitzung, db: DbSession
 ) -> None:
-    """Den zweiten Faktor abschalten - nur mit dem Passwort.
+    """Den zweiten Faktor abschalten - nur mit dem Passwort (``factor.disable_totp``, konten 0.3.5).
 
     ⚠️ **Das Passwort noch einmal, obwohl man angemeldet ist.** Sonst genuegt
     ein unbeaufsichtigter Bildschirm, um den zweiten Faktor zu entfernen - und
-    danach ist er weg, ohne dass jemand etwas merkt. Dieselbe Bremse wie an der
-    Anmeldung haengt daran.
+    danach ist er weg, ohne dass jemand etwas merkt. Das Modul zaehlt es an
+    seiner Bremse (``confirm:<Konto>``), nimmt Geheimnis, wartende Einrichtung
+    und (ohne Passkey) die Wiederherstellungscodes mit und laesst den letzten
+    Faktor nicht gehen, wo der Betreiber einen verlangt (409 ``factor_required``).
     """
-    wache = anmeldebremse.torwaechter(request, "zwei-faktor-aus", _konto_schluessel(person))
-    if not benutzerdienst.passwort_stimmt(person, eingabe.passwort):
-        wache.fehlgeschlagen()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="kennwort_falsch"
+    try:
+        nexkonten.factor.disable_totp(
+            kontenstore.store_fuer(db),
+            person.id,
+            password=eingabe.passwort,
+            actor_confirmed=_bestaetigt(person, sitzung),
         )
-    wache.geschafft()
-
-    # ⚠️ Auch das Geheimnis und die Wiederherstellungscodes muessen weg. Blieben
-    # sie liegen, waere der alte QR-Code nach dem Wiedereinschalten guelltig -
-    # samt allem, was ihn inzwischen abfotografiert hat.
-    zwei_faktor.abschalten(db, person)
+    except nexkonten.AccountError as fehler:
+        if fehler.code == "wrong_password":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="kennwort_falsch") from fehler
+        raise kontenstore.http(fehler) from fehler
+    db.expire(person)
     logger.warning("The second factor was switched off for a user.")
 
 
@@ -770,17 +809,13 @@ def kontaktadresse_setzen(
     **nicht** eines der eingerichteten Postfaecher.
 
     ⚠️ **Nur mit Passwort** (seit dem Kontenmodul; vorher ohne, als Abwaegung). Wer eine fremde Sitzung uebernommen
-    hat, koennte sonst die Adresse umbiegen und sich danach das Passwort schicken lassen. Dieselbe Bremse wie am
-    Anmelden haengt davor.
+    hat, koennte sonst die Adresse umbiegen und sich danach das Passwort schicken lassen. Das Passwort zaehlt an der
+    Bremse des Moduls (``confirm:<Konto>``, konten 0.3.4).
     """
-    wache = anmeldebremse.torwaechter(request, "adresse", _konto_schluessel(person))
     try:
         _adresse_aendern(db, person, sitzung, eingabe.adresse.strip(), eingabe.passwort)
     except nexkonten.AccountError as fehler:
-        if fehler.code == "wrong_password":
-            wache.fehlgeschlagen()
         raise kontenstore.http(fehler) from fehler
-    wache.geschafft()
     logger.info("A user changed their address (empty=%s).", not eingabe.adresse.strip())
     return ich(person, db)
 
@@ -795,7 +830,6 @@ def angebotene_adresse_nehmen(
 ) -> Ich:
     """„Adresse von <Anbieter> uebernehmen?“ → Uebernehmen (konten 0.3.3): wie eine Adressaenderung, mit Passwort;
     mit Postausgang wartet die Adresse auf ihren Link. Danach ist das Angebot weg."""
-    wache = anmeldebremse.torwaechter(request, "adresse", _konto_schluessel(person))
     store = kontenstore.store_fuer(db)
     try:
         ergebnis = nexkonten.profiles.take_offered_email(
@@ -806,10 +840,7 @@ def angebotene_adresse_nehmen(
             mail=kontenpost.mail_moeglich(db),
         )
     except nexkonten.AccountError as fehler:
-        if fehler.code == "wrong_password":
-            wache.fehlgeschlagen()
         raise kontenstore.http(fehler) from fehler
-    wache.geschafft()
     if ergebnis.mail is not None:
         try:
             kontenpost.senden(db, ergebnis.mail)
@@ -853,14 +884,7 @@ def profil_setzen(
         nexkonten.names.check_display_name(store, eingabe.anzeigename, person.id, required=False)
         adresse = (eingabe.kontaktadresse if eingabe.kontaktadresse is not None else person.kontaktadresse).strip()
         if not nexkonten.names.same_address(adresse, person.kontaktadresse) and (adresse or person.kontaktadresse):
-            wache = anmeldebremse.torwaechter(request, "adresse", _konto_schluessel(person))
-            try:
-                _adresse_aendern(db, person, sitzung, adresse, eingabe.passwort)
-            except nexkonten.AccountError as fehler:
-                if fehler.code == "wrong_password":
-                    wache.fehlgeschlagen()
-                raise
-            wache.geschafft()
+            _adresse_aendern(db, person, sitzung, adresse, eingabe.passwort)
         nexkonten.profiles.change_display_name(store, person.id, eingabe.anzeigename, actor_id=person.id)
     except nexkonten.AccountError as fehler:
         raise kontenstore.http(fehler) from fehler
@@ -881,16 +905,12 @@ def benutzername_aendern(
     """Den eigenen Benutzernamen aendern (Kontenmodul): nach den Regeln, nur wenn ihn kein Konto hat oder hatte, mit
     dem Passwort (ein Konto ohne Passwort ohne). Gilt sofort; Sitzungen, Geraete und Schluessel bleiben, sie haengen
     an der Kennung. Der alte Name bleibt fuer dieses Konto reserviert; anmelden geht nur mit dem neuen."""
-    wache = anmeldebremse.torwaechter(request, "benutzername", _konto_schluessel(person))
     try:
         mail = nexkonten.profiles.change_username(
             kontenstore.store_fuer(db), person.id, eingabe.benutzername, actor_id=person.id, password=eingabe.passwort
         )
     except nexkonten.AccountError as fehler:
-        if fehler.code == "wrong_password":
-            wache.fehlgeschlagen()
         raise kontenstore.http(fehler) from fehler
-    wache.geschafft()
     _mail_versuchen(db, mail if kontenpost.mail_moeglich(db) else None)
     db.expire(person)
     return ich(person, db)
@@ -923,8 +943,7 @@ def sprache_setzen(eingabe: Sprache, person: AngemeldeterBenutzer, db: DbSession
 
 @router.post("/ich/kontaktadresse/nochmal", response_model=Ich)
 def adresslink_nochmal(request: Request, person: AngemeldeterBenutzer, db: DbSession) -> Ich:
-    """„Link nochmal schicken“ fuer die Adresse, die auf ihren Link wartet."""
-    anmeldebremse.torwaechter(request, "adresslink", _konto_schluessel(person)).fehlgeschlagen()
+    """„Link nochmal schicken“ fuer die Adresse, die auf ihren Link wartet; das Modul zaehlt ``mail:<Konto>``."""
     try:
         mail = nexkonten.profiles.resend_email_link(kontenstore.store_fuer(db), person.id)
     except nexkonten.AccountError as fehler:

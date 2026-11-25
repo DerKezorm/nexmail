@@ -85,18 +85,15 @@ def test_ohne_postausgang_wird_vorher_gewarnt(klient):
     assert stand["adresse_da"] is False
 
 
-def test_ohne_oeffentliche_adresse_geht_keine_einladung(klient, postausgang):
-    """Der Link in der Mail waere sonst unbrauchbar."""
+def test_ohne_oeffentliche_adresse_nimmt_der_link_die_adresse_des_betreibers(klient, postausgang):
+    """konten 0.3.5: Ohne oeffentliche Adresse nimmt der Link die, unter der der Betreiber nexmail gerade oeffnet."""
     einrichten(klient)
     with SessionLocal() as db:
         einstellung_schreiben(db, "oeffentliche_adresse", "")
 
-    antwort = klient.post(
-        "/api/benutzer/einladungen",
-        json={"benutzername": "anna", "adresse": "anna@example.com"},
-    )
-    assert antwort.status_code == 400
-    assert antwort.json()["detail"] == "oeffentliche_adresse_fehlt"
+    antwort = klient.post("/api/benutzer/einladungen", json={"anzeigename": "Anna"})
+    assert antwort.status_code == 201, antwort.text
+    assert antwort.json()["link"].startswith(str(klient.base_url).rstrip("/") + "/einladung/")
 
 
 def test_einladen_verschickt_eine_mail_mit_link(klient, postausgang):

@@ -232,7 +232,8 @@ def test_einschalten_geht_nur_mit_probe(klient):
 def test_ohne_qr_code_laesst_sich_nichts_bestaetigen(klient):
     einrichten(klient)
     antwort = klient.post("/api/auth/zwei-faktor/bestaetigen", json={"code": "123456"})
-    assert antwort.status_code == 400
+    # konten 0.3.4: Es wartet keine Einrichtung (``factor.confirm_totp``), dieselbe Antwort wie nach zehn Minuten.
+    assert (antwort.status_code, antwort.json()["detail"]) == (410, "enrolment_expired")
 
 
 def test_abschalten_braucht_das_kennwort(klient):

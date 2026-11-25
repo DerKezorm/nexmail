@@ -353,17 +353,17 @@ def faktor_einrichten(db: Session, benutzer: Benutzer) -> bool:
     frisches, unbestaetigtes Geheimnis bereit (ein schon bereitliegendes bleibt, damit ein halb eingescannter QR-Code
     weiter passt), die Anmeldung wird eine halbe Sitzung, und ``/api/auth/code`` bestaetigt beides zugleich.
 
-    ⚠️ **Das Einrichten selbst bleibt nexmails** (``services/zwei_faktor``): Das Geheimnis liegt versiegelt in der
-    Datenbank und ueberlebt einen Neustart, ohne Ablauf (ein eingescannter QR-Code passt auch morgen noch). Der Store
-    zeigt es dem Modul als ``pending_totp``."""
-    from ..vendor.nexkonten import NEXT_SECOND_FACTOR_SETUP
-    from . import zwei_faktor
+    Seit konten 0.3.4 richtet das Modul ein (``factor.begin_totp``, ``pending_setup``): versiegelt in der Datenbank,
+    ueberlebt einen Neustart und wartet zehn Minuten; eine Einrichtung der Vorfassung (unbestaetigtes
+    ``totp_geheimnis``) wartet weiter ohne Ende, damit ein schon eingescannter QR-Code passt."""
+    from ..vendor.nexkonten import NEXT_SECOND_FACTOR_SETUP, factor
+    from .konten_store import store_fuer
 
     if naechster_schritt(db, benutzer) != NEXT_SECOND_FACTOR_SETUP:
         return False
-    if not benutzer.totp_geheimnis:
-        zwei_faktor.geheimnis_speichern(benutzer, zwei_faktor.geheimnis_erzeugen())
-        db.commit()
+    store = store_fuer(db)
+    if factor.pending_setup(store, benutzer.id, issuer="nexmail") is None:
+        factor.begin_totp(store, benutzer.id, issuer="nexmail")
     return True
 
 

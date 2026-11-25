@@ -211,7 +211,7 @@ def test_die_einladungsmail_traegt_knopf_und_logo(klient, gefangen):
             "geheim",
         )
         gebot, schluessel = einladungsdienst.aussprechen(db, adresse="anna@example.com", anzeigename="Anna")
-        kontenpost.einladung_senden(db, gebot, schluessel, 7)
+        kontenpost.einladung_senden(db, gebot, kontenpost.link(db, f"/einladung/{schluessel}"), 7)
 
     mail = message_from_bytes(gefangen[0])
     html = next(

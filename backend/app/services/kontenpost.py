@@ -63,12 +63,13 @@ def senden(db: Session, mail: Mail, *, where: str = "") -> None:
     post_store.einreihen(db, brief)
 
 
-def einladung_senden(db: Session, einladung: Einladung, schluessel: str, tage: int) -> None:
+def einladung_senden(db: Session, einladung: Einladung, einladungslink: str, tage: int) -> None:
     """Die Einladungsmail, in der Sprache des Betreibers. Ohne Benutzernamen: den waehlt der Eingeladene selbst.
 
     ⚠️ **Sofort, nicht ueber die Outbox:** Anlegen und Verschicken sind eins (``routers/benutzer.einladen``). Geht
     sie nicht hinaus, wird die Einladung wieder entfernt und der Grund gesagt; eine Einladung, deren Mail erst Stunden
-    spaeter scheitert, saehe in der Liste richtig aus. Wirft ``systempost.PostFehler``."""
+    spaeter scheitert, saehe in der Liste richtig aus. Wirft ``systempost.PostFehler``. ``einladungslink`` kommt
+    fertig von ``invites.invite_link`` (oeffentliche Adresse, sonst die der Anfrage des Betreibers)."""
     sprache = _sprache(db)
     brief = nexpost.letters.compose(
         "invite",
@@ -78,7 +79,7 @@ def einladung_senden(db: Session, einladung: Einladung, schluessel: str, tage: i
             "name": einladung.anzeigename.strip(),
             "valid": nexpost.letters.validity(sprache, days=tage),
         },
-        link=link(db, f"/einladung/{schluessel}"),
+        link=einladungslink,
     )
     try:
         nexpost.send.deliver(post_store.PostStore(db).mail_settings(), brief)

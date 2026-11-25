@@ -343,22 +343,16 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
 
   if (bestand === null) return <div className="h-24" />
 
-  /* Seit dem Kontenmodul geht eine Einladung auch ohne Postausgang: Der Link steht dann zum Weitergeben da. Ohne
-     öffentliche Adresse gäbe es keinen Link. */
-  const bereit = bestand.adresse_da
+  /* Seit dem Kontenmodul geht eine Einladung auch ohne Postausgang: Der Link steht dann zum Weitergeben da. Seit
+     konten 0.3.5 auch ohne öffentliche Adresse: Der Link nimmt die Adresse, unter der diese Seite offen ist. */
 
   return (
     <div className="flex max-w-[720px] flex-col gap-6">
-      {!(bestand.postausgang_da && bestand.adresse_da) && (
+      {!bestand.postausgang_da && (
         <div className="flex gap-3 rounded-lg border border-warning/40 bg-warning-soft p-4">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
           <div className="min-w-0">
-            {!bestand.adresse_da && (
-              <p className="mb-1 text-[13px] font-medium text-fg-1">{t('verwaltung.einladen_geht_nicht')}</p>
-            )}
-            <p className="mb-0 text-[13px] text-fg-2">
-              {!bestand.adresse_da ? t('verwaltung.keine_adresse') : t('verwaltung.kein_postausgang')}
-            </p>
+            <p className="mb-0 text-[13px] text-fg-2">{t('verwaltung.kein_postausgang')}</p>
           </div>
         </div>
       )}
@@ -536,7 +530,6 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
         <Button
           variant="primary"
           iconLeft={<UserPlus className="size-4" />}
-          disabled={!bereit}
           onClick={() => setEinladen(true)}
         >
           {t('verwaltung.einladen')}
