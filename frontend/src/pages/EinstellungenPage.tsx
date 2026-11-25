@@ -107,7 +107,7 @@ interface Props {
   /** „Regel erstellen …" aus dem Rechtsklick auf eine Mail. */
   regelvorlage?: RegelVorlage | null
   aufRegelvorlageGenommen?: () => void
-  /** „Was ist neu“ noch einmal öffnen, unter „Über nexmail“. */
+  /** „Was ist neu“ noch einmal öffnen. Seit dem Bausatz ui 1.1.0 öffnet die Über-Seite ihr eigenes Fenster. */
   aufWasNeu?: () => void
 }
 
@@ -129,7 +129,6 @@ export function EinstellungenPage({
   aufSchlagworteGeaendert,
   regelvorlage = null,
   aufRegelvorlageGenommen,
-  aufWasNeu,
 }: Props) {
   // ⚠️ Bearbeiten und Anlegen benutzen dasselbe Formular. Getrennt zu
   // pflegen hieße zwei Stellen, an denen ein Feld fehlen kann.
@@ -346,7 +345,7 @@ export function EinstellungenPage({
       case 'log':
         return <Protokoll />
       case 'about':
-        return <UeberPage istBetreiber={Boolean(ich?.ist_betreiber)} aufWasNeu={aufWasNeu} />
+        return <UeberPage ich={ich} />
     }
   }
 
