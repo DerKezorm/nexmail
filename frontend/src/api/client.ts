@@ -71,6 +71,16 @@ async function anfrage<T>(pfad: string, init?: RequestInit): Promise<T> {
             // zaehlt die erste Meldung; alles andere waere Fachchinesisch.
             String((detail[0] as { msg?: string })?.msg ?? '')
           : ''
+    if (
+      antwort.status === 401 &&
+      (text === 'nicht_angemeldet' || text === 'zweiter_faktor_noetig') &&
+      !/^\/api\/(auth|setup|oidc)\//.test(pfad)
+    ) {
+      // konten 0.3.5: Die Sitzung ist weg, während eine Seite offen ist: Dialog „Sitzung abgelaufen“
+      // (`components/SitzungAbgelaufen`). Nur das 401 „nicht angemeldet“ zählt, nicht ein falsches Passwort, und
+      // nicht die Anmeldewege selbst.
+      window.dispatchEvent(new Event('nexmail:sitzung-weg'))
+    }
     const warten = antwort.headers.get('retry-after')
     const werte = (daten as { werte?: Record<string, unknown> } | null)?.werte ?? {}
     throw new ApiFehler(

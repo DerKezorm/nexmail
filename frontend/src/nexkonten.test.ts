@@ -12,7 +12,8 @@
 import i18next from 'i18next'
 import { beforeAll, describe, expect, it } from 'vitest'
 
-import { kontenVariables, PAGES, pageOrder, SCREENS, screenFields, suggestUsername } from './vendor/nexkonten/konten'
+import { kontenVariables, PAGES, pageOrder, SCREENS, screenFields, sessionExpiredParts, suggestUsername } from './vendor/nexkonten/konten'
+import { naechster } from './components/SitzungAbgelaufen'
 // nexmail: the order the pages really use (pages/einstellungen/Profil, pages/Sicherheit).
 import { PROFIL_TEILE } from './pages/einstellungen/Profil'
 import { SICHERHEIT_TEILE } from './pages/Sicherheit'
@@ -118,5 +119,17 @@ describe('the konten pages (since 0.3.6)', () => {
         for (const key of [part.title, ...part.buttons]) expect(i18n.exists(key), key).toBe(true)
       }
     }
+  })
+})
+
+describe('the dialog "Session expired" (since 0.3.5)', () => {
+  it("names nexmail's steps as the module does and offers the passkey where it is the second step", () => {
+    expect(naechster({ schritt: 'fertig' })).toBe('session')
+    expect(naechster({ schritt: 'fertig', weiter: 'show_codes', codes: ['A'] })).toBe('show_codes')
+    expect(naechster({ schritt: 'code' })).toBe('second_factor')
+    expect(naechster({ schritt: 'einrichten' })).toBe('second_factor_setup')
+    expect(naechster({ schritt: 'passkey' })).toBe('passkey')
+    expect(sessionExpiredParts(naechster({ schritt: 'passkey' }))).toContain('passkeySignIn')
+    expect(sessionExpiredParts('sign_in')).toEqual(['sessionExpiredHint', 'password', 'signInAgain', 'or'])
   })
 })

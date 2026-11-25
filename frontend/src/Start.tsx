@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import App from './App'
 import { AnmeldePage } from './pages/AnmeldePage'
+import { SitzungAbgelaufen } from './components/SitzungAbgelaufen'
 import { appPfad, ohneBasis } from './lib/basis'
 import { EinladungPage } from './pages/EinladungPage'
 import { KennwortNeuPage, VergessenPage } from './pages/KennwortPage'
@@ -243,6 +244,8 @@ export default function Start() {
       />
       {/* Nach einem neuen Passwort über einen Link, einmal: was noch Zugriff hat, und „Alle trennen“. */}
       {ich?.neues_passwort && <NeuesPasswort aufErledigt={ichNeuLaden} />}
+      {/* konten 0.3.5: Endet die Sitzung, während nexmail offen ist, meldet man sich hier neu an; die Seite bleibt. */}
+      <SitzungAbgelaufen ich={ich} aufFertig={() => void ichNeuLaden()} />
     </>
   )
 }
