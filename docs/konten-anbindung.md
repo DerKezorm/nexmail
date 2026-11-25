@@ -1,6 +1,7 @@
 # Anbindung des Kontenmoduls (`nexkonten`) an nexmail
 
-Stand 25.11.2026, Zweig `konten`: **`konten` 0.3.10, `ui` 0.1.2, `oidc` 1.1.1, `post` 0.1.2** (Abschnitt 0f). Gebaut
+Stand 25.11.2026, Zweig `konten`: **auf den Modulen 1.0.0** (`konten` 1.0.0, `ui` 1.0.0, `post` 1.0.0, `oidc` 1.1.2,
+eingefroren; Abschnitt 0g). Gebaut
 mit `konten` 0.2.1 und `oidc` 1.1.0 (Abschnitt 0), Teil 2 mit `konten` 0.3.1 und `post` 0.1.1 (Abschnitt 0b), nachgezogen
 in 0c bis 0f; die Abschnitte ab 1 sind der Plan der Vorbereitung (gegen `konten` 0.1.0) und bleiben als Begründung stehen. Maßgeblich sind der
 Entwurf in nexlore (`Development/nexapps/Baupläne/Entwurf Konten, Einrichtung und Anmeldung.md`, Tabelle
@@ -192,6 +193,23 @@ Nachgezogen am 25.11.2026 auf demselben Zweig, kopiert aus `bauplaene` (Zweig `k
 **Geprüft am 25.11.2026:** Backend voll einmal (`pytest -n 2`: 3086 bestanden, 4 übersprungen), darin Vertrag
 `tests/nexkonten` (232 gesammelt) und Test „Bestand“ (62); Frontend `npx vitest run --maxWorkers=2` 303 grün in 36
 Dateien, `npm run lint` und `npm run build` (mit `tsc -b`) grün. Kein Playwright, keine Server.
+
+## 0g. Auf den Modulen 1.0.0 (`konten` 1.0.0, `ui` 1.0.0, `post` 1.0.0, `oidc` 1.1.2)
+
+Schluss-Durchgang am 25.11.2026, kopiert aus `bauplaene` (Zweig `konten`, `3c55402`), `sync.py check` für alle vier
+sauber. Die Module sind ab hier eingefroren.
+
+| Teil | Wo |
+|---|---|
+| Mail „Neue Anmeldung“ (post 1.0.0) | `kontenpost._brief`: `from_account_mail(..., link=<öffentliche Adresse>/konto/sicherheit, where=<User-Agent>, time_zone=<Zeitzone der Installation>)`; Personen führen in nexmail keine eigene Zone, darum die aus Verwaltung → Allgemein (sonst `NEXMAIL_ZEITZONE`, sonst die des Servers). Nie eine Netzadresse |
+| Vertragsadapter | `nexkonten_adapter.py`: `forgot_through_route` (über `POST /api/auth/kennwort-vergessen`, Post gefangen mit `nexpost.testing.catch_mail`), `picture_status` (über `GET /api/auth/profilbild/{id}` mit einer Browser-Sitzung oder ohne); `nexpost_adapter.py`: `new_sign_in_letter` (Anmeldung über die Route aus einem neuen Browser) |
+| Unverändert | `account_code` nur bei `MEHRDEUTIG` (so im Modul beschrieben); ohne `NEXMAIL_CLIENT_IP` der Absendertopf je Ziel; der Test „Bestand“ fängt seine Post weiter über `systempost.senden` |
+| vitest | `src/nexkonten.test.ts` mit dem Abschnitt „Helpers“ der Vorlage 1.0.0 vor dem ersten Block (dort jetzt auch `said`), der Block „the konten texts“ wie in der Vorlage |
+| ui 1.0.0 | Ein langer Titel eines Kastens bricht um, statt abgeschnitten zu werden („Wiederherstellungscodes“ in der schmalen Ansicht, `tests/darstellung.spec.ts`); geprüft im vitest des Bausatzes |
+
+**Geprüft am 25.11.2026:** `pytest -n 2` über alles (darin `tests/nexkonten`, `tests/nexoidc`, `tests/nexpost` im selben
+Lauf) 3089 bestanden, 4 übersprungen; vitest 304 grün in 36 Dateien; `npm run lint` und `npm run build` grün. Kein
+Playwright.
 
 ## 1. Bestand heute (0.33.0)
 
