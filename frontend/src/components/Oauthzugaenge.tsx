@@ -11,11 +11,12 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Building2, KeyRound } from 'lucide-react'
-import { Karte } from '../pages/einstellungen/Karte'
+import { Building2, KeyRound } from 'lucide-react'
 import { ApiFehler, api } from '../api/client'
-import { useNachfrage } from './Nachfrage'
-import { Badge, Button } from '../ds'
+import { confirmOf } from '../lib/accountButton'
+import { Badge, Card, Notice, Row, Rows } from '../vendor/nexui'
+import { AccountButton } from './AccountButton'
+import { useAccountQuestion } from './AccountQuestion'
 import { RUECKWEG } from '../lib/oauthrueckweg'
 
 interface Zugang {
@@ -42,7 +43,7 @@ interface Props {
 
 export function Oauthzugaenge({ istBetreiber = false }: Props) {
   const { t, i18n } = useTranslation()
-  const { fragen, fenster } = useNachfrage()
+  const { ask, dialog } = useAccountQuestion()
   const [zugaenge, setZugaenge] = useState<Zugang[] | null>(null)
   const [anbieter, setAnbieter] = useState<AnbieterZeile[]>([])
   const [fehler, setFehler] = useState('')
@@ -121,73 +122,63 @@ export function Oauthzugaenge({ istBetreiber = false }: Props) {
   const knoepfe = moeglich.map((a) => a.art)
 
   return (
-    /* Eine eigene Karte unter der Karte „Sicherheit“ (25.11.2026, wie nexnotes). */
-    <Karte id="google-microsoft" symbol={Building2} titel={t('oauth.zugaenge')} text={t('oauth.zugaenge_text')}>
+    /* Eine eigene Karte unter der Karte „Sicherheit“ (25.11.2026, wie die eigenen Karten in nexnotes), aus dem Bausatz. */
+    <Card id="google-microsoft" icon={Building2} title={t('oauth.zugaenge')} subtitle={t('oauth.zugaenge_text')}>
+      {fehler && <Notice tone="danger">{fehler}</Notice>}
 
-      {fehler && <p className="mb-0 text-[12px] text-danger">{fehler}</p>}
+      {zugaenge !== null && zugaenge.length === 0 && <p className="m-0 text-sm text-[var(--nexui-text-muted)]">{t('oauth.keine_zugaenge')}</p>}
 
-      {zugaenge !== null && zugaenge.length === 0 && (
-        <p className="mb-0 text-[12px] text-fg-4">{t('oauth.keine_zugaenge')}</p>
+      {(zugaenge ?? []).length > 0 && (
+        <Rows label={t('oauth.zugaenge')}>
+          {(zugaenge ?? []).map((z) => (
+            <Row
+              key={z.id}
+              icon={KeyRound}
+              name={z.adresse || z.art}
+              badge={
+                /* ⚠️ **Ein toter Zugang muss man sehen.** Sonst sieht er aus wie ein kaputter Mailserver, und man sucht
+                   an der falschen Stelle. */
+                z.letzter_fehler ? <Badge tone="warn">{t('oauth.abgelaufen')}</Badge> : <Badge tone="on">{t(`oauth.verbinden_${z.art}`).split(' ')[0]}</Badge>
+              }
+              action={
+                <AccountButton
+                  name="oidc.account.unlink"
+                  onClick={() =>
+                    void (async () => {
+                      const ja = await ask({
+                        title: t('oauth.trennen_frage', { adresse: z.adresse || z.art }),
+                        text: haengtDran(z),
+                        confirm: confirmOf('oidc.account.unlink', t('oauth.trennen')),
+                      })
+                      if (ja !== true) return
+                      await api.loeschen(`/api/mailoauth/zugaenge/${z.id}`)
+                      await laden()
+                    })()
+                  }
+                >
+                  {t('oauth.trennen')}
+                </AccountButton>
+              }
+            />
+          ))}
+        </Rows>
       )}
 
-      <ul className="flex list-none flex-col gap-2 p-0">
-        {(zugaenge ?? []).map((z) => (
-          <li
-            key={z.id}
-            className="flex items-center gap-3 rounded-lg border border-line bg-surface-1 px-4 py-2.5"
-          >
-            <KeyRound aria-hidden className="size-4 shrink-0 text-fg-4" />
-            <span className="min-w-0 flex-1 truncate text-[13px] text-fg-1">
-              {z.adresse || z.art}
-            </span>
-            {/* ⚠️ **Ein toter Zugang muss man sehen.** Sonst sieht er aus wie
-                ein kaputter Mailserver, und man sucht an der falschen Stelle. */}
-            {z.letzter_fehler ? (
-              <span className="flex items-center gap-1.5 text-[12px] text-warning">
-                <AlertTriangle aria-hidden className="size-3.5" />
-                {t('oauth.abgelaufen')}
-              </span>
-            ) : (
-              <Badge tone="accent">{t(`oauth.verbinden_${z.art}`).split(' ')[0]}</Badge>
-            )}
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() =>
-                void (async () => {
-                  const ja = await fragen({
-                    titel: t('oauth.trennen_frage', { adresse: z.adresse || z.art }),
-                    text: haengtDran(z),
-                    knopf: t('oauth.trennen'),
-                    gefaehrlich: true,
-                  })
-                  if (ja !== true) return
-                  await api.loeschen(`/api/mailoauth/zugaenge/${z.id}`)
-                  await laden()
-                })()
-              }
-            >
-              {t('oauth.trennen')}
-            </Button>
-          </li>
-        ))}
-      </ul>
-
-      <div className="flex flex-wrap gap-2">
-        {knoepfe.map((art) => (
-          <Button key={art} size="sm" variant="secondary" onClick={() => void verbinden(art)}>
-            {t(`oauth.verbinden_${art}`)}
-          </Button>
-        ))}
-      </div>
+      {knoepfe.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {knoepfe.map((art) => (
+            <AccountButton key={art} name="oidc.account.link" onClick={() => void verbinden(art)}>
+              {t(`oauth.verbinden_${art}`)}
+            </AccountButton>
+          ))}
+        </div>
+      )}
 
       {anbieter.length > 0 && moeglich.length === 0 && (
-        <p className="mb-0 text-[12px] text-fg-4">
-          {istBetreiber ? t('oauth.nicht_eingerichtet') : t('oauth.nicht_eingerichtet_benutzer')}
-        </p>
+        <p className="m-0 text-xs text-[var(--nexui-text-muted)]">{istBetreiber ? t('oauth.nicht_eingerichtet') : t('oauth.nicht_eingerichtet_benutzer')}</p>
       )}
 
-      {fenster}
-    </Karte>
+      {dialog}
+    </Card>
   )
 }

@@ -10,9 +10,9 @@
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MailCheck } from 'lucide-react'
 import { api } from '../api/client'
-import { Button, Input } from '../ds'
+import { AccountButton } from '../components/AccountButton'
+import { Button, Field, Notice } from '../vendor/nexui'
 import { servermeldung } from '../lib/servermeldung'
 import { Torbogen } from '../components/Torbogen'
 import { EMAIL_MAX, PASSWORD_MIN } from '../vendor/nexkonten/konten'
@@ -60,18 +60,15 @@ export function VergessenPage({
     <Torbogen modus={modus} aufModus={aufModus} titel={t('account.forgotTitle')}>
       {perMail === false ? (
         <div className="flex flex-col gap-4">
-          <p className="mb-0 text-[13px] text-fg-2">{t('account.forgotNoMail')}</p>
-          <Button variant="ghost" onClick={aufZurueck}>
+          <p className="m-0 text-sm text-[var(--nexui-text-muted)]">{t('account.forgotNoMail')}</p>
+          <Button kind="secondary" icon="ArrowLeft" wide onClick={aufZurueck}>
             {t('kennwort.zur_anmeldung')}
           </Button>
         </div>
       ) : gesendet ? (
         <div className="flex flex-col gap-4">
-          <div className="flex items-start gap-3 rounded-lg border border-line bg-surface-3 p-3">
-            <MailCheck className="mt-0.5 size-5 shrink-0 text-success" aria-hidden />
-            <p className="mb-0 text-[13px] text-fg-2">{t('account.forgotSent')}</p>
-          </div>
-          <Button variant="ghost" onClick={aufZurueck}>
+          <Notice tone="ok">{t('account.forgotSent')}</Notice>
+          <Button kind="secondary" icon="ArrowLeft" wide onClick={aufZurueck}>
             {t('kennwort.zur_anmeldung')}
           </Button>
         </div>
@@ -83,8 +80,8 @@ export function VergessenPage({
             void abschicken()
           }}
         >
-          <p className="mb-0 text-[13px] text-fg-3">{t('kennwort.vergessen_hinweis')}</p>
-          <Input
+          <p className="m-0 text-sm text-[var(--nexui-text-muted)]">{t('kennwort.vergessen_hinweis')}</p>
+          <Field
             label={t('account.login')}
             value={benutzername}
             autoFocus
@@ -92,10 +89,8 @@ export function VergessenPage({
             maxLength={EMAIL_MAX}
             onChange={(e) => setBenutzername(e.target.value)}
           />
-          <Button type="submit" variant="primary" disabled={laeuft || !benutzername.trim()}>
-            {t('account.forgotSubmit')}
-          </Button>
-          <Button variant="ghost" onClick={aufZurueck}>
+          <AccountButton name="account.forgotSubmit" type="submit" wide busy={laeuft} disabled={!benutzername.trim()} />
+          <Button kind="secondary" icon="ArrowLeft" wide onClick={aufZurueck}>
             {t('kennwort.zur_anmeldung')}
           </Button>
         </form>
@@ -151,10 +146,8 @@ export function KennwortNeuPage({
     return (
       <Torbogen modus={modus} aufModus={aufModus} titel={t('account.resetTitle')}>
         <div className="flex flex-col gap-4">
-          <p role={hinfaellig ? 'alert' : undefined} className="mb-0 text-[13px] text-fg-2">
-            {hinfaellig || t('kennwort.gesetzt')}
-          </p>
-          <Button variant={fertig ? 'primary' : 'ghost'} onClick={aufFertig}>
+          {hinfaellig ? <Notice tone="danger">{hinfaellig}</Notice> : <Notice tone="ok">{t('kennwort.gesetzt')}</Notice>}
+          <Button kind={fertig ? 'primary' : 'secondary'} icon={fertig ? 'ArrowRight' : 'ArrowLeft'} wide onClick={aufFertig}>
             {t('kennwort.zur_anmeldung')}
           </Button>
         </div>
@@ -176,10 +169,10 @@ export function KennwortNeuPage({
           void abschicken()
         }}
       >
-        <Input
+        <Field
           type="password"
           label={t('account.newPassword')}
-          hint={t('account.passwordRules', { minimum: mindestens })}
+          hints={[t('account.passwordRules', { minimum: mindestens })]}
           value={passwort}
           autoFocus
           autoComplete="new-password"
@@ -187,7 +180,7 @@ export function KennwortNeuPage({
         />
         {/* ⚠️ Ein Tippfehler im neuen Passwort sperrt aus, und zwar sofort —
             man ist ja gerade dabei, sich auszusperren. Deshalb zweimal. */}
-        <Input
+        <Field
           type="password"
           label={t('account.passwordRepeat')}
           value={wiederholung}
@@ -195,18 +188,10 @@ export function KennwortNeuPage({
           error={passtNicht ? t('account.passwordMismatch') : undefined}
           onChange={(e) => setWiederholung(e.target.value)}
         />
-        {fehler && (
-          <p role="alert" className="mb-0 text-[13px] text-danger">
-            {fehler}
-          </p>
-        )}
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={laeuft || passwort.length < mindestens || passtNicht || !wiederholung}
-        >
+        {fehler && <Notice tone="danger">{fehler}</Notice>}
+        <AccountButton name="resetSubmit" type="submit" wide busy={laeuft} disabled={passwort.length < mindestens || passtNicht || !wiederholung}>
           {t('kennwort.setzen')}
-        </Button>
+        </AccountButton>
       </form>
     </Torbogen>
   )

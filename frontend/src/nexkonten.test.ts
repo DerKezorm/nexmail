@@ -18,13 +18,13 @@ import { createRoot } from 'react-dom/client'
 import { I18nextProvider } from 'react-i18next'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { FIELDS, kontenVariables, PAGES, pageOrder, SCREENS, screenFields, sessionExpiredParts, suggestUsername } from './vendor/nexkonten/konten'
+import { BUTTONS, FIELDS, kontenVariables, PAGES, pageOrder, SCREENS, screenFields, sessionExpiredParts, suggestUsername } from './vendor/nexkonten/konten'
 import type { AccountField } from './vendor/nexkonten/konten'
 import type { Ich } from './api/client'
 import { naechster } from './components/SitzungAbgelaufen'
 // nexmail: the order the pages really use (pages/einstellungen/Profil, pages/Sicherheit).
 import { Profil, PROFIL_TEILE } from './pages/einstellungen/Profil'
-import { SICHERHEIT_TEILE } from './pages/Sicherheit'
+import { Sicherheit, SICHERHEIT_TEILE } from './pages/Sicherheit'
 import { EinrichtungPage } from './pages/EinrichtungPage'
 import { EinladungPage } from './pages/EinladungPage'
 import { AnmeldePage } from './pages/AnmeldePage'
@@ -114,6 +114,34 @@ function zeigen(screen: keyof typeof SCREENS, page: ReactNode): () => Promise<Sh
       },
     }
   }
+}
+
+// nexmail (since 0.3.8): the page "Security" of an account with a password, shown until "Change password" is there.
+const APP_PAGE_RENDER: { security?: () => Promise<Shown> } = {
+  security: async () => {
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const react = createRoot(root)
+    react.render(createElement(I18nextProvider, { i18n }, createElement(Sicherheit, { ich: { ...KIM, zwei_faktor_aktiv: false, offene_codes: 0 } as Ich })))
+    await waitFor(() => getAllByRole(root, 'button', { name: i18n.t('account.passwordChange') }))
+    return {
+      root,
+      unmount: () => {
+        react.unmount()
+        root.remove()
+      },
+    }
+  },
+}
+
+// nexmail (since 0.3.8): the text keys of the buttons nexmail words itself, by their role in BUTTONS.
+const APP_BUTTON_WORDS: Partial<Record<keyof typeof BUTTONS, string>> = {
+  signIn: 'anmeldung.weiter',
+  setupSubmit: 'einrichtung.weiter',
+  inviteSubmit: 'einladung.loslegen',
+  resetSubmit: 'kennwort.setzen',
+  codeSubmit: 'anmeldung.anmelden',
+  signOut: 'anmeldung.abmelden',
 }
 
 // nexmail (since 0.3.7): every screen of APP_SCREENS with its own page component; `profile` is the page "Profile" of
@@ -283,4 +311,43 @@ describe('the dialog "Session expired" (since 0.3.5)', () => {
     expect(sessionExpiredParts(naechster({ schritt: 'passkey' }))).toContain('passkeySignIn')
     expect(sessionExpiredParts('sign_in')).toEqual(['sessionExpiredHint', 'password', 'signInAgain', 'or'])
   })
+})
+
+/** What a button says: its text without the symbol (an `svg` has no text). */
+function said(element: Element): string {
+  return (element.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
+
+describe('every button of the account pages has its kind and symbol (since 0.3.8)', () => {
+  const screens: [string, (() => Promise<Shown>) | undefined][] = [
+    ...(Object.keys(APP_SCREENS) as (keyof typeof SCREENS)[]).map((screen) => [screen, APP_RENDER[screen]] as [string, (() => Promise<Shown>) | undefined]),
+    ['security', APP_PAGE_RENDER.security],
+  ]
+  for (const [screen, render] of screens) {
+    it(`${screen}: kind and symbol as BUTTONS says, no button without them`, async () => {
+      if (!render) throw new Error(`no render for ${screen}`)
+      await i18n.changeLanguage('de')
+      const { root, unmount } = await render()
+      try {
+        const words = new Map<string, keyof typeof BUTTONS>()
+        for (const name of Object.keys(BUTTONS) as (keyof typeof BUTTONS)[]) {
+          const own = APP_BUTTON_WORDS[name]
+          const text = name.includes('.') ? i18n.t(name, { name: 'Pocket ID' }) : own && i18n.t(own)
+          if (text && !words.has(text)) words.set(text, name)
+        }
+        let found = 0
+        for (const element of Array.from(root.querySelectorAll<HTMLElement>('button, [role="button"], [data-kind]'))) {
+          const name = words.get(said(element))
+          if (!name) continue
+          found += 1
+          const spec = BUTTONS[name]
+          expect(element.getAttribute('data-kind'), `${screen}: ${said(element)}`).toBe(spec.kind)
+          expect(element.getAttribute('data-icon'), `${screen}: ${said(element)}`).toBe(spec.icon)
+        }
+        expect(found, `${screen}: no button of BUTTONS found`).toBeGreaterThan(0)
+      } finally {
+        unmount()
+      }
+    })
+  }
 })

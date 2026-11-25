@@ -8,7 +8,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Torbogen } from '../components/Torbogen'
-import { Button, Input } from '../ds'
+import { AccountButton } from '../components/AccountButton'
+import { Field, Notice } from '../vendor/nexui'
 import { api } from '../api/client'
 import type { KontoAntwort } from '../api/client'
 import { servermeldung } from '../lib/servermeldung'
@@ -95,41 +96,41 @@ export function EinrichtungPage({ modus, aufModus, aufFertig }: Props) {
       {/* konten 0.3.6: Unter dem Passwort kein Satz über den zweiten Faktor; nur wo der Betreiber ihn verlangt, sagt
           es `setupNotes` (beim ersten Konto ist der Schalter noch aus). */}
       {setupNotes().map((note) => (
-        <p key={note} className="mb-3 text-[13px] text-fg-2">
+        <p key={note} className="m-0 text-sm">
           {t(note)}
         </p>
       ))}
       {/* Felder und Reihenfolge aus dem Kontenmodul (`SCREENS.setup`), gleich in jeder nex-App. */}
       <form onSubmit={kontoAnlegen} className="flex flex-col gap-4">
-        <Input
+        <Field
           label={t('account.setupCode')}
-          hint={t('account.setupCodeHint')}
+          hints={[t('account.setupCodeHint')]}
           value={code}
           autoFocus
           autoComplete="off"
           onChange={(e) => setCode(e.target.value)}
         />
-        <Input
+        <Field
           label={t('account.displayName')}
-          hint={t('account.displayNameHint')}
+          hints={[t('account.displayNameHint')]}
           value={anzeigename}
           autoComplete="name"
           maxLength={DISPLAY_NAME_MAX}
           onChange={(e) => setAnzeigename(e.target.value)}
         />
-        <Input
+        <Field
           label={t('account.username')}
-          hint={t('account.usernameHint')}
+          hints={[t('account.usernameHint')]}
           error={benutzername && usernameProblem(benutzername) ? t('account.usernameRules') : undefined}
           value={benutzername}
           autoComplete="username"
           maxLength={USERNAME_MAX}
           onChange={(e) => setName({ touched: true, username: e.target.value })}
         />
-        <Input
+        <Field
           type="email"
           label={t('account.email')}
-          hint={t('account.emailHint')}
+          hints={[t('account.emailHint')]}
           value={adresse}
           autoComplete="email"
           maxLength={EMAIL_MAX}
@@ -137,9 +138,9 @@ export function EinrichtungPage({ modus, aufModus, aufFertig }: Props) {
         />
         {/* ⚠️ **Der Grund gehört an das Feld, nicht unter das Formular.** Ein Hinweis, den man erst zuordnen muss,
             ist keiner. */}
-        <Input
+        <Field
           label={t('account.newPassword')}
-          hint={t('account.passwordRules')}
+          hints={[t('account.passwordRules')]}
           error={
             passwort && passwort.length < PASSWORD_MIN
               ? t('einrichtung.grund_kennwort', { fehlen: PASSWORD_MIN - passwort.length })
@@ -150,7 +151,7 @@ export function EinrichtungPage({ modus, aufModus, aufFertig }: Props) {
           autoComplete="new-password"
           onChange={(e) => setPasswort(e.target.value)}
         />
-        <Input
+        <Field
           label={t('account.passwordRepeat')}
           type="password"
           value={wiederholung}
@@ -162,30 +163,16 @@ export function EinrichtungPage({ modus, aufModus, aufFertig }: Props) {
         {fehler && <Meldung text={fehler} />}
 
         {/* ⚠️ **Ein gesperrter Knopf muss sagen, warum.** */}
-        {grund && <p className="-mt-1 text-[13px] text-fg-3">{grund}</p>}
+        {grund && <p className="m-0 text-sm text-[var(--nexui-text-muted)]">{grund}</p>}
 
-        <Button
-          type="submit"
-          variant="primary"
-          size="lg"
-          fullWidth
-          loading={laeuft}
-          disabled={Boolean(grund)}
-        >
+        <AccountButton name="setupSubmit" type="submit" wide busy={laeuft} disabled={Boolean(grund)}>
           {t('einrichtung.weiter')}
-        </Button>
+        </AccountButton>
       </form>
     </Torbogen>
   )
 }
 
 export function Meldung({ text }: { text: string }) {
-  return (
-    <p
-      role="alert"
-      className="mb-0 rounded-md border border-danger/40 bg-danger-soft px-3 py-2 text-[13px] text-fg-1"
-    >
-      {text}
-    </p>
-  )
+  return <Notice tone="danger">{text}</Notice>
 }

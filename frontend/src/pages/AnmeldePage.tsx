@@ -9,10 +9,10 @@
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Fingerprint, KeyRound } from 'lucide-react'
 import { appPfad } from '../lib/basis'
 import { Torbogen } from '../components/Torbogen'
-import { Button, Checkbox, Input } from '../ds'
+import { AccountButton } from '../components/AccountButton'
+import { Checkbox, Field, OrLine, TextLink } from '../vendor/nexui'
 import { Meldung } from './EinrichtungPage'
 import { CodesZeigen } from '../components/ZweiterFaktor'
 import { ApiFehler, api } from '../api/client'
@@ -156,11 +156,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
   if (lage === 'passwort') {
     return (
       <Torbogen titel={t('anmeldung.titel')} modus={modus} aufModus={aufModus}>
-        {oidcFehler && (
-          <div className="mb-4">
-            <Meldung text={oidcFehler} />
-          </div>
-        )}
+        {oidcFehler && <Meldung text={oidcFehler} />}
         {passwortformDa && (
         <form
           onSubmit={(e) => {
@@ -176,7 +172,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
           className="flex flex-col gap-4"
         >
           {/* Kontenmodul: „Benutzername oder E-Mail“; der Feldname zum Server bleibt `benutzername`. */}
-          <Input
+          <Field
             label={t('account.login')}
             value={benutzername}
             autoFocus
@@ -184,42 +180,27 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
             maxLength={EMAIL_MAX}
             onChange={(e) => setBenutzername(e.target.value)}
           />
-          <Input
+          <Field
             label={t('account.password')}
             type="password"
             value={passwort}
             autoComplete="current-password"
             onChange={(e) => setPasswort(e.target.value)}
           />
-          <Checkbox label={t('account.stayIn')} checked={bleiben} onCheckedChange={setBleiben} />
+          <Checkbox label={t('account.stayIn')} checked={bleiben} onChange={setBleiben} />
           {fehler && <Meldung text={fehler} />}
-          <Button
-            type="submit"
-            variant="primary"
-            size="lg"
-            fullWidth
-            loading={laeuft}
-            disabled={!benutzername || !passwort}
-          >
+          <AccountButton name="signIn" type="submit" wide busy={laeuft} disabled={!benutzername || !passwort}>
             {t('anmeldung.weiter')}
-          </Button>
+          </AccountButton>
           {/* ⚠️ **Hier und nirgends sonst.** Wer sein Passwort vergessen hat,
               kommt nicht bis in ein Menü. */}
-          <button
-            type="button"
-            onClick={aufVergessen}
-            className="mx-auto text-[13px] text-fg-3 underline underline-offset-2 hover:text-fg-1"
-          >
-            {t('account.forgot')}
-          </button>
+          <div className="text-center">
+            <TextLink onClick={aufVergessen}>{t('account.forgot')}</TextLink>
+          </div>
         </form>
         )}
         {passwortformDa && seite.providers.length > 0 && (
-          <div className="my-5 flex items-center gap-3 text-[12px] text-fg-4" aria-hidden>
-            <span className="h-px flex-1 bg-line-subtle" />
-            {t('oidc.login.or')}
-            <span className="h-px flex-1 bg-line-subtle" />
-          </div>
+          <OrLine>{t('oidc.login.or')}</OrLine>
         )}
         {/* ⚠️ **Ein gewöhnlicher Verweis, kein fetch.** Der Hinweg ist eine
             Browser-Weiterleitung zum Anbieter; ein Aufruf im Hintergrund
@@ -227,37 +208,19 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
         {seite.providers.length > 0 && (
           <div className="flex flex-col gap-2" data-testid="anmelde-knoepfe">
             {seite.providers.map((a) => (
-              <a
-                key={a.slug}
-                href={appPfad(`/api/oidc/${encodeURIComponent(a.slug)}/start`)}
-                className="flex h-[var(--control-h-lg)] items-center justify-center gap-2 rounded-md border border-line bg-surface-2 text-sm font-medium text-fg-1 no-underline transition-colors duration-[var(--dur-fast)] hover:border-accent"
-              >
-                <KeyRound aria-hidden className="size-4" />
+              <AccountButton key={a.slug} name="oidc.login.button" wide href={appPfad(`/api/oidc/${encodeURIComponent(a.slug)}/start`)}>
                 {t('oidc.login.button', { name: a.label })}
-              </a>
+              </AccountButton>
             ))}
           </div>
         )}
         {passkeyAn && (
-          <Button
-            variant="secondary"
-            size="lg"
-            fullWidth
-            className="mt-3"
-            iconLeft={<Fingerprint className="size-4" />}
-            onClick={() => void mitPasskey()}
-          >
-            {t('account.passkeySignIn')}
-          </Button>
+          <AccountButton name="account.passkeySignIn" wide onClick={() => void mitPasskey()} />
         )}
         {!passwortformDa && (
-          <button
-            type="button"
-            onClick={() => setBetreiberWeg(true)}
-            className="mx-auto mt-5 block text-[12px] text-fg-4 underline underline-offset-2 hover:text-fg-1"
-          >
-            {t('oidc.login.operator')}
-          </button>
+          <div className="text-center">
+            <TextLink onClick={() => setBetreiberWeg(true)}>{t('oidc.login.operator')}</TextLink>
+          </div>
         )}
       </Torbogen>
     )
@@ -279,17 +242,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
       <Torbogen titel={t('account.secondFactor')} untertitel={t('account.passkeysHint')} modus={modus} aufModus={aufModus}>
         <div className="flex flex-col gap-4">
           {fehler && <Meldung text={fehler} />}
-          <Button
-            variant="primary"
-            size="lg"
-            fullWidth
-            loading={laeuft}
-            iconLeft={<Fingerprint className="size-4" />}
-            disabled={!passkeyMoeglich()}
-            onClick={() => void mitPasskey()}
-          >
-            {t('account.passkeySignIn')}
-          </Button>
+          <AccountButton name="account.passkeySignIn" wide busy={laeuft} disabled={!passkeyMoeglich()} onClick={() => void mitPasskey()} />
         </div>
       </Torbogen>
     )
@@ -312,9 +265,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
                 dangerouslySetInnerHTML={{ __html: einrichtung.qr_svg }}
               />
               <div className="min-w-0 flex-1">
-                <p className="mb-1 text-[12px] font-semibold tracking-[0.06em] text-fg-4 uppercase">
-                  {t('einrichtung.geheimnis_abtippen')}
-                </p>
+                <p className="m-0 mb-1 text-xs text-[var(--nexui-text-muted)]">{t('einrichtung.geheimnis_abtippen')}</p>
                 <code className="block break-all rounded-md border border-line bg-surface-2 px-3 py-2 font-mono text-[13px] text-fg-1 select-all">
                   {einrichtung.geheimnis}
                 </code>
@@ -329,7 +280,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
             }}
             className="flex flex-col gap-4"
           >
-            <Input
+            <Field
               label={t('einrichtung.code_eingabe')}
               value={code}
               mono
@@ -341,16 +292,9 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
             />
             {fehler && <Meldung text={fehler} />}
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              fullWidth
-              loading={laeuft}
-              disabled={code.length !== 6}
-            >
+            <AccountButton name="confirm" type="submit" wide busy={laeuft} disabled={code.length !== 6}>
               {t('einrichtung.fertigstellen')}
-            </Button>
+            </AccountButton>
           </form>
         </div>
       </Torbogen>
@@ -380,7 +324,7 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
         }}
         className="flex flex-col gap-4"
       >
-        <Input
+        <Field
           label={mitCode ? t('anmeldung.code_eingabe') : t('anmeldung.wiederherstellung_titel')}
           value={code}
           mono
@@ -396,28 +340,21 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
 
         {fehler && <Meldung text={fehler} />}
 
-        <Button
-          type="submit"
-          variant="primary"
-          size="lg"
-          fullWidth
-          loading={laeuft}
-          disabled={mitCode ? code.length !== 6 : code.length < 10}
-        >
+        <AccountButton name="codeSubmit" type="submit" wide busy={laeuft} disabled={mitCode ? code.length !== 6 : code.length < 10}>
           {t('anmeldung.anmelden')}
-        </Button>
+        </AccountButton>
 
-        <button
-          type="button"
-          onClick={() => {
-            setCode('')
-            setFehler('')
-            setLage(mitCode ? 'wiederherstellung' : 'code')
-          }}
-          className="rounded-sm py-1 text-[13px] text-fg-3 transition-colors duration-[var(--dur-fast)] hover:text-accent-text"
-        >
-          {mitCode ? t('anmeldung.wiederherstellung_zeigen') : t('anmeldung.zurueck_zum_code')}
-        </button>
+        <div className="text-center">
+          <TextLink
+            onClick={() => {
+              setCode('')
+              setFehler('')
+              setLage(mitCode ? 'wiederherstellung' : 'code')
+            }}
+          >
+            {mitCode ? t('anmeldung.wiederherstellung_zeigen') : t('anmeldung.zurueck_zum_code')}
+          </TextLink>
+        </div>
       </form>
     </Torbogen>
   )

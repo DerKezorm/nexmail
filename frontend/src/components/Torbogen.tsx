@@ -11,6 +11,7 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Moon, Sun } from 'lucide-react'
+import { AuthCard } from '../vendor/nexui'
 import { Logo } from './Logo'
 import { Beschriftung } from '../ds/beschriftung'
 import { SPRACHEN, spracheSetzen } from '../i18n'
@@ -71,32 +72,23 @@ export function Torbogen({
         </div>
       </div>
 
-      <div className="flex flex-1 items-start justify-center px-4 pt-6 pb-16 sm:items-center sm:pt-4">
-        <main
-          className={
-            'w-full rounded-xl border border-line bg-surface-1 p-6 shadow-[var(--shadow-2)] sm:p-8 ' +
-            (breit ? 'max-w-[620px]' : 'max-w-[420px]')
+      {/* Die Karte aus dem gemeinsamen Bausatz (`AuthCard`), Lage und Maße wie in nexnotes. */}
+      <div className="flex flex-1 items-start justify-center px-4 pt-[6vh] pb-10">
+        <AuthCard
+          wide={breit}
+          title={titel}
+          subtitle={
+            marke || untertitel ? (
+              <>
+                {marke && <span className="block text-xs font-semibold tracking-[0.06em] uppercase">{marke}</span>}
+                {untertitel}
+              </>
+            ) : undefined
           }
         >
-          {marke && (
-            <p className="mb-2 text-[11px] font-semibold tracking-[0.06em] text-fg-4 uppercase">
-              {marke}
-            </p>
-          )}
-          {/* Ohne Untertitel traegt die Ueberschrift den Abstand selbst -
-              sonst klebt die erste Feldbeschriftung darunter. */}
-          <h1
-            className={
-              'font-display text-[24px] leading-snug font-medium text-fg-1 ' +
-              (untertitel ? 'mb-2' : 'mb-6')
-            }
-          >
-            {titel}
-          </h1>
-          {untertitel && <div className="mb-6 text-[13px] text-fg-3">{untertitel}</div>}
           {/* Anmelden, Einrichten, Einladung, Passwort: Beschriftungen normal geschrieben wie in nexnotes. */}
           <Beschriftung.Provider value="normal">{children}</Beschriftung.Provider>
-        </main>
+        </AuthCard>
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 /* Mein Konto → Sicherheit → Anmeldeanbieter.
  *
- * Je aktivem Anbieter eine Zeile mit Zustand und „Verknüpfen“ oder „Lösen“. Wortlaute nur aus dem Anmeldemodul
+ * Ein Kasten (`Box`) in der Karte „Sicherheit“, je aktivem Anbieter eine Zeile (`Row`) mit Zustand und „Verknüpfen“
+ * (secondary) oder „Lösen“ (danger), wie in nexnotes; Art und Symbol aus `BUTTONS` (konten 0.3.8). Wortlaute nur aus dem Anmeldemodul
  * (`oidc.account.*`), Fehler über `oidcErrorKey`, nie die rohe Kennung.
  *
  * ⚠️ **Verknüpfen fragt das Passwort noch einmal**: ein POST mit Sitzung und Passwort, kein Link. Die
@@ -13,12 +14,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { KeyRound } from 'lucide-react'
-import { Karte } from '../pages/einstellungen/Karte'
 import { ApiFehler, api } from '../api/client'
-import { Badge, Button, Dialog, Input } from '../ds'
+import { confirmOf } from '../lib/accountButton'
 import { KONTO_RUECKWEG } from '../lib/kontorueckweg'
 import { servermeldung } from '../lib/servermeldung'
 import { oidcErrorKey } from '../vendor/nexoidc/oidc'
+import { Badge, Box, ConfirmDialog, Field, Notice, Row, Rows } from '../vendor/nexui'
+import { AccountButton } from './AccountButton'
 
 interface Zeile {
   slug: string
@@ -27,7 +29,7 @@ interface Zeile {
   only: boolean
 }
 
-export function Anmeldeanbieter() {
+export function Anmeldeanbieter({ hatKennwort = true }: { hatKennwort?: boolean }) {
   const { t } = useTranslation()
   const [zeilen, setZeilen] = useState<Zeile[]>([])
   const [fehler, setFehler] = useState(() => {
@@ -88,96 +90,57 @@ export function Anmeldeanbieter() {
   const verknuepftMit = zeilen.find((z) => z.slug === gelungen)
 
   return (
-    /* Eine eigene Karte unter der Karte „Sicherheit“, wie nexnotes' eigene Teile nach denen des Moduls. */
-    <Karte id="anmeldeanbieter" symbol={KeyRound} titel={t('oidc.account.title')} text={t('oidc.account.text')} testId="anmeldeanbieter-konto">
-
+    <Box title={t('oidc.account.title')} hint={t('oidc.account.text')} testId="anmeldeanbieter-konto">
       {verknuepftMit && (
-        <p role="status" className="mb-0 text-[13px] text-success">
+        <Notice tone="ok">
           {verknuepftMit.label} · {t('oidc.account.linked')}
-        </p>
+        </Notice>
       )}
-      {fehler && (
-        <p role="alert" className="mb-0 text-[13px] text-danger">
-          {fehler}
-        </p>
-      )}
-
-      <ul className="flex list-none flex-col gap-2 p-0">
+      {fehler && !fragtKennwort && <Notice tone="danger">{fehler}</Notice>}
+      <Rows label={t('oidc.account.title')}>
         {zeilen.map((z) => (
-          <li
+          <Row
             key={z.slug}
-            className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface-1 px-4 py-2.5"
-          >
-            <KeyRound aria-hidden className="size-4 shrink-0 text-fg-4" />
-            <span className="min-w-0 flex-1 truncate text-[13px] text-fg-1">{z.label}</span>
-            <Badge tone={z.linked ? 'accent' : 'neutral'}>
-              {z.linked ? t('oidc.account.linked') : t('oidc.account.notLinked')}
-            </Badge>
-            {z.linked ? (
-              z.only ? (
-                <span className="basis-full text-[12px] text-fg-3">
-                  {t('oidc.account.only', { name: z.label })}
-                </span>
+            icon={KeyRound}
+            name={z.label}
+            badge={<Badge tone={z.linked ? 'on' : 'off'}>{z.linked ? t('oidc.account.linked') : t('oidc.account.notLinked')}</Badge>}
+            note={z.linked && z.only ? t('oidc.account.only', { name: z.label }) : undefined}
+            action={
+              z.linked ? (
+                !z.only && <AccountButton name="oidc.account.unlink" onClick={() => void loesen(z)} />
               ) : (
-                <Button size="sm" variant="ghost" onClick={() => void loesen(z)}>
-                  {t('oidc.account.unlink')}
-                </Button>
+                hatKennwort && (
+                  <AccountButton
+                    name="oidc.account.link"
+                    onClick={() => {
+                      setKennwort('')
+                      setFehler('')
+                      setFragtKennwort(z)
+                    }}
+                  />
+                )
               )
-            ) : (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setKennwort('')
-                  setFehler('')
-                  setFragtKennwort(z)
-                }}
-              >
-                {t('oidc.account.link')}
-              </Button>
-            )}
-          </li>
+            }
+          />
         ))}
-      </ul>
+      </Rows>
 
       {fragtKennwort && (
-        <Dialog
-          open
+        <ConfirmDialog
           title={`${t('oidc.account.link')}: ${fragtKennwort.label}`}
-          onClose={() => !laeuft && setFragtKennwort(null)}
+          text={t('oidc.account.text')}
+          confirm={confirmOf('oidc.account.link', t('oidc.account.link'))}
+          cancel={t('aktion.abbrechen')}
+          closeLabel={t('aktion.schliessen')}
+          busy={laeuft}
+          error={fehler || undefined}
+          confirmDisabled={!kennwort}
+          onCancel={() => !laeuft && setFragtKennwort(null)}
+          onConfirm={() => void verknuepfen()}
         >
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={(e) => {
-              e.preventDefault()
-              void verknuepfen()
-            }}
-          >
-            <p className="mb-0 text-[13px] text-fg-2">{t('oidc.account.text')}</p>
-            <Input
-              label={t('anmeldung.passwort')}
-              type="password"
-              autoComplete="current-password"
-              autoFocus
-              value={kennwort}
-              onChange={(e) => setKennwort(e.target.value)}
-            />
-            {fehler && (
-              <p role="alert" className="mb-0 text-[13px] text-danger">
-                {fehler}
-              </p>
-            )}
-            <div className="flex gap-2">
-              <Button type="submit" variant="primary" loading={laeuft} disabled={!kennwort}>
-                {t('oidc.account.link')}
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setFragtKennwort(null)}>
-                {t('aktion.abbrechen')}
-              </Button>
-            </div>
-          </form>
-        </Dialog>
+          <Field label={t('anmeldung.passwort')} type="password" autoComplete="current-password" value={kennwort} onChange={(e) => setKennwort(e.target.value)} />
+        </ConfirmDialog>
       )}
-    </Karte>
+    </Box>
   )
 }

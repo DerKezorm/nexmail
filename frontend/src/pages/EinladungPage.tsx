@@ -10,11 +10,11 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { KeyRound } from 'lucide-react'
 import { api } from '../api/client'
 import { appPfad } from '../lib/basis'
 import { Torbogen } from '../components/Torbogen'
-import { Button, Input } from '../ds'
+import { AccountButton } from '../components/AccountButton'
+import { Button, Field, Notice, OrLine } from '../vendor/nexui'
 import { Meldung } from './EinrichtungPage'
 import { servermeldung } from '../lib/servermeldung'
 import {
@@ -151,7 +151,9 @@ export function EinladungPage({
         aufModus={aufModus}
       >
         <Button
-          fullWidth
+          kind="secondary"
+          icon="ArrowLeft"
+          wide
           onClick={() => {
             window.history.replaceState(null, '', appPfad('/'))
             aufFertig()
@@ -192,41 +194,41 @@ export function EinladungPage({
       {vorschau.passwort !== false && (
       /* Felder und Reihenfolge aus dem Kontenmodul (`SCREENS.invite`): wie die Einrichtung, ohne Code. */
       <form onSubmit={annehmen} className="flex flex-col gap-4">
-        <Input
+        <Field
           label={t('account.displayName')}
-          hint={t('account.displayNameHint')}
+          hints={[t('account.displayNameHint')]}
           value={anzeigename}
           autoComplete="name"
           maxLength={DISPLAY_NAME_MAX}
           onChange={(e) => setAnzeigename(e.target.value)}
         />
-        <Input
+        <Field
           label={t('account.username')}
-          hint={t('account.usernameHint')}
+          hints={[t('account.usernameHint')]}
           error={benutzername && usernameProblem(benutzername) ? t('account.usernameRules') : undefined}
           value={benutzername}
           autoComplete="username"
           maxLength={USERNAME_MAX}
           onChange={(e) => setName({ touched: true, username: e.target.value })}
         />
-        <Input
+        <Field
           type="email"
           label={t('account.email')}
-          hint={t('account.emailHint')}
+          hints={[t('account.emailHint')]}
           value={adresse}
           autoComplete="email"
           maxLength={EMAIL_MAX}
           onChange={(e) => setAdresse(e.target.value)}
         />
-        <Input
+        <Field
           label={t('account.newPassword')}
-          hint={t('account.passwordRules', { minimum: mindestens })}
+          hints={[t('account.passwordRules', { minimum: mindestens })]}
           type="password"
           autoComplete="new-password"
           value={passwort}
           onChange={(e) => setPasswort(e.target.value)}
         />
-        <Input
+        <Field
           label={t('account.passwordRepeat')}
           type="password"
           autoComplete="new-password"
@@ -238,18 +240,11 @@ export function EinladungPage({
         {fehler && <Meldung text={fehler} />}
         {/* ⚠️ Der Grund steht am Feld und nicht am gesperrten Knopf — sonst
             sucht man ihn dort, wo nichts passiert. */}
-        {grund && <p className="-mt-1 text-[13px] text-fg-3">{grund}</p>}
+        {grund && <p className="m-0 text-sm text-[var(--nexui-text-muted)]">{grund}</p>}
 
-        <Button
-          type="submit"
-          variant="primary"
-          size="lg"
-          fullWidth
-          loading={laeuft}
-          disabled={Boolean(grund)}
-        >
+        <AccountButton name="inviteSubmit" type="submit" wide busy={laeuft} disabled={Boolean(grund)}>
           {t('einladung.loslegen')}
-        </Button>
+        </AccountButton>
       </form>
       )}
 
@@ -259,31 +254,14 @@ export function EinladungPage({
           bekommt ein Konto **ohne** Passwort. Ein ungenutztes Passwort ist das,
           welches schwach ist. */}
       {anbieter.length > 0 && (
-        <div className="mt-5 flex flex-col gap-2">
-          {vorschau.passwort !== false && (
-            <div className="mb-3 flex items-center gap-3 text-[12px] text-fg-4" aria-hidden>
-              <span className="h-px flex-1 bg-line-subtle" />
-              {t('account.or')}
-              <span className="h-px flex-1 bg-line-subtle" />
-            </div>
-          )}
+        <div className="flex flex-col gap-2">
+          {vorschau.passwort !== false && <OrLine>{t('account.or')}</OrLine>}
           {anbieter.map((a) => (
-            <button
-              key={a.slug}
-              type="button"
-              disabled={Boolean(unterwegs)}
-              onClick={() => void mitAnbieter(a.slug)}
-              className="flex h-[var(--control-h-lg)] items-center justify-center gap-2 rounded-md border border-line bg-surface-2 text-sm font-medium text-fg-1 transition-colors duration-[var(--dur-fast)] hover:border-accent disabled:opacity-60"
-            >
-              <KeyRound aria-hidden className="size-4" />
+            <AccountButton key={a.slug} name="oidc.login.button" wide disabled={Boolean(unterwegs)} onClick={() => void mitAnbieter(a.slug)}>
               {t('oidc.invite.button', { name: a.label })}
-            </button>
+            </AccountButton>
           ))}
-          {anbieterFehler && (
-            <p role="alert" className="mb-0 text-center text-[13px] text-danger">
-              {anbieterFehler}
-            </p>
-          )}
+          {anbieterFehler && <Notice tone="danger">{anbieterFehler}</Notice>}
         </div>
       )}
     </Torbogen>

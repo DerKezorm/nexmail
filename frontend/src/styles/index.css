@@ -113,6 +113,34 @@
   --font-mono: var(--font-mono);
 }
 
+/* Die Farben des gemeinsamen Bausatzes (bauplaene/ui, `src/vendor/nexui`): nexmails Töne unter den Namen, die auch
+   nexnotes setzt. Der Bausatz hat keine eigene Farbe; Maße und Formen sind in beiden Apps gleich. */
+:root {
+  --nexui-accent: var(--accent);
+  --nexui-accent-hover: var(--accent-hover);
+  --nexui-on-accent: var(--text-on-accent);
+  --nexui-accent-text: var(--text-accent);
+  --nexui-surface: var(--surface-1);
+  --nexui-surface-raised: var(--surface-3);
+  --nexui-surface-hover: var(--gray-700);
+  --nexui-field: var(--canvas);
+  --nexui-line: var(--border-subtle);
+  --nexui-edge: var(--gray-400);
+  --nexui-text: var(--text-1);
+  --nexui-text-muted: var(--text-2);
+  --nexui-danger: var(--danger);
+  --nexui-ok: var(--success);
+  --nexui-warn: var(--warning);
+  --nexui-disabled-bg: var(--surface-3);
+  --nexui-disabled-text: var(--text-4);
+  --nexui-scrim: var(--surface-overlay);
+}
+[data-theme='light'] {
+  --nexui-surface-hover: var(--gray-100);
+  --nexui-field: var(--gray-000);
+  --nexui-text-muted: var(--text-3);
+}
+
 /* --- Was der Reset nicht abdeckt ------------------------------------- */
 
 html, body, #root { height: 100%; }

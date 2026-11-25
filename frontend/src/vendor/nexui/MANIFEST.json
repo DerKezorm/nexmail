@@ -1,0 +1,22 @@
+{
+  "files": {
+    "frontend/src/vendor/nexui/Button.tsx": "sha256-CoubnHTKQOgJZThSRT46eV9NagXXyFZW14tEbQjcIYg=",
+    "frontend/src/vendor/nexui/Card.tsx": "sha256-gKofoCIcIW3GTuEIfoBtJdWU0P72gOYCPeq/RAEFmN0=",
+    "frontend/src/vendor/nexui/Dialog.tsx": "sha256-xSIzWJv20susiIlQMPxj2MJiF6OaG6EIxre/sXWG2WA=",
+    "frontend/src/vendor/nexui/Field.tsx": "sha256-/B4hAANlwb0oUcUHwfSRDyrk4HNVUpZJO3WXOGGIU1M=",
+    "frontend/src/vendor/nexui/Notice.tsx": "sha256-6ZB8GVhmh3g9zzmqeHnhBG1dLy3ehTh8ESCZrzA+raM=",
+    "frontend/src/vendor/nexui/icons.ts": "sha256-JsUY1VU43LxYVBHdn4XqlOQFqsxqLXP2EFtWP9BRV7s=",
+    "frontend/src/vendor/nexui/index.ts": "sha256-E8A8G1CPhymtMN/7B5I5tOx9rryXF/T20zmq+pLB9ic=",
+    "frontend/src/vendor/nexui/nexui.test.tsx": "sha256-xPOxCwRPgdg5CHu9KHfEMnVZ1rwm/HB1+7XBjzKLRig=",
+    "frontend/src/vendor/nexui/styles.ts": "sha256-wSJtluq0ZJUFzDPiZ/NScIb4cs6fZWSnzp6mXmK9i24="
+  },
+  "module": "ui",
+  "requires": {
+    "@testing-library/dom": ">=10.4.0",
+    "lucide-react": ">=0.545.0",
+    "react": ">=19.0.0",
+    "tailwindcss": ">=4.1.0"
+  },
+  "vendor_path": "frontend/src/vendor/nexui",
+  "version": "0.1.0"
+}

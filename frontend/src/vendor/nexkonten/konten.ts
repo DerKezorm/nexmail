@@ -230,6 +230,82 @@ export function pageOrder(page: keyof typeof PAGES, own: readonly string[] = [])
   return [...PAGES[page].parts.map((entry: PagePart) => entry.part), ...own]
 }
 
+/** Since 0.3.8: the three kinds of buttons on the account pages, the same in every app (the shared kit ``ui``):
+ * ``primary`` filled in the accent colour, at most one per box; ``secondary`` light with a fine edge; ``danger`` light
+ * red with a red symbol and red words, for everything that ends or removes something. There is no fourth kind. */
+export const BUTTON_KINDS = ['primary', 'secondary', 'danger'] as const
+
+export type ButtonKind = (typeof BUTTON_KINDS)[number]
+
+/** Since 0.3.8: how one button looks: its kind and its symbol (the name of a lucide icon, as the kit ``ui`` knows it). */
+export interface ButtonSpec {
+  kind: ButtonKind
+  icon: string
+}
+
+/** Since 0.3.8: every button of the account pages and screens with its kind and symbol, so that the same button looks
+ * the same in every app. Keyed by its text key where the module (or ``oidc``) words it, else by its role (the app
+ * words it: ``signIn`` is nexmail's "Weiter" and nexnotes' "Anmelden"). An app renders these buttons only through a
+ * helper that takes kind and symbol from here (``buttonSpec``), never with its own. */
+export const BUTTONS = {
+  // Profile
+  'account.pictureUpload': { kind: 'secondary', icon: 'Upload' },
+  'account.pictureChange': { kind: 'secondary', icon: 'Upload' },
+  'account.pictureRemove': { kind: 'danger', icon: 'Trash2' },
+  'account.save': { kind: 'primary', icon: 'Check' },
+  'account.providerEmailTake': { kind: 'primary', icon: 'Check' },
+  'account.providerEmailDismiss': { kind: 'secondary', icon: 'X' },
+  'account.emailResend': { kind: 'secondary', icon: 'Send' },
+  'account.emailWithdraw': { kind: 'danger', icon: 'Undo2' },
+  'account.emailRemove': { kind: 'danger', icon: 'Trash2' },
+  // Security
+  'account.passwordChange': { kind: 'secondary', icon: 'KeyRound' },
+  'account.totpSetup': { kind: 'primary', icon: 'ShieldCheck' },
+  'account.totpRemove': { kind: 'danger', icon: 'ShieldOff' },
+  'account.recoveryCodesNew': { kind: 'secondary', icon: 'RefreshCw' },
+  'account.passkeyAdd': { kind: 'secondary', icon: 'Fingerprint' },
+  'account.passkeyRemove': { kind: 'danger', icon: 'Trash2' },
+  'account.sessionSignOut': { kind: 'danger', icon: 'LogOut' },
+  'account.signOutEverywhere': { kind: 'danger', icon: 'LogOut' },
+  'account.disconnectAll': { kind: 'danger', icon: 'Unplug' },
+  // Signing in, setup, invitation, forgotten password, the dialog "Session expired"
+  'account.forgotSubmit': { kind: 'primary', icon: 'Send' },
+  'account.passkeySignIn': { kind: 'secondary', icon: 'Fingerprint' },
+  'account.signInAgain': { kind: 'primary', icon: 'LogIn' },
+  // The operator's account list
+  'account.resetLink': { kind: 'secondary', icon: 'Link' },
+  'account.factorReset': { kind: 'danger', icon: 'ShieldOff' },
+  // The providers (the words of the module oidc)
+  'oidc.login.button': { kind: 'secondary', icon: 'KeyRound' },
+  'oidc.account.link': { kind: 'secondary', icon: 'Link' },
+  'oidc.account.unlink': { kind: 'danger', icon: 'Unlink' },
+  // Buttons the app words, by their role
+  signIn: { kind: 'primary', icon: 'LogIn' },
+  setupSubmit: { kind: 'primary', icon: 'Check' },
+  inviteSubmit: { kind: 'primary', icon: 'UserPlus' },
+  resetSubmit: { kind: 'primary', icon: 'KeyRound' },
+  codeSubmit: { kind: 'primary', icon: 'LogIn' },
+  signOut: { kind: 'danger', icon: 'LogOut' },
+  invite: { kind: 'primary', icon: 'UserPlus' },
+  editAccount: { kind: 'secondary', icon: 'Pencil' },
+  blockAccount: { kind: 'danger', icon: 'Ban' },
+  unblockAccount: { kind: 'secondary', icon: 'CircleCheck' },
+  removeAccount: { kind: 'danger', icon: 'UserX' },
+  copy: { kind: 'secondary', icon: 'Copy' },
+  download: { kind: 'secondary', icon: 'Download' },
+  done: { kind: 'primary', icon: 'Check' },
+  confirm: { kind: 'primary', icon: 'Check' },
+  cancel: { kind: 'secondary', icon: 'X' },
+  back: { kind: 'secondary', icon: 'ArrowLeft' },
+} as const satisfies Record<string, ButtonSpec>
+
+export type ButtonName = keyof typeof BUTTONS
+
+/** Since 0.3.8: kind and symbol of a button of the account pages. */
+export function buttonSpec(name: ButtonName): ButtonSpec {
+  return BUTTONS[name]
+}
+
 /** Since 0.3.6: what the second factor shows next to its heading, by the server's ``second_factor`` state: "Off"
  * while none is set up (also where one is required and missing), "On" with an authenticator or a passkey. */
 export const SECOND_FACTOR_STATE = {

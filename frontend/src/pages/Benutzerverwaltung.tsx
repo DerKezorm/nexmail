@@ -11,7 +11,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  AlertTriangle,
   AtSign,
   Crown,
   KeyRound,
@@ -24,11 +23,13 @@ import {
   Trash2,
   Unlink,
   UserPen,
-  UserPlus,
+  Users,
 } from 'lucide-react'
 import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
-import { Badge, Button, Dialog, IconButton, Input, Select } from '../ds'
+import { AccountButton } from '../components/AccountButton'
+import { Badge as Marke, IconButton } from '../ds'
+import { Badge, Button, Card, Dialog, Field, Notice, Row, Rows, SelectField } from '../vendor/nexui'
 import { servermeldung } from '../lib/servermeldung'
 import {
   FACTOR_RESET_DEFAULTS,
@@ -355,22 +356,16 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
 
   return (
     <div className="flex max-w-[720px] flex-col gap-6">
-      {!bestand.postausgang_da && (
-        <div className="flex gap-3 rounded-lg border border-warning/40 bg-warning-soft p-4">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-          <div className="min-w-0">
-            <p className="mb-0 text-[13px] text-fg-2">{t('verwaltung.kein_postausgang')}</p>
-          </div>
-        </div>
-      )}
+      {!bestand.postausgang_da && <Notice tone="warn">{t('verwaltung.kein_postausgang')}</Notice>}
 
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <h2 className="mb-0 flex-1 text-[13px] font-semibold text-fg-1">
-            {t('verwaltung.benutzer')}
-          </h2>
-          {fehler && <span className="text-[13px] text-danger">{fehler}</span>}
+      {/* Eine Karte aus dem gemeinsamen Bausatz wie die Kontenliste in nexnotes: oben „Einladen“, darunter die Konten. */}
+      <Card id="benutzer" icon={Users} title={t('verwaltung.benutzer')}>
+        <div>
+          <AccountButton name="invite" onClick={() => setEinladen(true)}>
+            {t('verwaltung.einladen')}
+          </AccountButton>
         </div>
+        {fehler && <Notice tone="danger">{fehler}</Notice>}
 
         <ul className="flex list-none flex-col gap-2 p-0">
           {bestand.benutzer.map((p) => (
@@ -383,7 +378,7 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
                   <p className="mb-0 truncate text-sm font-medium text-fg-1">
                     {p.anzeigename || p.benutzername}
                   </p>
-                  {p.ist_betreiber && <Badge tone="accent">{t('verwaltung.betreiber')}</Badge>}
+                  {p.ist_betreiber && <Marke tone="accent">{t('verwaltung.betreiber')}</Marke>}
                   {p.zwei_faktor_aktiv && (
                     <ShieldCheck
                       className="size-3.5 shrink-0 text-success"
@@ -397,7 +392,7 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
                 </p>
                 {p.adresse_doppelt && (
                   <div className="mt-1">
-                    <Badge tone="warning">{t('account.emailDuplicate')}</Badge>
+                    <Marke tone="warning">{t('account.emailDuplicate')}</Marke>
                   </div>
                 )}
                 {/* Die Anbieter, mit denen das Konto verknüpft ist, als kleine Marken; das Kreuz daneben löst. */}
@@ -405,7 +400,7 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
                   <div className="mt-1 flex flex-wrap items-center gap-1.5" data-testid="konto-anbieter">
                     {p.anbieter.map((a) => (
                       <span key={a.id} className="inline-flex items-center gap-0.5">
-                        <Badge tone="neutral">{a.label}</Badge>
+                        <Marke tone="neutral">{a.label}</Marke>
                         <IconButton
                           icon={<Unlink />}
                           size="sm"
@@ -491,57 +486,35 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
             </li>
           ))}
         </ul>
-      </section>
+      </Card>
 
       {bestand.einladungen.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="mb-0 text-[13px] font-semibold text-fg-1">
-            {t('verwaltung.offene_einladungen')}
-          </h2>
-          <ul className="flex list-none flex-col gap-2 p-0">
+        <Card id="einladungen" icon={Mail} title={t('verwaltung.offene_einladungen')}>
+          <Rows label={t('verwaltung.offene_einladungen')}>
             {bestand.einladungen.map((e) => (
-              <li
+              <Row
                 key={e.id}
-                className="flex items-center gap-3 rounded-lg border border-line bg-surface-1 px-4 py-3"
-              >
-                <Mail aria-hidden className="size-4 shrink-0 text-fg-4" />
-                <div className="min-w-0 flex-1">
-                  {/* Neue Einladungen tragen keinen Benutzernamen; Einladungen von vorher zeigen ihren. */}
-                  <p className="mb-0 truncate text-sm text-fg-1">
-                    {e.anzeigename || e.benutzername || e.adresse || t('verwaltung.einladung_ohne_namen')}
-                  </p>
-                  <p className="mb-0 truncate font-mono text-[12px] text-fg-4">{e.adresse}</p>
-                </div>
-                {/* ⚠️ Abgelaufene bleiben sichtbar — sonst verschwindet eine
-                    Einladung lautlos und der Betreiber wartet auf jemanden,
-                    der nie einen gültigen Link hatte. */}
-                <Badge tone={e.abgelaufen ? 'warning' : 'neutral'}>
-                  {e.abgelaufen
-                    ? t('verwaltung.abgelaufen')
-                    : t('verwaltung.gilt_bis', {
-                        wann: new Date(e.laeuft_ab).toLocaleDateString(i18n.language),
-                      })}
-                </Badge>
-                <IconButton
-                  icon={<Trash2 />}
-                  label={t('verwaltung.einladung_zuruecknehmen')}
-                  onClick={() => void zuruecknehmen(e)}
-                />
-              </li>
+                icon={Mail}
+                // Neue Einladungen tragen keinen Benutzernamen; Einladungen von vorher zeigen ihren.
+                name={e.anzeigename || e.benutzername || e.adresse || t('verwaltung.einladung_ohne_namen')}
+                detail={e.adresse}
+                badge={
+                  /* ⚠️ Abgelaufene bleiben sichtbar — sonst verschwindet eine Einladung lautlos und der Betreiber
+                     wartet auf jemanden, der nie einen gültigen Link hatte. */
+                  <Badge tone={e.abgelaufen ? 'warn' : 'off'}>
+                    {e.abgelaufen ? t('verwaltung.abgelaufen') : t('verwaltung.gilt_bis', { wann: new Date(e.laeuft_ab).toLocaleDateString(i18n.language) })}
+                  </Badge>
+                }
+                action={
+                  <Button kind="danger" icon="Undo2" onClick={() => void zuruecknehmen(e)}>
+                    {t('verwaltung.einladung_zuruecknehmen')}
+                  </Button>
+                }
+              />
             ))}
-          </ul>
-        </section>
+          </Rows>
+        </Card>
       )}
-
-      <div>
-        <Button
-          variant="primary"
-          iconLeft={<UserPlus className="size-4" />}
-          onClick={() => setEinladen(true)}
-        >
-          {t('verwaltung.einladen')}
-        </Button>
-      </div>
 
       {einladen && (
         <Einladungsfenster
@@ -555,16 +528,20 @@ export function Benutzerverwaltung({ ichNeuLaden }: { ichNeuLaden?: () => void }
       )}
 
       {weitergeben && (
-        <Dialog open title={weitergeben.titel} onClose={() => setWeitergeben(null)}>
-          <div className="flex flex-col gap-4">
-            <Input label={t('account.resetLinkShown')} value={weitergeben.link} readOnly onFocus={(e) => e.target.select()} />
-            <div className="flex gap-2">
-              <Button variant="primary" onClick={() => void navigator.clipboard?.writeText(weitergeben.link)}>
+        <Dialog title={weitergeben.titel} onClose={() => setWeitergeben(null)} closeLabel={t('aktion.schliessen')}>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <Field label={t('account.resetLinkShown')} value={weitergeben.link} readOnly mono onFocus={(e) => e.target.select()} />
+              </div>
+              <AccountButton name="copy" onClick={() => void navigator.clipboard?.writeText(weitergeben.link)}>
                 {t('aktion.kopieren')}
-              </Button>
-              <Button variant="ghost" onClick={() => setWeitergeben(null)}>
+              </AccountButton>
+            </div>
+            <div className="flex justify-end">
+              <AccountButton name="done" onClick={() => setWeitergeben(null)}>
                 {t('aktion.fertig')}
-              </Button>
+              </AccountButton>
             </div>
           </div>
         </Dialog>
@@ -609,47 +586,33 @@ function Einladungsfenster({
   /* Kontenmodul (`SCREENS.operatorInvite`): E-Mail und Anzeigename, beide freiwillig, dazu wie lange der Link gilt.
      Einen Benutzernamen legt der Betreiber nicht mehr fest; den wählt der Eingeladene selbst. */
   return (
-    <Dialog open title={t('verwaltung.einladen')} onClose={aufSchliessen}>
-      <div className="flex flex-col gap-4">
-        <Input
+    <Dialog title={t('verwaltung.einladen')} onClose={aufSchliessen} closeLabel={t('aktion.schliessen')}>
+      <div className="flex flex-col gap-3">
+        <Field
           type="email"
           label={t('account.email')}
-          hint={t('verwaltung.einladung_adresse_hinweis')}
+          hints={[t('verwaltung.einladung_adresse_hinweis')]}
           placeholder="name@example.com"
           value={adresse}
           onChange={(e) => setAdresse(e.target.value)}
         />
-        <Input
-          label={t('account.displayName')}
-          value={anzeigename}
-          onChange={(e) => setAnzeigename(e.target.value)}
+        <Field label={t('account.displayName')} value={anzeigename} onChange={(e) => setAnzeigename(e.target.value)} />
+        <SelectField
+          label={t('account.validFor')}
+          value={tage}
+          onChange={(e) => setTage(e.target.value)}
+          options={INVITE_DAYS.map((d) => ({ value: String(d), label: t('account.days', { count: d }) }))}
         />
-        <Select label={t('account.validFor')} value={tage} onChange={(e) => setTage(e.target.value)}>
-          {INVITE_DAYS.map((d) => (
-            <option key={d} value={String(d)}>
-              {t('account.days', { count: d })}
-            </option>
-          ))}
-        </Select>
 
-        {fehler && (
-          <p role="alert" className="mb-0 text-[13px] text-danger">
-            {fehler}
-          </p>
-        )}
+        {fehler && <Notice tone="danger">{fehler}</Notice>}
 
-        <div className="flex gap-2">
-          <Button
-            variant="primary"
-            loading={laeuft}
-            disabled={Boolean(adresse.trim()) && !adresse.includes('@')}
-            onClick={() => void abschicken()}
-          >
-            {t('verwaltung.einladung_abschicken')}
-          </Button>
-          <Button variant="ghost" onClick={aufSchliessen}>
+        <div className="flex flex-wrap justify-end gap-2">
+          <AccountButton name="cancel" onClick={aufSchliessen}>
             {t('aktion.abbrechen')}
-          </Button>
+          </AccountButton>
+          <AccountButton name="invite" busy={laeuft} disabled={Boolean(adresse.trim()) && !adresse.includes('@')} onClick={() => void abschicken()}>
+            {t('verwaltung.einladung_abschicken')}
+          </AccountButton>
         </div>
       </div>
     </Dialog>

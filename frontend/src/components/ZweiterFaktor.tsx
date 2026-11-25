@@ -11,9 +11,9 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Check, Copy, Download } from 'lucide-react'
 import { api, ApiFehler } from '../api/client'
-import { Button, Input } from '../ds'
+import { Checkbox, Field, Notice } from '../vendor/nexui'
+import { AccountButton } from './AccountButton'
 import { useBeschriftung } from '../ds/beschriftung'
 import { servermeldung } from '../lib/servermeldung'
 
@@ -112,7 +112,7 @@ export function ZweiterFaktor({
       </div>
 
       <form onSubmit={bestaetigen} className="flex flex-col gap-4">
-        <Input
+        <Field
           label={t('einrichtung.code_eingabe')}
           value={code}
           mono
@@ -123,21 +123,17 @@ export function ZweiterFaktor({
           onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
         />
 
-        {fehler && (
-          <p role="alert" className="mb-0 text-[13px] text-danger">
-            {fehler}
-          </p>
-        )}
+        {fehler && <Notice tone="danger">{fehler}</Notice>}
 
-        <div className="flex gap-2">
-          <Button type="submit" variant="primary" loading={laeuft} disabled={code.length !== 6}>
-            {t('sicherheit.faktor_pruefen')}
-          </Button>
+        <div className="flex flex-wrap gap-2">
           {aufAbbrechen && (
-            <Button variant="ghost" onClick={aufAbbrechen}>
+            <AccountButton name="cancel" onClick={aufAbbrechen}>
               {t('aktion.abbrechen')}
-            </Button>
+            </AccountButton>
           )}
+          <AccountButton name="confirm" type="submit" busy={laeuft} disabled={code.length !== 6}>
+            {t('sicherheit.faktor_pruefen')}
+          </AccountButton>
         </div>
       </form>
     </div>
@@ -201,45 +197,28 @@ export function CodesZeigen({
         </ul>
 
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" iconLeft={<Download className="size-4" />} onClick={herunterladen}>
+          <AccountButton name="download" onClick={herunterladen}>
             {t('einrichtung.codes_herunterladen')}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            iconLeft={kopiert ? <Check className="size-4" /> : <Copy className="size-4" />}
-            onClick={kopieren}
-          >
+          </AccountButton>
+          <AccountButton name="copy" onClick={kopieren}>
             {kopiert ? t('einrichtung.codes_kopiert') : t('einrichtung.codes_kopieren')}
-          </Button>
+          </AccountButton>
         </div>
       </section>
 
-      <div className="flex gap-3 rounded-lg border border-warning/40 bg-warning-soft p-4">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-        <div className="min-w-0">
-          <p className="mb-1 text-[13px] font-medium text-fg-1">
-            {t('einrichtung.warnung_titel')}
-          </p>
-          <p className="mb-0 text-[13px] text-fg-2">{t('einrichtung.warnung_text')}</p>
-        </div>
-      </div>
+      <Notice tone="warn" title={t('einrichtung.warnung_titel')}>
+        {t('einrichtung.warnung_text')}
+      </Notice>
 
       {/* ⚠️ **Der Haken steht hier, nicht vor dem Code.** Erst hat man die
           Codes gesehen, dann bestätigt man, sie gesichert zu haben. */}
-      <label className="flex cursor-pointer items-center gap-2.5 select-none">
-        <input
-          type="checkbox"
-          checked={gesichert}
-          onChange={(e) => setGesichert(e.target.checked)}
-          className="size-4 shrink-0 accent-[var(--accent)]"
-        />
-        <span className="text-[13px] text-fg-1">{t('einrichtung.codes_gesichert')}</span>
-      </label>
+      <Checkbox label={t('einrichtung.codes_gesichert')} checked={gesichert} onChange={setGesichert} />
 
-      <Button variant="primary" disabled={!gesichert} onClick={aufFertig}>
-        {t('sicherheit.faktor_fertig')}
-      </Button>
+      <div>
+        <AccountButton name="done" disabled={!gesichert} onClick={aufFertig}>
+          {t('sicherheit.faktor_fertig')}
+        </AccountButton>
+      </div>
     </div>
   )
 }
