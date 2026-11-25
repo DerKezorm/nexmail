@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { KeyRound } from 'lucide-react'
+import { Karte } from '../pages/einstellungen/Karte'
 import { ApiFehler, api } from '../api/client'
 import { Badge, Button, Dialog, Input } from '../ds'
 import { KONTO_RUECKWEG } from '../lib/kontorueckweg'
@@ -87,9 +88,8 @@ export function Anmeldeanbieter() {
   const verknuepftMit = zeilen.find((z) => z.slug === gelungen)
 
   return (
-    <section className="flex flex-col gap-3" data-testid="anmeldeanbieter-konto">
-      <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{t('oidc.account.title')}</h2>
-      <p className="mb-0 text-[12px] text-fg-3">{t('oidc.account.text')}</p>
+    /* Eine eigene Karte unter der Karte „Sicherheit“, wie nexnotes' eigene Teile nach denen des Moduls. */
+    <Karte id="anmeldeanbieter" symbol={KeyRound} titel={t('oidc.account.title')} text={t('oidc.account.text')} testId="anmeldeanbieter-konto">
 
       {verknuepftMit && (
         <p role="status" className="mb-0 text-[13px] text-success">
@@ -178,6 +178,6 @@ export function Anmeldeanbieter() {
           </form>
         </Dialog>
       )}
-    </section>
+    </Karte>
   )
 }

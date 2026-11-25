@@ -43,7 +43,8 @@ test('Die Einstellungen sind gegliedert wie in nexnotes', async ({ page }, info)
   expect(new Set(links).size, 'Die Felder des Profils stehen nicht untereinander.').toBe(1)
 
   /* Sicherheit in der Reihenfolge des Moduls (`PAGES.security`); Passkeys und Codes zeigen sich nur, wenn es sie
-     gibt. nexmails eigene Teile (Anmeldeanbieter, Google und Microsoft) stehen danach. */
+     gibt. Wie nexnotes stehen sie als Unterkästen in EINER Karte „Sicherheit“; nexmails eigene Teile (Anmeldeanbieter,
+     Google und Microsoft) folgen danach als eigene Karten. */
   await bereich(page, 'Sicherheit')
   await untereinander(
     [
@@ -56,10 +57,19 @@ test('Die Einstellungen sind gegliedert wie in nexnotes', async ({ page }, info)
     'Sicherheit',
   )
   await expect(inhalt.getByText('Aus', { exact: true }).or(inhalt.getByText('An', { exact: true })).first()).toBeVisible()
+  const sicherheit = inhalt.getByRole('region', { name: 'Sicherheit', exact: true })
+  for (const kopf of ['Passwort', 'Zweiter Faktor', 'Angemeldete Geräte']) {
+    await expect(sicherheit.getByRole('heading', { name: kopf, exact: true }), `${kopf} steht nicht in der Karte „Sicherheit“.`).toBeVisible()
+  }
+  await expect(sicherheit.getByText('Mail bei neuer Anmeldung', { exact: true })).toBeVisible()
   const geraete = (await inhalt.getByRole('heading', { name: 'Angemeldete Geräte', exact: true }).boundingBox())!.y
   for (const eigen of ['Anmeldeanbieter', 'Google- und Microsoft-Konten']) {
     const kopf = inhalt.getByRole('heading', { name: eigen, exact: true })
-    if (await kopf.count()) expect((await kopf.first().boundingBox())!.y, `${eigen} steht vor den Teilen des Moduls.`).toBeGreaterThan(geraete)
+    if (await kopf.count()) {
+      expect((await kopf.first().boundingBox())!.y, `${eigen} steht vor den Teilen des Moduls.`).toBeGreaterThan(geraete)
+      await expect(sicherheit.getByRole('heading', { name: eigen, exact: true }), `${eigen} steckt in der Karte „Sicherheit“.`).toHaveCount(0)
+      await expect(inhalt.getByRole('region', { name: eigen, exact: true }), `${eigen} ist keine eigene Karte.`).toBeVisible()
+    }
   }
 
   if (info.project.name !== 'schmal') {

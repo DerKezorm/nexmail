@@ -3,6 +3,9 @@
  * Überschriften, Hinweise und Knöpfe sind die Wortlaute des Moduls, die Teile stehen untereinander. Danach nexmails
  * eigene Teile: Anmeldeanbieter verknüpfen, Google- und Microsoft-Konten (`pageOrder`).
  *
+ * Aufgebaut wie nexnotes (25.11.2026): die Teile des Moduls als Unterkästen in EINER Karte „Sicherheit“, nexmails
+ * eigene Teile danach als eigene Karten.
+ *
  * ⚠️ **Angemeldete Geräte gehören sichtbar und einzeln kündbar.** Genau
  * dafür liegen die Sitzungen im Server und nicht im Token: „Überall sonst
  * abmelden" wirkt sofort. Eine Anwendung, die alle Postfächer hält, muss
@@ -13,7 +16,7 @@
  */
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Fingerprint, KeyRound, LogOut, Monitor, Trash2 } from 'lucide-react'
+import { Fingerprint, KeyRound, LogOut, Monitor, ShieldCheck, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import type { Ich } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
@@ -24,16 +27,20 @@ import { CodesZeigen, ZweiterFaktor } from '../components/ZweiterFaktor'
 import { servermeldung } from '../lib/servermeldung'
 import { alsJson, anlegeOptionen, geraetename, passkeyMoeglich } from '../lib/passkey'
 import { PAGES, pageOrder, SECOND_FACTOR_STATE, type PagePart } from '../vendor/nexkonten/konten'
+import { Karte } from './einstellungen/Karte'
 
 /** nexmails eigene Teile der Sicherheit, nach denen des Moduls. */
 export const SICHERHEIT_EIGENE = ['providers', 'googleMicrosoft'] as const
 export const SICHERHEIT_TEILE = pageOrder('security', SICHERHEIT_EIGENE)
 
+const eigen = (name: string) => (SICHERHEIT_EIGENE as readonly string[]).includes(name)
+
 function teil(name: string): PagePart {
   return PAGES.security.parts.find((p: PagePart) => p.part === name) as PagePart
 }
 
-/** Ein Teil der Seite: Überschrift (daneben ein Zustand), Hinweis, Inhalt. */
+/** Ein Teil der Karte „Sicherheit“, ein Unterkasten wie in nexnotes: Überschrift (daneben ein Zustand), Hinweis,
+ *  Inhalt. */
 function Abschnitt({
   titel,
   zusatz,
@@ -46,9 +53,9 @@ function Abschnitt({
   children: ReactNode
 }) {
   return (
-    <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-4">
+    <section className="flex flex-col gap-2 rounded-xl border border-line px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{titel}</h2>
+        <h3 className="mb-0 flex-1 text-sm font-medium text-fg-1">{titel}</h3>
         {zusatz}
       </div>
       {hinweis && <p className="mb-0 text-[12px] text-fg-3">{hinweis}</p>}
@@ -414,14 +421,20 @@ export function Sicherheit({
   }
 
   return (
-    <div className="flex max-w-[720px] flex-col gap-6">
+    <div className="flex flex-col gap-5">
       {fehler && (
         <p role="alert" className="mb-0 text-[13px] text-danger">
           {fehler}
         </p>
       )}
-      {/* `layout: 'stacked'`: ein Teil unter dem anderen, auch auf breiten Bildschirmen. */}
-      {SICHERHEIT_TEILE.filter((name) => name in teile).map((name) => (
+      {/* `layout: 'stacked'`: ein Teil unter dem anderen, auch auf breiten Bildschirmen. Die des Moduls in der Karte
+          „Sicherheit“, nexmails eigene (`SICHERHEIT_EIGENE`) danach, jeder seine eigene Karte. */}
+      <Karte id="sicherheit" symbol={ShieldCheck} titel={t(PAGES.security.title)}>
+        {SICHERHEIT_TEILE.filter((name) => name in teile && !eigen(name)).map((name) => (
+          <Fragment key={name}>{teile[name]()}</Fragment>
+        ))}
+      </Karte>
+      {SICHERHEIT_TEILE.filter((name) => name in teile && eigen(name)).map((name) => (
         <Fragment key={name}>{teile[name]()}</Fragment>
       ))}
 

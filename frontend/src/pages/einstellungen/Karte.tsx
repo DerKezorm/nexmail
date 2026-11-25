@@ -10,12 +10,14 @@ export function Karte({
   text,
   children,
   id,
+  testId,
 }: {
   symbol: LucideIcon
   titel: string
   text?: string
   children: ReactNode
   id?: string
+  testId?: string
 }) {
   return (
     /* ⚠️ Ein `div` mit Rolle, kein `section`: Die Bereiche darin (etwa
@@ -25,6 +27,7 @@ export function Karte({
       id={id}
       role="region"
       aria-labelledby={id ? `${id}-titel` : undefined}
+      data-testid={testId}
       className="rounded-xl border border-line bg-surface-1 p-5"
     >
       <div className="mb-4 flex gap-3">

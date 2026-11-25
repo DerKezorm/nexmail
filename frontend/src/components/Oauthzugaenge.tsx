@@ -11,7 +11,8 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, KeyRound } from 'lucide-react'
+import { AlertTriangle, Building2, KeyRound } from 'lucide-react'
+import { Karte } from '../pages/einstellungen/Karte'
 import { ApiFehler, api } from '../api/client'
 import { useNachfrage } from './Nachfrage'
 import { Badge, Button } from '../ds'
@@ -120,9 +121,8 @@ export function Oauthzugaenge({ istBetreiber = false }: Props) {
   const knoepfe = moeglich.map((a) => a.art)
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{t('oauth.zugaenge')}</h2>
-      <p className="mb-0 text-[12px] text-fg-3">{t('oauth.zugaenge_text')}</p>
+    /* Eine eigene Karte unter der Karte „Sicherheit“ (25.11.2026, wie nexnotes). */
+    <Karte id="google-microsoft" symbol={Building2} titel={t('oauth.zugaenge')} text={t('oauth.zugaenge_text')}>
 
       {fehler && <p className="mb-0 text-[12px] text-danger">{fehler}</p>}
 
@@ -188,6 +188,6 @@ export function Oauthzugaenge({ istBetreiber = false }: Props) {
       )}
 
       {fenster}
-    </section>
+    </Karte>
   )
 }
