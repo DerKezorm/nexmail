@@ -26,6 +26,11 @@ class Adapter(StandardAdapter):
     public_read = True
     #: nexmail: die Seite macht die Vorlage aus ihren englischen Texten; der Server kennt sie nicht.
     has_template = False
+    # nexmail hatte vor dem Modul keine eigenen Sprach-Wege, also keine alten Namen in einer Beschreibung.
+    openapi_path = "/openapi.json"
+    operation_ids: dict[str, str] = {}
+    summaries: dict[str, str] = {}
+    schema_names: dict[str, str] = {}
 
     def start(self) -> None:
         """nexmails Testlauf (conftest) hat Datenbank und Datenordner schon frisch; hier nur der Ordner der Sprachen
