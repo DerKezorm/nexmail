@@ -321,6 +321,7 @@
     "signaturen": "Signatures",
     "titel": "Settings",
     "dinge": "mail",
+    "dinge_dativ": "mail",
     "bereiche": {
       "calendars": {
         "titel": "Calendars and address books",
@@ -1795,7 +1796,11 @@
     "schluessel_fehlt": "missing (belongs in NEXMAIL_SECRET_KEY)",
     "adresse_anders": "The public address is a different one",
     "adresse_neu_folge": "The address you are using right now. Correct if nexmail has moved.",
-    "oidc_titel": "Update these providers"
+    "oidc_titel": "Update these providers",
+    "adresse_uebernehmen": "Take over the public address from the backup",
+    "adresse_uebernehmen_hinweis": "Otherwise the current one stays. Right when nexmail moved to this server and the old address comes along.",
+    "rueckkehr": "{{name}}: {{jetzt}}",
+    "rueckkehr_archiv": "with the address from the backup {{archiv}}"
   },
   "signaturen": {
     "neu": "New signature",

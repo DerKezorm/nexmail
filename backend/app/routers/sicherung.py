@@ -110,19 +110,8 @@ def _adresse_aus_anfrage(request: Request) -> str:
     return f"{request.url.scheme}://{wirt}".rstrip("/")
 
 
-def _rueckleitpfad(anbieter: dict) -> str:
-    """Der Rueckleitpfad, den der Anbieter eines Eintrags kennt.
-
-    ``redirect_path`` fehlt (Archiv von 0.21) oder ist NULL: ein Eintrag von 0.21, sein Anbieter kennt
-    ``/api/oidc/<kuerzel>/zurueck``. Leer: der Standard des Moduls. Sonst der eigene Pfad des Eintrags.
-    """
-    kuerzel = anbieter.get("kuerzel", "")
-    pfad = anbieter.get("redirect_path")
-    if pfad is None:
-        return f"/api/oidc/{kuerzel}/zurueck"
-    if pfad:
-        return pfad
-    return "/api/oidc/callback" if kuerzel == "oidc" else f"/api/oidc/{kuerzel}/callback"
+#: Seit sicherung 1.0.1 (E38) in ``services/sicherung_haken``, weil auch das Fenster „Wiederherstellen“ sie nennt.
+_rueckleitpfad = sicherung_haken.rueckleitpfad
 
 
 def _befund_bauen(roh: dict) -> Befund:

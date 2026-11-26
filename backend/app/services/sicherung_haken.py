@@ -93,6 +93,42 @@ def _aus_zip(pfad: Path, ziel: Path) -> None:
         tools.extract(archiv, DB_IM_ZIP, ziel, limit=GRENZE)
 
 
+def rueckleitpfad(anbieter: dict) -> str:
+    """Der Rueckleitpfad, den der Anbieter eines Eintrags kennt.
+
+    ``redirect_path`` fehlt (Archiv von 0.21) oder ist NULL: ein Eintrag von 0.21, sein Anbieter kennt
+    ``/api/oidc/<kuerzel>/zurueck``. Leer: der Standard des Moduls. Sonst der eigene Pfad des Eintrags.
+    """
+    kuerzel = anbieter.get("kuerzel", "")
+    pfad = anbieter.get("redirect_path")
+    if pfad is None:
+        return f"/api/oidc/{kuerzel}/zurueck"
+    if pfad:
+        return pfad
+    return "/api/oidc/callback" if kuerzel == "oidc" else f"/api/oidc/{kuerzel}/callback"
+
+
+def _mit_rueckkehr(befund: dict) -> dict:
+    """Der Befund eines gesperrten Archivs fuers Fenster „Wiederherstellen“ (E38): je Anmeldeanbieter die Adresse, die
+    bei ihm stehen muss, mit der jetzigen Adresse und mit der aus dem Archiv (wie die alte Seite sie nannte)."""
+    from .adresse import mit_vorbau
+
+    basis = get_settings().url_base
+
+    def voll(adresse: str, a: dict) -> str:
+        return f"{mit_vorbau(adresse, basis)}{rueckleitpfad(a)}" if adresse else ""
+
+    anbieter = [
+        {
+            **a,
+            "rueckkehr_adresse": voll(befund.get("adresse_jetzt", ""), a),
+            "rueckkehr_adresse_archiv": voll(befund.get("adresse_im_archiv", ""), a),
+        }
+        for a in befund.get("oidc_anbieter", [])
+    ]
+    return {**befund, "oidc_anbieter": anbieter}
+
+
 def _jetzige_adresse() -> str:
     from ..db import SessionLocal, einstellung_lesen
 
@@ -182,7 +218,7 @@ class Haken(AppHooks):
             raise BackupError("archive_password_needed", "This archive needs its own password.")
         daten = path.read_bytes()
         try:
-            befund = sicherung.pruefen(daten, passwort, _jetzige_adresse())
+            befund = _mit_rueckkehr(sicherung.pruefen(daten, passwort, _jetzige_adresse()))
         except sicherung.SicherungFehler as fehler:
             raise BackupError("archive_password_wrong", "The password of the archive is wrong.") from fehler
         with tempfile.TemporaryDirectory() as ordner:
@@ -215,11 +251,17 @@ class Haken(AppHooks):
 
     # --- Zurückspielen, sofort ----------------------------------------------------------------------------------------
 
-    def restore_now(self, path: Path, *, archive_password: str | None = None) -> dict[str, Any]:
+    def restore_now(
+        self, path: Path, *, archive_password: str | None = None, options: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """``options`` (sicherung 1.0.1, E38): die Antwort auf nexmails Frage im Fenster. ``address`` an: die
+        öffentliche Adresse aus der Sicherung gilt; sonst bleibt die jetzige, wie bisher ab Werk und wie der alte Weg
+        (``/api/sicherung/einspielen`` mit ``adresse``) es hielt."""
+        uebernehmen = bool((options or {}).get("address"))
+        jetzige = _jetzige_adresse()
         if path.suffix == ".zip" and _verschluesselt(path):
-            # Die öffentliche Adresse bleibt die jetzige (Übernahme der Archiv-Adresse nur über den alten Weg).
-            return sicherung.wiederherstellen(path.read_bytes(), archive_password or "", _jetzige_adresse())
-        from ..db import SessionLocal, datenbank_ersetzen, init_db
+            return sicherung.wiederherstellen(path.read_bytes(), archive_password or "", None if uebernehmen else jetzige)
+        from ..db import SessionLocal, datenbank_ersetzen, einstellung_schreiben, init_db
 
         with tempfile.TemporaryDirectory() as ordner:
             db_datei = Path(ordner) / DB_IM_ZIP
@@ -237,6 +279,8 @@ class Haken(AppHooks):
 
         with SessionLocal() as db:
             db.execute(text("delete from sitzung"))
+            if not uebernehmen:
+                einstellung_schreiben(db, "oeffentliche_adresse", jetzige)
             db.commit()
         logger.warning("A backup was restored. All sessions from the previous state are gone.")
         return {"schluessel_ersetzt": False}
@@ -338,5 +382,7 @@ def konfigurieren() -> None:
             },
             time_zone=_zone,
             download_password=True,
+            # E38: die Frage im Fenster „Wiederherstellen“, ob die öffentliche Adresse aus der Sicherung gilt.
+            restore_options=("address",),
         )
     )

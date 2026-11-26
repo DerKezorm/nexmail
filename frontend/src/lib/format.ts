@@ -94,6 +94,13 @@ export function langesDatum(iso: string, sprache: string): string {
   )
 }
 
+/** Ein Zeitpunkt kurz (Datum und Uhrzeit) in der eingestellten Zone, etwa für die Sicherungen (sicherung `when`). */
+export function zeitpunkt(iso: string, sprache: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString(sprache, mitZone({ dateStyle: 'medium', timeStyle: 'short' }))
+}
+
 /** Ein Zeitpunkt aus dem Protokoll — dort steht er in UTC. */
 export function protokollzeit(roh: string, sprache: string): string {
   // ⚠️ Das ``Z`` ist nötig: Ohne Zonenangabe liest der Browser die Zeichenkette

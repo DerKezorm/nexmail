@@ -321,6 +321,7 @@
     "signaturen": "Signaturen",
     "titel": "Einstellungen",
     "dinge": "Mails",
+    "dinge_dativ": "Mails",
     "bereiche": {
       "calendars": {
         "titel": "Kalender und Adressbücher",
@@ -1795,7 +1796,11 @@
     "schluessel_fehlt": "fehlt (gehört in NEXMAIL_SECRET_KEY)",
     "adresse_anders": "Die öffentliche Adresse ist eine andere",
     "adresse_neu_folge": "Die Adresse, über die du gerade hier bist. Richtig, wenn nexmail umgezogen ist.",
-    "oidc_titel": "Bei diesen Anbietern nachtragen"
+    "oidc_titel": "Bei diesen Anbietern nachtragen",
+    "adresse_uebernehmen": "Öffentliche Adresse aus der Sicherung übernehmen",
+    "adresse_uebernehmen_hinweis": "Sonst bleibt die jetzige. Richtig, wenn nexmail auf diesen Server umgezogen ist und die alte Adresse mitkommt.",
+    "rueckkehr": "{{name}}: {{jetzt}}",
+    "rueckkehr_archiv": "mit der Adresse aus der Sicherung {{archiv}}"
   },
   "signaturen": {
     "neu": "Neue Signatur",

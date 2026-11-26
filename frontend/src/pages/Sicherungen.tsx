@@ -12,13 +12,14 @@ import { useTranslation } from 'react-i18next'
 
 import type { Ich } from '../api/client'
 import { BASIS } from '../lib/basis'
+import { zeitpunkt } from '../lib/format'
 import { StorageArea } from '../vendor/nexsicherung/StorageArea'
 import { makeSicherungApi, type Brief } from '../vendor/nexsicherung/sicherung'
 import { Notice } from '../vendor/nexui'
 
 const api = makeSicherungApi((pfad, init) => fetch(`${BASIS}${pfad}`, { ...init, credentials: 'include' }))
 
-type Anbieter = { kuerzel: string; anzeigename: string; issuer: string }
+type Anbieter = { kuerzel: string; anzeigename: string; issuer: string; rueckkehr_adresse?: string; rueckkehr_adresse_archiv?: string }
 
 export function Sicherungen({ ich }: { ich: Ich | null }) {
   const { t, i18n } = useTranslation()
@@ -39,9 +40,21 @@ export function Sicherungen({ ich }: { ich: Ich | null }) {
           </Notice>
         )}
         {anbieter.length > 0 && (
-          <p className="m-0 text-sm">
-            {t('sicherungen.oidc_titel')}: {anbieter.map((a) => a.anzeigename || a.kuerzel).join(', ')}
-          </p>
+          <>
+            <p className="m-0 text-sm">{t('sicherungen.oidc_titel')}:</p>
+            {/* Wie die alte Seite: je Anbieter die Adresse, die bei ihm stehen muss (E38); weicht die Adresse ab, auch
+                die mit der Adresse aus der Sicherung, je nachdem, was unten angekreuzt ist. */}
+            <ul className="m-0 pl-5 text-sm" data-testid="sicherung-rueckkehr">
+              {anbieter.map((a) => (
+                <li key={a.kuerzel} className="break-all">
+                  {t('sicherungen.rueckkehr', { name: a.anzeigename || a.kuerzel, jetzt: a.rueckkehr_adresse || a.issuer })}
+                  {Boolean(d.adresse_weicht_ab) && a.rueckkehr_adresse_archiv
+                    ? `, ${t('sicherungen.rueckkehr_archiv', { archiv: a.rueckkehr_adresse_archiv })}`
+                    : ''}
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </>
     )
@@ -56,6 +69,10 @@ export function Sicherungen({ ich }: { ich: Ich | null }) {
       password={ich?.hat_kennwort !== false}
       details={befund}
       language={sprache}
+      // Zeiten in der Zone, die unter Darstellung eingestellt ist, wie sonst in nexmail.
+      when={(iso, sprache) => zeitpunkt(iso, sprache)}
+      // E38: nexmails Frage beim Wiederherstellen, wie auf dem alten Weg (Adresse aus dem Archiv oder die jetzige).
+      restoreOptions={[{ key: 'address', label: t('sicherungen.adresse_uebernehmen'), hint: t('sicherungen.adresse_uebernehmen_hinweis') }]}
     />
   )
 }

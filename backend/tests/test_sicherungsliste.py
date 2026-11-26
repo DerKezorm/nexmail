@@ -237,3 +237,98 @@ def test_eine_kopie_ohne_beipackzettel_verschwindet_nicht(klient):
     assert eintraege[0]["art"] == "update"
     modul = klient.get("/api/server/storage/backups").json()["backups"]
     assert [(e["name"], e["kind"], e["readable"]) for e in modul] == [(name, "update", True)]
+
+
+# --- Die Frage im Fenster „Wiederherstellen“ (sicherung 1.0.1, E38) -------- #
+
+
+def _hochgeladen_mit_adresse(klient, archiv_adresse: str, jetzt: str) -> str:
+    """Ein schlankes, verschlüsseltes Archiv dieses Servers mit ``archiv_adresse``, wieder hochgeladen, während der
+    Server danach ``jetzt`` als öffentliche Adresse hat. Gibt den Namen in der Liste zurück."""
+    import base64
+
+    with SessionLocal() as db:
+        einstellung_schreiben(db, "oeffentliche_adresse", archiv_adresse)
+    name = klient.post("/api/server/storage/backups", json={}).json()["name"]
+    datei = klient.post(
+        f"/api/server/storage/backups/{name}/download",
+        json={"password": "sehr-geheim-123", "archive_password": ARCHIVPASSWORT},
+    )
+    assert datei.status_code == 200, datei.text
+    with SessionLocal() as db:
+        einstellung_schreiben(db, "oeffentliche_adresse", jetzt)
+    oben = klient.post(
+        "/api/server/storage/backups/upload",
+        content=datei.content,
+        headers={"x-backup-password": base64.b64encode(b"sehr-geheim-123").decode("ascii")},
+    )
+    assert oben.status_code in (200, 201), oben.text
+    return oben.json()["name"]
+
+
+def test_die_pruefung_nennt_die_rueckkehradressen_beider_adressen(klient):
+    """Die alte Seite nannte je Anmeldeanbieter die Adresse, die bei ihm stehen muss; das Fenster des Moduls zeigt sie
+    über ``details``, für die jetzige Adresse und für die aus dem Archiv."""
+    from app.models import OidcAnbieter
+
+    einrichten(klient)
+    with SessionLocal() as db:
+        db.add(OidcAnbieter(kuerzel="pocket", anzeigename="Pocket ID", issuer="https://id.example.com", client_id="nexmail"))
+        db.commit()
+    neu = _hochgeladen_mit_adresse(klient, "https://alt.example.com", "https://neu.example.com")
+    befund = klient.post(f"/api/server/storage/backups/{neu}/check", json={"archive_password": ARCHIVPASSWORT})
+    assert befund.status_code == 200, befund.text
+    details = befund.json()["details"]
+    assert details["adresse_im_archiv"] == "https://alt.example.com"
+    assert details["adresse_weicht_ab"] is True
+    (anbieter,) = details["oidc_anbieter"]
+    assert anbieter["anzeigename"] == "Pocket ID"
+    # Ohne eigenen ``redirect_path`` (NULL) kennt der Anbieter den Weg von 0.21 (``rueckleitpfad``).
+    assert anbieter["rueckkehr_adresse"] == "https://neu.example.com/api/oidc/pocket/zurueck"
+    assert anbieter["rueckkehr_adresse_archiv"] == "https://alt.example.com/api/oidc/pocket/zurueck"
+
+
+@pytest.mark.parametrize(
+    ("antwort", "danach"),
+    [({"address": True}, "https://alt.example.com"), ({"address": False}, "https://neu.example.com"), (None, "https://neu.example.com")],
+)
+def test_wiederherstellen_uebernimmt_die_adresse_nur_auf_wunsch(klient, antwort, danach):
+    """Wie der alte Weg: die Adresse aus dem Archiv, wenn der Betreiber es ankreuzt, sonst bleibt die jetzige."""
+    einrichten(klient)
+    neu = _hochgeladen_mit_adresse(klient, "https://alt.example.com", "https://neu.example.com")
+    rumpf = {"password": "sehr-geheim-123", "archive_password": ARCHIVPASSWORT}
+    if antwort is not None:
+        rumpf["options"] = antwort
+    zurueck = klient.post(f"/api/server/storage/backups/{neu}/restore", json=rumpf)
+    assert zurueck.status_code == 200, zurueck.text
+    with SessionLocal() as db:
+        assert einstellung_lesen(db, "oeffentliche_adresse") == danach
+
+
+def test_eine_eigene_sicherung_behaelt_die_jetzige_adresse_ausser_auf_wunsch(klient):
+    """Auch eine Sicherung aus der eigenen Liste (ZIP des Moduls): ohne Haken bleibt die jetzige Adresse."""
+    einrichten(klient)
+    with SessionLocal() as db:
+        einstellung_schreiben(db, "oeffentliche_adresse", "https://alt.example.com")
+    name = klient.post("/api/server/storage/backups", json={}).json()["name"]
+    with SessionLocal() as db:
+        einstellung_schreiben(db, "oeffentliche_adresse", "https://neu.example.com")
+    rumpf = {"password": "sehr-geheim-123"}
+    assert klient.post(f"/api/server/storage/backups/{name}/restore", json=rumpf).status_code == 200
+    with SessionLocal() as db:
+        assert einstellung_lesen(db, "oeffentliche_adresse") == "https://neu.example.com"
+    einrichten_wieder = klient.post("/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": "sehr-geheim-123"})
+    assert einrichten_wieder.status_code == 200, einrichten_wieder.text
+    rumpf["options"] = {"address": True}
+    assert klient.post(f"/api/server/storage/backups/{name}/restore", json=rumpf).status_code == 200
+    with SessionLocal() as db:
+        assert einstellung_lesen(db, "oeffentliche_adresse") == "https://alt.example.com"
+
+
+def test_eine_fremde_frage_wird_abgewiesen(klient):
+    einrichten(klient)
+    name = klient.post("/api/server/storage/backups", json={}).json()["name"]
+    antwort = klient.post(
+        f"/api/server/storage/backups/{name}/restore", json={"password": "sehr-geheim-123", "options": {"schluessel": True}}
+    )
+    assert antwort.status_code == 422
