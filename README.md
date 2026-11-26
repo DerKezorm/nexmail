@@ -112,11 +112,12 @@ sender and a link back to the mail go there, never the text of the mail. Ticking
 a task in nexmail closes it in Todoist, and what you complete, reschedule or
 delete in Todoist comes back within a few minutes. The same works with a
 self-hosted nextasks: enter its address
-and an API token that may read and write, then pick a list, with its space and
-section. nexmail checks the token against `/api/v1/me` before it saves anything,
+and an API key that may read and write (made in nextasks under *Settings → My account →
+Connections → API keys*), then pick a list, with its space and
+section. nexmail checks the key against `/api/v1/me` before it saves anything,
 sends each message at most once (nextasks' `external_ref`), and sees completed,
-reopened, rescheduled and binned tasks within a few minutes; when the token runs
-out, *Renew token* keeps your tasks connected. A nextasks on your local network
+reopened, rescheduled and binned tasks within a few minutes; when the key is
+replaced, *Change key* keeps your tasks connected. A nextasks on your local network
 needs the operator's permission under *Settings → Server → General*, as webhooks and
 calendars do. With nextasks connected, the task view goes further: its spaces and
 lists appear in the sidebar with their symbols, read live from nextasks (nothing is
@@ -356,7 +357,7 @@ The full compose file with every option and the reasoning behind each one is
 ### Your mailbox credentials
 
 nexmail asks for them **in its own interface and nowhere else**. You add
-mailboxes under *Settings → Mailboxes*. They are stored encrypted and never
+mailboxes under *Settings → Mail → Mailboxes*. They are stored encrypted and never
 leave your server.
 
 ![The mailbox list under Settings](docs/screenshots/postfaecher-en.webp)
@@ -381,27 +382,29 @@ Everything is under `/data`:
 
 ### Backup and restore
 
-Under *Settings → Server → Storage and backups*. Two things live there, and telling them apart
-matters when it counts:
+Under *Settings → Server → Storage and backups*. At the top you see how much
+space nexmail takes; below is one list of backups.
 
-**Restore points** are complete copies next to the database, made automatically
-when an update adds or rebuilds a table (not for a mere new column or index),
-and by hand whenever you want, on a schedule if you like. They are for a failed update or a contact deleted by mistake. If the disk
-dies, they die with it.
+**Backups in the list** are complete copies next to the database: on a schedule
+(every night, week or month at a time you pick), by hand whenever you want, before
+every restore, and automatically when an update adds or rebuilds a table (not for
+a mere new column or index). They are for a failed update or a contact deleted by
+mistake. If the disk dies, they die with it.
 
-**A backup** is what you download: an encrypted ZIP, and deliberately **without
-the messages**. Those are still in the mailbox on the server, and nexmail
-fetches them back after a restore. Measured on a real database: 1890 messages
-turn 0.36 MB into 2.79 MB, and the part that cannot be fetched again does not
-grow with the mailbox. An archive that grows with your mail is one nobody
-downloads.
+**Downloading** one gives you an encrypted ZIP with a password of its own, and
+deliberately **without the messages**. Those are still in the mailbox on the
+server, and nexmail fetches them back after a restore. Measured on a real
+database: 1890 messages turn 0.36 MB into 2.79 MB, and the part that cannot be
+fetched again does not grow with the mailbox. An archive that grows with your
+mail is one nobody downloads. Upload it on another server and it joins the list.
 
-Restoring happens in two steps. The first only looks: it reports the version,
-whether the key is included, and whether the public address in the archive
-differs from the one you are using. It has to ask about that one, because
-invitation links and the OpenID Connect redirect are built from it — and the
-redirect URI registered with your provider is something nexmail cannot change
-for you, so the report spells it out.
+Restoring checks first: it reports the version, whether the key is included, and
+whether the public address in the archive differs from the one you are using.
+The restore window then asks whether the address from the backup should apply;
+without the tick the current one stays. It has to ask, because invitation links
+and the OpenID Connect redirect are built from it, and the redirect URI
+registered with your provider is something nexmail cannot change for you, so the
+check names it for each provider.
 
 > ⚠️ **Put `/data` on a local disk, never on an SMB or NFS share.** That is the
 > one way SQLite genuinely loses data: its locking does not work reliably over
@@ -549,7 +552,8 @@ API key that each user creates for their own mailboxes under
 *Settings → Connections*.
 
 **Off by default.** API keys are a way out of nexmail, so the operator decides
-whether they exist on an installation at all, with a switch on the same page.
+whether they exist on an installation at all, with a switch under
+*Settings → Server → General → Interfaces*.
 Turning it off stops every key immediately; no key is deleted.
 
 **Each key has two limits, set when it is created.** It sees only the

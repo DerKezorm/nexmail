@@ -440,7 +440,7 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
             if (zugang.trim()) void verbinden()
           }}
         >
-          <Field label={t('todoapps.token')} type="password" autoComplete="off" mono value={zugang} onChange={(e) => setZugang(e.target.value)} />
+          <Field label={t('todoapps.todoist_token')} type="password" autoComplete="off" mono value={zugang} onChange={(e) => setZugang(e.target.value)} />
           <Field label={t('todoapps.name')} hints={[t('todoapps.name_hinweis')]} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
           <div>
             <Button icon="Plug" kind="primary" type="submit" disabled={!zugang.trim() || laeuft}>
@@ -812,7 +812,7 @@ function NextasksVerbinden({
         }}
       >
         <Field label={t('todoapps.nextasks_adresse')} hints={[t('todoapps.nextasks_adresse_hinweis')]} placeholder="https://" type="url" mono value={url} maxLength={500} onChange={(e) => setUrl(e.target.value)} />
-        <Field label={t('todoapps.token')} type="password" autoComplete="off" mono value={token} maxLength={500} onChange={(e) => setToken(e.target.value)} />
+        <Field label={t('todoapps.schluessel')} type="password" autoComplete="off" mono value={token} maxLength={500} onChange={(e) => setToken(e.target.value)} />
         <Field label={t('todoapps.name')} hints={[t('todoapps.nextasks_name_hinweis')]} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
         {fehler && (
           <p role="alert" className="mb-0 text-[13px] text-danger">
@@ -883,7 +883,7 @@ function NextasksErneuern({
     >
       <p className="mb-0 text-[12px] text-fg-3">{t('todoapps.nextasks_token_neu_hinweis')}</p>
       <Field label={t('todoapps.nextasks_adresse')} type="url" mono value={url} maxLength={500} onChange={(e) => setUrl(e.target.value)} />
-      <Field label={t('todoapps.token')} type="password" autoComplete="off" mono value={token} maxLength={500} onChange={(e) => setToken(e.target.value)} />
+      <Field label={t('todoapps.schluessel')} type="password" autoComplete="off" mono value={token} maxLength={500} onChange={(e) => setToken(e.target.value)} />
       {fehler && (
         <p role="alert" className="mb-0 text-[13px] text-danger">
           {fehler}

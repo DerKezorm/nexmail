@@ -434,7 +434,7 @@ test('nextasks wird mit Adresse und Token verbunden, ein Lese-Token sagt warum',
 
   // Ohne Verbindung steht das Formular direkt in der Karte, „Verbinden" rechts (wie nextime).
   const formular = page.getByRole('region', { name: 'nextasks' })
-  const token = formular.getByLabel('API-Token')
+  const token = formular.getByLabel('API-Schlüssel')
   await expect(token).toHaveAttribute('type', 'password')
   await formular.getByRole('textbox', { name: /^Adresse/ }).fill('https://tasks.example.com')
   await token.fill('lese-tok')
@@ -464,7 +464,7 @@ test('nextasks wird mit Adresse und Token verbunden, ein Lese-Token sagt warum',
   await page.screenshot({ path: 'test-results/todoapps-nextasks.png', fullPage: true })
 })
 
-test('Token erneuern hält nextasks verbunden und zeigt das alte nie', async ({ page }) => {
+test('Schlüssel ändern hält nextasks verbunden und zeigt das alte nie', async ({ page }) => {
   const geaendert: Array<Record<string, unknown>> = []
   await page.route('**/api/aufgabenziele', (route) =>
     route.fulfill({
@@ -489,12 +489,12 @@ test('Token erneuern hält nextasks verbunden und zeigt das alte nie', async ({ 
   await nextasksKarte(page)
 
   const verbindung = page.getByRole('region', { name: 'nextasks' })
-  await expect(verbindung.getByText('nextasks nimmt das Token nicht mehr an', { exact: false })).toBeVisible()
+  await expect(verbindung.getByText('nextasks nimmt den Schlüssel nicht mehr an', { exact: false })).toBeVisible()
   await expect(verbindung.getByText('Zugang abgelehnt', { exact: true })).toBeVisible()
   await verbindung.getByRole('button', { name: 'Schlüssel ändern' }).click()
   await expect(verbindung.getByRole('textbox', { name: /^Adresse/ })).toHaveValue('https://tasks.example.com')
   // ⚠️ Das zugeklappte „Weiteres nextasks verbinden" hat ein eigenes Token-Feld.
-  const token = verbindung.getByLabel('API-Token').first()
+  const token = verbindung.getByLabel('API-Schlüssel').first()
   await expect(token).toHaveValue('')
   await token.fill('probe-tok-2')
   // Im Formular steht der Hauptknopf rechts neben „Abbrechen" (wie nextime).
