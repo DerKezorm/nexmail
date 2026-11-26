@@ -113,6 +113,9 @@ def einrichten() -> None:
             # Der Nothammer: nexmails alte Variable gilt weiter, ``NEXMAIL_SECOND_FACTOR_OFF`` zaehlt zusaetzlich (das
             # Modul liest sie selbst; als Einstellung auch aus einer .env-Datei).
             second_factor_off=lambda: get_settings().zwei_faktor_aus or get_settings().second_factor_off,
+            # E45: ein Konto von vor konten 1.1.0 ohne eigene Wahl und ohne gespeicherten Browserwert bleibt so, wie
+            # nexmail bisher aussah: dunkel. Neue Konten beginnen mit „Wie das System“ (``NewAccount.theme``).
+            theme_default_before="dark",
         )
     )
 
@@ -275,6 +278,8 @@ class KontenStore:
             kontaktadresse_bewiesen=new.email_proven,
             kontaktadresse_herkunft="",
             sprache=new.language,
+            # E45: ein neues Konto hat seine Wahl von Anfang an („system“), nie die eines Browsers.
+            theme=new.theme,
             # Neue Konten starten auf der laufenden Version (siehe ``models.Benutzer.wasneu_gesehen``).
             wasneu_gesehen=__version__,
         )

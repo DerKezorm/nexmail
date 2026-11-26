@@ -354,6 +354,8 @@ class SqlStore:
             # Gemailt und hier eingeloest: Wer den Link hatte, hat die Adresse bewiesen.
             kontaktadresse_bewiesen=bool(adresse and einladung is not None and einladung.gemailt),
             wasneu_gesehen=__version__,
+            # E45: ein neues Konto, auch über einen Anbieter, beginnt mit „Wie das System“.
+            theme="system",
         )
         self.db.add(person)
         self.db.flush()

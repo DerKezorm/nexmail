@@ -24,6 +24,7 @@ import { kontoSprache } from './i18n'
 import { api } from './api/client'
 import type { Ich, Stand } from './api/client'
 import { useGemerkt } from './lib/haken'
+import { gespeicherteBrowserwahl } from './lib/browserwahl'
 
 type Modus = 'dark' | 'light'
 /** Was gewählt ist: hell, dunkel oder wie das System (seit 24.11.2026, wie
@@ -137,14 +138,15 @@ export default function Start() {
   }, [pruefen])
 
   /* ⚠️ **Hell oder dunkel gilt seit konten 1.1.0 für das Konto auf allen Geräten** (E5). Hat das Konto noch keine
-     Wahl, übernimmt der Server einmal den Wert dieses Browsers (`nexmail.modus`); danach folgt der Browser dem Konto.
+     Wahl (nur Konten von vor 1.1.0), übernimmt der Server einmal den Wert, den dieser Browser wirklich gespeichert hat
+     (`nexmail.modus`), sonst nexmails bisherige Vorgabe „dunkel“ (E45); danach folgt der Browser dem Konto.
      Der Wert im Browser bleibt für die Seiten vor der Anmeldung. */
   const kontoTheme = ich?.theme
   useEffect(() => {
     if (!ich) return
     if (kontoTheme === '') {
       void api
-        .senden<Ich>('/api/auth/ich/theme/browser', { wert: wahl })
+        .senden<Ich>('/api/auth/ich/theme/browser', { wert: gespeicherteBrowserwahl() })
         .then(setIch)
         .catch(() => undefined)
     } else if (kontoTheme && kontoTheme !== wahl && ['light', 'dark', 'system'].includes(kontoTheme)) {
