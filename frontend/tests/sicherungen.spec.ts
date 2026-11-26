@@ -1,18 +1,15 @@
-/* Sicherung und Über-Seite — durchgetragen bis zur Wirkung.
+/* Speicher und Sicherung (Modul sicherung 1.0.1, Bereich `storage`) und die Über-Seite, durchgetragen bis zur Wirkung.
  *
- * ⚠️ **Der Test hört nicht am Knopf auf.** Er legt einen Rücksetzpunkt an,
- * findet ihn in der Tabelle wieder und räumt ihn weg — angelegt und
- * gespeichert sind hier zwei verschiedene Dinge, und kaputt ist erfahrungsgemäß
- * das zweite.
+ * ⚠️ **Der Test hört nicht am Knopf auf.** Er macht eine Sicherung, findet sie in der Liste wieder und löscht sie:
+ * angelegt und gespeichert sind hier zwei verschiedene Dinge, und kaputt ist erfahrungsgemäß das zweite.
  *
- * ⚠️ **Er räumt hinterher auf.** Ein Rücksetzpunkt, der stehen bleibt, ist eine
- * 2,8-MB-Datei je Lauf — nach einer Woche fragt sich jemand, wohin die Platte
- * verschwindet.
+ * ⚠️ **Er räumt hinterher auf.** Eine Sicherung, die stehen bleibt, ist eine Datei je Lauf; nach einer Woche fragt
+ * sich jemand, wohin die Platte verschwindet.
  */
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { anmelden, jederKnopfHatEinenNamen, keinTextLaeuftUeber, serverabsagen, zuEinstellungen } from './hilfen'
 
-const NOTIZ = 'zz-probe-sicherung'
+const KENNWORT = process.env.NEXMAIL_TEST_PASS ?? 'betreiber'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -21,114 +18,73 @@ test.beforeEach(async ({ page }, info) => {
   await anmelden(page)
 })
 
-/** Wartet, bis sich die Zeilenzahl nicht mehr ändert, und gibt sie zurück. */
-async function ruhigeZahl(zeilen: import('@playwright/test').Locator): Promise<number> {
-  let letzte = -1
-  await expect
-    .poll(
-      async () => {
-        const jetzt = await zeilen.count()
-        const stabil = jetzt === letzte
-        letzte = jetzt
-        return stabil
-      },
-      { timeout: 10_000, message: 'Die Tabelle kam nicht zur Ruhe.' },
-    )
-    .toBe(true)
-  return letzte
-}
-
-async function zurSicherung(page: import('@playwright/test').Page) {
+async function zurSicherung(page: Page) {
   await zuEinstellungen(page, 'Speicher und Sicherung')
-  await expect(page.getByRole('button', { name: /Jetzt anlegen|Create now/ })).toBeVisible({
-    timeout: 10_000,
-  })
+  await expect(page.getByTestId('backup-now')).toBeVisible({ timeout: 10_000 })
 }
 
-/** Reste eines abgebrochenen Laufs wegräumen.
- *
- * ⚠️ **Ohne das zeigt der nächste Lauf auf die falsche Stelle.** Bricht der
- * Test vor dem Aufräumen ab, liegen zwei Zeilen mit derselben Notiz da — und
- * Playwright meldet dann „strict mode violation" statt „das Anlegen geht
- * nicht". Genau so beim ersten Anlauf passiert.
- */
-async function aufraeumen(page: import('@playwright/test').Page) {
-  await page.evaluate(async (notiz) => {
-    const daten = await (await fetch('/api/sicherung/liste')).json()
-    for (const e of daten.eintraege as Array<{ name: string; kommentar: string }>) {
-      if (e.kommentar === notiz) {
-        await fetch(`/api/sicherung/liste/${encodeURIComponent(e.name)}`, { method: 'DELETE' })
-      }
-    }
-  }, NOTIZ)
+/** Die Namen der Sicherungen in der Liste, sobald sie geladen ist. */
+async function namen(page: Page): Promise<string[]> {
+  await expect(page.getByTestId('backup-last')).toBeVisible({ timeout: 10_000 })
+  const ids = await page.locator('[data-testid^="backup-nexmail-"]').evaluateAll((zeilen) =>
+    zeilen.map((z) => z.getAttribute('data-testid') ?? ''),
+  )
+  return ids.map((id) => id.replace(/^backup-/, ''))
 }
 
-test('Rücksetzpunkt anlegen, wiederfinden, entfernen', async ({ page }) => {
+test('Sicherung machen, wiederfinden, löschen', async ({ page }) => {
   const absagen = serverabsagen(page)
   await zurSicherung(page)
-  await aufraeumen(page)
-  await page.reload()
-  await zurSicherung(page)
+  const vorher = await namen(page)
 
-  // ⚠️ **Erst zählen, wenn die Liste wirklich steht.** `zurSicherung` wartet
-  // auf den Knopf — und der ist da, bevor die Tabelle geladen ist. Ein
-  // sofortiges `count()` las deshalb einen Zwischenstand, und der Test meldete
-  // hinterher eine falsche Zeilenzahl. Zweimal derselbe Wert heißt: fertig.
-  const zeilen = page.locator('table tbody tr')
-  const vorher = await ruhigeZahl(zeilen)
-
-  // ⚠️ **Die Aufbewahrungszahl deckelt die Liste**, auch beim Anlegen von
-  // Hand: Liegen schon so viele, wie aufgehoben werden, faellt beim naechsten
-  // der aelteste weg. Der erste Anlauf dieses Tests erwartete stur
-  // `vorher + 1` und schlug fehl, obwohl alles richtig lief — die Zahl stand
-  // auf 5 und fuenf lagen da.
-  const behalten = Number(await page.getByRole('spinbutton').inputValue())
-  const erwartet = Math.min(vorher + 1, behalten)
-
-  await page.getByRole('button', { name: /Jetzt anlegen|Create now/ }).click()
-  const fenster = page.getByRole('dialog')
-  await fenster.getByRole('textbox').fill(NOTIZ)
-  await fenster.getByRole('button', { name: /^(Anlegen|Create)$/ }).click()
-
+  await page.getByTestId('backup-now').click()
+  await expect(page.getByText('Sicherung erstellt.')).toBeVisible({ timeout: 20_000 })
   await absagen.pruefen()
 
-  // Die Wirkung: Der Eintrag steht in der Tabelle, mit seiner Notiz.
-  await expect(page.getByRole('cell', { name: NOTIZ })).toBeVisible({ timeout: 10_000 })
-  await expect(zeilen).toHaveCount(erwartet)
+  // Die Wirkung: genau eine neue Zeile, als „von Hand“ gemacht.
+  await expect.poll(async () => (await namen(page)).filter((n) => !vorher.includes(n)).length, { timeout: 10_000 }).toBe(1)
+  const neu = (await namen(page)).find((n) => !vorher.includes(n))!
+  const zeile = page.getByTestId(`backup-${neu}`)
+  await expect(zeile).toContainText('von Hand')
 
-  // Und die Art steht dabei — sonst ist „von Hand" von „vor Update" nicht zu
-  // unterscheiden, und genau das ist die Zeile, die man behalten will.
-  const zeile = page.locator('tr', { hasText: NOTIZ })
-  await expect(zeile).toContainText(/von Hand|manual/)
-
-  // --- Aufräumen, und das ist zugleich der Test des Entfernens ---------- //
-  await zeile.getByRole('button', { name: /Entfernen|Remove/ }).click()
-  await page.getByRole('dialog').getByRole('button', { name: /Entfernen|Remove/ }).click()
-
-  await expect(page.getByRole('cell', { name: NOTIZ })).toHaveCount(0, { timeout: 10_000 })
-  await expect(zeilen).toHaveCount(erwartet - 1)
+  // --- Aufräumen, und das ist zugleich der Test des Löschens ------------ //
+  await zeile.getByRole('button', { name: 'Löschen', exact: false }).click()
+  const frage = page.getByTestId('backup-confirm-delete')
+  await expect(frage).toContainText('Sie lässt sich nicht zurückholen.')
+  await frage.getByLabel('Dein Passwort').fill(KENNWORT)
+  await frage.getByRole('button', { name: 'Löschen', exact: true }).click()
+  await expect(page.getByTestId(`backup-${neu}`)).toHaveCount(0, { timeout: 10_000 })
+  expect(await namen(page)).toEqual(vorher)
 })
 
-test('Das Einspiel-Fenster fasst nichts an, bevor es geprüft hat', async ({ page }) => {
+test('Wiederherstellen fragt erst und fasst beim Abbrechen nichts an', async ({ page }) => {
   await zurSicherung(page)
-  await page.getByRole('button', { name: /^(Einspielen|Restore)$/ }).click()
+  if (!(await namen(page)).length) {
+    await page.getByTestId('backup-now').click()
+    await expect(page.getByText('Sicherung erstellt.')).toBeVisible({ timeout: 20_000 })
+  }
+  const vorher = await namen(page)
+  const zeile = page.getByTestId(`backup-${vorher[0]}`)
+  await zeile.getByRole('button', { name: /^Wiederherstellen/ }).click()
 
-  const fenster = page.getByRole('dialog')
-  // ⚠️ Der Knopf muss gesperrt sein, solange keine Datei da ist. Sonst
-  // schickt ein Klick ein leeres Formular, und die Antwort ist eine rohe
-  // Pydantic-Meldung statt eines Satzes.
-  await expect(fenster.getByRole('button', { name: /Prüfen|Check/ })).toBeDisabled()
-  await expect(fenster).toContainText(/wird nichts angefasst|nothing is touched/)
+  // ⚠️ Erst die Probe (was kommt, was sich ändert), dann die Frage; ohne Bestätigen geschieht nichts.
+  const frage = page.getByTestId('backup-confirm-restore')
+  await expect(frage).toContainText('Erst wird der jetzige Stand gesichert')
+  await frage.getByRole('button', { name: 'Abbrechen', exact: true }).click()
+  await expect(frage).toHaveCount(0)
+  expect(await namen(page)).toEqual(vorher)
 })
 
-test('Die Über-Seite nennt Fassung, Lizenz und was hinausgeht', async ({ page }) => {
+test('Die Über-Seite nennt Version, Lizenz und was hinausgeht', async ({ page }) => {
   await zuEinstellungen(page, 'Über nexmail')
 
   await expect(page.getByText(/AGPL-3\.0/)).toBeVisible({ timeout: 10_000 })
   await expect(page.getByRole('link', { name: /github\.com\/DerKezorm\/nexmail/ })).toBeVisible()
+  // Bauplan „Einstellungen", Über: „Version“, nie mehr „Fassung“.
+  await expect(page.getByText('Fassung', { exact: true })).toHaveCount(0)
 
   // ⚠️ **Der Satz über die Nachfrage muss dastehen.** nexmail liefert die
-  // Schriften mit, damit es beim Öffnen niemanden anfunkt — die Frage bei
+  // Schriften mit, damit es beim Öffnen niemanden anfunkt; die Frage bei
   // GitHub ist die einzige Verbindung, die zu nichts Eingerichtetem gehört,
   // und eine verschwiegene Ausnahme ist ein gebrochenes Versprechen.
   await expect(page.getByText(/einzige Verbindung nach draußen|only connection to the outside/)).toBeVisible()

@@ -118,24 +118,21 @@ export async function zuEinstellungen(seite: Page, ziel: string = 'Postfächer')
     await seite.getByRole('button', { name: /Ordner ausklappen|Expand folders/ }).first().click()
   }
   await zeile.first().click()
-  await expect(seite.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
-  if (ziel !== 'Profil') await bereich(seite, ziel)
+  /* Breit stehen Navigation und Profil nebeneinander; schmal kommt erst die Liste (Bausatz `SettingsLayout`). */
+  await expect(seite.locator('[data-testid="settings-nav"]:visible, [data-testid="settings-back"]:visible').first()).toBeVisible()
+  await bereich(seite, ziel)
 }
 
-/** In einen Bereich der Einstellungen wechseln, breit über die Navigation,
- *  schmal über die Auswahl darüber, und warten, bis sein Titel dasteht. */
+/** In einen Bereich der Einstellungen wechseln, über die Navigation des Bausatzes (`settings-nav`), und warten, bis
+ *  sein Titel dasteht. Schmal steht in einem Bereich nur der Weg zurück zur Liste (`settings-back`). */
 export async function bereich(seite: Page, titel: string) {
-  const navigation = seite.getByTestId('einstellungen-navigation')
-  // ⚠️ Erst warten, bis eins von beiden steht: Direkt nach dem Klick auf
-  // „Einstellungen" ist noch keins sichtbar, und dann ginge es schmal weiter.
-  await expect(
-    seite.locator('[data-testid="einstellungen-navigation"]:visible, [data-testid="einstellungen-sprung"]:visible').first(),
-  ).toBeVisible()
-  if (await navigation.isVisible()) {
-    await navigation.getByRole('button', { name: titel, exact: true }).click()
-  } else {
-    await seite.getByTestId('einstellungen-sprung').locator('select').selectOption({ label: titel })
+  const navigation = seite.getByTestId('settings-nav')
+  if (!(await navigation.isVisible())) {
+    const zurueck = seite.getByTestId('settings-back')
+    if (await zurueck.isVisible()) await zurueck.click()
   }
+  await expect(navigation).toBeVisible()
+  await navigation.getByRole('link', { name: titel, exact: true }).click()
   await expect(seite.getByRole('heading', { level: 1, name: titel, exact: true })).toBeVisible()
 }
 

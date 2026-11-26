@@ -1,8 +1,8 @@
-/* Die Einstellungen, aufgebaut wie in nexnotes (22.11.2026).
+/* Die Einstellungen nach dem Bauplan „Einstellungen“ (Bausatz ui 1.1.0, seit 26.11.2026).
  *
  * Navigation links mit dem eigenen Konto oben und den Gruppen „Mein Konto",
- * „Mail", „Server" und „Über nexmail" am Ende; schmal eine Auswahl darüber.
- * Verwaltung, KI und „Über" sind Bereiche darin, keine Punkte der Leiste mehr.
+ * „Mail", „Server" und „Über nexmail" am Ende; schmal erst die Liste, in einem
+ * Bereich der Weg zurück. Jeder Bereich hat seine Adresse `/settings/<slug>`.
  */
 import { expect, test, type Locator } from '@playwright/test'
 import { anmelden, bereich, jederKnopfHatEinenNamen, keineRohenSchluessel, keinSeitlichesScrollen, zuEinstellungen, zurAnsicht } from './hilfen'
@@ -25,7 +25,7 @@ test('Die Einstellungen sind gegliedert wie in nexnotes', async ({ page }, info)
   /* Das Profil zuerst, seit konten 0.3.6 ganz aus `PAGES.profile`: Bild, Anzeigename, Benutzername, E-Mail,
      Sprache, klein die Rolle, untereinander; danach nexmails „Abmelden“. Der Benutzername wird direkt im Feld
      geändert, ein „Bearbeiten“ gibt es nicht mehr. */
-  const inhalt = page.getByTestId('einstellungen-inhalt')
+  const inhalt = page.locator('[data-testid^="settings-area-"]')
   const profil = [
     inhalt.getByText('Profilbild hochladen', { exact: true }),
     inhalt.getByLabel('Anzeigename', { exact: true }),
@@ -80,11 +80,11 @@ test('Die Einstellungen sind gegliedert wie in nexnotes', async ({ page }, info)
   }
 
   if (info.project.name !== 'schmal') {
-    const navigation = page.getByTestId('einstellungen-navigation')
-    await expect(navigation.locator('[id^="einstellungen-gruppe-"]')).toHaveText(['Mein Konto', 'Mail', 'Server'])
+    const navigation = page.getByTestId('settings-nav')
+    await expect(navigation.locator('[id^="settings-group-"]')).toHaveText(['Mein Konto', 'Mail', 'Server'])
     // „Über nexmail" steht unter den Gruppen, als letzter Eintrag.
-    const knoepfe = await navigation.getByRole('button').allTextContents()
-    expect(knoepfe.at(-1)?.trim()).toBe('Über nexmail')
+    const eintraege = await navigation.getByRole('link').allTextContents()
+    expect(eintraege.at(-1)?.trim()).toBe('Über nexmail')
   }
   await keinSeitlichesScrollen(page)
   await keineRohenSchluessel(page)
@@ -98,7 +98,7 @@ test('Verwaltung, KI und „Über" sind Bereiche, keine Punkte der Leiste', asyn
   // Die Profilzeile unten in der Ordnerspalte führt für jeden in die
   // Einstellungen, beim Profil (seit 23.11.2026, vorher ein Zahnrad links).
   await zuEinstellungen(page, 'Profil')
-  for (const titel of ['Allgemein', 'KI', 'Über nexmail']) await bereich(page, titel)
+  for (const titel of ['Allgemein', 'KI', 'KI-Anbieter', 'Über nexmail']) await bereich(page, titel)
 })
 
 test('Hell/Dunkel und Sprache stehen nicht mehr oben, sondern in den Einstellungen', async ({ page }) => {
@@ -111,15 +111,17 @@ test('Hell/Dunkel und Sprache stehen nicht mehr oben, sondern in den Einstellung
   await expect(page.getByRole('combobox', { name: /^Sprache/ })).toBeVisible()
 })
 
-test('iPhone verbinden zeigt QR-Code, kurzen Code und Stand', async ({ page }) => {
+test('iPhone oder iPad verbinden zeigt QR-Code, kurzen Code und Stand', async ({ page }) => {
   await anmelden(page)
   await zuEinstellungen(page, 'Verbindungen')
 
-  await page.getByRole('button', { name: 'Code anzeigen' }).click()
+  // Bauplan „Einstellungen", Verbindungen 1: die Karte „Geräte", der Code in einem Fenster.
+  await page.getByTestId('geraet-verbinden').click()
+  const fenster = page.getByTestId('koppeln-fenster')
 
   /* ⚠️ Gemessen, nicht nur gesucht: Ohne `viewBox` schnitt die Fläche den Code
      rechts und unten ab. Er war sichtbar, und kein Telefon konnte ihn lesen. */
-  const code = page.getByRole('img', { name: 'iPhone verbinden' })
+  const code = fenster.getByRole('img', { name: 'iPhone oder iPad verbinden' })
   await expect(code).toBeVisible()
   const m = await code.evaluate((rahmen) => {
     const flaeche = rahmen.getBoundingClientRect()
@@ -135,13 +137,15 @@ test('iPhone verbinden zeigt QR-Code, kurzen Code und Stand', async ({ page }) =
   expect(m.breite).toBe(200)
   // Vier Module Ruhezone auf jeder Seite, also etwas Weiß ringsum.
   for (const seite of [m.links, m.rechts, m.oben, m.unten]) expect(seite).toBeGreaterThan(5)
-  await expect(page.getByText(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/)).toBeVisible()
-  await expect(page.getByText(/Wartet auf die App/)).toBeVisible()
+  await expect(fenster.getByText(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/)).toBeVisible()
+  await expect(fenster.getByText(/Wartet auf die App/)).toBeVisible()
   await keineRohenSchluessel(page)
   await jederKnopfHatEinenNamen(page)
 
-  await page.getByRole('button', { name: 'Zurückziehen' }).click()
-  await expect(page.getByRole('button', { name: 'Code anzeigen' })).toBeVisible()
+  // Schließen zieht den Code zurück; der Knopf steht wieder da.
+  await fenster.getByRole('button', { name: 'Schließen' }).click()
+  await expect(fenster).toHaveCount(0)
+  await expect(page.getByTestId('geraet-verbinden')).toBeVisible()
 })
 
 test('Jeder Bereich geht auf, mit Inhalt und ohne Fehler', async ({ page }, info) => {
@@ -164,7 +168,7 @@ test('Jeder Bereich geht auf, mit Inhalt und ohne Fehler', async ({ page }, info
     ['Sicherheit', [/Angemeldete Geräte/, /Überall sonst abmelden/, /Zweiter Faktor/]],
     ['Darstellung', [/Dichte der Nachrichtenliste/i, /Wie das System/]],
     ['Benachrichtigungen', [/Je Abgleich eine Meldung/]],
-    ['Verbindungen', [/Verbinde deine Todo-App/, /Code anzeigen/, /Adresse für das Dashboard/]],
+    ['Verbindungen', [/^Geräte$/, /iPhone oder iPad verbinden/, /Verbinde deine Todo-App/, /^API-Schlüssel$/]],
     // Seit 23.11.2026 ein eigener Bereich (vorher nur in Kalender und Kontakten).
     ['Kalender und Adressbücher', [/^Kalender hinzufügen$/, /^Adressbuch verbinden$/]],
     ['Postfächer', [/Postfach hinzufügen/]],
@@ -172,18 +176,21 @@ test('Jeder Bereich geht auf, mit Inhalt und ohne Fehler', async ({ page }, info
     ['Signaturen', [/Neue Signatur/, /Neue Vorlage/]],
     ['Abwesenheit', [/beantwortet Post nur, solange/]],
     ['Schlagworte', [/Noch keine Schlagworte|Mails mit dieser Marke/]],
-    ['KI', [/KI-Dienste für alle Benutzer/, /Eingegangene Mails für alle Benutzer/]],
-    ['Allgemein', [/Öffentliche Adresse/, /Eigenes Netz erlauben/, /Text der Mail an Webhooks/]],
-    ['Anmeldung', [/authentik/i]],
-    ['Mail', [/Probemail schicken/, /Client-ID/]],
-    ['Speicher und Sicherung', [/Rücksetzpunkte/]],
+    // Der persönliche Teil bleibt unter Mein Konto, der Server-Teil heißt „KI-Anbieter“ (nur Betreiber).
+    ['KI', [/^Dienst$/]],
+    ['KI-Anbieter', [/KI-Dienste für alle Benutzer/, /Eingegangene Mails für alle Benutzer/]],
+    // Die öffentliche Adresse steht nur noch unter Anmeldung; die Zeitzone des Servers ist nexmails eigene Karte.
+    ['Allgemein', [/Server im eigenen Netz/, /Text der Mail an Webhooks/, /Zeitzone des Servers/]],
+    ['Anmeldung', [/authentik/i, /Öffentliche Adresse/]],
+    ['Mail', [/Testmail an/, /Client-ID/]],
+    ['Speicher und Sicherung', [/Jetzt sichern/]],
     ['Konten', [/^Einladen$/, /^Verwalten$/]],
     ['Log', [/Ausführlichkeit/]],
     ['Über nexmail', [/AGPL-3\.0/]],
   ]
   for (const [titel, texte] of merkmal) {
     await bereich(page, titel)
-    const inhalt = page.getByTestId('einstellungen-inhalt')
+    const inhalt = page.locator('[data-testid^="settings-area-"]')
     for (const text of texte) {
       await expect(inhalt.getByText(text).first(), `Im Bereich „${titel}" fehlt ${text}.`).toBeVisible({
         timeout: 10_000,
@@ -192,6 +199,9 @@ test('Jeder Bereich geht auf, mit Inhalt und ohne Fehler', async ({ page }, info
     // Die Über-Seite nennt die Projektseite „nexmail.nexapps.dev", und die
     // sieht für den Wächter aus wie ein Schlüssel; sie ist keiner.
     if (titel !== 'Über nexmail') await keineRohenSchluessel(page)
+    if (titel === 'Allgemein') {
+      await expect(inhalt.getByText('Öffentliche Adresse', { exact: true }), 'Die öffentliche Adresse steht nur unter Anmeldung.').toHaveCount(0)
+    }
   }
   expect(fehler, 'Fehler beim Öffnen der Bereiche').toEqual([])
 })
@@ -209,4 +219,19 @@ test('Aus dem Kalender geöffnet, steht links weiter die Kalenderliste', async (
   await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
   await expect(spalte.getByRole('heading', { name: 'Kalender' })).toBeVisible()
   await expect(page.getByRole('button', { name: /Ordner (ein|aus)klappen/ })).toHaveCount(0)
+})
+
+/* Alte Lesezeichen gelten weiter: deutsche Namen und `/einstellungen/…` landen beim englischen Bereich, und die
+   Adresse wird ersetzt, nicht als zweiter Eintrag in den Verlauf gelegt. */
+test('Alte Adressen der Einstellungen führen zum neuen Bereich', async ({ page }) => {
+  await anmelden(page)
+  for (const [alt, neu, titel] of [
+    ['/settings/postfaecher', 'settings/mailboxes', 'Postfächer'],
+    ['/einstellungen/speicher', 'settings/storage', 'Speicher und Sicherung'],
+    ['/settings/ueber', 'settings/about', 'Über nexmail'],
+  ] as const) {
+    await page.goto(alt)
+    await expect(page.getByRole('heading', { level: 1, name: titel, exact: true })).toBeVisible()
+    await expect(page).toHaveURL(new RegExp(`/${neu}$`))
+  }
 })
