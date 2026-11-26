@@ -64,6 +64,7 @@ import { NexApps } from './einstellungen/NexApps'
 import { KalenderUndBuecher } from './einstellungen/KalenderUndBuecher'
 import { Karte } from './einstellungen/Karte'
 import {
+  ALLGEMEIN_TEILE,
   GRUPPEN,
   UEBER,
   bereichAusPfad,
@@ -441,7 +442,7 @@ export function EinstellungenPage({
               />
             }
           >
-            <SettingsPage slug={bereich} app={APP} things={dinge} thingsDative={dingeDativ} title={eigeneWorte?.titel} subtitle={eigeneWorte?.text || undefined}>
+            <SettingsPage slug={bereich} app={APP} things={dinge} thingsDative={dingeDativ} title={eigeneWorte?.titel} subtitle={eigeneWorte?.text || undefined} parts={bereich === 'general' ? ALLGEMEIN_TEILE : undefined}>
               {/* konten 0.3.3: Der Nothammer ist unten, deutlich oben auf den Kontoseiten und bei der Anmeldung. */}
               {ich?.zwei_faktor_aus && NOTHAMMER_BEREICHE.includes(bereich) && <FaktorAusHinweis />}
               {inhalt()}

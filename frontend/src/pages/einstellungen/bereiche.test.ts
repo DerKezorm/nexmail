@@ -109,3 +109,22 @@ describe('Adressen', () => {
     expect(bereichAusPfad('/settings/gibt-es-nicht')).toEqual({ bereich: 'profile', ersetzen: true })
   })
 })
+
+describe('Server › Allgemein (ui 1.1.3, U-3)', () => {
+  it('der Untertitel nennt nur die Karten, die nexmail dort hat, in ihrer Reihenfolge', async () => {
+    const { NEXUI_TEXTS, areaText } = await import('../../vendor/nexui')
+    const { ALLGEMEIN_TEILE } = await import('./bereiche')
+    const de = areaText(NEXUI_TEXTS.de, 'general', { app: 'nexmail', parts: ALLGEMEIN_TEILE })?.text ?? ''
+    const teile = NEXUI_TEXTS.de.generalParts
+    let davor = -1
+    for (const teil of ALLGEMEIN_TEILE) {
+      const stelle = de.indexOf(teile[teil])
+      expect(stelle, teil).toBeGreaterThan(davor)
+      davor = stelle
+    }
+    expect(de).not.toContain(teile.limits)
+    expect(de).not.toContain(teile.webPush)
+    const en = areaText(NEXUI_TEXTS.en, 'general', { app: 'nexmail', parts: ALLGEMEIN_TEILE })?.text ?? ''
+    expect(en).not.toContain(NEXUI_TEXTS.en.generalParts.limits)
+  })
+})

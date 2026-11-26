@@ -13,7 +13,7 @@
  */
 import { CalendarDays, Inbox, ListFilter, PenLine, Plane, Tag } from 'lucide-react'
 
-import type { IconLike } from '../../vendor/nexui'
+import type { GeneralPart, IconLike } from '../../vendor/nexui'
 import type { Ich } from '../../api/client'
 
 export type Bereich =
@@ -72,6 +72,10 @@ export const BEREICHE: BereichDef[] = [
 ]
 
 export const GRUPPEN: Gruppe[] = ['account', 'mail', 'server']
+
+/** ui 1.1.3 (U-3): die Karten, die nexmail unter Server › Allgemein zeigt, in ihrer Reihenfolge (`ServerAllgemein`);
+ *  der Untertitel nennt nur sie. Die Karte „Zeitzone des Servers“ ist nexmails eigene und hat kein Wort im Satz. */
+export const ALLGEMEIN_TEILE: readonly GeneralPart[] = ['features', 'interfaces', 'nexApps', 'languages']
 
 /** „Über nexmail" steht unter den Gruppen, getrennt durch eine Linie. */
 export const UEBER: BereichDef = { id: 'about', gruppe: 'account', symbol: 'Info' }
