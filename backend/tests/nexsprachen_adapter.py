@@ -111,3 +111,20 @@ class Adapter(StandardAdapter):
         from app.main import app
 
         return app.openapi()
+
+    def offered_template(self) -> dict[str, Any]:
+        """Die Vorlage, wie die Seite sie an ``LanguagesCard template`` gibt (``englischeTexte()`` in
+        ``frontend/src/i18n/index.ts``): nexmails englische Texte, darüber die der Anmeldung, des Kontenmoduls und des
+        Mailmoduls, flach zusammengelegt wie dort, durch ``texts_only`` wie ``templateFile``. ``oidcWording`` wählt im
+        Browser nur zwischen Sätzen unter ``oidc``; hier steht die Datei ungewählt, es bleiben Texte."""
+        import json
+        from pathlib import Path
+
+        from app.vendor import nexsprachen
+
+        src = Path(__file__).resolve().parents[2] / "frontend" / "src"
+        english: dict[str, Any] = {}
+        for teil in ("i18n/en.json", "vendor/nexoidc/oidc.en.json", "vendor/nexkonten/konten.en.json",
+                     "vendor/nexpost/post.en.json"):
+            english.update(json.loads((src / teil).read_text(encoding="utf-8")))
+        return {"_meta": {"name": "x"}, **nexsprachen.texts_only(english)}
