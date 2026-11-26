@@ -49,6 +49,38 @@ interface Props {
 }
 
 const BREITE = 232
+/** Abstand zum Fensterrand, den Menü und Untermenü immer halten. */
+const RAND = 8
+
+/** Wo das Menü steht (links oben), damit es ganz im Bild ist: am rechten Rand nach links gekippt, am unteren nach oben,
+ *  nie über den oberen oder linken Rand hinaus. Die Höhe ist höchstens die des Fensters weniger 2 × 8 px (`max-height`),
+ *  ein längeres Menü scrollt in sich. */
+export function hauptPosition(x: number, y: number, breite: number, hoehe: number, fensterB: number, fensterH: number) {
+  const h = Math.min(hoehe, fensterH - 2 * RAND)
+  return {
+    x: x + breite > fensterB - RAND ? Math.max(RAND, x - breite) : x,
+    y: y + h > fensterH - RAND ? Math.max(RAND, Math.min(y - h, fensterH - RAND - h)) : y,
+  }
+}
+
+/** Wo ein Untermenü steht (Fensterkoordinaten, es ist `fixed`, damit das scrollende Hauptmenü es nicht abschneidet):
+ *  rechts neben seiner Zeile, sonst links daneben, und wo auf keiner Seite Platz ist, an den Rand geklemmt, sodass es
+ *  ganz sichtbar ist. Nach unten so weit hoch, dass sein Fuß im Bild bleibt, nie über den oberen Rand. */
+export function unterPosition(
+  anker: { left: number; right: number; top: number },
+  breite: number,
+  hoehe: number,
+  fensterB: number,
+  fensterH: number,
+) {
+  let left: number
+  if (anker.right + breite <= fensterB - RAND) left = anker.right
+  else if (anker.left - breite >= RAND) left = anker.left - breite
+  else left = Math.max(RAND, Math.min(anker.right, fensterB - RAND - breite))
+  const ueberstand = anker.top + hoehe - (fensterH - RAND)
+  const top = ueberstand > 0 ? Math.max(RAND, anker.top - ueberstand) : anker.top
+  return { left, top, links: left < anker.left }
+}
 
 export function Kontextmenue({ x, y, eintraege, aufSchliessen }: Props) {
   const kasten = useRef<HTMLDivElement>(null)
@@ -92,10 +124,7 @@ export function Kontextmenue({ x, y, eintraege, aufSchliessen }: Props) {
     const el = kasten.current
     if (!el) return
     const { width, height } = el.getBoundingClientRect()
-    setPos({
-      x: x + width > window.innerWidth - 8 ? Math.max(8, x - width) : x,
-      y: y + height > window.innerHeight - 8 ? Math.max(8, y - height) : y,
-    })
+    setPos(hauptPosition(x, y, width, height, window.innerWidth, window.innerHeight))
     // Der Fokus wandert ins Menue. Bliebe er auf der Nachrichtenzeile,
     // wuerden die Pfeiltasten die Liste bewegen statt das Menue.
     el.querySelector<HTMLButtonElement>(
@@ -158,12 +187,15 @@ export function Kontextmenue({ x, y, eintraege, aufSchliessen }: Props) {
     <div
       ref={kasten}
       role="menu"
-      style={{ left: pos.x, top: pos.y, width: BREITE }}
+      /* ⚠️ **Nie höher als das Fenster** (gemessen 27.11.2026: 25 Einträge bei 800×600 liefen 118 px unten hinaus).
+         Ein längeres Menü scrollt in sich; ein offenes Untermenü schließt dabei, weil es `fixed` an seiner Zeile hängt. */
+      style={{ left: pos.x, top: pos.y, width: BREITE, maxHeight: 'calc(100dvh - 16px)' }}
+      onScroll={() => setOffenesUnter(null)}
       // Der eigene pointerdown darf nicht bis zum Schliesser durchlaufen.
       onPointerDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
       onKeyDown={beiPfeil}
-      className="fixed z-[60] rounded-lg border border-line bg-surface-1 py-1 shadow-[var(--shadow-3)]"
+      className="fixed z-[60] overflow-y-auto overscroll-contain rounded-lg border border-line bg-surface-1 py-1 shadow-[var(--shadow-3)]"
     >
       {eintraege.map((e) => (
         <Zeile
@@ -212,19 +244,16 @@ function Zeile({ eintrag, unterOffen, aufUnter, aufSchliessen }: ZeileProps) {
    *  muss. ⚠️ Gemessen wird in `useLayoutEffect` — das laeuft **vor** dem
    *  Zeichnen, das Untermenue blitzt also nicht erst an der falschen Stelle
    *  auf. */
-  const [lage, setLage] = useState<{ links: boolean; hoch: number }>({ links: false, hoch: 0 })
+  const [lage, setLage] = useState<{ links: boolean; left: number; top: number }>({ links: false, left: 0, top: 0 })
 
   useLayoutEffect(() => {
     if (!unterOffen) return
     const anker = reihe.current?.getBoundingClientRect()
     const eigen = unterkasten.current?.getBoundingClientRect()
     if (!anker) return
-    // Rechts kein Platz? Dann links neben das Menue — nicht neben den Monitor.
-    const links = anker.right + BREITE > window.innerWidth - 8 && anker.left - BREITE > 8
-    // Und nach unten dasselbe: so weit hoch, dass der Fuss noch im Bild ist.
-    const hoehe = eigen?.height ?? 0
-    const ueberstand = anker.top + hoehe - (window.innerHeight - 8)
-    setLage({ links, hoch: ueberstand > 0 ? Math.min(ueberstand, anker.top - 8) : 0 })
+    // Rechts kein Platz? Dann links neben das Menue — nicht neben den Monitor; links auch nicht: an den Rand geklemmt.
+    // Nach unten so weit hoch, dass der Fuss noch im Bild ist.
+    setLage(unterPosition(anker, BREITE, eigen?.height ?? 0, window.innerWidth, window.innerHeight))
   }, [unterOffen])
 
   return (
@@ -272,11 +301,11 @@ function Zeile({ eintrag, unterOffen, aufUnter, aufSchliessen }: ZeileProps) {
           <div
             ref={unterkasten}
             role="menu"
-            style={{ width: BREITE, top: -lage.hoch }}
+            style={{ width: BREITE, left: lage.left, top: lage.top }}
+            data-seite={lage.links ? 'links' : 'rechts'}
             className={
-              'absolute z-[61] max-h-[320px] overflow-y-auto rounded-lg border border-line ' +
-              'bg-surface-1 py-1 shadow-[var(--shadow-3)] ' +
-              (lage.links ? 'right-full' : 'left-full')
+              'fixed z-[61] max-h-[320px] overflow-y-auto rounded-lg border border-line ' +
+              'bg-surface-1 py-1 shadow-[var(--shadow-3)]'
             }
           >
             {/* ⚠️ Dieselben Eigenschaften wie auf der obersten Ebene:
