@@ -589,6 +589,34 @@ Errors come as `{"detail": "<code>"}`: `api_schluessel_fehlt` and
 folder) and `502` when the mail server cannot be reached. Counts are as fresh as
 nexmail's last sync with the mail server.
 
+## AI tools (MCP)
+
+An AI program such as Claude Code works with a person's mail through MCP at
+`POST /api/mcp`. **Off by default**: the operator switches *MCP access* on
+under *Settings › Server › General › Interfaces*, and decides there whether
+programs may connect themselves, the highest level and which tools are blocked.
+An account the operator does not allow AI makes no MCP key, and its keys and
+programs rest until AI is allowed again.
+
+Each person sets it up under *Settings › My account › Connections ›
+AI tools (MCP)*: either *Connect* in the program (OAuth with PKCE, the person
+agrees on nexmail's page) or an MCP key made by hand (`nxk_…`). Either way it
+sees only the mailboxes chosen for it, at one of three levels: *read*,
+*read and drafts*, *read, drafts and change*. **Nothing is ever sent**: a draft
+lands in the mailbox's Drafts folder. The text of a message needs the extra
+*Read mail text* (off by default); attachments never leave nexmail. Rights can
+be set per tool to *allow*, *ask* or *deny*; a call that asks waits up to 24
+hours for a yes, and the person's browsers are told.
+
+| Tool | Level | Does |
+|---|---|---|
+| `mailbox_summary` | read | unread messages in the inbox of each mailbox |
+| `search_messages` | read | messages by sender, subject, date and folder, never by their text |
+| `read_message` | read, with *Read mail text* | a message with its text, without attachments |
+| `list_tags`, `list_tasks` | read | the person's tags, the tasks made from messages |
+| `draft_reply`, `create_draft` | drafts | a reply or a new message as a draft |
+| `set_tags`, `move_message`, `complete_task` | change | on the mail server, as in the app |
+
 ## Webhooks for tasks
 
 Under *Settings › My account › Connections* each user can connect a webhook next to Todoist. It

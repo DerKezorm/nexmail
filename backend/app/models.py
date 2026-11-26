@@ -2371,3 +2371,117 @@ class ApiSchluessel(Base):
     #: schluessel 1.0.0: vom Betreiber gesperrt seit (leer: nicht). Bis zum Entsperren abgewiesen, die Zeile bleibt.
     #: ⚠️ Eine aeltere Fassung liest die Spalte nicht: dort wirkte ein gesperrter Schluessel wieder.
     gesperrt: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+
+
+# --- KI-Werkzeuge (MCP, Modul mcp 1.1.0) -------------------------------------------------------------------------- #
+#
+# ⚠️ **Eigene Tabellen, nicht ``api_schluessel``.** Eine aeltere nexmail-Fassung (Rueckweg) liest ``api_schluessel``
+# und naehme eine Zeile eines MCP-Schluessels oder Programms dort als API-Schluessel; die Tabellen hier sieht sie gar
+# nicht. Vorlage: ``bauplaene/mcp/tests-fuer-apps/reference/app.py``. Nur SHA-256 von Schluesseln, Codes und Token.
+
+
+class McpSchluessel(Base):
+    """Ein MCP-Schluessel von Hand (``nxk_…``) oder der Zugang eines verbundenen Programms (OAuth, ``programm_id``)."""
+
+    __tablename__ = "mcp_schluessel"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=neue_id)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    #: Der Schluessel von Hand, bei einem Programm sein aktuelles Zugriffstoken.
+    schluessel_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    praefix: Mapped[str] = mapped_column(String(24))
+    #: ``read`` | ``draft`` | ``write``
+    stufe: Mapped[str] = mapped_column(String(16), default="read")
+    #: JSON-Liste der Postfach-Kennungen; leer (NULL) nur bei einem Programm, das alle bekam.
+    konten_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    #: Die Extras (``{"mailtext": true}``), ab Werk aus.
+    extras_json: Mapped[str] = mapped_column(Text, default="{}")
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    zuletzt_benutzt: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    laeuft_ab: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+    gesperrt: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+    #: Nur bei einem Programm: seine Kennung, der Hash seines Erneuerungstokens, die letzte Zustimmung und Erneuerung.
+    programm_id: Mapped[str | None] = mapped_column(String(80), nullable=True, default=None, index=True)
+    erneuerung_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None, index=True)
+    angemeldet_am: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+    erneuert_am: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+
+
+class McpProgramm(Base):
+    """Ein Programm, das sich selbst angemeldet hat (RFC 7591): oeffentlich, mit PKCE."""
+
+    __tablename__ = "mcp_programm"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    adressen_json: Mapped[str] = mapped_column(Text, default="[]")
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    zuletzt_benutzt: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+
+
+class McpCode(Base):
+    """Ein Code der Zustimmungsseite: einmal, zehn Minuten."""
+
+    __tablename__ = "mcp_code"
+
+    code_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    programm_id: Mapped[str] = mapped_column(String(80))
+    benutzer_id: Mapped[str] = mapped_column(String(32), ForeignKey("benutzer.id", ondelete="CASCADE"))
+    adresse: Mapped[str] = mapped_column(Text)
+    challenge: Mapped[str] = mapped_column(String(128))
+    stufe: Mapped[str] = mapped_column(String(16))
+    konten_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    extras_json: Mapped[str] = mapped_column(Text, default="{}")
+    laeuft_ab: Mapped[datetime] = mapped_column(UtcDateTime)
+    resource: Mapped[str] = mapped_column(Text, default="")
+
+
+class McpVerbraucht(Base):
+    """Verbrauchte Codes und Erneuerungstokens eines Programms (die letzten 20): wieder gebracht, endet es."""
+
+    __tablename__ = "mcp_verbraucht"
+
+    nr: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    schluessel_id: Mapped[str] = mapped_column(String(32), index=True)
+    verbraucht_am: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class McpRecht(Base):
+    """Das eigene Recht eines Schluessels an einem Werkzeug, nur wo es von der Vorgabe abweicht."""
+
+    __tablename__ = "mcp_recht"
+
+    schluessel_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    werkzeug: Mapped[str] = mapped_column(String(64), primary_key=True)
+    wert: Mapped[str] = mapped_column(String(8))
+
+
+class McpAnfrage(Base):
+    """Ein Aufruf, der auf das Ja des Kontos wartet (Recht „fragen“), mit festen Argumenten.
+
+    ⚠️ **Kein Fremdschluessel auf den Schluessel**: Wird er widerrufen, bleibt die Rueckfrage und scheitert beim
+    Erlauben („no longer possible“), statt still zu verschwinden."""
+
+    __tablename__ = "mcp_anfrage"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    benutzer_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True
+    )
+    schluessel_id: Mapped[str] = mapped_column(String(32), index=True)
+    schluessel_name: Mapped[str] = mapped_column(String(200), default="")
+    werkzeug: Mapped[str] = mapped_column(String(64))
+    argumente: Mapped[str] = mapped_column(Text)
+    pruefsumme: Mapped[str] = mapped_column(String(64))
+    stand: Mapped[str] = mapped_column(String(16), index=True)
+    angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    laeuft_ab: Mapped[datetime] = mapped_column(UtcDateTime)
+    entschieden_am: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+    entschieden_von: Mapped[str] = mapped_column(String(200), default="")
+    ergebnis: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    zusammenfassung: Mapped[str] = mapped_column(Text, default="")
+    gefaehrlich: Mapped[bool] = mapped_column(Boolean, default=False)

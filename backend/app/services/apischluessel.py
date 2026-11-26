@@ -82,6 +82,31 @@ def eigene_konten(db: Session, person_id: str) -> list[Konto]:
     )
 
 
+def ungelesen_im_posteingang(db: Session, person_id: str, konto_ids: list[str]) -> dict[str, int]:
+    """Ungelesene Mails im Posteingang je Postfach, fuer ``GET /api/v1/summary`` und das KI-Werkzeug
+    ``mailbox_summary``.
+
+    ⚠️ **Gezaehlt, nicht abgelesen** (``ordner.ungelesen`` kann veralten, die Nachrichten selbst nicht)."""
+    from sqlalchemy import func
+
+    from ..models import Nachricht, Ordner
+
+    if not konto_ids:
+        return {}
+    zeilen = db.execute(
+        select(Nachricht.konto_id, func.count())
+        .join(Ordner, Ordner.id == Nachricht.ordner_id)
+        .where(
+            Nachricht.benutzer_id == person_id,
+            Nachricht.konto_id.in_(konto_ids),
+            Nachricht.gelesen.is_(False),
+            Ordner.rolle == "posteingang",
+        )
+        .group_by(Nachricht.konto_id)
+    ).all()
+    return {konto_id: anzahl for konto_id, anzahl in zeilen}
+
+
 def freigegebene_konten(db: Session, schluessel: ApiSchluessel) -> list[Konto]:
     """Die Postfaecher, die dieser Schluessel sehen darf.
 

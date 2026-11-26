@@ -2125,5 +2125,27 @@
     "trennen": "Disconnect",
     "keine": "No iPhone or iPad connected yet.",
     "verbinden": "Connect an iPhone or iPad"
+  },
+  "mcp": {
+    "stufe_read": "Read",
+    "stufe_read_hinweis": "Count mailboxes, find messages by sender, subject, date and folder, see tags and tasks.",
+    "stufe_draft": "Read and drafts",
+    "stufe_draft_hinweis": "Also store replies and new messages as drafts in Drafts. Nothing is ever sent.",
+    "stufe_write": "Read, drafts and change",
+    "stufe_write_hinweis": "Also set tags, move messages and tick off tasks, on the mail server.",
+    "mailtext": "Read mail text",
+    "mailtext_hinweis": "The program reads the text of your messages, without attachments. Off by default.",
+    "postfaecher": "Mailboxes the program may see",
+    "w_mailbox_summary": "Count mailboxes",
+    "w_search_messages": "Find messages",
+    "w_read_message": "Read a message",
+    "w_list_tags": "See tags",
+    "w_list_tasks": "See tasks",
+    "w_draft_reply": "Reply as a draft",
+    "w_create_draft": "New draft",
+    "w_set_tags": "Set tags",
+    "w_move_message": "Move a message",
+    "w_complete_task": "Tick off a task",
+    "w_request_status": "State of a request"
   }
 }

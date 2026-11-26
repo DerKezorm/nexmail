@@ -19,6 +19,7 @@ import { EinladungPage } from './pages/EinladungPage'
 import { KennwortNeuPage, VergessenPage } from './pages/KennwortPage'
 import { EinrichtungPage } from './pages/EinrichtungPage'
 import { AdressePage } from './pages/AdressePage'
+import { McpSeite, mcpSeiteVon } from './pages/McpSeite'
 import { NeuesPasswort } from './components/NeuesPasswort'
 import { kontoSprache } from './i18n'
 import { api } from './api/client'
@@ -260,6 +261,12 @@ export default function Start() {
         aufVergessen={() => setVergessen(true)}
       />
     )
+  }
+
+  /* Modul mcp: Zustimmung eines KI-Programms und Seite einer Rückfrage, nur angemeldet (davor kam die Anmeldung). */
+  const mcpSeite = mcpSeiteVon(window.location.pathname)
+  if (mcpSeite) {
+    return <McpSeite seite={mcpSeite} />
   }
 
   return (

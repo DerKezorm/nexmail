@@ -2,7 +2,8 @@
  *
  * 1. „Funktionen für alle Konten" (SlidersHorizontal): Kalender- und Adressbuchserver im eigenen Netz, Text der Mail
  *    an Webhooks. Beide wirken beim Anhaken, nicht über „Speichern".
- * 2. „Schnittstellen" (Modul schluessel): API für Mitglieder, iPhone-App erlauben.
+ * 2. „Schnittstellen" (Modul schluessel): API für Mitglieder, MCP-Zugang mit den Einstellungen des Moduls mcp
+ *    (Programme erlauben, Höchste Stufe, Gesperrte Werkzeuge), iPhone-App erlauben.
  * 3. nexmails eigene Karte „Zeitzone des Servers".
  *
  * Die öffentliche Adresse steht seit dem Bauplan nur noch unter Server › Anmeldung.
@@ -13,6 +14,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, modulAnfrage } from '../api/client'
 import { InterfacesCard } from '../vendor/nexschluessel/InterfacesCard'
+import { McpOperatorSettings } from '../vendor/nexmcp'
+import { mcpWorte } from '../lib/mcpWorte'
 import { LanguagesCard } from '../vendor/nexsprachen/LanguagesCard'
 import { eigeneSprachenVergessen, englischeTexte } from '../i18n'
 import { BASIS } from '../lib/basis'
@@ -20,12 +23,17 @@ import { servermeldung } from '../lib/servermeldung'
 import { Button, Card, CheckboxRow, Field, Notice } from '../vendor/nexui'
 
 export function ServerAllgemein({ dokuHref }: { dokuHref?: string }) {
+  const { t } = useTranslation()
   return (
     <>
       <FunktionenFuerAlle />
       {/* Modul schluessel: „Programmschnittstelle (API) für Mitglieder" und „iPhone-App erlauben" (ersetzt den Schalter
           in der alten Karte „API-Schlüssel" und den in „iPhone verbinden"). */}
-      <InterfacesCard request={modulAnfrage} docsHref={dokuHref} />
+      <InterfacesCard
+        request={modulAnfrage}
+        docsHref={dokuHref}
+        after={{ mcp: <McpOperatorSettings request={modulAnfrage} words={mcpWorte(t)} /> }}
+      />
       {/* Bauplan Allgemein (E48): keine Karte „Grenzen“ (nexmail hat nichts zu begrenzen), kein „Web Push“ (nichts
           einzustellen, E33); „Sprachen“ aus dem Modul sprachen (E51); danach nexmails eigene Karte. */}
       <Sprachen />

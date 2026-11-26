@@ -10,6 +10,14 @@ Schluessel wieder (Rueckweg im README des Moduls).
 
 Die Schalter des Betreibers bleiben unter ihren Namen und Vorgaben: ``api`` = ``api_schluessel_erlaubt`` (ab Werk
 aus), ``app`` = ``app_geraete_erlaubt`` (ab Werk an). Gekoppelte iPhones (``nxa_``) sind keine Schluessel des Moduls.
+
+**Seit schluessel 1.1.0 und mcp 1.1.0 (Durchgang „Module“)** dazu die Art ``mcp``: MCP-Schluessel von Hand (``nxk_``)
+und die Zugaenge verbundener Programme (OAuth), in der eigenen Tabelle ``mcp_schluessel`` (``models.McpSchluessel``),
+nie in ``api_schluessel``: eine aeltere Fassung laese eine solche Zeile sonst als API-Schluessel. Stufen ``read``,
+``draft``, ``write``, Postfaecher wie bei API-Schluesseln Pflicht (Programme waehlen sie bei der Zustimmung), Extra
+``mailtext`` („Mailtext lesen“, ab Werk aus, MCP-Entscheidung 2), Ablauf wie in den anderen Apps. Schalter ``mcp`` =
+``mcp_zugang``, ab Werk aus (MCP-Entscheidung 5; nexmail hatte vorher kein MCP). Ohne „KI erlaubt“ legt ein Konto
+keinen MCP-Schluessel an, und seine MCP-Schluessel und Programme ruhen (MCP-Entscheidung 10, ``ai_allowed``).
 """
 
 from __future__ import annotations
@@ -23,13 +31,16 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from ..db import einstellung_lesen, einstellung_schreiben
-from ..models import ApiSchluessel, Benutzer
+from ..models import ApiSchluessel, Benutzer, McpSchluessel
 from ..vendor.nexschluessel import AppConfig, KeyKind
 from ..vendor.nexschluessel.model import ALL_AREAS, Area, Holder, Key, KeyChange, NewKey
 from . import apischluessel as apidienst
 from . import app_kopplung
 
 logger = logging.getLogger("nexmail.api")
+
+#: Die Vorsilbe der MCP-Schluessel von Hand und der Zugriffstoken verbundener Programme (mcp 1.1.0).
+MCP_VORSILBE = "nxk_"
 
 #: nexmails Rechte heissen in der Tabelle ``anzahl`` und ``betreff``, im Modul ``count`` und ``headers``.
 ZU_MODUL = {"anzahl": "count", "betreff": "headers"}
@@ -51,8 +62,23 @@ KONFIGURATION = AppConfig(
             name_max=apidienst.MAX_NAME,
             shown_extra=6,
         ),
+        KeyKind(
+            id="mcp",
+            prefix=MCP_VORSILBE,
+            rights=("read", "draft", "write"),
+            default_right="read",
+            options=("mailtext",),
+            areas=True,
+            areas_required=True,
+            switch="mcp",
+            programs_count=True,
+            name_max=100,
+            shown_extra=6,
+        ),
     ),
-    switches=("api", "app"),
+    switches=("api", "app", "mcp"),
+    programs=True,
+    mcp_path="/api/mcp",
     key_id=str,
     error_codes={
         "api_off": "api_schluessel_abgeschaltet",
@@ -62,7 +88,7 @@ KONFIGURATION = AppConfig(
 )
 
 #: Die Schalter des Moduls und nexmails Einstellung samt Vorgabe.
-SCHALTER = {"api": (apidienst.SCHALTER, "0"), "app": (app_kopplung.SCHALTER, "1")}
+SCHALTER = {"api": (apidienst.SCHALTER, "0"), "app": (app_kopplung.SCHALTER, "1"), "mcp": ("mcp_zugang", "0")}
 
 
 def _schluessel(z: ApiSchluessel) -> Key:
@@ -82,6 +108,33 @@ def _schluessel(z: ApiSchluessel) -> Key:
     )
 
 
+def _mcp_schluessel(z: McpSchluessel) -> Key:
+    extras = json.loads(z.extras_json or "{}")
+    return Key(
+        id=z.id,
+        account_id=z.benutzer_id,
+        kind="mcp",
+        name=z.name,
+        right=z.stufe,
+        prefix=z.praefix,
+        created_at=z.angelegt,
+        last_used_at=z.zuletzt_benutzt,
+        # Das Zugriffstoken eines Programms laeuft stuendlich ab und wird erneuert; die Verbindung selbst nicht.
+        expires_at=z.laeuft_ab,
+        blocked_at=z.gesperrt,
+        areas=json.loads(z.konten_json) if z.konten_json is not None else None,
+        options={"mailtext": bool(extras.get("mailtext"))},
+        program=z.programm_id is not None,
+    )
+
+
+def _neueste_zuerst(schluessel: list[Key]) -> list[Key]:
+    from datetime import timezone
+
+    fern = datetime.min.replace(tzinfo=timezone.utc)
+    return sorted(schluessel, key=lambda k: k.created_at or fern, reverse=True)
+
+
 class SchluesselStore:
     """``nexschluessel.Store`` ueber nexmails Tabellen, innerhalb einer Sitzung."""
 
@@ -94,20 +147,46 @@ class SchluesselStore:
             .where(ApiSchluessel.benutzer_id == str(account_id))
             .order_by(ApiSchluessel.angelegt.desc())
         )
-        return [_schluessel(z) for z in zeilen]
+        mcp = self.db.scalars(select(McpSchluessel).where(McpSchluessel.benutzer_id == str(account_id)))
+        return _neueste_zuerst([_schluessel(z) for z in zeilen] + [_mcp_schluessel(z) for z in mcp])
 
     def all_keys(self) -> list[Key]:
-        return [_schluessel(z) for z in self.db.scalars(select(ApiSchluessel).order_by(ApiSchluessel.angelegt.desc()))]
+        api = [_schluessel(z) for z in self.db.scalars(select(ApiSchluessel))]
+        return _neueste_zuerst(api + [_mcp_schluessel(z) for z in self.db.scalars(select(McpSchluessel))])
+
+    def _mcp_zeile(self, key_id) -> McpSchluessel | None:
+        return self.db.get(McpSchluessel, str(key_id))
 
     def key(self, key_id) -> Key | None:
         z = self.db.get(ApiSchluessel, str(key_id))
-        return _schluessel(z) if z is not None else None
+        if z is not None:
+            return _schluessel(z)
+        m = self._mcp_zeile(key_id)
+        return _mcp_schluessel(m) if m is not None else None
 
     def key_by_hash(self, token_hash: str) -> Key | None:
         z = self.db.scalar(select(ApiSchluessel).where(ApiSchluessel.schluessel_hash == token_hash))
-        return _schluessel(z) if z is not None else None
+        if z is not None:
+            return _schluessel(z)
+        m = self.db.scalar(select(McpSchluessel).where(McpSchluessel.schluessel_hash == token_hash))
+        return _mcp_schluessel(m) if m is not None else None
 
     def add_key(self, new: NewKey) -> Key:
+        if new.kind == "mcp":
+            mcp = McpSchluessel(
+                benutzer_id=str(new.account_id),
+                name=new.name,
+                schluessel_hash=new.token_hash,
+                praefix=new.prefix,
+                stufe=new.right,
+                konten_json=json.dumps([str(a) for a in new.areas]) if new.areas is not None else None,
+                extras_json=json.dumps({"mailtext": bool(new.options.get("mailtext"))}),
+                angelegt=new.created_at,
+                laeuft_ab=new.expires_at,
+            )
+            self.db.add(mcp)
+            self.db.flush()
+            return _mcp_schluessel(mcp)
         zeile = ApiSchluessel(
             benutzer_id=str(new.account_id),
             name=new.name,
@@ -124,6 +203,18 @@ class SchluesselStore:
         return _schluessel(zeile)
 
     def change_key(self, key_id, change: KeyChange) -> Key:
+        mcp = self._mcp_zeile(key_id) if self.db.get(ApiSchluessel, str(key_id)) is None else None
+        if mcp is not None:
+            if change.name is not None:
+                mcp.name = change.name
+            if change.right is not None:
+                mcp.stufe = change.right
+            if change.areas is not None:
+                mcp.konten_json = None if change.areas == ALL_AREAS else json.dumps([str(a) for a in change.areas])
+            if change.options is not None and "mailtext" in change.options:
+                mcp.extras_json = json.dumps({"mailtext": bool(change.options["mailtext"])})
+            self.db.flush()
+            return _mcp_schluessel(mcp)
         zeile = self.db.get(ApiSchluessel, str(key_id))
         if change.name is not None:
             zeile.name = change.name
@@ -144,9 +235,17 @@ class SchluesselStore:
         if zeile is not None:
             self.db.delete(zeile)
             self.db.flush()
+            return
+        if self._mcp_zeile(key_id) is not None:
+            # Ein MCP-Schluessel oder Programm: weg samt verbrauchten Token und Rechten; seine Rueckfragen bleiben und
+            # scheitern beim Erlauben.
+            from .mcp_store import zugang_entfernen
+
+            zugang_entfernen(self.db, str(key_id))
 
     def set_blocked(self, key_id, when: datetime | None) -> None:
         self.db.execute(update(ApiSchluessel).where(ApiSchluessel.id == str(key_id)).values(gesperrt=when))
+        self.db.execute(update(McpSchluessel).where(McpSchluessel.id == str(key_id)).values(gesperrt=when))
 
     def touch(self, key_id, when: datetime) -> None:
         """⚠️ **Der Vermerk darf die Abfrage nicht kosten** (Issue #9). Haelt ein Abgleich die Datenbank laenger als
@@ -154,6 +253,7 @@ class SchluesselStore:
         gefragt hat. Deshalb schreibt der Vermerk selbst und gibt bei einer Sperre auf; das ``commit`` des Moduls
         danach hat nichts mehr zu tun. Dann eben beim naechsten Mal."""
         self.db.execute(update(ApiSchluessel).where(ApiSchluessel.id == str(key_id)).values(zuletzt_benutzt=when))
+        self.db.execute(update(McpSchluessel).where(McpSchluessel.id == str(key_id)).values(zuletzt_benutzt=when))
         try:
             self.db.commit()
         except OperationalError as fehler:
@@ -181,6 +281,13 @@ class SchluesselStore:
         from . import konten_store
 
         return konten_store.store_fuer(self.db).second_factor(account_id) == nexkonten.SECOND_FACTOR_REQUIRED
+
+    def ai_allowed(self, account_id) -> bool:
+        """MCP-Entscheidung 10: „KI erlaubt“ des Kontos gilt auch fuer KI-Programme von aussen (Server › Konten ›
+        Verwalten). Ohne sie legt das Konto keinen MCP-Schluessel an, und seine MCP-Zugaenge ruhen."""
+        from . import mcp_store
+
+        return mcp_store.ki_erlaubt(self.db, str(account_id))
 
     def switch(self, name: str) -> bool:
         schluessel, vorgabe = SCHALTER[name]

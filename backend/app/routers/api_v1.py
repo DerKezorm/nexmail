@@ -44,7 +44,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from ..deps import ApiZugriff, DbSession
 from ..meldung import MeldungHttp
@@ -142,21 +142,7 @@ def me(schluessel: ApiZugriff, db: DbSession) -> Me:
 @router.get("/summary", response_model=Summary)
 def summary(schluessel: ApiZugriff, db: DbSession) -> Summary:
     konten = dienst.freigegebene_konten(db, schluessel)
-    ids = [k.id for k in konten]
-    zahlen: dict[str, int] = {}
-    if ids:
-        zeilen = db.execute(
-            select(Nachricht.konto_id, func.count())
-            .join(Ordner, Ordner.id == Nachricht.ordner_id)
-            .where(
-                Nachricht.benutzer_id == schluessel.benutzer_id,
-                Nachricht.konto_id.in_(ids),
-                Nachricht.gelesen.is_(False),
-                Ordner.rolle == POSTEINGANG,
-            )
-            .group_by(Nachricht.konto_id)
-        ).all()
-        zahlen = {konto_id: anzahl for konto_id, anzahl in zeilen}
+    zahlen = dienst.ungelesen_im_posteingang(db, schluessel.benutzer_id, [k.id for k in konten])
     postfaecher = [
         MailboxSummary(
             **_mailbox(k).model_dump(),

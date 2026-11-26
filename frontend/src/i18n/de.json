@@ -2125,5 +2125,27 @@
     "trennen": "Trennen",
     "keine": "Noch kein iPhone oder iPad verbunden.",
     "verbinden": "iPhone oder iPad verbinden"
+  },
+  "mcp": {
+    "stufe_read": "Lesen",
+    "stufe_read_hinweis": "Postfächer zählen, Mails nach Absender, Betreff, Datum und Ordner finden, Schlagworte und Aufgaben sehen.",
+    "stufe_draft": "Lesen und Entwürfe",
+    "stufe_draft_hinweis": "Dazu Antworten und neue Mails als Entwurf in „Entwürfe“ ablegen. Gesendet wird nie.",
+    "stufe_write": "Lesen, Entwürfe und ändern",
+    "stufe_write_hinweis": "Dazu Schlagworte setzen, Mails verschieben und Aufgaben abhaken, auf dem Mailserver.",
+    "mailtext": "Mailtext lesen",
+    "mailtext_hinweis": "Das Programm liest den Text deiner Mails, ohne Anhänge. Ab Werk aus.",
+    "postfaecher": "Postfächer, die das Programm sehen darf",
+    "w_mailbox_summary": "Postfächer zählen",
+    "w_search_messages": "Mails finden",
+    "w_read_message": "Mail lesen",
+    "w_list_tags": "Schlagworte sehen",
+    "w_list_tasks": "Aufgaben sehen",
+    "w_draft_reply": "Antwort als Entwurf",
+    "w_create_draft": "Neuer Entwurf",
+    "w_set_tags": "Schlagworte setzen",
+    "w_move_message": "Mail verschieben",
+    "w_complete_task": "Aufgabe abhaken",
+    "w_request_status": "Stand einer Rückfrage"
   }
 }

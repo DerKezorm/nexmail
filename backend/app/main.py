@@ -159,6 +159,22 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
         "Persönliches. Der Stand der Update-Prüfung darunter (``/api/about/updates``) verlangt eine Anmeldung, "
         "Schalten und Nachsehen den Betreiber."
     ),
+    "/api/mcp": (
+        "KI-Werkzeuge (Modul mcp): ein Programm bringt einen MCP-Schlüssel oder das Token eines verbundenen Programms "
+        "in Authorization: Bearer, nie eine Sitzung (eine Anfrage mit Origin wird abgewiesen). Die Prüfung macht das "
+        "Modul vor allem anderen; ohne gültigen Schlüssel 401, MCP aus: 404."
+    ),
+    "/api/oauth/register": (
+        "Ein KI-Programm meldet sich selbst an (RFC 7591), bevor es einen Zugang hat: nur öffentliche Programme mit "
+        "sicheren Rücksprungadressen, gebremst je Absender und für den Server; aus, solange Programme aus sind."
+    ),
+    "/api/oauth/token": (
+        "Das Programm tauscht den Code der Zustimmung (PKCE) oder sein Erneuerungstoken; es hat dabei noch keine "
+        "Sitzung. Ein Code gilt einmal, ein verbrauchtes Token wieder gebracht beendet das Programm."
+    ),
+    "/api/oauth/revoke": (
+        "Ein Programm beendet seinen Zugang selbst (RFC 7009); wer ein Token kennt, darf es beenden."
+    ),
     "/api/health": (
         "Der Docker-Healthcheck läuft ohne Anmeldung — er soll ja gerade dann "
         "antworten, wenn etwas nicht stimmt."
@@ -682,10 +698,11 @@ app.include_router(nexpost_api.router(operator=nur_betreiber, store=_post_store)
 
 
 def _schluessel_store(db: DbSession):
-    """Der Store des Moduls schluessel ueber die Sitzung der Anfrage."""
-    from .services.schluessel_store import SchluesselStore
+    """Der Store des Moduls schluessel ueber die Sitzung der Anfrage; derselbe dient dem Modul mcp (MCP-Schluessel und
+    verbundene Programme stehen in derselben Liste)."""
+    from .services.mcp_store import McpStore
 
-    return SchluesselStore(db)
+    return McpStore(db)
 
 
 def _adresse_fuer_programme(request: Request) -> str:
@@ -712,6 +729,35 @@ app.include_router(
         address=_adresse_fuer_programme,
     ),
     dependencies=NUR_ANGEMELDET,
+)
+# KI-Werkzeuge (Modul mcp 1.1.0): ``POST /api/mcp`` für Programme mit Schlüssel, OAuth unter ``/api/oauth`` samt
+# Metadaten unter ``/.well-known``, die Seiten des Kontos und des Betreibers unter ``/api/connections/mcp``. Die
+# Zustimmung (``/api/oauth/authorize``) verlangt eine echte Anmeldung im Browser.
+from .services import mcp_hinweis as _mcp_hinweis  # noqa: E402
+from .services import mcp_store as _mcp_store  # noqa: E402
+from .services.anmeldebremse import adresse_von as _adresse_von  # noqa: E402
+from .services.mcp_werkzeuge import MCP as _MCP  # noqa: E402
+from .vendor.nexmcp import api as nexmcp_api  # noqa: E402
+
+
+def _mcp_store_fuer(db: DbSession):
+    return _mcp_store.store_fuer(db)
+
+
+app.include_router(
+    nexmcp_api.router(
+        config=_MCP,
+        store=_mcp_store_fuer,
+        account=angemeldet,
+        operator=nur_betreiber,
+        account_id=lambda person: person.id,
+        account_name=lambda person: person.benutzername,
+        address=_adresse_fuer_programme,
+        # Ohne ``NEXMAIL_CLIENT_IP`` kennt nexmail den Absender nicht; dann zählt die Bremse falscher Schlüssel nach der
+        # Adresse der Verbindung, wie in den anderen Apps (TODO mcp 1.1.0, siehe einst-fragen).
+        sender=lambda request: _adresse_von(request) or (request.client.host if request.client else ""),
+        notify=_mcp_hinweis.melden,
+    )
 )
 # Die Wege des Moduls sicherung (``/api/server/storage``), nur für Betreiber.
 app.include_router(sicherung.modul_router, dependencies=NUR_ANGEMELDET)

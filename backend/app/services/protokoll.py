@@ -41,8 +41,9 @@ REGELN: tuple[tuple[str, str], ...] = (
     (r"(?i)((?:passwor[dt]|kennwort|secret|token)\W{0,3})([^\s,;)\"']+)", r"\1***"),
 )
 
-#: Die Vorsilben der Schlüssel: API-Schlüssel (``nxm_``) und Gerätetoken der iPhone-App (``nxa_``).
-VORSILBEN = ("nxm_", "nxa_")
+#: Die Vorsilben der Schlüssel: API-Schlüssel (``nxm_``), Gerätetoken der iPhone-App (``nxa_``), MCP-Schlüssel und
+#: Zugriffstoken verbundener Programme (``nxk_``), deren Erneuerungstoken (``nxkr_``) und Codes (``nxkc_``).
+VORSILBEN = ("nxm_", "nxa_", "nxk_", "nxkr_", "nxkc_")
 #: Pfade, hinter denen ein Schlüssel steht (Einladung, neues Passwort, Adresse bestätigen, App koppeln).
 SCHLUESSELPFADE = ("einladung", "kennwort", "adresse", "auth/kennwort-neu", "auth/adresse", "app-kopplung")
 

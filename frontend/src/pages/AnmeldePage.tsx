@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { appPfad } from '../lib/basis'
+import { appPfad, ohneBasis } from '../lib/basis'
 import { Torbogen } from '../components/Torbogen'
 import { AccountButton } from '../components/AccountButton'
 import { Checkbox, Field, OrLine, TextLink } from '../vendor/nexui'
@@ -93,7 +93,9 @@ export function AnmeldePage({ modus, aufModus, aufFertig, aufVergessen }: Props)
     const schluessel = oidcErrorKey(abfrage.get('error'))
     if (schluessel) setOidcFehler(t(schluessel))
     else if (abfrage.get('error')) setOidcFehler(t('anmeldung.fehler_allgemein'))
-    if (abfrage.has('error') || abfrage.has('schritt') || window.location.pathname !== appPfad('/')) {
+    /* Die Zustimmung eines KI-Programms und die Seite einer Rückfrage (Modul mcp) bleiben nach der Anmeldung stehen. */
+    const mcpSeite = /^\/(oauth\/authorize|mcp\/requests\/[^/]+)$/.test(ohneBasis(window.location.pathname) ?? '')
+    if (!mcpSeite && (abfrage.has('error') || abfrage.has('schritt') || window.location.pathname !== appPfad('/'))) {
       window.history.replaceState(null, '', appPfad('/'))
     }
   }, [t])

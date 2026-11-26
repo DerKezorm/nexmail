@@ -921,10 +921,15 @@ class KontenStore:
         """Nach Sperren oder Loeschen: kein Weg mehr hinein. Browser, wartende Anmeldungen und gekoppelte iPhones
         enden, ein QR-Code, den noch niemand gescannt hat, verfaellt, die Kennung bekannter Browser wird neu.
         API-Schluessel bleiben stehen, werden aber abgewiesen, solange das Konto gesperrt oder geloescht ist
-        (``deps.api_zugriff``); Anbieter und Passkeys weist das Modul ab (``Account.blocked``)."""
+        (``deps.api_zugriff``); Anbieter und Passkeys weist das Modul ab (``Account.blocked``). Verbundene KI-Programme
+        enden (E42), MCP-Schluessel von Hand ruhen wie API-Schluessel."""
         self.db.execute(delete(Sitzung).where(Sitzung.benutzer_id == str(account_id)))
         self.db.execute(delete(AppKopplung).where(AppKopplung.benutzer_id == str(account_id)))
         self.renew_device_key(account_id)
+        # E42: verbundene KI-Programme (OAuth) enden wie Sitzungen und Geraete; MCP-Schluessel von Hand ruhen nur.
+        from .mcp_store import programme_trennen
+
+        programme_trennen(self.db, str(account_id))
 
     def deleted_before(self, moment: datetime) -> list[AccountId]:
         return list(

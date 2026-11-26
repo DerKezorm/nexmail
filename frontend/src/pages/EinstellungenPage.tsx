@@ -37,6 +37,9 @@ import { Darstellung } from './Darstellung'
 import { KontoFormular } from './KontoFormular'
 import { Schlagworte } from './Schlagworte'
 import { ApiKeysCard } from '../vendor/nexschluessel/ApiKeysCard'
+import { ToolsCard } from '../vendor/nexschluessel/ToolsCard'
+import { PendingRequests, ToolRights } from '../vendor/nexmcp'
+import { mcpSchluesselWorte, mcpWorte } from '../lib/mcpWorte'
 import { Installieren } from './einstellungen/Installieren'
 import { IphoneVerbinden } from './IphoneVerbinden'
 import { Sicherheit } from './Sicherheit'
@@ -264,8 +267,8 @@ export function EinstellungenPage({
         return <KalenderUndBuecher />
       case 'connections':
         /* Bauplan „Einstellungen", Verbindungen: Geräte, Auf diesem Gerät installieren, die anderen nex-Apps, nexmails
-           eigene Karte „Aufgaben" (Todoist, Webhook), API-Schlüssel (Modul schluessel). nexmail hat keinen MCP-Zugang,
-           darum keine Karte „KI-Werkzeuge (MCP)" (E27). */
+           eigene Karte „Aufgaben" (Todoist, Webhook), API-Schlüssel (Modul schluessel), seit dem Modul mcp 1.1.0 die
+           Karte „KI-Werkzeuge (MCP)" mit „Rechte je Werkzeug" an jedem Schlüssel und den wartenden Rückfragen. */
         return (
           <>
             <IphoneVerbinden />
@@ -290,6 +293,18 @@ export function EinstellungenPage({
               securityHref={appPfad(pfadVon('security'))}
               operator={Boolean(ich?.ist_betreiber)}
             />
+            <ToolsCard
+              request={modulAnfrage}
+              words={mcpSchluesselWorte(t)}
+              securityHref={appPfad(pfadVon('security'))}
+              extra={(schluessel) => <ToolRights request={modulAnfrage} keyId={schluessel.id} words={mcpWorte(t)} />}
+            >
+              <PendingRequests
+                request={modulAnfrage}
+                words={mcpWorte(t)}
+                viewHref={(anfrage) => appPfad(`/mcp/requests/${anfrage.id}`)}
+              />
+            </ToolsCard>
           </>
         )
       case 'mailboxes':

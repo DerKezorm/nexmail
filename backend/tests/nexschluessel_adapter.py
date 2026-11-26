@@ -26,7 +26,11 @@ KENNWORT = {"owner": "eigen-geheim-123", "other": "anders-geheim-456", "operator
 
 class Adapter(StandardAdapter):
     """nexmail: ``api_schluessel`` (Text-Kennungen, deutsche Spalten), Rechte ``anzahl``/``betreff``, Postfaecher
-    Pflicht, Extras Aufgaben und Schlagworte, kein Ablauf; die Wege des Moduls unter ``/api/connections``."""
+    Pflicht, Extras Aufgaben und Schlagworte, kein Ablauf; die Wege des Moduls unter ``/api/connections``. Seit dem
+    Durchgang „Module“ dazu MCP-Schluessel (``mcp_schluessel``, ``nxk_``, Stufen read/draft/write, Postfaecher Pflicht,
+    Extra ``mailtext``, mit Ablauf) und „KI erlaubt“ je Konto (``has_ai``)."""
+
+    has_ai = True
 
     package = "app.vendor.nexschluessel"
     prefix = "/api/connections"
@@ -64,8 +68,10 @@ class Adapter(StandardAdapter):
                 self.ids[rolle] = person.id
                 self.postfach[rolle] = konto.id
             db.commit()
-            # nexmails Schalter steht ab Werk auf aus; die Tests beginnen dort, wo der Betreiber Schluessel erlaubt.
+            # nexmails Schalter stehen ab Werk auf aus; die Tests beginnen dort, wo der Betreiber Schluessel und
+            # MCP erlaubt.
             einstellung_schreiben(db, apidienst.SCHALTER, "1")
+            einstellung_schreiben(db, "mcp_zugang", "1")
         self._angemeldet: dict[str, Any] = {}
         for rolle in ("operator", "owner", "other"):
             self.client(rolle)
@@ -126,7 +132,25 @@ class Adapter(StandardAdapter):
 
         from app.main import app
 
-        return TestClient(app).get("/api/v1/me", headers={"Authorization": f"Bearer {secret}"}).status_code
+        sicher = {"Authorization": f"Bearer {secret}"}
+        if kind == "mcp":
+            body = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}}
+            return TestClient(app).post("/api/mcp", json=body, headers=sicher).status_code
+        return TestClient(app).get("/api/v1/me", headers=sicher).status_code
+
+    def _ki(self, account: str, an: bool) -> None:
+        from app.db import SessionLocal
+        from app.models import Benutzer
+
+        with SessionLocal() as db:
+            db.get(Benutzer, self.ids[account]).ki_erlaubt = an
+            db.commit()
+
+    def take_ai(self, account: str = "owner") -> None:
+        self._ki(account, False)
+
+    def give_ai(self, account: str = "owner") -> None:
+        self._ki(account, True)
 
     def owe_factor(self) -> None:
         from app.db import SessionLocal, einstellung_schreiben
