@@ -319,14 +319,14 @@ Probe-Mail aus `anhang_erinnerung.spec.ts` im Lesebereich; Dateinamen tragen jet
 zeit.example.com“), nichts fehlte. oauth: je Anbieter ein Feld „Client-ID“, der Spec nimmt den Kasten „Google“. Der
 Antwort-Test schickt seine eigene Probe-Mail und läuft damit auch allein.
 
-**E57 (dcbd5d1):** sprachen 1.0.1 (Entfernen einer Sprache fragt erst), konten 1.1.1, schluessel 1.0.1; die drei
+**E57 (dcbd5d1):** sprachen 1.0.1 (Entfernen einer Sprache fragt erst), konten 1.1.1, schluessel 1.0.1 (danach 1.0.2, 35ed594); die drei
 Vorlagen von Hand nachgezogen (nur die Werte der App weichen ab). nexmail nutzt die neuen Plätze `newSignInMailHint`,
 `offAction`, `made` nicht.
 
 **Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 86a0cce, E45 bis E49 (ohne ruff, nexmail
 hat keins; pytest ohne xdist; zuletzt nach den Galerie-Funden): pytest 3305 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
-schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 449
+schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 450
 grün in 47 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
 Schlüssel über den alten Weg, gesperrter Schlüssel über `/api/v1`, gelöschtes Konto ohne Post, fremder Browser nicht
 entfernbar, die Adressfrage beim Wiederherstellen (verschlüsselt und eigene Sicherung), die Rückkehradressen der
