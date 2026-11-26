@@ -780,7 +780,7 @@ def zusammenfassung(
             sprache=_sprache(eingabe.sprache),
         )
     except kidienst.KiFehler as fehler:
-        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+        raise kidienst.als_antwort(fehler) from fehler
     return Zusammenfassung(text=raus, gekuerzt=gekuerzt)
 
 
@@ -808,7 +808,7 @@ def uebersetzung(
             person, db, text=text, sprache=_sprache(eingabe.sprache)
         )
     except kidienst.KiFehler as fehler:
-        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+        raise kidienst.als_antwort(fehler) from fehler
     return Zusammenfassung(text=raus, gekuerzt=gekuerzt)
 
 
@@ -833,7 +833,7 @@ def frage(
             sprache=_sprache(eingabe.sprache),
         )
     except kidienst.KiFehler as fehler:
-        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+        raise kidienst.als_antwort(fehler) from fehler
     return Zusammenfassung(text=raus, gekuerzt=gekuerzt)
 
 
@@ -858,7 +858,7 @@ def antwortentwurf(
             sprache=_sprache(eingabe.sprache),
         )
     except kidienst.KiFehler as fehler:
-        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+        raise kidienst.als_antwort(fehler) from fehler
     return Zusammenfassung(text=raus, gekuerzt=gekuerzt)
 
 

@@ -695,6 +695,24 @@ def _alt(abgelehnt: nexki.AiRefused) -> KiFehler:
     return KiFehler(ALTE_KENNUNGEN.get(abgelehnt.code, abgelehnt.code), **werte)
 
 
+def als_antwort(fehler: KiFehler):
+    """Die Antwort der alten KI-Wege (``/api/ki/…``, Zusammenfassung, Übersetzung, Frage) auf eine Absage.
+
+    ⚠️ **E55:** Kennungen von vorher (``ALTE_KENNUNGEN``, ``ki_dienst_sagt`` …) behalten ihren Status 400. Was es vorher
+    nicht gab (eine Absage des Moduls ohne ältere Kennung: Netzregeln, Bremsen, ``ai_app_refused`` …), kommt mit dem
+    Status des Moduls und bei ``ai_too_often`` mit ``Retry-After`` (ki 0.1.2, K-4); die Kennung steht wie immer als Text
+    in ``detail``."""
+    from fastapi import status
+
+    from ..meldung import MeldungHttp
+
+    modul = getattr(fehler, "modul", None)
+    if modul is not None and fehler.kennung == modul.code:
+        kopf = {"Retry-After": "60"} if modul.code == "ai_too_often" else None
+        return MeldungHttp(modul.status, fehler.kennung, fehler.werte, headers=kopf)
+    return MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST)
+
+
 @contextmanager
 def ersatz(transport: object | None) -> Iterator[None]:
     """Ein Ersatz für den Dienst in Tests (``httpx``-Transport), wie ihn das Modul kennt (``nexki.client.transport``).
@@ -738,7 +756,6 @@ def _vorgang_ergaenzen(
     fehler: KiFehler | None = None,
     verbrauch: dict | None = None,
     modulkennung: str = "",
-    gesendet: tuple[str, str, str, str] | None = None,
 ) -> None:
     """Die Zeile, die das Modul eben in „Was ging hinaus" schrieb, um nexmails Angaben von vorher ergänzen: Ton oder
     Sprache, verbrauchte Einheiten, die Kennung von vorher samt ihren Werten (versiegelt wie bisher). So zeigt der alte
@@ -751,22 +768,7 @@ def _vorgang_ergaenzen(
             .first()
         )
         if zeile is None:
-            if fehler is None or gesendet is None:
-                return
-            # TODO ki 0.1.1 (noch offen seit 0.1.0): eine unlesbare Antwort (kein JSON) schreibt das Modul nicht in „Was ging hinaus"
-            # (``client.ask``), obwohl der Text draußen war (K5). Bis das Modul es tut, schreibt nexmail die Zeile.
-            modell, auftrag, system, user = gesendet
-            text = json.dumps({"system": system, "user": user}, ensure_ascii=False)
-            zeile = KiVorgang(
-                benutzer_id=person.id,
-                modell=modell[:200],
-                auftrag=auftrag[:40],
-                rumpf=ki_store.KiStore(db).seal(text, f"{ki_store.CONFIG.account_key_context(person.id)}:events"),
-                rein=len(user),
-                fehler=modulkennung or fehler.kennung,
-                form=ki_store.FORM_MODUL,
-            )
-            db.add(zeile)
+            return
         if modulkennung:
             zeile.fehler = modulkennung
         zeile.ziel = (ziel or "")[:40]
@@ -822,15 +824,8 @@ def _hinaus(
             )
         except nexki.AiRefused as abgelehnt:
             fehler = alt(abgelehnt)
-            dienst = sitzung.get(Benutzer, person.id)
-            gesendet = (
-                (dienst.ki_modell if dienst else "", auftrag, system, user)
-                if abgelehnt.code == "ai_unreadable"
-                else None
-            )
-            _vorgang_ergaenzen(
-                sitzung, person, vorher, ziel=ziel, fehler=fehler, modulkennung=abgelehnt.code, gesendet=gesendet
-            )
+            # Seit ki 0.1.2 (K-5) schreibt das Modul auch eine unlesbare Antwort in „Was ging hinaus“.
+            _vorgang_ergaenzen(sitzung, person, vorher, ziel=ziel, fehler=fehler, modulkennung=abgelehnt.code)
             raise fehler from abgelehnt
         verbrauch = antwort.raw.get("usage") if isinstance(antwort.raw, dict) else None
         roh = antwort.text

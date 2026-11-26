@@ -102,7 +102,7 @@ def aendern(eingabe: Aenderung, person: AngemeldeterBenutzer, db: DbSession) -> 
             )
         )
     except kidienst.KiFehler as fehler:
-        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+        raise kidienst.als_antwort(fehler) from fehler
 
 
 @router.post("/modelle", response_model=list[Modell])
@@ -133,7 +133,7 @@ def modelle(
     try:
         gefunden = kidienst.modelle_holen(person, db, eingabe.url, eingabe.schluessel)
     except kidienst.KiFehler as fehler:
-        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+        raise kidienst.als_antwort(fehler) from fehler
     return [Modell(**m) for m in gefunden]
 
 
@@ -191,7 +191,7 @@ def text(
             db=db,
         )
     except kidienst.KiFehler as fehler:
-        raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
+        raise kidienst.als_antwort(fehler) from fehler
     return Textergebnis(text=raus)
 
 

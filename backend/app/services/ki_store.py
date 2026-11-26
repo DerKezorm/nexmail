@@ -1,4 +1,4 @@
-"""Die Anbindung des Moduls ki 0.1.0 (``app.vendor.nexki``) an nexmails Tabellen: ``AppConfig`` mit nexmails
+"""Die Anbindung des Moduls ki 0.1.2 (``app.vendor.nexki``) an nexmails Tabellen: ``AppConfig`` mit nexmails
 Auftraegen und der Store ueber die Felder von vorher (Bauplan „Entwurf KI-Anbieter“, „Alte Einstellungen gelten
 weiter“).
 
@@ -8,9 +8,10 @@ bleibt ``ki_aktiv``, „KI erlaubt“ des Kontos ``ki_erlaubt``. Neu sind nur ``
 jeder Zugang bisher), die Einstellungen des Betreibers als ``einstellung`` ``ki_<name>`` (JSON) und zwei Spalten in
 ``ki_vorgang`` (``form``, ``an``). Eine aeltere Fassung liest, was sie kannte, wie vorher.
 
-⚠️ **nexmail war „Jedes Konto selbst“** (K2): ``settings.adopt`` schreibt beim ersten Start den Weg ``own`` fest, wo
-Konten eigene Zugaenge haben, und setzt ihre Rechner im eigenen Netz einmal auf die Liste des Betreibers (K4). Eine
-frische Installation beginnt mit „Einer für alle“.
+⚠️ **nexmail war „Jedes Konto selbst“** (K2): ``uebernehmen`` ruft beim Start ``settings.adopt`` mit
+``older_mode="own"``, sobald die Datenbank schon Konten hat (eine Fassung von vorher), auch wenn noch niemand einen
+Zugang eingetragen hat (ki 0.1.2, K-9); Rechner eigener Zugaenge im eigenen Netz kommen einmal auf die Liste des
+Betreibers (K4). Eine frische Installation (beim ersten Start noch ohne Konto) beginnt mit „Einer für alle“.
 """
 
 from __future__ import annotations
@@ -222,6 +223,13 @@ class KiStore:
 
     def commit(self) -> None:
         self.db.commit()
+
+
+def uebernehmen(db: Session) -> list[str]:
+    """Beim Start (``main``): was nie gespeichert war, einmal festschreiben (``settings.adopt``). Eine Datenbank mit
+    Konten stammt von einer Fassung von vorher, deren Weg „Jedes Konto selbst“ war (K2)."""
+    vorher = db.scalar(select(Benutzer.id).limit(1)) is not None
+    return nexki.settings.adopt(store_fuer(db), CONFIG, older_mode="own" if vorher else None)
 
 
 def store_fuer(db: Session) -> KiStore:

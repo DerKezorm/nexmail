@@ -93,7 +93,7 @@ def test_ein_ziel_im_eigenen_netz_braucht_die_liste_des_betreibers(konto, dienst
     Mal, ohne dass etwas hinausgeht."""
     for url in (dienst.base, "http://192.168.1.20:11434/v1/", "http://nas.example.com:11434/v1/", "http://[fd00::20]/v1/"):
         abgelehnt = _zugang(konto, url)
-        assert abgelehnt.status_code == 400 and abgelehnt.json()["detail"] == "ai_address_private", url
+        assert abgelehnt.status_code == nexki.errors.CODES["ai_address_private"][0] and abgelehnt.json()["detail"] == "ai_address_private", url
     assert dienst.seen == []
 
     _liste(_rechner(dienst))
@@ -106,7 +106,8 @@ def test_ein_ziel_im_eigenen_netz_braucht_die_liste_des_betreibers(konto, dienst
 
     _liste()
     wieder = konto.post("/api/ki/text", json=TEXT)
-    assert wieder.status_code == 400 and wieder.json()["detail"] == "ai_address_private"
+    # Eine Kennung, die es vorher nicht gab, kommt mit dem Status des Moduls (``kidienst.als_antwort``, ki 0.1.2).
+    assert wieder.status_code == nexki.errors.CODES["ai_address_private"][0] and wieder.json()["detail"] == "ai_address_private"
     assert len(dienst.seen) == gesehen
 
 
@@ -124,7 +125,7 @@ def test_link_local_und_metadaten_nie(konto, url):
     """Regel 2: auch wenn der Betreiber den Rechner auf die Liste setzt."""
     _liste("169.254.169.254", "[fe80::1]", "metadaten.example.com", "100.100.100.200", "[::ffff:169.254.169.254]")
     abgelehnt = _zugang(konto, url)
-    assert abgelehnt.status_code == 400 and abgelehnt.json()["detail"] == "ai_address_refused", url
+    assert abgelehnt.status_code == nexki.errors.CODES["ai_address_refused"][0] and abgelehnt.json()["detail"] == "ai_address_refused", url
 
 
 def test_eine_weiterleitung_wird_nicht_verfolgt(konto, dienst, zaehler):
@@ -157,5 +158,5 @@ def test_kein_proxy_aus_der_umgebung(konto, dienst, zaehler, monkeypatch):
 def test_die_modellliste_geht_dieselben_wege(konto, dienst):
     """Auch die Modellliste (``POST /api/ki/modelle``) erreicht kein Ziel im eigenen Netz ohne Liste."""
     abgelehnt = konto.post("/api/ki/modelle", json={"url": dienst.base})
-    assert abgelehnt.status_code == 400 and abgelehnt.json()["detail"] == "ai_address_private"
+    assert abgelehnt.status_code == nexki.errors.CODES["ai_address_private"][0] and abgelehnt.json()["detail"] == "ai_address_private"
     assert dienst.seen == []

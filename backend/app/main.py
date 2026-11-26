@@ -338,14 +338,14 @@ async def lebenslauf(_: FastAPI):
     nexsicherung.space.warn_at_start()
 
     init_db()
-    # Modul ki 0.1.0: was nie gespeichert war, einmal festschreiben (Weg „Jedes Konto selbst", wo Konten eigene Zugänge
-    # haben; Rechner dieser Zugänge im eigenen Netz auf die Liste des Betreibers, K2, K4). Ein zweiter Start ändert nichts.
+    # Modul ki 0.1.2: was nie gespeichert war, einmal festschreiben (eine Installation von vorher bleibt „Jedes Konto
+    # selbst“, Rechner eigener Zugänge im eigenen Netz auf die Liste des Betreibers, K2, K4). Ein zweiter Start ändert
+    # nichts.
     from .services import ki_store
-    from .vendor import nexki
 
     with SessionLocal() as db:
         try:
-            nexki.settings.adopt(ki_store.store_fuer(db), ki_store.CONFIG)
+            ki_store.uebernehmen(db)
         except Exception:  # noqa: BLE001 - die KI ist Nebensache, der Start geht vor
             logger.exception("Adopting the AI settings of before failed.")
     # Ohne Konto: der Einrichtungscode ins Protokoll, bei jedem Start (Kontenmodul).
