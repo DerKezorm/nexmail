@@ -1830,7 +1830,6 @@
     "codes_uebrig_one": "{{count}} recovery code left",
     "codes_uebrig_other": "{{count}} recovery codes left",
     "dieses_geraet": "this device",
-    "faktor_aus_frage": "We need your password to turn it off.",
     "faktor_aus_warnung": "After that, all your mailboxes hang on your password alone. If nexmail is reachable from the internet, leave it on.",
     "faktor_ausschalten": "Turn off two-factor",
     "faktor_einschalten": "Turn on two-factor",
@@ -1848,8 +1847,6 @@
     "kennwort": "Password",
     "kennwort_hinweis": "Set a new password here with your current one.",
     "kennwort_aendern": "Change password",
-    "kennwort_bisher": "Current password",
-    "kennwort_neu": "New password",
     "kennwort_folge": "Every other device is signed out afterwards. This one stays signed in.",
     "kennwort_geaendert_one": "Password changed. {{count}} other device was signed out.",
     "kennwort_geaendert_other": "Password changed. {{count}} other devices were signed out."

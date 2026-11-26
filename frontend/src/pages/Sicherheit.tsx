@@ -26,6 +26,7 @@ import { useAccountQuestion } from '../components/AccountQuestion'
 import { Oauthzugaenge } from '../components/Oauthzugaenge'
 import { Anmeldeanbieter } from '../components/Anmeldeanbieter'
 import { CodesZeigen, ZweiterFaktor } from '../components/ZweiterFaktor'
+import { PASSWORD_MIN } from '../vendor/nexkonten/konten'
 import { confirmOf } from '../lib/accountButton'
 import { servermeldung } from '../lib/servermeldung'
 import { alsJson, anlegeOptionen, geraetename, passkeyMoeglich } from '../lib/passkey'
@@ -181,10 +182,10 @@ export function Sicherheit({
   }
 
   const wechselGrund =
-    neues.length > 0 && neues.length < 10
-      ? t('einrichtung.grund_kennwort_lang', { fehlen: 10 - neues.length })
+    neues.length > 0 && neues.length < PASSWORD_MIN
+      ? t('einrichtung.grund_kennwort_lang', { fehlen: PASSWORD_MIN - neues.length })
       : neuesNochmal && neues !== neuesNochmal
-        ? t('einrichtung.passwort_ungleich')
+        ? t('account.passwordMismatch')
         : ''
 
   async function kennwortWechseln() {
@@ -406,20 +407,20 @@ export function Sicherheit({
           closeLabel={t('aktion.schliessen')}
           busy={wechselLaeuft}
           error={wechselFehler || wechselGrund}
-          confirmDisabled={!altes || neues.length < 10 || neues !== neuesNochmal}
+          confirmDisabled={!altes || neues.length < PASSWORD_MIN || neues !== neuesNochmal}
           onCancel={wechselZu}
           onConfirm={() => void kennwortWechseln()}
         >
-          <Field label={t('sicherheit.kennwort_bisher')} type="password" autoComplete="current-password" value={altes} onChange={(e) => setAltes(e.target.value)} />
+          <Field label={t('account.currentPassword')} type="password" autoComplete="current-password" value={altes} onChange={(e) => setAltes(e.target.value)} />
           <Field
-            label={t('sicherheit.kennwort_neu')}
+            label={t('account.newPassword')}
             type="password"
             autoComplete="new-password"
-            hints={[t('einrichtung.passwort_hinweis')]}
+            hints={[t('account.passwordRules', { minimum: PASSWORD_MIN })]}
             value={neues}
             onChange={(e) => setNeues(e.target.value)}
           />
-          <Field label={t('einrichtung.passwort_wiederholen')} type="password" autoComplete="new-password" value={neuesNochmal} onChange={(e) => setNeuesNochmal(e.target.value)} />
+          <Field label={t('account.passwordRepeat')} type="password" autoComplete="new-password" value={neuesNochmal} onChange={(e) => setNeuesNochmal(e.target.value)} />
         </ConfirmDialog>
       )}
 
@@ -454,7 +455,7 @@ export function Sicherheit({
             }
           }}
         >
-          <Field label={t('sicherheit.faktor_aus_frage')} type="password" autoComplete="current-password" value={kennwort} onChange={(e) => setKennwort(e.target.value)} />
+          <Field label={t('account.currentPassword')} hints={[t('account.confirmWithPassword')]} type="password" autoComplete="current-password" value={kennwort} onChange={(e) => setKennwort(e.target.value)} />
         </ConfirmDialog>
       )}
 

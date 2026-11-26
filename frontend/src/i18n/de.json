@@ -1830,7 +1830,6 @@
     "codes_uebrig_one": "{{count}} Wiederherstellungscode übrig",
     "codes_uebrig_other": "{{count}} Wiederherstellungscodes übrig",
     "dieses_geraet": "dieses Gerät",
-    "faktor_aus_frage": "Zum Ausschalten brauchen wir dein Passwort.",
     "faktor_aus_warnung": "Danach hängen alle deine Postfächer an deinem Passwort allein. Wer nexmail aus dem Internet erreichbar hat, sollte ihn anlassen.",
     "faktor_ausschalten": "Zweiten Faktor ausschalten",
     "faktor_einschalten": "Zweiten Faktor einschalten",
@@ -1848,8 +1847,6 @@
     "kennwort": "Passwort",
     "kennwort_hinweis": "Mit dem bisherigen Passwort lässt sich hier ein neues setzen.",
     "kennwort_aendern": "Passwort ändern",
-    "kennwort_bisher": "Bisheriges Passwort",
-    "kennwort_neu": "Neues Passwort",
     "kennwort_folge": "Danach sind alle anderen Geräte abgemeldet. Dieses bleibt angemeldet.",
     "kennwort_geaendert_one": "Passwort geändert. {{count}} anderes Gerät wurde abgemeldet.",
     "kennwort_geaendert_other": "Passwort geändert. {{count}} andere Geräte wurden abgemeldet."

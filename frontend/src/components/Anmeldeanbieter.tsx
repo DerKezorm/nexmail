@@ -138,7 +138,7 @@ export function Anmeldeanbieter({ hatKennwort = true }: { hatKennwort?: boolean 
           onCancel={() => !laeuft && setFragtKennwort(null)}
           onConfirm={() => void verknuepfen()}
         >
-          <Field label={t('anmeldung.passwort')} type="password" autoComplete="current-password" value={kennwort} onChange={(e) => setKennwort(e.target.value)} />
+          <Field label={t('account.currentPassword')} type="password" autoComplete="current-password" value={kennwort} onChange={(e) => setKennwort(e.target.value)} />
         </ConfirmDialog>
       )}
     </Box>
