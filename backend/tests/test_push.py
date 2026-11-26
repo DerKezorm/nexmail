@@ -583,3 +583,43 @@ def test_eine_misslungene_meldung_haelt_keine_post_auf(welt, db, monkeypatch):
 
 def _meldung() -> push.Meldung:
     return push.Meldung(titel="Titel", text="Text", ziel="/", marke="m")
+
+
+# --------------------------------------------------------------------------- #
+# Einen anderen eigenen Browser entfernen (E34, „Auf welchem Weg“)
+# --------------------------------------------------------------------------- #
+
+
+def _abo(klient, endpunkt: str) -> int:
+    antwort = klient.post(
+        "/api/push/anmelden",
+        json={"endpunkt": endpunkt, "p256dh": "BPp256dh-schluessel", "auth": "auth-geheimnis"},
+    )
+    assert antwort.status_code == 200, antwort.text
+    return antwort.json()["id"]
+
+
+def test_ein_anderer_eigener_browser_laesst_sich_entfernen(klient, welt, db):
+    dieser = _abo(klient, "https://push.example.com/dieser")
+    anderer = _abo(klient, "https://push.example.com/anderer")
+    liste = klient.get("/api/push/geraete", params={"endpunkt": "https://push.example.com/dieser"}).json()
+    assert {g["id"]: g["dieses"] for g in liste} == {dieser: True, anderer: False}
+
+    assert klient.delete(f"/api/push/geraete/{anderer}").status_code == 204
+    db.expire_all()
+    assert [a.id for a in db.query(PushAnmeldung).all()] == [dieser]
+
+
+def test_den_browser_eines_anderen_kontos_entfernt_niemand(klient, zweiter_klient, welt, db):
+    from conftest import anmelden, zweiten_benutzer_anlegen
+
+    fremd = _abo(klient, "https://push.example.com/fremd")
+    _, geheimnis = zweiten_benutzer_anlegen(db)
+    anmelden(zweiter_klient, "zweiter", "auch-geheim-456", geheimnis)
+
+    antwort = zweiter_klient.delete(f"/api/push/geraete/{fremd}")
+    assert antwort.status_code == 404
+    assert antwort.json()["detail"] == "geraet_unbekannt"
+    db.expire_all()
+    assert db.get(PushAnmeldung, fremd) is not None
+    assert zweiter_klient.get("/api/push/geraete").json() == []
