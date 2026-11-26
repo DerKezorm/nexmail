@@ -208,12 +208,23 @@ def _schlank_machen(db_datei: Path) -> dict:
     }
 
 
-def archiv(passwort: str, quelle: Path | None = None) -> bytes:
+def archiv(
+    passwort: str,
+    quelle: Path | None = None,
+    *,
+    erstellt: str | None = None,
+    art: str | None = None,
+    kommentar: str | None = None,
+) -> bytes:
     """Ein verschlüsseltes ZIP mit allem, was den Stand ausmacht.
 
     ``quelle`` nimmt statt der laufenden Datenbank einen Rücksetzpunkt aus
     ``/data/sicherungen``. Er ist bereits eine abgeschlossene Datei — eine
     zweite konsistente Kopie davon wäre nur Arbeit ohne Wirkung.
+
+    ``erstellt``, ``art``, ``kommentar`` (sicherung 1.0.4, E64): kommt das Archiv aus einer Sicherung der Liste, trägt
+    sein Manifest deren Zeitpunkt, Art und Notiz, nicht den Zeitpunkt des Herunterladens; nach dem Hochladen und dem
+    Passwort nennt das Prüfen sie wieder.
     """
     if not passwort:
         raise SicherungFehler("archiv_ohne_passwort")
@@ -258,7 +269,9 @@ def archiv(passwort: str, quelle: Path | None = None) -> bytes:
                     {
                         "anwendung": "nexmail",
                         "version": __version__,
-                        "erstellt": datetime.now(timezone.utc).isoformat(),
+                        "erstellt": erstellt or datetime.now(timezone.utc).isoformat(),
+                        **({"art": art} if art else {}),
+                        **({"kommentar": kommentar} if kommentar else {}),
                         "schluessel_dabei": schluessel_dabei,
                         "nicht_enthalten": sorted(NICHT_INS_ARCHIV),
                         # ⚠️ **Die Adresse steht im Manifest, nicht nur in der

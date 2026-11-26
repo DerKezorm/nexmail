@@ -228,6 +228,11 @@ class Haken(AppHooks):
                     archiv.setpassword(passwort.encode("utf-8"))
                     namen = set(archiv.namelist())
                     archiv.extract(DB_IM_ZIP, ziel)
+                    manifest = (
+                        json.loads(archiv.read(sicherung.MANIFEST_IM_ARCHIV).decode("utf-8"))
+                        if sicherung.MANIFEST_IM_ARCHIV in namen
+                        else {}
+                    )
                     schluessel = (
                         archiv.read(sicherung.SCHLUESSEL_IM_ARCHIV).decode("utf-8").strip()
                         if sicherung.SCHLUESSEL_IM_ARCHIV in namen
@@ -235,19 +240,28 @@ class Haken(AppHooks):
                     )
             except RuntimeError as fehler:
                 raise BackupError("archive_password_wrong", "The password of the archive is wrong.") from fehler
-            except (*tools.DAMAGE, OSError, KeyError):
+            except (*tools.DAMAGE, OSError, KeyError, ValueError):
                 return Checked(database_ok=False, damaged=[DB_IM_ZIP], details=befund)
+            # sicherung 1.0.4 (E64): was das geöffnete Archiv über sich sagt (Zeitpunkt, Art, Notiz, Fassung).
+            innen = Described(
+                created=str(manifest.get("erstellt") or "") or None,
+                kind=ART_ZU_KIND.get(str(manifest.get("art", "manuell")), "manual"),
+                note=str(manifest.get("kommentar", "")),
+                version=str(manifest.get("version", "")),
+                locked=True,
+            )
             db_datei = ziel / DB_IM_ZIP
             if not _ganz(db_datei):
-                return Checked(database_ok=False, damaged=[DB_IM_ZIP], details=befund)
+                return Checked(database_ok=False, damaged=[DB_IM_ZIP], details=befund, described=innen)
             if not _schluessel_passt(db_datei, schluessel):
                 return Checked(
                     database_ok=True,
                     blocked="schluessel_passt_nicht",
                     blocked_text="The key in this archive does not open its database.",
                     details=befund,
+                    described=innen,
                 )
-        return Checked(database_ok=True, details=befund)
+        return Checked(database_ok=True, details=befund, described=innen)
 
     # --- Zurückspielen, sofort ----------------------------------------------------------------------------------------
 
@@ -303,7 +317,15 @@ class Haken(AppHooks):
             if path.suffix == ".zip":
                 quelle = Path(ordner) / DB_IM_ZIP
                 _aus_zip(path, quelle)
-            daten = sicherung.archiv(archive_password or "", quelle=quelle)
+            # sicherung 1.0.4 (E64): Zeitpunkt, Art und Notiz der Sicherung gehen mit ins verschlüsselte Manifest.
+            zettel = self.describe(path)
+            daten = sicherung.archiv(
+                archive_password or "",
+                quelle=quelle,
+                erstellt=zettel.created,
+                art=KIND_ZU_ART.get(zettel.kind),
+                kommentar=zettel.note,
+            )
         tools.new_file(ziel)
         ziel.write_bytes(daten)
         fertig = ziel.with_name(f".{path.stem}-schlank.zip")
