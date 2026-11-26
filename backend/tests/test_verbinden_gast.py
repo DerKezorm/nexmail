@@ -361,6 +361,25 @@ def test_trennen_loest_die_nextasks_verbindung_per_klick_die_von_hand_bleibt(wel
         assert db.get(Aufgabenverbindung, hand_id) is not None
 
 
+def test_ein_spaeter_von_hand_eingetragener_schluessel_bleibt_nach_dem_trennen(welt):
+    """Wer nach dem Klick unter „Von Hand verbinden“ wieder einen Schlüssel eingetragen hat, verbindet von Hand: das
+    Trennen der Klick-Verbindung lässt diese Zeile stehen."""
+    from app import crypto
+
+    gefunden, _ = welt
+    assert gefunden.connect("app").status_code == 200
+    with SessionLocal() as db:
+        v = db.query(Aufgabenverbindung).filter_by(art="nextasks").one()
+        zugang = nextasks.Zugang(url="https://nextasks.example.com", token="ntk_" + "h" * 40)
+        v.zugang = crypto.verschluesseln(nextasks.zugang_schreiben(zugang), f"aufgabenverbindung:{v.id}:zugang")
+        db.commit()
+        hand_id = v.id
+    weg = gefunden.app.client("owner").delete(f"{gefunden.pkg.PREFIX}/partners/{gefunden.partner.name}")
+    assert weg.status_code == 200, weg.text
+    with SessionLocal() as db:
+        assert db.get(Aufgabenverbindung, hand_id) is not None
+
+
 def test_beendet_nextasks_die_verbindung_loest_nexmail_sie_auch(welt):
     gefunden, _ = welt
     assert gefunden.connect("app").status_code == 200
