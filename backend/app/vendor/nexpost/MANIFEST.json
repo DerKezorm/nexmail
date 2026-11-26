@@ -2,7 +2,7 @@
   "files": {
     "backend/app/vendor/nexpost/__init__.py": "sha256-83DDHrWyeE/Xv2J3/8AMySNBQgklE0+cDDXfta6Ylxo=",
     "backend/app/vendor/nexpost/api.py": "sha256-d9czPymT8W471Z4WAbh3lZTwEHA1Vk0k7I8Je3nm2VA=",
-    "backend/app/vendor/nexpost/app_letters.py": "sha256-vuPLl6QAxcQQUAhFoMyErPkOdNNPwMoLo1Ne6b2K27M=",
+    "backend/app/vendor/nexpost/app_letters.py": "sha256-e7Zlsf4ZJGjQZ/blfbdVrKzplZLplZcsmsIKj7PzUss=",
     "backend/app/vendor/nexpost/common.py": "sha256-jzdIvoos7ytL25avFuKepuKBeQ1ANcm1LCgN5zsWKS8=",
     "backend/app/vendor/nexpost/config.py": "sha256-MT3sikZaReaXP1bZ+//CLeIv26d2k7u4wZ64YcpfSQ4=",
     "backend/app/vendor/nexpost/errors.py": "sha256-At29rWVLLHyPYPtb2dPOKKr2RliqSTu++vZLC8n35jY=",

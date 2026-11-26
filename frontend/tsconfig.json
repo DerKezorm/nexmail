@@ -15,5 +15,8 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts"],
+  // TODO sicherung 1.0.1: the module's own test (7685875, line 242) leaves three parameters unused, which
+  // noUnusedParameters refuses; vitest still runs it. Out again once the module's test is fixed (einst-fragen/nexmail.md).
+  "exclude": ["src/vendor/nexsicherung/sicherung.test.tsx"]
 }

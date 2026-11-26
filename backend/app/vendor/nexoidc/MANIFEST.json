@@ -25,10 +25,10 @@
     "backend/tests/nexoidc/test_nexoidc_paths.py": "sha256-gqJUZSIlzR7WYzudcnCvevW5bT/Tr1bIz+7bcbLDFU4=",
     "backend/tests/nexoidc/test_nexoidc_vendored.py": "sha256-1yLkDPHhdNX+lEAiA36HDQOLxW5kcNNCD94y5Nk9l0I=",
     "backend/tests/nexoidc/test_nexoidc_wayback.py": "sha256-X2xNNYZMe8VoRN+9myxBE2EgRVpeo8wsCpwhlThLx48=",
-    "frontend/src/vendor/nexoidc/SignInProviders.tsx": "sha256-eDwMkj3JCDbT42AMHHo+1W+yQU0Dz/g9zk0+EecrWZs=",
+    "frontend/src/vendor/nexoidc/SignInProviders.tsx": "sha256-TCY1MlMkBOguv3TLvYAN/7cPuwcWWtCRjvCBuBBEJq4=",
     "frontend/src/vendor/nexoidc/oidc.de.json": "sha256-1zWB5EApFD2DnH7GDAnAjH2yv7hnuQKOxVnUNGUSMJk=",
     "frontend/src/vendor/nexoidc/oidc.en.json": "sha256-s0FpJa2MPAugao271MkidqFtdayIp7GykvGDI4EDric=",
-    "frontend/src/vendor/nexoidc/oidc.ts": "sha256-RD/aP0OFROw8o8eBshtchmpvdyeb4MpySikSSH0E7+Q="
+    "frontend/src/vendor/nexoidc/oidc.ts": "sha256-iEfMx7nnWM0Kauwcc9eNtHRS0ucYoTlRYVHMEjvHENs="
   },
   "module": "oidc",
   "requires": {

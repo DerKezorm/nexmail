@@ -227,7 +227,7 @@ function leaves(tree: Tree, prefix = ''): [string, string][] {
 }
 
 // Every value a text of the module asks for (as in the module's template since konten 1.1.0, 5caffab).
-const values = { username: 'kim', email: 'kim@example.com', provider: 'Pocket ID', name: 'Kim', day: '25.11.2026', providers: 'Pocket ID, Entra', address: 'https://mail.example.com', used: '1 GB', limit: '5 GB', things: 'Mails', variable: 'NEXMAIL_CLIENT_IP', networks: '0.0.0.0/0', proxy: '172.18.0.2', proxies: '172.18.0.0/16' }
+const values = { username: 'kim', email: 'kim@example.com', provider: 'Pocket ID', name: 'Kim', day: '25.11.2026', providers: 'Pocket ID, Entra', address: 'https://mail.example.com', used: '1 GB', limit: '5 GB', things: 'Mails', thingsDative: 'Mails', variable: 'NEXMAIL_CLIENT_IP', networks: '0.0.0.0/0', proxy: '172.18.0.2', proxies: '172.18.0.0/16', trusts: 'Der Anbieter prüft den zweiten Faktor selbst' }
 const fill: Record<string, string | number> = { ...kontenVariables(APP_NAME), ...values }
 /** Plural keys (``days_one``, ``recoveryLeft_other``) are asked by their base with a count that picks them. */
 const PLURAL = /_(one|other)$/
