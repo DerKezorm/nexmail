@@ -27,6 +27,18 @@ class Adapter(StandardAdapter):
     prefix = "/api/server/storage"
     #: nexmail's old routes are its own, with their own shapes (``/api/sicherung``), not the module's legacy routes.
     legacy_prefix = ""
+    # E53: nexmail hatte keine eigenen Sicherungswege des Moduls vor ihm, also keine alten Namen.
+    operation_ids: dict[str, str] = {}
+    summaries: dict[str, str] = {}
+    schema_names: dict[str, str] = {}
+    openapi_path = "/openapi.json"
+
+    def description(self) -> dict[str, Any]:
+        """nexmail veroeffentlicht keine Beschreibung (``openapi_url=None``); die Vertragstests bekommen die eigene
+        der App, nie ueber einen Weg nur fuer die Tests."""
+        from app.main import app
+
+        return app.openapi()
     legacy_header = ""
 
     def start(self) -> None:
