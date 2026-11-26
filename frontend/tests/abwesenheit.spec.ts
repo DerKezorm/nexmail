@@ -18,8 +18,8 @@ test.afterEach(async ({ page }) => {
      angeschaltet zurücklässt, verschickt echte Post an echte Leute. */
   try {
     await zurAbwesenheit(page)
-    const schalter = page.getByRole('switch').first()
-    if ((await schalter.getAttribute('aria-checked')) === 'true') {
+    const schalter = page.locator('[data-testid^="settings-area-"]').getByRole('checkbox').first()
+    if (await schalter.isChecked()) {
       await schalter.click()
       await page.getByRole('button', { name: 'Speichern' }).first().click()
     }
@@ -52,22 +52,22 @@ test('Ohne Text lässt sie sich nicht einschalten', async ({ page }) => {
   /* ⚠️ **Den Zustand herstellen, nicht vorfinden.** Ein voriger Lauf kann
      einen Text hinterlassen haben; dann ginge das Einschalten durch und der
      Test prüfte nichts. */
-  const schalter = page.getByRole('switch').first()
-  if ((await schalter.getAttribute('aria-checked')) !== 'true') await schalter.click()
+  const schalter = page.locator('[data-testid^="settings-area-"]').getByRole('checkbox').first()
+  if (!(await schalter.isChecked())) await schalter.click()
   await page.getByLabel('Text').fill('')
   await page.getByRole('button', { name: 'Speichern' }).first().click()
 
   await expect(page.getByText(/Ohne Text keine Notiz/)).toBeVisible()
   await expect(page.getByText('abwesenheit_ohne_text')).toHaveCount(0)
   // Und eingeschaltet ist danach nichts.
-  await expect(page.getByRole('switch').first()).toHaveAttribute('aria-checked', 'false')
+  await expect(page.locator('[data-testid^="settings-area-"]').getByRole('checkbox').first()).not.toBeChecked()
 })
 
 test('Einschalten, Text setzen, Neuladen überstehen', async ({ page }) => {
   await anmelden(page)
   await zurAbwesenheit(page)
 
-  await page.getByRole('switch').first().click()
+  await page.locator('[data-testid^="settings-area-"]').getByRole('checkbox').first().click()
   await page.getByLabel('Betreff').fill('Bin bis Montag weg')
   await page.getByLabel('Text').fill('Ich bin ab Montag wieder da.')
   await page.getByRole('button', { name: 'Speichern' }).first().click()
@@ -77,7 +77,7 @@ test('Einschalten, Text setzen, Neuladen überstehen', async ({ page }) => {
 
   await page.reload()
   await zurAbwesenheit(page)
-  await expect(page.getByRole('switch').first()).toHaveAttribute('aria-checked', 'true')
+  await expect(page.locator('[data-testid^="settings-area-"]').getByRole('checkbox').first()).toBeChecked()
   await expect(page.getByLabel('Betreff')).toHaveValue('Bin bis Montag weg')
   await expect(page.getByLabel('Text')).toHaveValue('Ich bin ab Montag wieder da.')
 })
@@ -86,7 +86,7 @@ test('Ein verdrehter Zeitraum wird abgewiesen', async ({ page }) => {
   await anmelden(page)
   await zurAbwesenheit(page)
 
-  await page.getByRole('switch').first().click()
+  await page.locator('[data-testid^="settings-area-"]').getByRole('checkbox').first().click()
   await page.getByLabel('Text').fill('Bin weg.')
   await page.getByLabel('Von', { exact: true }).fill('2026-09-14')
   await page.getByLabel('Bis einschließlich').fill('2026-09-05')

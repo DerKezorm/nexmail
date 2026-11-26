@@ -154,8 +154,8 @@ test('Der Betreiber hat keinen Papierkorb an sich selbst', async ({ page }) => {
   await expect(zeile, 'Der Betreiber steht nicht in der Kontenliste.').toBeVisible({ timeout: 10_000 })
   await expect(zeile.getByText('Du', { exact: true })).toBeVisible()
 
-  /* Am eigenen Konto bietet „Verwalten“ weder „Konto löschen“ noch „Betreiber übergeben“ (konten 0.3.9
-     `NOT_ON_SELF`, nexmails `notSelf`), wohl aber „KI erlaubt“. */
+  /* Am eigenen Konto bietet „Verwalten“ weder „Konto löschen“ noch „Sperren“ oder eine andere Rolle (konten 1.1.0
+     `NOT_ON_SELF`), wohl aber „KI erlaubt“. „Betreiber übergeben“ gibt es seit konten 1.1.0 nicht mehr. */
   await zeile.getByRole('button', { name: /verwalten$/ }).click()
   const fenster = page.getByRole('dialog')
   await expect(fenster.getByRole('heading', { name: /verwalten$/ })).toBeVisible()
@@ -163,7 +163,9 @@ test('Der Betreiber hat keinen Papierkorb an sich selbst', async ({ page }) => {
     await fenster.getByRole('button', { name: 'Konto löschen' }).count(),
     'Der Betreiber lässt sich in der Oberfläche entfernen.',
   ).toBe(0)
-  expect(await fenster.getByRole('button', { name: 'Betreiber übergeben' }).count()).toBe(0)
+  for (const knopf of ['Betreiber übergeben', 'Sperren', 'Zum Mitglied machen']) {
+    expect(await fenster.getByRole('button', { name: knopf, exact: true }).count(), `${knopf} am eigenen Konto`).toBe(0)
+  }
   await expect(fenster.getByRole('checkbox', { name: 'KI erlaubt' })).toBeVisible()
   await keineRohenSchluessel(page)
   await page.keyboard.press('Escape')
@@ -184,7 +186,10 @@ test('Verwalten zeigt die Angaben und Knöpfe des Kontos, ohne Menü', async ({ 
   for (const gruppe of ['Ändern', 'Rechte', 'Beenden']) {
     await expect(fenster.getByRole('heading', { name: gruppe, exact: true })).toBeVisible()
   }
-  await expect(fenster.getByRole('button', { name: 'Betreiber übergeben' })).toBeVisible()
+  // konten 1.1.0: Rolle, Sperren und Löschen mit 30 Tagen zum Zurückholen statt „Betreiber übergeben“.
+  await expect(fenster.getByRole('button', { name: 'Betreiber übergeben' })).toHaveCount(0)
+  await expect(fenster.getByRole('button', { name: /^(Zum Betreiber machen|Zum Mitglied machen)$/ })).toBeVisible()
+  await expect(fenster.getByRole('button', { name: /^(Sperren|Entsperren)$/ })).toBeVisible()
   await expect(fenster.getByRole('button', { name: 'Konto löschen' })).toBeVisible()
   await expect(fenster.getByRole('menu')).toHaveCount(0)
 

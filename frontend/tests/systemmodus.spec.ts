@@ -18,10 +18,10 @@ test('„Wie das System“ folgt dem System, auch beim Umschalten', async ({ pag
   await bereich(page, 'Darstellung')
 
   const html = page.locator('html')
-  await page.getByRole('tab', { name: 'Dunkel' }).click()
+  await page.getByRole('radio', { name: 'Dunkel' }).click()
   await expect(html).not.toHaveAttribute('data-theme', 'light')
 
-  await page.getByRole('tab', { name: 'Wie das System' }).click()
+  await page.getByRole('radio', { name: 'Wie das System' }).click()
   await expect(html).toHaveAttribute('data-theme', 'light')
   await page.emulateMedia({ colorScheme: 'dark' })
   await expect(html).not.toHaveAttribute('data-theme', 'light')
@@ -34,6 +34,6 @@ test('„Wie das System“ folgt dem System, auch beim Umschalten', async ({ pag
   // Zurück auf die Vorgabe der Testdaten.
   await zuEinstellungen(page, 'Darstellung')
   await bereich(page, 'Darstellung')
-  await page.getByRole('tab', { name: 'Dunkel' }).click()
+  await page.getByRole('radio', { name: 'Dunkel' }).click()
   await expect(html).not.toHaveAttribute('data-theme', 'light')
 })

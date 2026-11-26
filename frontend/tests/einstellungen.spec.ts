@@ -106,7 +106,7 @@ test('Hell/Dunkel und Sprache stehen nicht mehr oben, sondern in den Einstellung
   await expect(page.getByRole('button', { name: /Dunkler Modus|Heller Modus/ })).toHaveCount(0)
   await expect(page.getByRole('group', { name: 'Sprache' })).toHaveCount(0)
   await zuEinstellungen(page, 'Darstellung')
-  await expect(page.getByRole('tab', { name: 'Dunkel', exact: true })).toBeVisible()
+  await expect(page.getByRole('radio', { name: 'Dunkel', exact: true })).toBeVisible()
   await bereich(page, 'Profil')
   await expect(page.getByRole('combobox', { name: /^Sprache/ })).toBeVisible()
 })

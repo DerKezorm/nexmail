@@ -1,4 +1,4 @@
-/* API-Schlüssel — der ganze Weg, nicht der Knopf.
+/* API-Schlüssel (Modul schluessel 1.0.0): der ganze Weg, nicht der Knopf.
  *
  * Anlegen, den einmal gezeigten Schlüssel wirklich gegen `/api/v1` benutzen,
  * widerrufen und sehen, dass er sofort nichts mehr öffnet. Ein Schlüssel, der
@@ -34,35 +34,31 @@ test('Schlüssel anlegen, damit lesen, widerrufen', async ({ page }, info) => {
       await page.request.delete(`/api/apischluessel/${s.id}`)
     }
 
-    await zuEinstellungen(page)
-    await bereich(page, 'Verbindungen')
-
-    // Der Riegel steht hier, nicht in der Verwaltung.
-    const riegel = page.getByRole('switch', { name: 'API-Schlüssel erlauben' })
+    // Der Riegel steht seit dem Bauplan „Einstellungen“ unter Server › Allgemein › Schnittstellen (Modul schluessel).
+    await zuEinstellungen(page, 'Allgemein')
+    const riegel = page.getByTestId('interfaces-api')
     await expect(riegel, 'Der Betreiber sieht den Riegel nicht.').toBeVisible()
-    if ((await riegel.getAttribute('aria-checked')) !== 'true') {
+    if (!(await riegel.isChecked())) {
       await riegel.click()
-      await expect(riegel).toHaveAttribute('aria-checked', 'true')
+      await expect(riegel).toBeChecked()
     }
 
-    await page.getByRole('button', { name: 'Neuer Schlüssel' }).click()
-    const fenster = page.getByRole('dialog')
-    await fenster.getByRole('textbox', { name: 'Name' }).fill(NAME)
-    await fenster.getByRole('combobox').selectOption('betreff')
-    await expect(fenster.getByText(/Denk daran, wer davorsteht/)).toBeVisible()
-    const haken = fenster.getByRole('checkbox', { name: new RegExp(`^${TESTPOSTFACH}\\b`) })
-    // Das Feld selbst ist unsichtbar (sr-only); geklickt wird wie von Hand
-    // auf seine Beschriftung.
-    await fenster.getByText(TESTPOSTFACH, { exact: true }).click()
+    await bereich(page, 'Verbindungen')
+    await page.getByTestId('api-keys-new').click()
+    const fenster = page.getByTestId('key-dialog')
+    await fenster.getByTestId('key-name').fill(NAME)
+    await fenster.getByTestId('key-right-headers').click()
+    const haken = fenster.getByTestId('key-areas').getByRole('checkbox', { name: new RegExp(`^${TESTPOSTFACH}\\b`) })
+    await haken.check()
     await expect(haken).toBeChecked()
     // Das Recht für Schlagworte steht eigens da, neben dem für Aufgaben (#17).
-    const marken = fenster.getByRole('checkbox', { name: /^Darf Schlagworte setzen/ })
+    const marken = fenster.getByTestId('key-option-tags')
     await expect(marken).not.toBeChecked()
-    await fenster.getByText('Darf Schlagworte setzen', { exact: true }).click()
+    await marken.check()
     await expect(marken).toBeChecked()
-    await fenster.getByRole('button', { name: 'Schlüssel anlegen' }).click()
+    await fenster.getByTestId('key-submit').click()
 
-    const feld = fenster.getByRole('textbox', { name: 'API-Schlüssel' })
+    const feld = page.getByTestId('key-secret').locator('input')
     await expect(feld, 'Nach dem Anlegen steht kein Schlüssel da.').toBeVisible({ timeout: 10_000 })
     const schluessel = await feld.inputValue()
     expect(schluessel).toMatch(/^nxm_[A-Za-z0-9_-]{40,}$/)
@@ -84,22 +80,17 @@ test('Schlüssel anlegen, damit lesen, widerrufen', async ({ page }, info) => {
     expect(ich.key, 'Das Häkchen kam nicht beim Schlüssel an.').toMatchObject({ tags: true, tasks: false })
     expect((await page.request.get('/api/v1/tags', { headers: mit })).status()).toBe(200)
 
-    await fenster.getByRole('button', { name: /Schließen|Close/ }).click()
-    await expect(fenster).toHaveCount(0)
+    await page.getByTestId('key-done').click()
+    await expect(page.getByTestId('key-secret')).toHaveCount(0)
 
-    // In der Liste: Name, Stufe, Postfach, „zuletzt benutzt".
-    const zeile = page.locator('li', { hasText: NAME })
-    await expect(zeile.getByText('Absender und Betreff')).toBeVisible()
-    await expect(zeile.getByText(TESTPOSTFACH)).toBeVisible()
-    await expect(zeile.getByText(/zuletzt benutzt/)).toBeVisible()
-    await expect(zeile.getByText('Schlagworte', { exact: true })).toBeVisible()
+    // In der Liste: der Name; widerrufen wirkt sofort.
+    const zeile = page.getByTestId('key-row').filter({ hasText: NAME })
+    await expect(zeile).toBeVisible()
     await keinSeitlichesScrollen(page)
     await page.screenshot({ path: `test-results/apischluessel-liste-${info.project.name}.png` })
-
-    // Widerrufen wirkt sofort.
-    await zeile.getByRole('button', { name: `${NAME} widerrufen` }).click()
-    await page.getByRole('dialog').getByRole('button', { name: 'Widerrufen' }).click()
-    await expect(page.locator('li', { hasText: NAME })).toHaveCount(0, { timeout: 10_000 })
+    await zeile.getByTestId('key-revoke').click()
+    await page.getByTestId('key-revoke-dialog').getByRole('button', { name: 'Widerrufen' }).click()
+    await expect(page.getByTestId('key-row').filter({ hasText: NAME })).toHaveCount(0, { timeout: 10_000 })
     expect((await page.request.get('/api/v1/summary', { headers: mit })).status()).toBe(401)
 
     await absagen.pruefen()

@@ -56,7 +56,7 @@ test('Unter Darstellung lässt sich der Kreis abschalten, ohne F5', async ({ pag
 
   await zuEinstellungen(page)
   await bereich(page, 'Darstellung')
-  await page.getByRole('switch', { name: 'Bilder vor den Absendern' }).click()
+  await page.getByRole('checkbox', { name: 'Bilder vor den Absendern' }).click()
   await zurAnsicht(page, 'Mail')
 
   await expect(zeilen(page).first()).toBeVisible()
@@ -75,8 +75,8 @@ test('Der Logo-Schalter kommt beim Server an, und eine ungeprüfte Mail fragt tr
     await page.reload()
     await zuEinstellungen(page)
     await bereich(page, 'Darstellung')
-    const schalter = page.getByRole('switch', { name: 'Firmenlogos laden' })
-    await expect(schalter).toHaveAttribute('aria-checked', 'false')
+    const schalter = page.getByRole('checkbox', { name: 'Firmenlogos laden' })
+    await expect(schalter).not.toBeChecked()
     const antwort = page.waitForResponse(
       (r) => r.url().includes('/api/einstellungen/bilder') && r.request().method() === 'PUT',
     )

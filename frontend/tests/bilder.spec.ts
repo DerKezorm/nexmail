@@ -94,12 +94,12 @@ test('Der globale Schalter liegt im Server und übersteht das Neuladen', async (
   await zuEinstellungen(page)
   await bereich(page, 'Darstellung')
 
-  const schalter = page.getByRole('switch', { name: 'Bilder immer anzeigen' })
+  const schalter = page.getByRole('checkbox', { name: 'Bilder immer anzeigen' })
   await expect(schalter).toBeVisible()
-  await expect(schalter).toHaveAttribute('aria-checked', 'false')
+  await expect(schalter).not.toBeChecked()
 
   await schalter.click()
-  await expect(schalter).toHaveAttribute('aria-checked', 'true')
+  await expect(schalter).toBeChecked()
 
   /* ⚠️ **Neu laden, nicht nur klicken.** Eine Einstellung, die nur im Browser
      steht, sieht bis zum F5 genauso aus wie eine, die wirklich gespeichert
@@ -107,9 +107,9 @@ test('Der globale Schalter liegt im Server und übersteht das Neuladen', async (
   await page.reload()
   await zuEinstellungen(page)
   await bereich(page, 'Darstellung')
-  const wieder = page.getByRole('switch', { name: 'Bilder immer anzeigen' })
-  await expect(wieder).toHaveAttribute('aria-checked', 'true')
+  const wieder = page.getByRole('checkbox', { name: 'Bilder immer anzeigen' })
+  await expect(wieder).toBeChecked()
 
   await wieder.click()
-  await expect(wieder).toHaveAttribute('aria-checked', 'false')
+  await expect(wieder).not.toBeChecked()
 })

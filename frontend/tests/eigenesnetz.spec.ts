@@ -33,7 +33,7 @@ async function standBeimServer(page: import('@playwright/test').Page): Promise<b
 
 async function zumServer(page: import('@playwright/test').Page) {
   await zuEinstellungen(page, 'Allgemein')
-  const schalter = page.getByRole('switch', { name: 'Eigenes Netz erlauben' })
+  const schalter = page.getByRole('checkbox', { name: 'Server im eigenen Netz' })
   await expect(schalter).toBeEnabled({ timeout: 10_000 })
   return schalter
 }
@@ -42,7 +42,7 @@ test('Der Schalter wirkt beim Umlegen und übersteht das Neuladen', async ({ pag
   const absagen = serverabsagen(page)
   const vorher = await standBeimServer(page)
   let schalter = await zumServer(page)
-  await expect(schalter).toHaveAttribute('aria-checked', String(vorher))
+  await expect(schalter).toBeChecked({ checked: vorher })
 
   /* ⚠️ Der Preis steht neben dem Schalter, nicht in einer README. */
   await expect(page.getByText(/jeder Benutzer dieser Installation nexmail eine Adresse/)).toBeVisible()
@@ -55,11 +55,11 @@ test('Der Schalter wirkt beim Umlegen und übersteht das Neuladen', async ({ pag
     )
     await schalter.click()
     expect((await geschrieben).status()).toBe(200)
-    await expect(schalter).toHaveAttribute('aria-checked', String(!vorher))
+    await expect(schalter).toBeChecked({ checked: !vorher })
 
     await page.reload()
     schalter = await zumServer(page)
-    await expect(schalter).toHaveAttribute('aria-checked', String(!vorher))
+    await expect(schalter).toBeChecked({ checked: !vorher })
   } finally {
     /* Zurück auf den Stand von vorher, auch wenn oben etwas scheitert, und
        über die Schnittstelle statt über den Schalter: Die
@@ -76,8 +76,8 @@ test('Der Schalter für den Text der Mail an Webhooks wirkt beim Umlegen und nen
   const absagen = serverabsagen(page)
   const vorher = ((await (await page.request.get(TEXT)).json()) as { erlaubt: boolean }).erlaubt
   await zumServer(page)
-  let schalter = page.getByRole('switch', { name: 'Text erlauben' })
-  await expect(schalter).toHaveAttribute('aria-checked', String(vorher))
+  let schalter = page.getByRole('checkbox', { name: 'Text der Mail an Webhooks' })
+  await expect(schalter).toBeChecked({ checked: vorher })
   await expect(page.getByText(/den Text seiner Mails an eine Adresse seiner Wahl/)).toBeVisible()
 
   try {
@@ -88,8 +88,8 @@ test('Der Schalter für den Text der Mail an Webhooks wirkt beim Umlegen und nen
     expect((await geschrieben).status()).toBe(200)
     await page.reload()
     await zumServer(page)
-    schalter = page.getByRole('switch', { name: 'Text erlauben' })
-    await expect(schalter).toHaveAttribute('aria-checked', String(!vorher))
+    schalter = page.getByRole('checkbox', { name: 'Text der Mail an Webhooks' })
+    await expect(schalter).toBeChecked({ checked: !vorher })
     await page.screenshot({ path: 'test-results/verwaltung-webhook-mailtext.png', fullPage: true })
   } finally {
     // Die Entwicklungsdatenbank gehört nicht diesem Test.
