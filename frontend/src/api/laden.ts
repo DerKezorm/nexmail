@@ -1126,6 +1126,8 @@ export interface NextimeStand {
   version: string
   /** Eine Kennung, wenn der Zugang zuletzt abgelehnt wurde. */
   letzterFehler: string
+  /** Per „Verbinden“ gemacht (Modul verbinden): Schlüssel und Trennen stehen in der Karte des Moduls. */
+  perKlick: boolean
 }
 
 export async function nextimeStandLaden(): Promise<NextimeStand> {
@@ -1135,6 +1137,7 @@ export async function nextimeStandLaden(): Promise<NextimeStand> {
     name: string
     version: string
     letzter_fehler: string
+    per_klick?: boolean
   }>('/api/nextime/verbindung')
   return {
     verbunden: roh.verbunden,
@@ -1142,6 +1145,7 @@ export async function nextimeStandLaden(): Promise<NextimeStand> {
     name: roh.name,
     version: roh.version,
     letzterFehler: roh.letzter_fehler,
+    perKlick: Boolean(roh.per_klick),
   }
 }
 
@@ -1163,6 +1167,7 @@ export async function nextimeVerbinden(
     name: roh.name,
     version: roh.version,
     letzterFehler: roh.letzter_fehler ?? '',
+    perKlick: false,
     kalender: roh.kalender,
   }
 }

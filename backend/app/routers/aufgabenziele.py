@@ -27,6 +27,8 @@ class Verbindung(BaseModel):
     fehler: str
     angelegt: datetime
     zuletzt_abgeglichen: datetime | None
+    #: Per „Verbinden“ gemacht (Modul verbinden): Schlüssel und Trennen stehen dann in der Karte des Moduls.
+    per_klick: bool = False
 
 
 class Stand(BaseModel):
@@ -76,6 +78,15 @@ class Gruppe(BaseModel):
     listen: list[Liste]
 
 
+def _per_klick(v) -> bool:
+    if v.art != "nextasks":
+        return False
+    try:
+        return bool(aufgabenziele._nextasks_zugang(v).ueber)  # noqa: SLF001
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _verbindung(v) -> Verbindung:
     return Verbindung(
         id=v.id,
@@ -84,6 +95,7 @@ def _verbindung(v) -> Verbindung:
         fehler=v.letzter_fehler,
         angelegt=v.angelegt,
         zuletzt_abgeglichen=v.zuletzt_abgeglichen,
+        per_klick=_per_klick(v),
     )
 
 

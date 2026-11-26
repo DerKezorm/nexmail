@@ -306,6 +306,8 @@
     "grund_code": "Es fehlt noch der Einrichtungscode."
   },
   "einstellungen": {
+    "nexfolk_nutzung": "Verbunden holt nexmail die Adressbücher, die du nexfolk dabei freigibst, in die Kontakte und gleicht sie in beide Richtungen ab.",
+    "nexpaper_nutzung": "Verbunden steht neben jedem Anhang einer Mail „Als Dokument an nexpaper“.",
     "aufgaben": "Aufgaben",
     "iphone": "iPhone verbinden",
     "api": "API-Schlüssel",
@@ -1019,6 +1021,8 @@
   "lesen": {
     "an": "An",
     "kopie": "Kopie",
+    "an_nexpaper": "Als Dokument an nexpaper",
+    "an_nexpaper_fertig": "Liegt jetzt in nexpaper",
     "anhaenge_eine": "1 Anhang",
     "anhaenge_viele": "{{count}} Anhänge",
     "bilder_geblockt": "Bilder in dieser Nachricht wurden nicht geladen. Sie würden dem Absender verraten, wann du sie geöffnet hast.",
@@ -1696,6 +1700,9 @@
     "nextasks_adresse_ungueltig": "Die Adresse von nextasks muss mit http:// oder https:// beginnen, ohne Zugangsdaten, ? oder #.",
     "nextasks_adresse_localhost": "localhost ist im Container nexmail selbst. Trag die Adresse ein, unter der nextasks im Netz erreichbar ist, etwa https://tasks.example.com.",
     "nextasks_adresse_im_eigenen_netz": "Diese Adresse liegt im eigenen Netz. Der Betreiber kann das unter Server › Allgemein › Funktionen für alle Konten erlauben.",
+    "nexpaper_nicht_verbunden": "nexmail ist nicht mehr mit nexpaper verbunden. Verbinde es unter Mein Konto › Verbindungen neu.",
+    "nexpaper_nicht_erreichbar": "nexpaper ist gerade nicht erreichbar.",
+    "nexpaper_nimmt_nicht": "nexpaper hat die Datei nicht angenommen, etwa weil es diese Art von Datei nicht nimmt oder der Speicher voll ist.",
     "nextasks_nicht_erreichbar": "nextasks ist unter dieser Adresse gerade nicht erreichbar.",
     "nextasks_zeitueberschreitung": "nextasks hat länger als {{sekunden}} Sekunden nicht geantwortet.",
     "nextasks_weiterleitung": "Die Adresse leitet weiter (HTTP {{status}}). nexmail folgt keiner Weiterleitung, trag die Adresse ein, unter der nextasks wirklich läuft.",

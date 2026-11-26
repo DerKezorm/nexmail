@@ -1,5 +1,6 @@
 """V18: was nexmail heute über eine von Hand eingetragene Verbindung mit nextasks und nextime tut, tut es genauso über
-eine per „Verbinden“ gemachte (Modul verbinden 0.1.1). Je Partner dieselbe Nutzung zweimal: über den alten Zugang
+eine per „Verbinden“ gemachte (Modul verbinden 0.1.2). Dazu nexfolk (CardDAV-Abgleich mit dem Token der Verbindung statt
+eines Gerätepassworts) und, als neues Paar (V19), „Als Dokument an nexpaper“ (``documents.add``). Je Partner dieselbe Nutzung zweimal: über den alten Zugang
 (Adresse plus API-Schlüssel, ``TRANSPORT`` der App) und über die Klick-Verbindung (``nexverbinden.call``), gegen einen
 Ersatz, der antwortet wie nextasks bzw. nextime und sich merkt, mit welchem Schlüssel gefragt wurde.
 
@@ -23,8 +24,10 @@ import verbinden_contract as contract  # noqa: E402
 from nexverbinden_adapter import Adapter  # noqa: E402
 
 from app.db import SessionLocal  # noqa: E402
-from app.models import Aufgabenverbindung, Benutzer, NextimeVerbindung  # noqa: E402
-from app.services import aufgabenziele, nextasks, nextime, nextimeverbindung  # noqa: E402
+from app.config import get_settings  # noqa: E402
+from app.models import Adressbuch, Anhang, Aufgabenverbindung, Benutzer, Kontakt, Konto, Nachricht, NextimeVerbindung, Ordner  # noqa: E402
+from app.services import adressbuchabgleich, aufgabenziele, carddav, nexpaper, nextasks, nextime, nextimeverbindung  # noqa: E402
+from test_adressbuchabgleich import BUCH, VOLL, Buchserver, _buch, _karte  # noqa: E402
 
 LISTEN = {"lists": [{"id": "l1", "name": "Einkauf", "space_name": "Zuhause", "writable": True, "sections": []}]}
 ICH_TASKS = {"display_name": "Kim", "level": "write", "features": ["tasks", "external_ref"]}
@@ -53,9 +56,9 @@ class Ersatz:
         return httpx.Response(200, json=daten)
 
 
-@pytest.fixture
-def welt(tmp_path: Path):
+def _welt(tmp_path: Path, partner: str = "nextasks"):
     adapter = Adapter()
+    adapter.partner = partner
     ersatz = Ersatz()
     for gefunden in contract.world(contract.package(adapter), adapter, tmp_path):
         original = gefunden._handle
@@ -68,6 +71,11 @@ def welt(tmp_path: Path):
         gefunden._handle = handle  # type: ignore[method-assign]
         contract.package(adapter).reach.TRANSPORT = httpx.MockTransport(handle)
         yield gefunden, ersatz
+
+
+@pytest.fixture
+def welt(tmp_path: Path):
+    yield from _welt(tmp_path)
 
 
 def _person(rolle: str = "kim") -> Benutzer:
@@ -130,3 +138,162 @@ def test_nextime_zugang_ueber_den_klick(welt, monkeypatch):
         assert db.query(NextimeVerbindung).count() == 0
     assert json.loads(nextime.zugang_schreiben(nextime.Zugang(url="u", token="t")))["token"] == "t"
     _ = nextimeverbindung
+
+
+# --- nexfolk: dieselben Bücher über CardDAV, einmal mit Gerätepasswort, einmal mit dem Token der Verbindung ---------- #
+
+NEXFOLK_BUCH = "https://nexfolk.example.com/dav/books/kim/familie/"
+
+
+@pytest.fixture
+def nexfolk_welt(tmp_path: Path, monkeypatch):
+    server = Buchserver()
+    server.karten["/dav/books/kim/familie/k2.vcf"] = ("e2", _karte("k2", "Uli Beispiel", "uli@example.org"))
+    server.karten["/dav/vera/buecher/privat/k1.vcf"] = ("e1", VOLL)
+    monkeypatch.setattr(adressbuchabgleich, "NEXFOLK_TRANSPORT", server.transport())
+    gesucht: list[carddav.Zugang] = []
+
+    def finden(zugang: carddav.Zugang, klient=None):
+        gesucht.append(zugang)
+        return [carddav.FernBuch(url=NEXFOLK_BUCH, name="Familie")]
+
+    monkeypatch.setattr(carddav, "buecher_finden", finden)
+    for gefunden, _ in _welt(tmp_path, "nexfolk"):
+        yield gefunden, server, gesucht
+
+
+def test_nexfolk_per_klick_gleicht_ab_wie_von_hand(nexfolk_welt, monkeypatch):
+    gefunden, server, gesucht = nexfolk_welt
+    # Von Hand: Adresse, Benutzer und Gerätepasswort (Basic), wie bisher.
+    with SessionLocal() as db:
+        person = db.query(Benutzer).filter_by(benutzername="kim").one()
+        hand = _buch(db, person, "Von Hand", BUCH)
+        echt = adressbuchabgleich.zugang
+
+        def mit_transport(b, db=None, **kw):
+            z = echt(b, db, **kw)
+            z.transport = z.transport or server.transport()
+            return z
+
+        monkeypatch.setattr(adressbuchabgleich, "zugang", mit_transport)
+        adressbuchabgleich.abgleichen(db, hand)
+        assert hand.letzter_fehler == ""
+        assert server.koepfe[-1]["authorization"].startswith("Basic ")
+
+    # Per Klick: die Verbindung legt das Buch an, mit dem Konto der Verbindung statt eines Passworts.
+    assert gefunden.connect("app").status_code == 200
+    assert gesucht and gesucht[0].token and gesucht[0].url == "https://nexfolk.example.com/dav/"
+    with SessionLocal() as db:
+        klick = db.query(Adressbuch).filter_by(herkunft="nexfolk").one()
+        assert klick.ueber and klick.url == NEXFOLK_BUCH and not klick.passwort
+        adressbuchabgleich.abgleichen(db, klick)
+        assert klick.letzter_fehler == ""
+        assert server.koepfe[-1]["authorization"].startswith("Bearer ")
+        # Jede Karte landet in ihrem Buch, auf beiden Wegen gleich.
+        namen = {(k.adressbuch_id, k.name) for k in db.query(Kontakt).all()}
+        assert (hand.id, "Vera Beispiel") in namen and (klick.id, "Uli Beispiel") in namen
+    assert gefunden.card("app")["state"] == "connected"
+
+
+def test_nexfolk_nicht_erreichbar_steht_am_buch_und_in_der_karte(nexfolk_welt, monkeypatch):
+    gefunden, _server, _ = nexfolk_welt
+    assert gefunden.connect("app").status_code == 200
+    monkeypatch.setattr(
+        adressbuchabgleich, "NEXFOLK_TRANSPORT", httpx.MockTransport(lambda a: (_ for _ in ()).throw(httpx.ConnectError("x", request=a)))
+    )
+    with SessionLocal() as db:
+        klick = db.query(Adressbuch).filter_by(herkunft="nexfolk").one()
+        adressbuchabgleich.abgleichen(db, klick)
+        assert klick.letzter_fehler == "caldav_nicht_erreichbar"
+    assert gefunden.card("app")["state"] == "unreachable"
+
+
+# --- nexpaper: ein Anhang als Dokument (V19) ------------------------------------------------------------------------ #
+
+
+class Papier:
+    """Antwortet wie nexpapers ``POST /api/v1/documents`` und merkt sich Schlüssel, Datei und Weg."""
+
+    def __init__(self, erstes_mal_401: bool = False) -> None:
+        self.gesehen: list[tuple[str, str, bytes]] = []
+        self.erstes_mal_401 = erstes_mal_401
+
+    def __call__(self, anfrage: httpx.Request) -> httpx.Response:
+        self.gesehen.append((anfrage.url.path, anfrage.headers.get("authorization", ""), anfrage.read()))
+        if self.erstes_mal_401 and len(self.gesehen) == 1:
+            return httpx.Response(401, json={"detail": {"code": "token_invalid"}})
+        return httpx.Response(201, json={"items": [{"filename": "rechnung.pdf", "status": "created"}]})
+
+
+@pytest.fixture
+def nexpaper_welt(tmp_path: Path):
+    yield from _welt(tmp_path, "nexpaper")
+
+
+def _mail_mit_anhang(rolle: str = "kim") -> tuple[int, int]:
+    with SessionLocal() as db:
+        person = db.query(Benutzer).filter_by(benutzername=rolle).one()
+        konto = Konto(
+            benutzer_id=person.id, anzeigename="Post", adresse=f"{rolle}@example.com", imap_server="imap.example.com",
+            imap_benutzer=rolle, smtp_server="smtp.example.com", smtp_benutzer=rolle,
+        )  # fmt: skip
+        db.add(konto)
+        db.flush()
+        ordner = Ordner(konto_id=konto.id, pfad="INBOX", name="Posteingang", rolle="posteingang")
+        db.add(ordner)
+        db.flush()
+        nachricht = Nachricht(benutzer_id=person.id, konto_id=konto.id, ordner_id=ordner.id, uid=1, betreff="Rechnung",
+                              von_adresse="laden@example.com", koerper_text="Anbei.")
+        db.add(nachricht)
+        db.flush()
+        blob = get_settings().blob_dir
+        blob.mkdir(parents=True, exist_ok=True)
+        (blob / ("cd" * 32)).write_bytes(b"%PDF-1.4 rechnung")
+        anhang = Anhang(nachricht_id=nachricht.id, dateiname="rechnung.pdf", mime="application/pdf", groesse=17,
+                        blob_hash="cd" * 32)
+        db.add(anhang)
+        db.commit()
+        return nachricht.id, anhang.id
+
+
+def test_ein_anhang_geht_als_dokument_an_nexpaper(nexpaper_welt, monkeypatch):
+    gefunden, _ = nexpaper_welt
+    papier = Papier()
+    monkeypatch.setattr(nexpaper, "TRANSPORT", httpx.MockTransport(papier))
+    nachricht, anhang = _mail_mit_anhang()
+    klient = gefunden.app.client("owner")
+    # Ohne Verbindung sagt nexmail, dass es keine gibt, und nichts geht hinaus.
+    antwort = klient.post(f"/api/nachrichten/{nachricht}/anhang/{anhang}/nexpaper")
+    assert antwort.status_code == 409 and antwort.json()["detail"] == "nexpaper_nicht_verbunden"
+    assert papier.gesehen == []
+
+    assert gefunden.connect("app").status_code == 200
+    antwort = klient.post(f"/api/nachrichten/{nachricht}/anhang/{anhang}/nexpaper")
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json() == {"status": "created"}
+    pfad, schluessel, rumpf = papier.gesehen[-1]
+    assert pfad == "/api/v1/documents" and schluessel.startswith("Bearer ")
+    assert b'filename="rechnung.pdf"' in rumpf and b"%PDF-1.4 rechnung" in rumpf
+    assert gefunden.card("app")["state"] == "connected"
+
+
+def test_nexpaper_nach_einem_401_einmal_mit_frischem_token(nexpaper_welt, monkeypatch):
+    gefunden, _ = nexpaper_welt
+    papier = Papier(erstes_mal_401=True)
+    monkeypatch.setattr(nexpaper, "TRANSPORT", httpx.MockTransport(papier))
+    assert gefunden.connect("app").status_code == 200
+    with SessionLocal() as db:
+        kim = db.query(Benutzer).filter_by(benutzername="kim").one().id
+    assert nexpaper.senden(kim, "rechnung.pdf", b"%PDF")["status"] == "created"
+    assert len(papier.gesehen) == 2 and papier.gesehen[0][1] != papier.gesehen[1][1]
+
+
+def test_eine_fremde_mail_geht_nicht_an_nexpaper(nexpaper_welt, monkeypatch):
+    gefunden, _ = nexpaper_welt
+    papier = Papier()
+    monkeypatch.setattr(nexpaper, "TRANSPORT", httpx.MockTransport(papier))
+    nachricht, anhang = _mail_mit_anhang("sam")
+    assert gefunden.connect("app").status_code == 200
+    assert gefunden.app.client("owner").post(f"/api/nachrichten/{nachricht}/anhang/{anhang}/nexpaper").status_code == 404
+    assert papier.gesehen == []
+

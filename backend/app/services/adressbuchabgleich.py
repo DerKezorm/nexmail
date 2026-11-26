@@ -110,13 +110,67 @@ def passwort_schreiben(buch: Adressbuch, klartext: str) -> None:
     buch.passwort = crypto.verschluesseln(klartext, _kontext(buch.id))
 
 
-def zugang(buch: Adressbuch, db: Session | None = None) -> carddav.Zugang:
+#: Wo nexfolk seine Adressbücher anbietet (CardDAV, ``/.well-known/carddav`` leitet dorthin).
+NEXFOLK_DAV = "/dav/"
+#: Nur für Tests: ein eigener Transport für nexfolk über die Klick-Verbindung.
+NEXFOLK_TRANSPORT: object | None = None
+
+
+def _nexfolk_zugang(url: str, konto_id: str, *, neu: bool = False) -> carddav.Zugang:
+    """V18 (verbinden 0.1.2): ein Buch von nexfolk über die Klick-Verbindung, mit ihrem frischen Token als ``Bearer``
+    (nexfolk öffnet CardDAV dafür mit ``contacts.read``, Ändern mit ``contacts.write``). Absagen in der Form des
+    CardDAV-Abgleichs, damit die Karte des Buchs dasselbe sagt wie bei einem Gerätepasswort."""
+    from . import verbinden_store
+
+    try:
+        verbindung = verbinden_store.zugriff("nexfolk", konto_id, neu=neu)
+    except verbinden_store.Unerreichbar as f:
+        raise caldav.CaldavFehler("caldav_nicht_erreichbar") from f
+    except verbinden_store.Abgelehnt as f:
+        raise caldav.CaldavFehler("caldav_abgewiesen") from f
+    return carddav.Zugang(url=url or verbindung.base.rstrip("/") + NEXFOLK_DAV, benutzer="", passwort="",
+                          token=verbindung.token, transport=NEXFOLK_TRANSPORT)
+
+
+def nexfolk_ueber_klick(db: Session, person: Benutzer, adresse: str) -> list[Adressbuch]:
+    """``on_connected`` für nexfolk: die Bücher, die die Verbindung lesen darf, als eigene Zeilen mit ``ueber`` (kein
+    Passwort). Ein Buch, das schon von Hand verbunden ist, bleibt, wie es ist (alte Verbindungen merken nichts)."""
+    gefunden = carddav.buecher_finden(_nexfolk_zugang("", person.id))
+    bekannt = {b.url for b in adressbuecher.meine(db, person) if b.url}
+    raus: list[Adressbuch] = []
+    for fern in gefunden:
+        if fern.url in bekannt:
+            continue
+        vorhanden = adressbuecher.meine(db, person)
+        buch = Adressbuch(
+            benutzer_id=person.id,
+            name=(fern.name if fern.benannt else "nexfolk").strip()[:120] or "nexfolk",
+            farbe=adressbuecher.naechste_farbe(vorhanden),
+            reihenfolge=len(vorhanden),
+            art="carddav",
+            herkunft="nexfolk",
+            url=fern.url,
+            ueber=str(person.id),
+        )
+        db.add(buch)
+        db.flush()
+        raus.append(buch)
+    db.commit()
+    logger.info("%s address book(s) of nexfolk were connected by click.", len(raus))
+    return raus
+
+
+def zugang(buch: Adressbuch, db: Session | None = None, *, neu: bool = False) -> carddav.Zugang:
     """Wie sich nexmail bei diesem Buch ausweist.
 
     ⚠️ **Token schlägt Passwort.** Google lässt an seinen DAV-Endpunkten nur
     ``Bearer`` zu; Basic Auth wird abgewiesen, und die Meldung sieht aus wie
     ein falsches Passwort. Derselbe Zugang wie beim Kalender.
+
+    Ein Buch von nexfolk per Klick (``ueber``) weist sich mit dem Token der Verbindung aus; ``neu`` nach einem 401.
     """
+    if buch.ueber:
+        return _nexfolk_zugang(buch.url, buch.ueber, neu=neu)
     if buch.oauth_zugang_id and db is not None:
         from ..models import OauthZugang
         from . import mailoauth
@@ -255,7 +309,7 @@ def abgleichen(db: Session, buch: Adressbuch, erzwingen: bool = False) -> Runde:
     kennung = buch.id
     try:
         try:
-            runde = _carddav_abgleichen(db, buch, erzwingen)
+            runde = _ueber_klick_abgleichen(db, buch, erzwingen) if buch.ueber else _carddav_abgleichen(db, buch, erzwingen)
             buch.letzter_fehler = ""
         except (carddav.CarddavFehler, caldav.CaldavFehler, AbgleichFehler, mailoauth.OauthFehler) as f:
             # Wie beim Kalender: Eine abgelaufene Zustimmung ist ein Zustand.
@@ -270,7 +324,29 @@ def abgleichen(db: Session, buch: Adressbuch, erzwingen: bool = False) -> Runde:
     return runde
 
 
-def _carddav_abgleichen(db: Session, buch: Adressbuch, erzwingen: bool) -> Runde:
+def _ueber_klick_abgleichen(db: Session, buch: Adressbuch, erzwingen: bool) -> Runde:
+    """Ein Buch von nexfolk über die Klick-Verbindung: nach einem 401 einmal mit frischem Token, danach sagt
+    ``verbinden_store.gelaufen`` der Karte der Verbindung, wie es ausging."""
+    from . import verbinden_store
+
+    try:
+        try:
+            runde = _carddav_abgleichen(db, buch, erzwingen)
+        except caldav.CaldavFehler as f:
+            if str(f) != "caldav_abgewiesen":
+                raise
+            runde = _carddav_abgleichen(db, buch, erzwingen, neu=True)
+    except caldav.CaldavFehler as f:
+        if str(f) == "caldav_nicht_erreichbar":
+            verbinden_store.gelaufen("nexfolk", buch.ueber, "unreachable")
+        elif str(f) == "caldav_abgewiesen":
+            verbinden_store.gelaufen("nexfolk", buch.ueber, "token_invalid")
+        raise
+    verbinden_store.gelaufen("nexfolk", buch.ueber)
+    return runde
+
+
+def _carddav_abgleichen(db: Session, buch: Adressbuch, erzwingen: bool, *, neu: bool = False) -> Runde:
     """Ein Buch abgleichen, über **eine** Verbindung.
 
     ⚠️ **Die Sitzung umschliesst den ganzen Abgleich.** iCloud lässt je Konto
@@ -285,7 +361,8 @@ def _carddav_abgleichen(db: Session, buch: Adressbuch, erzwingen: bool) -> Runde
     Rolle wie ``schmutzige`` beim Kalender.
     """
     runde = Runde()
-    verbindung = zugang(buch, db)
+    # ``neu`` nur, wenn gefragt: Tests schieben ``zugang`` mit der alten Unterschrift unter.
+    verbindung = zugang(buch, db, neu=True) if neu else zugang(buch, db)
     wartende = db.scalar(
         select(Kontakt.id)
         .where(Kontakt.adressbuch_id == buch.id, Kontakt.schmutzig.is_(True))

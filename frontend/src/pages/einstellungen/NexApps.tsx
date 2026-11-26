@@ -76,9 +76,10 @@ export const ZU_NEXTIME = 'nexmail:zu-nextime'
 const MARKE = 'nexmail.nextimeKarteAuf'
 
 
-/** `nur`: nur der Inhalt der Karte eines Partners (für die Karte des Moduls verbinden: Kalender- und Listenwahl offen in
- *  der Karte, V23; die Form von Hand unter „Von Hand verbinden“). Ohne: beide Karten wie bisher. */
-export function NexApps({ nur }: { nur?: 'nextime' | 'nextasks' } = {}) {
+/** `nur`: nur ein Teil der Karte eines Partners, für die Karte des Moduls verbinden (0.1.2): `teil="wahl"` die Kalender-
+ *  und Listenwahl, offen in jedem Zustand (V23), `teil="hand"` die Form unter „Von Hand verbinden“. Bei einer
+ *  Verbindung per Klick stehen Schlüssel und Trennen nur in der Karte des Moduls. Ohne `nur`: beide Karten wie bisher. */
+export function NexApps({ nur, teil = 'wahl' }: { nur?: 'nextime' | 'nextasks'; teil?: 'wahl' | 'hand' } = {}) {
   const { t } = useTranslation()
   const { fragen, fenster: nachfrage } = useNachfrage()
   const [nextime, setNextime] = useState<NextimeStand | null>(null)
@@ -286,6 +287,69 @@ export function NexApps({ nur }: { nur?: 'nextime' | 'nextasks' } = {}) {
       <Badge tone="off">{t('nextime.nicht_verbunden')}</Badge>
     )
 
+  const auswahlKasten = (
+    geordnet && geordnet.length > 0 && (
+      <Box title={t('nextime.auswahl_titel')} hint={t('nextime.auswahl_hinweis')}>
+        {geordnet.map((k, i) => {
+          const kopf = gruppenName(k, t)
+          const neu = i === 0 || gruppenName(geordnet[i - 1], t) !== kopf
+          return (
+            <div key={k.id} className="flex flex-col">
+              {neu && <span className={`text-sm font-medium ${i ? 'pt-2' : ''}`}>{kopf}</span>}
+              <span className="flex items-center gap-2 py-0.5 pl-6 text-sm">
+                <span aria-hidden className={`size-2.5 shrink-0 rounded-sm ${kalenderPunkt(k)}`} />
+                <Checkbox label={k.name} checked={k.gewaehlt !== false} onChange={(an) => void waehlen(k, an)} />
+              </span>
+            </div>
+          )
+        })}
+      </Box>
+    )
+  )
+
+  const doppeltKasten = (
+    doppelte.length > 0 && (
+      <Box title={t('nextime.doppelt_titel')} hint={t('nextime.doppelt_hinweis')}>
+        <Rows label={t('nextime.doppelt_titel')}>
+          {doppelte.map((k) => (
+            <Row
+              key={k.id}
+              name={k.name}
+              detail={k.herkunft || undefined}
+              action={
+                <Button size="sm" kind="danger" icon={Unlink} onClick={() => void kalenderTrennen(k)}>
+                  {t('kalender.trennen')}
+                </Button>
+              }
+            />
+          ))}
+        </Rows>
+      </Box>
+    )
+  )
+
+  /* Die Wahl in der Karte des Moduls: dieselben Kästen wie unten, ohne „Schlüssel ändern“ (das steht unter „Von Hand
+     verbinden“); „Trennen“ nur für eine Verbindung von Hand, eine per Klick trennt die Karte des Moduls. */
+  const nextimeWahl =
+    verbunden && nextime ? (
+      <>
+        <p className="m-0 text-sm">{t('nextime.zeigt')}</p>
+        {meldungen}
+        {nextime.letzterFehler && (
+          <Notice tone="warn">{servermeldung(new ApiFehler(409, nextime.letzterFehler), t('nextime.gestoert'))}</Notice>
+        )}
+        {auswahlKasten}
+        {doppeltKasten}
+        {!nextime.perKlick && (
+          <Buttons>
+            <Button kind="danger" icon={Unlink} onClick={() => void trennen()}>
+              {t('nextime.trennen')}
+            </Button>
+          </Buttons>
+        )}
+      </>
+    ) : null
+
   const nextimeInhalt = (
     <>
         {verbunden && nextime && !aendern ? (
@@ -297,41 +361,8 @@ export function NexApps({ nur }: { nur?: 'nextime' | 'nextasks' } = {}) {
             )}
             {/* Welche Kalender nexmail nimmt. ⚠️ **Nicht gewählte erscheinen nirgends** in nexmail; die Haken in der
                 Kalender-Seitenleiste bleiben fürs schnelle Ein- und Ausblenden. */}
-            {geordnet && geordnet.length > 0 && (
-              <Box title={t('nextime.auswahl_titel')} hint={t('nextime.auswahl_hinweis')}>
-                {geordnet.map((k, i) => {
-                  const kopf = gruppenName(k, t)
-                  const neu = i === 0 || gruppenName(geordnet[i - 1], t) !== kopf
-                  return (
-                    <div key={k.id} className="flex flex-col">
-                      {neu && <span className={`text-sm font-medium ${i ? 'pt-2' : ''}`}>{kopf}</span>}
-                      <span className="flex items-center gap-2 py-0.5 pl-6 text-sm">
-                        <span aria-hidden className={`size-2.5 shrink-0 rounded-sm ${kalenderPunkt(k)}`} />
-                        <Checkbox label={k.name} checked={k.gewaehlt !== false} onChange={(an) => void waehlen(k, an)} />
-                      </span>
-                    </div>
-                  )
-                })}
-              </Box>
-            )}
-            {doppelte.length > 0 && (
-              <Box title={t('nextime.doppelt_titel')} hint={t('nextime.doppelt_hinweis')}>
-                <Rows label={t('nextime.doppelt_titel')}>
-                  {doppelte.map((k) => (
-                    <Row
-                      key={k.id}
-                      name={k.name}
-                      detail={k.herkunft || undefined}
-                      action={
-                        <Button size="sm" kind="danger" icon={Unlink} onClick={() => void kalenderTrennen(k)}>
-                          {t('kalender.trennen')}
-                        </Button>
-                      }
-                    />
-                  ))}
-                </Rows>
-              </Box>
-            )}
+            {auswahlKasten}
+            {doppeltKasten}
             <Buttons>
               <Button
                 kind="secondary"
@@ -359,8 +390,16 @@ export function NexApps({ nur }: { nur?: 'nextime' | 'nextasks' } = {}) {
     </>
   )
 
-  if (nur === 'nextime') return <>{nextimeInhalt}{nachfrage}</>
-  if (nur === 'nextasks') return <TodoApps teil="nextasks" />
+  if (nur === 'nextasks') return <TodoApps teil="nextasks" modul={teil} />
+  if (nur === 'nextime' && teil === 'hand') {
+    return nextime?.perKlick ? null : (
+      <>
+        {meldungen}
+        {formular(false)}
+      </>
+    )
+  }
+  if (nur === 'nextime') return <>{nextimeWahl}{nachfrage}</>
 
   return (
     <>

@@ -57,6 +57,7 @@ import { anzeigename, groesse, langesDatum } from '../lib/format'
 import { Schlagwortmarke } from './Schlagwortmarke'
 import { Button, EmptyState, IconButton } from '../ds'
 import { Kontextmenue } from './Kontextmenue'
+import { AnNexpaper } from './AnNexpaper'
 import type { MenueEintrag } from './Kontextmenue'
 import { appPfad } from '../lib/basis'
 import { nachrichtDrucken } from '../lib/drucken'
@@ -864,7 +865,7 @@ export function Lesebereich({
             </div>
             <ul className="flex list-none flex-wrap gap-2 p-0">
               {anhaenge.map((a) => (
-                <li key={a.id}>
+                <li key={a.id} className="flex items-center gap-1">
                   {/* Immer als Download, nie zur Anzeige: Ein HTML-Anhang, den
                       der Browser rendert, liefe unter nexmails eigener
                       Herkunft — also an der ganzen Bereinigung vorbei. */}
@@ -885,6 +886,7 @@ export function Lesebereich({
                       </span>
                     </span>
                   </a>
+                  <AnNexpaper nachrichtId={nachricht.id} anhangId={a.id} />
                 </li>
               ))}
             </ul>

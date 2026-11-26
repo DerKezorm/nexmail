@@ -1,4 +1,4 @@
-"""nexverbinden contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of verbinden 0.1.1).
+"""nexverbinden contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of verbinden 0.1.2).
 
 nexmail is only a guest (catalog: it grants nothing), so ``probe`` is ``None``. Its partner in the tests is nextasks,
 the pair nexmail had before the module: the older version kept a connection typed in by hand
@@ -97,6 +97,9 @@ class Adapter(StandardAdapter):
 
         return CONFIG
 
+    def account_id(self, role: str) -> Any:
+        return self.ids[role]
+
     def block(self, role: str, blocked: bool = True) -> None:
         from datetime import UTC, datetime
 
@@ -134,5 +137,3 @@ class Adapter(StandardAdapter):
             }
         finally:
             roh.close()
-
-

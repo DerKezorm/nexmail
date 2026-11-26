@@ -13,6 +13,8 @@ export interface Verbindung {
   fehler: string
   angelegt: string
   zuletzt_abgeglichen: string | null
+  /** Per „Verbinden“ gemacht (Modul verbinden): Schlüssel und Trennen stehen in der Karte des Moduls. */
+  per_klick?: boolean
 }
 
 export interface ZielStand {

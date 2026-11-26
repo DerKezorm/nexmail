@@ -59,7 +59,10 @@ export const AUFGABENZIELE_GEAENDERT = 'nexmail:aufgabenziele'
  *  im Abschnitt „Aufgaben" (Todoist, Webhook, Standardliste). */
 export type TodoTeil = 'alle' | 'nextasks' | 'ohne-nextasks'
 
-export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
+/** `modul` (nur mit `teil="nextasks"`, für die Karte des Moduls verbinden 0.1.2): `wahl` die Verbindung mit Listenwahl,
+ *  offen in jedem Zustand (V23), `hand` die Form unter „Von Hand verbinden“. Bei einer Verbindung per Klick stehen
+ *  Schlüssel und Trennen nur in der Karte des Moduls. */
+export function TodoApps({ teil = 'alle', modul }: { teil?: TodoTeil; modul?: 'wahl' | 'hand' } = {}) {
   const { t } = useTranslation()
   const { fragen, fenster: nachfrage } = useNachfrage()
   const [stand, setStand] = useState<ZielStand | null>(null)
@@ -158,7 +161,7 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
     }
   }
 
-  if (stand === null && !fehler) return <div className="h-24" />
+  if (stand === null && !fehler) return modul === 'hand' ? null : <div className="h-24" />
 
   /* Welche Verbindungen dieser Teil zeigt, und wo die Standardliste steht.
      ⚠️ **Die Standardliste gilt für alle Apps** und steht deshalb nur einmal:
@@ -186,6 +189,15 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
 
   /* ⚠️ **In der nextasks-Karte wie in nextime** (gemeldet am 24.11.2026):
      Statuszeile, Abschnitte mit Überschrift, die Knöpfe unten nebeneinander. */
+  if (teil === 'nextasks' && modul === 'hand') {
+    const erste = verbindungen[0]
+    if (erste?.per_klick) return null
+    return erste ? (
+      <NextasksErneuern verbindung={erste} aufGespeichert={geaendert} />
+    ) : (
+      <NextasksVerbinden schlicht aufVerbunden={geaendert} />
+    )
+  }
   if (teil === 'nextasks') {
     const standardwahl = mitStandard && stand && (
       <SelectField
@@ -258,19 +270,25 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
                 )}
                 {!v.fehler && <NextasksListenwahl />}
                 {standardwahl}
-                <Knopfreihe>
-                  <Button icon="KeyRound" kind="secondary" onClick={() => setOffen(v.id)}>
-                    {t('nextime.schluessel_aendern')}
-                  </Button>
-                  <Button icon="Trash2" kind="danger" onClick={() => void trennen(v)}>
-                    {t('todoapps.trennen')}
-                  </Button>
-                </Knopfreihe>
+                {/* In der Karte des Moduls: „Schlüssel ändern“ steht unter „Von Hand verbinden“, eine Verbindung per
+                    Klick trennt die Karte selbst. */}
+                {!(modul && v.per_klick) && (
+                  <Knopfreihe>
+                    {!modul && (
+                      <Button icon="KeyRound" kind="secondary" onClick={() => setOffen(v.id)}>
+                        {t('nextime.schluessel_aendern')}
+                      </Button>
+                    )}
+                    <Button icon="Trash2" kind="danger" onClick={() => void trennen(v)}>
+                      {t('todoapps.trennen')}
+                    </Button>
+                  </Knopfreihe>
+                )}
               </li>
             ),
           )}
         </ul>
-        {verbindungen.length === 0 && <NextasksVerbinden schlicht aufVerbunden={geaendert} />}
+        {verbindungen.length === 0 && !modul && <NextasksVerbinden schlicht aufVerbunden={geaendert} />}
         {nachfrage}
       </div>
     )

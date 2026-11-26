@@ -72,6 +72,8 @@ class Stand(BaseModel):
     version: str = ""
     #: Eine Kennung, wenn der Zugang zuletzt abgelehnt wurde.
     letzter_fehler: str = ""
+    #: Per „Verbinden“ gemacht (Modul verbinden): Schlüssel und Trennen stehen dann in der Karte des Moduls.
+    per_klick: bool = False
 
 
 class Verbinden(BaseModel):
@@ -155,8 +157,12 @@ def stand(person: AngemeldeterBenutzer, db: DbSession) -> Stand:
     v = dienst.verbindung(db, person)
     if v is None:
         return Stand(verbunden=False)
+    try:
+        per_klick = bool(dienst.zugang(v).ueber)
+    except Exception:  # noqa: BLE001
+        per_klick = False
     return Stand(verbunden=True, adresse=dienst.adresse(v), name=v.name, version=v.version,
-                 letzter_fehler=v.letzter_fehler)
+                 letzter_fehler=v.letzter_fehler, per_klick=per_klick)
 
 
 @router.post("/verbindung", response_model=Verbunden)

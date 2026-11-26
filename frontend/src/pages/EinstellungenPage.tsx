@@ -41,8 +41,6 @@ import { ToolsCard } from '../vendor/nexschluessel/ToolsCard'
 import { PendingRequests, ToolRights } from '../vendor/nexmcp'
 import { mcpSchluesselWorte, mcpWorte } from '../lib/mcpWorte'
 import { ConnectionsArea } from '../vendor/nexverbinden'
-import nextimeLogo from '../assets/nextime.svg'
-import nextasksLogo from '../assets/nextasks.svg'
 import { Installieren } from './einstellungen/Installieren'
 import { IphoneVerbinden } from './IphoneVerbinden'
 import { Sicherheit } from './Sicherheit'
@@ -276,14 +274,20 @@ export function EinstellungenPage({
           <>
             <IphoneVerbinden />
             <Installieren />
-            {/* Andere nex-Apps (Modul verbinden 0.1.1): je Partner eine Karte, „Mit … verbinden“ oder von Hand; nur
-                Partner, die nexmail nutzt (V20: nextime, nextasks). Kalender- und Listenwahl in der Karte (V23). */}
+            {/* Andere nex-Apps (Modul verbinden 0.1.2): je Partner eine Karte mit dem Zeichen des Moduls, „Mit …
+                verbinden“ oder von Hand; nur Partner, die nexmail nutzt (V20, `in_use` auf dem Server: nextime,
+                nextasks, nexfolk, nexpaper). Kalender- und Listenwahl offen in der Karte, in jedem Zustand (V23). */}
             <ConnectionsArea
               app="nexmail"
               request={modulAnfrage}
-              logos={{ nextime: nextimeLogo, nextasks: nextasksLogo }}
-              manual={{ nextime: <NexApps nur="nextime" />, nextasks: <NexApps nur="nextasks" /> }}
-              extra={(view) => (view.partner === 'nextime' || view.partner === 'nextasks' ? <NexApps nur={view.partner} /> : null)}
+              manual={{ nextime: <NexApps nur="nextime" teil="hand" />, nextasks: <NexApps nur="nextasks" teil="hand" /> }}
+              extra={(view) =>
+                view.partner === 'nextime' || view.partner === 'nextasks' ? (
+                  <NexApps nur={view.partner} teil="wahl" />
+                ) : view.partner === 'nexfolk' || view.partner === 'nexpaper' ? (
+                  <p className="m-0 text-sm text-fg-3">{t(`einstellungen.${view.partner}_nutzung`)}</p>
+                ) : null
+              }
               language={i18n.language}
             />
             <Karte id="tasks" symbol={ListChecks} titel={t('einstellungen.aufgaben')}>

@@ -980,6 +980,32 @@ def anhang(nachricht_id: int, anhang_id: int, person: AngemeldeterBenutzer, db: 
     )
 
 
+class AnNexpaper(BaseModel):
+    #: ``created`` oder ``duplicate`` (nexpaper kennt die Datei schon).
+    status: str = ""
+
+
+@router.post("/{nachricht_id}/anhang/{anhang_id}/nexpaper", response_model=AnNexpaper)
+def anhang_an_nexpaper(nachricht_id: int, anhang_id: int, person: AngemeldeterBenutzer, db: DbSession) -> AnNexpaper:
+    """Einen Anhang als Dokument an nexpaper, über die per „Verbinden“ gemachte Verbindung (V19, ``documents.add``).
+    Ohne Verbindung ``nexpaper_nicht_verbunden``."""
+    from ..services import nexpaper
+
+    nachricht = _meine(db, person, nachricht_id)
+    zeile = db.get(Anhang, anhang_id)
+    if zeile is None or zeile.nachricht_id != nachricht.id or not zeile.blob_hash:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    datei = get_settings().blob_dir / zeile.blob_hash
+    if not datei.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    try:
+        ergebnis = nexpaper.senden(str(person.id), zeile.dateiname, datei.read_bytes())
+    except nexpaper.NexpaperFehler as f:
+        code = status.HTTP_502_BAD_GATEWAY if f.kennung == "nexpaper_nicht_erreichbar" else status.HTTP_409_CONFLICT
+        raise MeldungHttp(code, f.kennung, f.werte) from f
+    return AnNexpaper(status=str(ergebnis.get("status", "")))
+
+
 @router.get("/{nachricht_id}/roh")
 def roh(nachricht_id: int, person: AngemeldeterBenutzer, db: DbSession):
     """Die Mail als ``.eml`` — zum Herunterladen und Aufbewahren.

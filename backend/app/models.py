@@ -1163,6 +1163,9 @@ class Adressbuch(Base):
     #: „Abgleich fehlgeschlagen" oben nicht, welches klemmt. Dieselbe Lehre
     #: wie beim Kalender.
     letzter_fehler: Mapped[str] = mapped_column(Text, default="")
+    #: Ein Buch von nexfolk, per „Verbinden“ geholt (Modul verbinden, V18): das Konto der Verbindung. Angemeldet wird
+    #: dann mit ihrem Token statt mit Benutzer und Passwort. Leer: Zugang wie bisher.
+    ueber: Mapped[str] = mapped_column(String(64), default="")
 
 
 class Kontakt(Base):

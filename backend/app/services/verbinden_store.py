@@ -1,4 +1,4 @@
-"""Die Anbindung des Moduls verbinden 0.1.1 (``app.vendor.nexverbinden``) an nexmail: ``AppConfig``, der Store über
+"""Die Anbindung des Moduls verbinden 0.1.2 (``app.vendor.nexverbinden``) an nexmail: ``AppConfig``, der Store über
 die Tabellen des Moduls (``models.Vb…``, Vorlage ``verbinden_partner.SCHEMA``) und ``anfragen``, mit dem nexmails
 Gast-Code (nextasks, nextime) über eine per Klick gemachte Verbindung fragt.
 
@@ -9,7 +9,7 @@ Abhaken und Fehlerzustände laufen damit unverändert (V18), nur die einzelne An
 
 ⚠️ **nexmail ist nur Gast.** Es gewährt keinem Partner einen Zweck (Katalog: ``"nexmail": {}``); ein Partner hält ein
 Token, das nur ``hello`` und ``revoke`` öffnet. V20: Karten nur für Partner, die nexmail wirklich nutzt
-(``GENUTZT``); die übrigen Paare des Katalogs stehen in nexmail nicht, bis ihre Nutzung gebaut ist.
+(``AppConfig.in_use`` = ``GENUTZT``); die übrigen Partner des Katalogs zeigt nexmail erst, wenn ihre Nutzung gebaut ist.
 """
 
 from __future__ import annotations
@@ -27,17 +27,11 @@ from .. import __version__, crypto
 from ..db import einstellung_lesen, einstellung_schreiben
 from ..models import Aufgabenverbindung, Benutzer, NextimeVerbindung
 from ..vendor import nexverbinden
-from ..vendor.nexverbinden import catalog as katalog
 
 logger = logging.getLogger("nexmail.verbinden")
 
 #: V20: die Partner, die nexmail über die Klick-Verbindung wirklich nutzt.
-GENUTZT = ("nextasks", "nextime")
-
-KATALOG = katalog.Catalog(
-    purposes=katalog.CATALOG.purposes,
-    pairs=tuple(p for p in katalog.CATALOG.pairs if "nexmail" not in p.apps or p.other("nexmail") in GENUTZT),
-)
+GENUTZT = ("nextasks", "nextime", "nexfolk", "nexpaper")
 
 CONFIG = nexverbinden.AppConfig(
     app_name="nexmail",
@@ -45,7 +39,7 @@ CONFIG = nexverbinden.AppConfig(
     access_prefix="nxv_",
     refresh_prefix="nxvr_",
     code_prefix="nxvc_",
-    catalog=KATALOG,
+    in_use=GENUTZT,
 )
 
 _KONTEXT = "verbinden"
@@ -309,6 +303,45 @@ class Unerreichbar(Exception):
     """Der Partner antwortet nicht (die Karte sagt „nicht erreichbar seit …“)."""
 
 
+class Abgelehnt(Exception):
+    """Die Klick-Verbindung trägt nicht (Kennung des Moduls: ``not_connected``, ``refused``, ``resting``,
+    ``partner_off``)."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+def zugriff(partner: str, konto_id: str, *, neu: bool = False) -> nexverbinden.Access:
+    """V18 (verbinden 0.1.2): Adresse und frisches Token der Klick-Verbindung für nexmails eigene Anfragen, wo
+    ``call`` nicht passt, weil kein JSON hin- und zurückgeht: CardDAV mit nexfolk, eine Datei an nexpaper. ``neu``
+    nach einem 401 des Partners. Danach sagt ``gelaufen`` dem Modul, wie die Anfrage ausging."""
+    from ..db import SessionLocal
+
+    with SessionLocal() as db:
+        store = store_fuer(db)
+        try:
+            zugang = nexverbinden.access(store, CONFIG, konto_id, partner, datetime.now(UTC), force=neu)
+        except nexverbinden.Refused as abgelehnt:
+            store.commit()
+            if abgelehnt.code == "unreachable":
+                raise Unerreichbar(partner) from abgelehnt
+            raise Abgelehnt(abgelehnt.code) from abgelehnt
+        store.commit()
+    return zugang
+
+
+def gelaufen(partner: str, konto_id: str, problem: str | None = None) -> None:
+    """Wie nexmails eigene Anfrage über die Klick-Verbindung ausging, für die Karte (``nexverbinden.reached``):
+    ``None`` beantwortet, ``unreachable``, oder die Absage des Partners (``token_invalid`` nach dem zweiten 401)."""
+    from ..db import SessionLocal
+
+    with SessionLocal() as db:
+        store = store_fuer(db)
+        nexverbinden.reached(store, konto_id, partner, datetime.now(UTC), problem=problem)
+        store.commit()
+
+
 def ueber_klick(partner: str, store: Any, konto_id: Any) -> None:
     """``on_connected``: nach dem Verbinden per Klick legt nexmail die Zeile an, die das Verbinden von Hand anlegt
     (nextasks: ``aufgabenverbindung``, nextime: ``nextime_verbindung``), mit ``ueber`` statt eines Schlüssels. Gibt es
@@ -326,8 +359,13 @@ def ueber_klick(partner: str, store: Any, konto_id: Any) -> None:
             aufgabenziele.nextasks_ueber_klick(db, person, verbindung.partner_base)
         elif partner == "nextime":
             nextimeverbindung.ueber_klick(db, person, verbindung.partner_base)
+        elif partner == "nexfolk":
+            from . import adressbuchabgleich
+
+            adressbuchabgleich.nexfolk_ueber_klick(db, person, verbindung.partner_base)
+        # nexpaper: keine Zeile, „Als Dokument an nexpaper“ fragt die Verbindung bei jedem Anhang selbst.
     except Exception:  # noqa: BLE001 - die Verbindung steht; die Karte zeigt, wenn die erste Anfrage scheitert
         logger.warning("Setting up the use of a connection failed partner=%s", partner, exc_info=True)
 
 
-__all__ = ["CONFIG", "GENUTZT", "KATALOG", "Unerreichbar", "VerbindenStore", "anfragen", "store_fuer", "ueber_klick"]
+__all__ = ["CONFIG", "GENUTZT", "Abgelehnt", "Unerreichbar", "gelaufen", "zugriff", "VerbindenStore", "anfragen", "store_fuer", "ueber_klick"]

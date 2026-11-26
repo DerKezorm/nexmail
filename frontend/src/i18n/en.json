@@ -306,6 +306,8 @@
     "grund_code": "The setup code is still missing."
   },
   "einstellungen": {
+    "nexfolk_nutzung": "Once connected, nexmail brings the address books you share from nexfolk into Contacts and syncs them both ways.",
+    "nexpaper_nutzung": "Once connected, every attachment of a message has \"Send to nexpaper as a document\" next to it.",
     "aufgaben": "Tasks",
     "iphone": "Connect iPhone",
     "api": "API keys",
@@ -1019,6 +1021,8 @@
   "lesen": {
     "an": "To",
     "kopie": "Cc",
+    "an_nexpaper": "Send to nexpaper as a document",
+    "an_nexpaper_fertig": "Now in nexpaper",
     "anhaenge_eine": "1 attachment",
     "anhaenge_viele": "{{count}} attachments",
     "bilder_geblockt": "Images in this message were not loaded. They would tell the sender when you opened it.",
@@ -1696,6 +1700,9 @@
     "nextasks_adresse_ungueltig": "The nextasks address has to start with http:// or https://, without credentials, ? or #.",
     "nextasks_adresse_localhost": "Inside the container, localhost is nexmail itself. Enter the address nextasks has on your network, for example https://tasks.example.com.",
     "nextasks_adresse_im_eigenen_netz": "This address is on the local network. The operator can allow that under Server › General › Features for every account.",
+    "nexpaper_nicht_verbunden": "nexmail is no longer connected with nexpaper. Connect it again under My account › Connections.",
+    "nexpaper_nicht_erreichbar": "nexpaper cannot be reached right now.",
+    "nexpaper_nimmt_nicht": "nexpaper did not take the file, for example because it does not take this kind of file or its storage is full.",
     "nextasks_nicht_erreichbar": "nextasks cannot be reached at this address right now.",
     "nextasks_zeitueberschreitung": "nextasks did not answer within {{sekunden}} seconds.",
     "nextasks_weiterleitung": "The address redirects (HTTP {{status}}). nexmail does not follow redirects, enter the address nextasks really runs at.",
