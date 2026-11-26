@@ -284,3 +284,15 @@ def test_der_alte_weg_ist_nur_fuer_den_betreiber(klient, zweiter_klient, db):
                           ("get", "/api/protokoll/download"), ("delete", "/api/protokoll"),
                           ("get", "/api/logs"), ("get", "/api/logs/download")):
         assert getattr(zweiter_klient, methode)(pfad).status_code == 403, pfad
+
+
+@pytest.mark.parametrize("vorsilbe", ["nxm_", "nxa_"])
+def test_nach_bearer_bleibt_nur_die_vorsilbe_eines_eigenen_schluessels(vorsilbe):
+    """log 1.0.0 (b44deeb): nach „Bearer“ steht nexmails Vorsilbe, danach nichts vom Geheimnis; ein fremdes Token
+    verschwindet ganz."""
+    geheim = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcd"
+    zeile = protokoll.zensieren(f"Authorization: Bearer {vorsilbe}{geheim}")
+    assert zeile == f"Authorization: Bearer {vorsilbe}…"
+    assert geheim not in zeile
+    fremd = protokoll.zensieren("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abc.def")
+    assert fremd == "Authorization: Bearer …"
