@@ -298,8 +298,14 @@ Profilsprache nimmt an, was sie vorher annahm (E52), `nexsprachen.known` nur fü
 `/openapi.json` lesen nexmails Beschreibung über `description()` des Adapters; veröffentlicht wird keine. Vertragstests
 `tests/nexsprachen` (63 grün). Dazu schluessel aus 4f3e75e („Neuer MCP-Schlüssel“ md secondary).
 
+**E53 (0e372f1):** sicherung und sprachen neu gezogen; der Vertragsadapter von sicherung liest nexmails Beschreibung
+über `description()` (`app.openapi()`, veröffentlicht wird keine). `tests/test_openapi_namen.py` hält `operationId`
+und `summary` aller 394 Wege des Stands `konten` fest (`openapi_namen_konten.json`); der Vergleich mit `konten`
+(`openapi-namen/vergleichen.py`) zeigt nur Zusätze. Das Schema `Gefunden` (zwei gleichnamige Klassen in
+`routers/kalender.py` und `routers/adressbuecher.py`) heißt auf beiden Ständen `app__routers__adressbuecher__Gefunden`.
+
 **Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 86a0cce, E45 bis E49 (ohne ruff, nexmail
-hat keins; pytest ohne xdist; zuletzt nach sprachen 68fd070): pytest 3292 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
+hat keins; pytest ohne xdist; zuletzt nach E53, 0e372f1): pytest 3296 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
 schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 443
 grün in 46 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
