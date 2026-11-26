@@ -291,3 +291,26 @@ def test_die_seite_kennt_jedes_werkzeug_des_servers():
     assert liste is not None
     genannt = set(re.findall(r"'([a-z_]+)'", liste.group(1)))
     assert genannt == {tool.name for tool in MCP.tools} | {"request_status"}
+
+
+def test_eine_wartende_rueckfrage_kommt_als_mitteilung_in_den_browser(app, monkeypatch):
+    """MCP 14: nexmail hat keine Glocke, aber Mitteilungen im Browser; „Ein Programm wartet auf dein Ja“ geht dorthin,
+    mit der Seite der Rückfrage als Ziel, nie mit Argumenten aus Mails, nie an die iPhone-App."""
+    from app.models import PushAnmeldung
+    from app.services import push
+
+    with SessionLocal() as db:
+        db.add(PushAnmeldung(benutzer_id=app.ids["owner"], endpunkt="https://push.example.com/a", p256dh="x", auth="y"))
+        db.commit()
+    gesendet: list[Any] = []
+    monkeypatch.setattr(push, "zustellen", lambda db, anmeldung, meldung: gesendet.append(meldung))
+    monkeypatch.setattr(push, "an_geraet", lambda *a, **k: pytest.fail("an die iPhone-App"))
+    made = mcp_key(app, right="write")
+    name, args = app.change_call()
+    app.client("owner").put(f"{app.prefix}/keys/{made['key']['id']}/rights", json={"rights": {name: "ask"}})
+    wartet = call(app, made["secret"], name, args)["structuredContent"]
+    assert wartet["status"] == "waiting"
+    assert len(gesendet) == 1
+    meldung = gesendet[0]
+    assert meldung.ziel == f"/mcp/requests/{wartet['request']}" and "Probe" in meldung.text
+    assert "Einkaufsliste" not in meldung.text

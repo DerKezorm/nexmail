@@ -29,6 +29,9 @@ from conftest import anmelden, einrichten, zweiten_benutzer_anlegen
 from test_abgleich import FalscherServer
 from test_kidienst import SCHLUESSEL, TextDoppelgaenger
 
+#: Modul ki 0.1.0: eine Installation von vorher („Jedes Konto selbst“, Rechner auf der Liste, DNS der Tests).
+pytestmark = pytest.mark.usefixtures("ki_wie_vorher")
+
 PFAD = "/api/app/1"
 
 
