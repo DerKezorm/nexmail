@@ -147,6 +147,13 @@ def test_passkey_hinzufuegen_zaehlt_eine_gesetzte_adresse_allein(klient):
     einrichten(klient)
     lokal = TestClient(app, base_url="http://localhost:8399", headers={"origin": "http://localhost:5173"})
     assert lokal.post("/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": PASSWORT}).status_code == 200
+    # Ohne Adresse auf localhost: der Knopf. Die Adresse der Anfrage ist nie Ersatz für die öffentliche (nur origin und
+    # request_url).
+    with SessionLocal() as db:
+        einstellung_schreiben(db, "oeffentliche_adresse", "")
+    assert lokal.get("/api/auth/passkeys").json()["passkeys_can_add"] is True
+    # Ohne Adresse unter einem anderen Namen als localhost: kein Knopf, auch nicht mit der Adresse der Anfrage.
+    assert klient.get("/api/auth/passkeys").json()["passkeys_can_add"] is False
     with SessionLocal() as db:
         einstellung_schreiben(db, "oeffentliche_adresse", "http://mail.example.com")
     assert lokal.get("/api/auth/passkeys").json()["passkeys_can_add"] is False

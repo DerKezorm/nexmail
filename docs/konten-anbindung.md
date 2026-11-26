@@ -292,10 +292,11 @@ eine neue Funktion, die auf ein Ja wartet: herausgenommen in `ce902fa`, wieder h
 (`5ff7fb3`), der sich mit `git revert 5ff7fb3` sauber zurücknehmen lässt. Absicherung: nur JSON mit Texten und Gruppen
 (höchstens 8 Ebenen), höchstens 512 KB, Code nach `^[a-z]{2,3}(?:-(?:[A-Z]{2}|[A-Z][a-z]{3}))?$` (strenger als
 `[a-z]{2,3}(-[A-Za-z]{2,4})?`), kein Verweis aus dem Ordner hinaus, Lesen ohne Anmeldung gibt nur die Texte (ohne
-`_meta`), Fehler nur als Kennung.
+`_meta`), Fehler nur als Kennung. Mit c0b07ab zählt für „Passkey hinzufügen“ eine gesetzte öffentliche Adresse allein
+(nur mit https), ohne Adresse nur localhost; nexmail übergibt die Adresse so, wie sie gesetzt ist, nie die der Anfrage.
 
 **Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 86a0cce, E45 bis E49 (ohne ruff, nexmail
-hat keins; pytest ohne xdist; zuletzt nach 1ce1a8f und 5ff7fb3): pytest 3255 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
+hat keins; pytest ohne xdist; zuletzt nach c0b07ab): pytest 3256 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
 schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 432
 grün in 46 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
