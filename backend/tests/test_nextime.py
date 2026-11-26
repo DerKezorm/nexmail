@@ -356,7 +356,9 @@ def test_ohne_verbindung_gibt_es_nichts(klient, ohne_netz, fern):  # noqa: F811
     """AC-13."""
     einrichten(klient)
     assert klient.get("/api/nextime/verbindung").json() == {
-        "verbunden": False, "adresse": "", "name": "", "version": "", "letzter_fehler": ""}
+        "verbunden": False, "adresse": "", "name": "", "version": "", "letzter_fehler": "",
+        # Seit verbinden 0.1.2: ob die Verbindung per Klick gemacht ist (Schlüssel und Trennen dann in ihrer Karte).
+        "per_klick": False}
     assert klient.get("/api/nextime/kalender").json()["detail"] == "nextime_nicht_verbunden"
     assert fern.anfragen == []
 
