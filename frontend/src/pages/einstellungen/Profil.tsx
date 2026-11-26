@@ -288,7 +288,7 @@ export function Profil({
   const gesichert = (name: string) => (PAGES.profile.saveFields as readonly string[]).includes(name)
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <div aria-live="polite" className="flex flex-col gap-2 empty:hidden">
         {fehler && <Notice tone="danger">{fehler}</Notice>}
         {erledigt && !fehler && <Notice tone="ok">{erledigt}</Notice>}

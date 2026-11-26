@@ -409,7 +409,7 @@ export function Sicherheit({
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       {fehler && <Notice tone="danger">{fehler}</Notice>}
       {/* `layout: 'stacked'`: ein Teil unter dem anderen, auch auf breiten Bildschirmen. Die des Moduls und die
           Anmeldeanbieter in der Karte „Sicherheit“, Google und Microsoft danach als eigene Karte. */}
