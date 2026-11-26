@@ -6,6 +6,7 @@
  * Datum stuende einfach in der falschen Reihenfolge.
  */
 import type { Person } from '../daten/typen'
+import { NEXUI_TEXTS, languageOf } from '../vendor/nexui'
 
 /* ⚠️ **Die Zeitzone kommt aus den Einstellungen, nicht vom Browser.**
  *
@@ -94,11 +95,26 @@ export function langesDatum(iso: string, sprache: string): string {
   )
 }
 
-/** Ein Zeitpunkt kurz (Datum und Uhrzeit) in der eingestellten Zone, etwa für die Sicherungen (sicherung `when`). */
-export function zeitpunkt(iso: string, sprache: string): string {
+const ORTE: Record<string, string> = { de: 'de-DE', en: 'en-GB', fr: 'fr-FR' }
+
+/** Ein Tag in der Form aller Apps (ui 1.1.2, E65: „24.02.2027“, „24/02/2027“), in der eingestellten Zone. */
+export function tag(iso: string, sprache: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString(sprache, mitZone({ dateStyle: 'medium', timeStyle: 'short' }))
+  return d.toLocaleDateString(ORTE[languageOf(sprache)], mitZone({ day: '2-digit', month: '2-digit', year: 'numeric' }))
+}
+
+/** Ein Zeitpunkt in der Form aller Apps (ui 1.1.2, E65: „heute, 14:05“, „gestern, 14:05“, sonst „24.02.2027, 14:05“),
+ *  aber in nexmails eingestellter Zone statt der des Browsers; so für die Karten der Module (`when`): Sicherungen,
+ *  KI-Vorgänge, Rückfragen, Über nexmail. ``formatMoment`` von ui rechnet in der Zone des Browsers. */
+export function zeitpunkt(iso: string, sprache: string, jetzt = new Date()): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const code = languageOf(sprache)
+  const unterschied = Math.round((tagesbeginn(jetzt) - tagesbeginn(d)) / 86_400_000)
+  const wann = unterschied === 0 ? NEXUI_TEXTS[code].today : unterschied === 1 ? NEXUI_TEXTS[code].yesterday : tag(iso, code)
+  const uhr = d.toLocaleTimeString(ORTE[code], mitZone({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }))
+  return `${wann}, ${uhr}`
 }
 
 /** Ein Zeitpunkt aus dem Protokoll — dort steht er in UTC. */

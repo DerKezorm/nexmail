@@ -8,6 +8,7 @@
  * Eigene Seite und kein Fenster: Das Postfach-Formular trägt zwei Serverblöcke und einen Verbindungstest; in einem
  * Fenster über der Mail-Ansicht wäre das ein Guckloch.
  */
+import { zeitpunkt } from '../lib/format'
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FileText, Inbox, ListChecks, ListFilter, RefreshCw, Tag } from 'lucide-react'
@@ -289,6 +290,7 @@ export function EinstellungenPage({
                 ) : null
               }
               language={i18n.language}
+              when={zeitpunkt}
             />
             <Karte id="tasks" symbol={ListChecks} titel={t('einstellungen.aufgaben')}>
               {/* nextasks steht in seiner Karte oben (Befund 1 vom 24.11.2026). */}
@@ -308,17 +310,20 @@ export function EinstellungenPage({
               docsHref={API_DOKU}
               securityHref={appPfad(pfadVon('security'))}
               operator={Boolean(ich?.ist_betreiber)}
+              when={zeitpunkt}
             />
             <ToolsCard
               request={modulAnfrage}
               words={mcpSchluesselWorte(t)}
               securityHref={appPfad(pfadVon('security'))}
+              when={zeitpunkt}
               extra={(schluessel) => <ToolRights request={modulAnfrage} keyId={schluessel.id} words={mcpWorte(t)} />}
             >
               <PendingRequests
                 request={modulAnfrage}
                 words={mcpWorte(t)}
                 viewHref={(anfrage) => appPfad(`/mcp/requests/${anfrage.id}`)}
+                when={zeitpunkt}
               />
             </ToolsCard>
           </>

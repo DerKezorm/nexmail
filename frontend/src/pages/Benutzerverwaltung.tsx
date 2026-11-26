@@ -14,6 +14,7 @@
  * keine Mail hinaus; eine Einladung geht trotzdem, der Link steht dann zum
  * Weitergeben da.
  */
+import { zeitpunkt } from '../lib/format'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Mail, Users } from 'lucide-react'
@@ -241,7 +242,7 @@ export function Benutzerverwaltung({ ich, ichNeuLaden }: { ich?: Ich | null; ich
       <WhatYouSeeCard t={t} text={t('verwaltung.was_du_siehst')} />
 
       {/* Modul schluessel: alle API-Schlüssel aller Konten, Sperren und Entsperren (neu in nexmail). */}
-      <AllKeysCard request={modulAnfrage} words={{ rights: { count: t('apischluessel.stufe_kurz_anzahl'), headers: t('apischluessel.stufe_kurz_betreff') } }} />
+      <AllKeysCard request={modulAnfrage} when={zeitpunkt} words={{ rights: { count: t('apischluessel.stufe_kurz_anzahl'), headers: t('apischluessel.stufe_kurz_betreff') } }} />
 
       {geoeffnet && (
         <Verwalten
