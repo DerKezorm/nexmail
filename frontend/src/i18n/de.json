@@ -1760,7 +1760,8 @@
     "unbekannte_stufe": "Diese Stufe gibt es nicht.",
     "wrong_password": "Das Passwort stimmt nicht.",
     "fresh_sign_in_needed": "Melde dich zuerst noch einmal bei deinem Anbieter an.",
-    "second_factor_required": "Dieser Schlüssel wirkt erst, wenn sein Konto einen zweiten Faktor einrichtet."
+    "second_factor_required": "Dieser Schlüssel wirkt erst, wenn sein Konto einen zweiten Faktor einrichtet.",
+    "sprache_unbekannt": "Diese Sprache gibt es hier nicht."
   },
   "sicherheit": {
     "alle_beenden": "Alle anderen Geräte abmelden",

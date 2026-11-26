@@ -455,3 +455,24 @@ def test_passwort_vergessen_schickt_sofort_und_nimmt_den_link_bei_einem_fehler_z
     with SessionLocal() as db:
         assert db.query(Kennwortruecksetzung).count() == 0
         assert db.query(PostAusgang).count() == 0
+
+
+def test_die_profilsprache_ist_eine_die_nexmail_spricht(klient):
+    """Modul sprachen (E51): eingebaut oder eine Datei des Betreibers (``nexsprachen.known``); eine unbekannte Sprache
+    wird abgewiesen, ein Tag wie ``de-AT`` zählt am Sprachteil."""
+    import shutil
+
+    from app.vendor import nexsprachen
+
+    einrichten(klient)
+    shutil.rmtree(nexsprachen.locales_dir(), ignore_errors=True)
+    nexsprachen.forget()
+    try:
+        abgewiesen = klient.put("/api/auth/ich/sprache", json={"sprache": "nl"})
+        assert abgewiesen.status_code == 400 and abgewiesen.json()["detail"] == "sprache_unbekannt"
+        assert klient.put("/api/auth/ich/sprache", json={"sprache": "de-AT"}).status_code == 200
+        assert klient.put("/api/locales/nl", content=b'{"a": "b"}', headers={"content-type": "application/json"}).status_code == 200
+        assert klient.put("/api/auth/ich/sprache", json={"sprache": "nl"}).json()["sprache"] == "nl"
+    finally:
+        shutil.rmtree(nexsprachen.locales_dir(), ignore_errors=True)
+        nexsprachen.forget()

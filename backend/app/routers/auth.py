@@ -1005,7 +1005,15 @@ class Sprache(BaseModel):
 
 @router.put("/ich/sprache", response_model=Ich)
 def sprache_setzen(eingabe: Sprache, person: AngemeldeterBenutzer, db: DbSession) -> Ich:
-    """Die Sprache des Kontos; sie reist mit auf jedes Geraet."""
+    """Die Sprache des Kontos; sie reist mit auf jedes Geraet. Seit dem Modul sprachen (E51) nur eine, die nexmail
+    spricht: eingebaut oder eine brauchbare Datei des Betreibers (``nexsprachen.known``); ``""`` heisst die des
+    Browsers. Ein Tag wie ``de-AT`` zaehlt an seinem Sprachteil, wie die Oberflaeche ihn nimmt; was gar kein Sprachcode
+    ist, macht das Kontenmodul wie bisher zu ``""``."""
+    from ..vendor import nexsprachen
+
+    code = eingabe.sprache.strip()
+    if nexsprachen.valid_code(code) and not (nexsprachen.known(code) or nexsprachen.known(code.split("-")[0])):
+        raise HTTPException(status_code=400, detail="sprache_unbekannt")
     nexkonten.profiles.change_language(kontenstore.store_fuer(db), person.id, eingabe.sprache)
     db.expire(person)
     return ich(person, db)

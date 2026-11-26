@@ -135,6 +135,17 @@ nexoidc.configure(
 #: einen nennen zu können, hat wahrscheinlich vergessen, die Abhängigkeit zu
 #: setzen.
 OEFFENTLICHE_PFADE: dict[str, str] = {
+    "/api/locales": (
+        "Die Sprachen der Installation (eingebaute und die des Betreibers, Modul sprachen) für die Sprachauswahl, "
+        "auch auf der Anmeldeseite; für alle gleich, nichts Persönliches."
+    ),
+    "/api/locales/{code}": (
+        "Die Texte einer Sprache, lesen ohne Anmeldung aus demselben Grund. Hochladen (PUT) und Entfernen (DELETE) "
+        "verlangen den Betreiber (``operator=nur_betreiber``)."
+    ),
+    "/api/locales/template": (
+        "Die Vorlage für eine neue Sprache; bei nexmail macht sie die Seite, der Weg antwortet 404 not_found."
+    ),
     "/api/app/1/pairing/{pairing_id}/key": (
         "Hier holt sich die iPhone-App ihren Schlüssel, also hat sie noch keinen. Das "
         "Geheimnis aus dem QR-Code steht in der Kopfzeile, davor die Anmeldebremse."
@@ -689,6 +700,27 @@ app.include_router(sicherung.modul_router, dependencies=NUR_ANGEMELDET)
 # Begruendung steht oben in OEFFENTLICHE_PFADE und ausfuehrlich in
 # routers/bilder.py.
 app.include_router(bilder_router.router)
+
+# Server › Allgemein › Sprachen (Modul sprachen 1.0.0, E51): die eigenen Sprachen des Betreibers in
+# ``<data>/locales``. Lesen ohne Anmeldung (Anmeldeseite), Hochladen und Entfernen nur der Betreiber; Ablehnungen in
+# nexmails Form (``detail`` die Kennung, ``werte`` daneben). Die Vorlage macht die Seite (sie kennt die englischen Texte).
+from .meldung import MeldungHttp  # noqa: E402
+from .vendor import nexsprachen  # noqa: E402
+from .vendor.nexsprachen import api as nexsprachen_api  # noqa: E402
+
+nexsprachen.configure(
+    nexsprachen.AppConfig(
+        app_name="nexmail",
+        folder=lambda: get_settings().data_dir / "locales",
+        built_in={"de": "Deutsch", "en": "English"},
+    )
+)
+app.include_router(
+    nexsprachen_api.router(
+        operator=nur_betreiber,
+        error=lambda code, _text, status_code, werte: MeldungHttp(status_code, code, werte or None),
+    )
+)
 
 
 # --- Die gebaute Oberfläche ausliefern ---------------------------------- #
