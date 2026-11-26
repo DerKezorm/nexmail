@@ -27,6 +27,9 @@ import { Oauthzugaenge } from '../components/Oauthzugaenge'
 import { Anmeldeanbieter } from '../components/Anmeldeanbieter'
 import { CodesZeigen, ZweiterFaktor } from '../components/ZweiterFaktor'
 import { PASSWORD_MIN } from '../vendor/nexkonten/konten'
+import { PasskeyAddition } from '../vendor/nexkonten/AccountCards'
+import { appPfad } from '../lib/basis'
+import { pfadVon } from './einstellungen/bereiche'
 import { confirmOf } from '../lib/accountButton'
 import { servermeldung } from '../lib/servermeldung'
 import { alsJson, anlegeOptionen, geraetename, passkeyMoeglich } from '../lib/passkey'
@@ -54,6 +57,8 @@ interface Passkey {
 interface Passkeys {
   /** Der Betreiber erlaubt Passkeys (ältere Server schicken das Feld nicht; dann gilt ``erlaubt``). */
   eingeschaltet?: boolean
+  /** konten 1.1.0 (E49): ob „Passkey hinzufügen“ hier gehen kann. */
+  passkeys_can_add?: boolean
   erlaubt: boolean
   grund: string
   passkeys: Passkey[]
@@ -291,7 +296,20 @@ export function Sicherheit({
           title={t(p.title)}
           hint={t(p.hint)}
           testId="passkeys"
-          actions={an && passkeyMoeglich() && <AccountButton name="account.passkeyAdd" onClick={() => void passkeyHinzufuegen()} />}
+          // konten 1.1.0 (E49): ohne öffentliche https-Adresse sagt der Kasten, was fehlt, statt einen Knopf anzubieten,
+          // der scheitern muss (dem Betreiber mit Link zu Server › Anmeldung).
+          actions={
+            an &&
+            passkeyMoeglich() && (
+              <PasskeyAddition
+                t={t}
+                canAdd={passkeys.passkeys_can_add ?? passkeys.erlaubt}
+                operator={Boolean(ich?.ist_betreiber)}
+                onAdd={() => void passkeyHinzufuegen()}
+                signInHref={appPfad(pfadVon('sign-in'))}
+              />
+            )
+          }
         >
           {passkeys.passkeys.length > 0 && (
             <Rows label={t(p.title)}>

@@ -99,6 +99,8 @@ def test_ohne_https_adresse_keine_passkeys(klient):
     assert liste["erlaubt"] is False and liste["grund"] == "passkeys_off"
     # E39, wie nexnotes: der Kasten steht trotzdem, weil der Betreiber Passkeys erlaubt; nur das Anlegen scheitert.
     assert liste["eingeschaltet"] is True
+    # konten 1.1.0 (E49): ohne https-Adresse bietet der Kasten keinen Knopf, er sagt, was fehlt.
+    assert liste["passkeys_can_add"] is False
     with SessionLocal() as db:
         einstellung_schreiben(db, "passkeys_erlaubt", "0")
     assert klient.get("/api/auth/passkeys").json()["eingeschaltet"] is False
@@ -112,6 +114,7 @@ def test_auf_localhost_gehoert_der_passkey_zur_seite_selbst(klient):
     assert lokal.post("/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": PASSWORT}).status_code == 200
     geraet = Device("http://localhost:5173", "localhost")
     assert lokal.get("/api/auth/passkeys").json()["erlaubt"] is True
+    assert lokal.get("/api/auth/passkeys").json()["passkeys_can_add"] is True
     assert _hinzufuegen(lokal, geraet).status_code == 201
     browser = TestClient(app, base_url="http://localhost:8399", headers={"origin": "http://localhost:5173"})
     assert browser.get("/api/auth/passkey").json()["an"] is True

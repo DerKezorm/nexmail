@@ -138,6 +138,9 @@ class Liste(BaseModel):
     #: Seit dem Durchgang „Einstellungen“ (E39, wie nexnotes): der Betreiber erlaubt Passkeys, unabhängig davon, ob
     #: diese Adresse taugt. Die Seite zeigt den Kasten dann immer; ``grund`` sagt, warum das Anlegen hier scheitert.
     eingeschaltet: bool = False
+    #: konten 1.1.0 (E49): ob der Kasten „Passkey hinzufügen“ anbietet (``passkeys.can_add``: öffentliche https-Adresse
+    #: oder die Seite auf ``localhost``); sonst sagt er, was fehlt.
+    passkeys_can_add: bool = False
     #: Leer, wenn es geht; sonst die Kennung, warum nicht (``passkeys_off``: keine https-Adresse).
     grund: str = ""
     passkeys: list[dict[str, Any]]
@@ -154,6 +157,10 @@ def passkeys_liste(person: AngemeldeterBenutzer, request: Request, db: DbSession
     return Liste(
         erlaubt=store.passkeys_allowed() and not grund,
         eingeschaltet=store.passkeys_allowed(),
+        passkeys_can_add=store.passkeys_allowed()
+        and passkeys.can_add(
+            kontenpost.oeffentliche_adresse(db), origin=request.headers.get("origin", ""), request_url=str(request.url)
+        ),
         grund=grund,
         passkeys=[passkeys.view(p) for p in store.passkeys_of(person.id)],
     )
