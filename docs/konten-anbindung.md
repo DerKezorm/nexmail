@@ -285,20 +285,21 @@ des Bauplans: „Funktionen für alle Konten“ (`features`), „Schnittstellen�
 Ortsangaben nach E46 (Mein Konto › Verbindungen › API-Schlüssel, Server › Allgemein › Schnittstellen), Test
 `src/i18n/verweise.test.ts` mit der Regel; E49: jedes „wo“ in „Was ist neu“ zeigt auf den heutigen Ort.
 
-**Nacharbeit (1ce1a8f):** Kasten „Passkeys“ mit `PasskeyAddition` aus konten: `GET /api/auth/passkeys` trägt
-`passkeys_can_add` (`passkeys.can_add`); ohne öffentliche https-Adresse (und nicht auf localhost) steht statt
-„Passkey hinzufügen“ der Satz des Moduls, für den Betreiber mit Link „Server › Anmeldung“. **Eigene Sprachen** sind
-eine neue Funktion, die auf ein Ja wartet: herausgenommen in `ce902fa`, wieder hinzugefügt in einem Commit
-(`5ff7fb3`), der sich mit `git revert 5ff7fb3` sauber zurücknehmen lässt. Absicherung: nur JSON mit Texten und Gruppen
-(höchstens 8 Ebenen), höchstens 512 KB, Code nach `^[a-z]{2,3}(?:-(?:[A-Z]{2}|[A-Z][a-z]{3}))?$` (strenger als
-`[a-z]{2,3}(-[A-Za-z]{2,4})?`), kein Verweis aus dem Ordner hinaus, Lesen ohne Anmeldung gibt nur die Texte (ohne
-`_meta`), Fehler nur als Kennung. Mit c0b07ab zählt für „Passkey hinzufügen“ eine gesetzte öffentliche Adresse allein
-(nur mit https), ohne Adresse nur localhost; nexmail übergibt die Adresse so, wie sie gesetzt ist, nie die der Anfrage.
+**Nacharbeit (1ce1a8f, c0b07ab):** Kasten „Passkeys“ mit `PasskeyAddition` aus konten: `GET /api/auth/passkeys` trägt
+`passkeys_can_add` (`passkeys.can_add`, die öffentliche Adresse so, wie sie gesetzt ist); ohne öffentliche
+https-Adresse (und nicht auf localhost) steht statt „Passkey hinzufügen“ der Satz des Moduls, für den Betreiber mit
+Link „Server › Anmeldung“.
+
+**Sprachen (E51/2):** die eigenen Sprachen des Zwischenstands sind zurückgenommen (`901d213`, Revert von `5ff7fb3`);
+an ihrer Stelle das gemeinsame Modul `sprachen` 1.0.0 unter `/api/locales` (Ordner `<data>/locales`, Ablehnungen in
+nexmails Form über `error=`), Karte `LanguagesCard` unter Server › Allgemein, eigene Sprachen in Profil und
+Anmeldeseite über `ownLanguages`/`useLanguageOptions`, Profilsprache über `nexsprachen.known`. Vertragstests
+`tests/nexsprachen` (63 grün). Dazu schluessel aus 4f3e75e („Neuer MCP-Schlüssel“ md secondary).
 
 **Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 86a0cce, E45 bis E49 (ohne ruff, nexmail
-hat keins; pytest ohne xdist; zuletzt nach c0b07ab): pytest 3256 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
+hat keins; pytest ohne xdist; zuletzt nach sprachen 1.0.0 und schluessel 4f3e75e): pytest 3286 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
-schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 432
+schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 443
 grün in 46 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
 Schlüssel über den alten Weg, gesperrter Schlüssel über `/api/v1`, gelöschtes Konto ohne Post, fremder Browser nicht
 entfernbar, die Adressfrage beim Wiederherstellen (verschlüsselt und eigene Sicherung), die Rückkehradressen der
