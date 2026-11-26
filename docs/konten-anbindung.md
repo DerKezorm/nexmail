@@ -294,12 +294,12 @@ Link „Server › Anmeldung“.
 an ihrer Stelle das gemeinsame Modul `sprachen` 1.0.0 (zuletzt e18169e) unter `/api/locales` (Ordner
 `<data>/locales`, Ablehnungen in der Form des Moduls, `tidy_at_start` beim Start), Karte `LanguagesCard` unter
 Server › Allgemein, eigene Sprachen in Profil und Anmeldeseite über `ownLanguages`/`useLanguageOptions`; die
-Profilsprache nimmt an, was sie vorher annahm (E52), `nexsprachen.known` nur für die Auswahl. Drei Vertragstests zu
-`/openapi.json` sind rot, weil nexmail keine Beschreibung veröffentlicht (Modulfrage). Vertragstests
+Profilsprache nimmt an, was sie vorher annahm (E52), `nexsprachen.known` nur für die Auswahl. Die Vertragstests zu
+`/openapi.json` lesen nexmails Beschreibung über `description()` des Adapters; veröffentlicht wird keine. Vertragstests
 `tests/nexsprachen` (63 grün). Dazu schluessel aus 4f3e75e („Neuer MCP-Schlüssel“ md secondary).
 
 **Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 86a0cce, E45 bis E49 (ohne ruff, nexmail
-hat keins; pytest ohne xdist; zuletzt nach sprachen e18169e und E52): pytest 3289 bestanden, 3 rot (Vertragstests `/openapi.json`, Modulfrage), 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
+hat keins; pytest ohne xdist; zuletzt nach sprachen 68fd070): pytest 3292 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
 schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 443
 grün in 46 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
