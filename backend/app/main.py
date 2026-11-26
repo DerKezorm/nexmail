@@ -840,6 +840,8 @@ app.include_router(
         operator=nur_betreiber,
         address=_adresse_fuer_programme,
         on_connected=lambda store, konto_id, partner: _verbinden.ueber_klick(partner, store, konto_id),
+        # Über den Namen gerufen, damit die Vertragstests mithören können (``disconnected``).
+        on_disconnected=lambda store, konto_id, partner: _verbinden.ueber_getrennt(partner, store, konto_id),
         old_key=_alter_schluessel,
     )
 )

@@ -1,4 +1,4 @@
-"""Die Anbindung des Moduls verbinden 0.1.2 (``app.vendor.nexverbinden``) an nexmail: ``AppConfig``, der Store über
+"""Die Anbindung des Moduls verbinden 0.1.4 (``app.vendor.nexverbinden``) an nexmail: ``AppConfig``, der Store über
 die Tabellen des Moduls (``models.Vb…``, Vorlage ``verbinden_partner.SCHEMA``) und ``anfragen``, mit dem nexmails
 Gast-Code (nextasks, nextime) über eine per Klick gemachte Verbindung fragt.
 
@@ -252,6 +252,11 @@ class VerbindenStore:
     def local_allowed(self) -> bool:
         return bool(self.setting("connections_local_network"))
 
+    def set_local_allowed(self, on: bool) -> None:
+        """verbinden 0.1.4 (V-12): der Haken „Verbindungen ins eigene Netz“ der Betreiberkarte, dieselbe Einstellung,
+        die ``local_allowed`` liest. nexmail hat dafür keinen eigenen Schalter."""
+        self.set_setting("connections_local_network", bool(on))
+
     def seal(self, text: str) -> str:
         return crypto.verschluesseln(text, _KONTEXT)
 
@@ -368,4 +373,40 @@ def ueber_klick(partner: str, store: Any, konto_id: Any) -> None:
         logger.warning("Setting up the use of a connection failed partner=%s", partner, exc_info=True)
 
 
-__all__ = ["CONFIG", "GENUTZT", "Abgelehnt", "Unerreichbar", "gelaufen", "zugriff", "VerbindenStore", "anfragen", "store_fuer", "ueber_klick"]
+def ueber_getrennt(partner: str, store: Any, konto_id: Any) -> None:
+    """``on_disconnected`` (verbinden 0.1.4, V-13, Frage 11): eine Klick-Verbindung endete, hier mit „Trennen“ oder beim
+    Partner. nexmail löst dann seine Zeilen dieser Verbindung wie beim Trennen von Hand: die nextasks-Verbindung (Abzüge
+    der Aufgaben bleiben, die eigene Liste geht wieder an), die nextime-Verbindung, die Adressbücher von nexfolk.
+    Verbindungen von Hand (ohne ``ueber``) bleiben, wie sie sind."""
+    from ..models import Adressbuch
+    from . import adressbuecher, aufgabenziele, nextimeverbindung
+
+    db: Session = store.db
+    person = db.get(Benutzer, str(konto_id))
+    if person is None:
+        return
+    store.commit()
+    try:
+        if partner == "nextasks":
+            for v in db.scalars(
+                select(Aufgabenverbindung).where(
+                    Aufgabenverbindung.benutzer_id == person.id, Aufgabenverbindung.art == "nextasks"
+                )
+            ).all():
+                if aufgabenziele._nextasks_zugang(v).ueber:  # noqa: SLF001
+                    aufgabenziele.trennen(db, person, v.id)
+        elif partner == "nextime":
+            nt = db.scalar(select(NextimeVerbindung).where(NextimeVerbindung.benutzer_id == person.id))
+            if nt is not None and nextimeverbindung.zugang(nt).ueber:
+                nextimeverbindung.trennen(db, person)
+        elif partner == "nexfolk":
+            for buch in db.scalars(
+                select(Adressbuch).where(Adressbuch.benutzer_id == person.id, Adressbuch.ueber != "")
+            ).all():
+                adressbuecher.entfernen(db, person, buch.id)
+        # nexpaper: keine Zeile; „Als Dokument an nexpaper“ verschwindet mit der Karte.
+    except Exception:  # noqa: BLE001 - die Verbindung ist beendet; was hängen bleibt, zeigt die eigene Karte als Fehler
+        logger.warning("Dropping the rows of an ended connection failed partner=%s", partner, exc_info=True)
+
+
+__all__ = ["CONFIG", "GENUTZT", "Abgelehnt", "Unerreichbar", "gelaufen", "zugriff", "VerbindenStore", "anfragen", "store_fuer", "ueber_getrennt", "ueber_klick"]

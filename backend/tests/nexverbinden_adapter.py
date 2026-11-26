@@ -1,4 +1,4 @@
-"""nexverbinden contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of verbinden 0.1.2).
+"""nexverbinden contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of verbinden 0.1.4).
 
 nexmail is only a guest (catalog: it grants nothing), so ``probe`` is ``None``. Its partner in the tests is nextasks,
 the pair nexmail had before the module: the older version kept a connection typed in by hand
@@ -67,8 +67,25 @@ class Adapter(StandardAdapter):
                 db.commit()
         self._sitzung = SessionLocal()
         self.store = store_fuer(self._sitzung)
+        # verbinden 0.1.4: jeder Ruf von ``on_disconnected``, mitgehört und weitergegeben.
+        from app.services import verbinden_store
+
+        self._getrennt: list[tuple[Any, str]] = []
+        self._ueber_getrennt = verbinden_store.ueber_getrennt
+
+        def ueber_getrennt(partner: str, store: Any, konto_id: Any) -> None:
+            self._getrennt.append((konto_id, partner))
+            self._ueber_getrennt(partner, store, konto_id)
+
+        verbinden_store.ueber_getrennt = ueber_getrennt
+
+    def disconnected(self) -> list[tuple[Any, str]]:
+        return list(self._getrennt)
 
     def stop(self) -> None:
+        from app.services import verbinden_store
+
+        verbinden_store.ueber_getrennt = self._ueber_getrennt
         for client in self._clients.values():
             client.__exit__(None, None, None)
         self._sitzung.close()

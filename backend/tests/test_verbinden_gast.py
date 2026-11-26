@@ -337,3 +337,49 @@ def test_der_tresor_wird_gewaehlt_und_gemerkt(nexpaper_welt, monkeypatch):
 
         assert wege.zuletzt(db, db.query(Benutzer).filter_by(benutzername="sam").one().id) is None
 
+
+
+# --- Frage 11 (verbinden 0.1.4, V-13): endet die Klick-Verbindung, löst nexmail seine Zeilen davon ----------------- #
+
+
+def test_trennen_loest_die_nextasks_verbindung_per_klick_die_von_hand_bleibt(welt):
+    gefunden, _ = welt
+    with SessionLocal() as db:
+        kim = db.query(Benutzer).filter_by(benutzername="kim").one()
+        hand = Aufgabenverbindung(benutzer_id=kim.id, art="todoist", name="Todoist")
+        db.add(hand)
+        db.commit()
+        hand_id = hand.id
+    assert gefunden.connect("app").status_code == 200
+    with SessionLocal() as db:
+        assert db.query(Aufgabenverbindung).filter_by(art="nextasks").count() == 1
+    # In nexmail getrennt: die Zeile der Klick-Verbindung ist weg, die andere bleibt.
+    weg = gefunden.app.client("owner").delete(f"{gefunden.pkg.PREFIX}/partners/{gefunden.partner.name}")
+    assert weg.status_code == 200, weg.text
+    with SessionLocal() as db:
+        assert db.query(Aufgabenverbindung).filter_by(art="nextasks").count() == 0
+        assert db.get(Aufgabenverbindung, hand_id) is not None
+
+
+def test_beendet_nextasks_die_verbindung_loest_nexmail_sie_auch(welt):
+    gefunden, _ = welt
+    assert gefunden.connect("app").status_code == 200
+    weg = gefunden.partner.client("owner").delete(f"{gefunden.pkg.PREFIX}/partners/nexmail")
+    assert weg.status_code == 200, weg.text
+    with SessionLocal() as db:
+        assert db.query(Aufgabenverbindung).filter_by(art="nextasks").count() == 0
+
+
+def test_trennen_nimmt_die_buecher_von_nexfolk_mit(nexfolk_welt, monkeypatch):
+    gefunden, server, _ = nexfolk_welt
+    assert gefunden.connect("app").status_code == 200
+    with SessionLocal() as db:
+        kim = db.query(Benutzer).filter_by(benutzername="kim").one()
+        hand = _buch(db, kim, "Von Hand", BUCH)
+        hand_id = hand.id
+        assert db.query(Adressbuch).filter_by(herkunft="nexfolk").count() == 1
+    weg = gefunden.app.client("owner").delete(f"{gefunden.pkg.PREFIX}/partners/nexfolk")
+    assert weg.status_code == 200, weg.text
+    with SessionLocal() as db:
+        assert db.query(Adressbuch).filter_by(herkunft="nexfolk").count() == 0
+        assert db.get(Adressbuch, hand_id) is not None
