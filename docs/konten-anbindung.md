@@ -305,7 +305,7 @@ und `summary` aller 394 Wege des Stands `konten` fest (`openapi_namen_konten.jso
 `routers/kalender.py` und `routers/adressbuecher.py`) heißt auf beiden Ständen `app__routers__adressbuecher__Gefunden`.
 
 **Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 86a0cce, E45 bis E49 (ohne ruff, nexmail
-hat keins; pytest ohne xdist; zuletzt nach E53, sicherung 130e4e9): pytest 3296 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
+hat keins; pytest ohne xdist; zuletzt nach E53, sicherung 6edff85): pytest 3305 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
 schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 443
 grün in 46 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
