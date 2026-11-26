@@ -154,6 +154,11 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
         "Derselbe Weg mit dem kurzen Code zum Abtippen: Wer ihn benutzt, hat noch "
         "keinen Schlüssel. Die Bremse zählt je Adresse, der Code gilt zehn Minuten."
     ),
+    "/api/about": (
+        "Version, Lizenz, Quelltext und Veröffentlichungen (Modul updates): stehen ohnehin auf GitHub, nichts "
+        "Persönliches. Der Stand der Update-Prüfung darunter (``/api/about/updates``) verlangt eine Anmeldung, "
+        "Schalten und Nachsehen den Betreiber."
+    ),
     "/api/health": (
         "Der Docker-Healthcheck läuft ohne Anmeldung — er soll ja gerade dann "
         "antworten, wenn etwas nicht stimmt."
@@ -634,6 +639,20 @@ app.include_router(app_kopplung_router.router, dependencies=NUR_ANGEMELDET)
 # Cookie plus signierter Zustand) und darf deshalb ohne Sitzung ankommen.
 app.include_router(mailoauth_router.router)
 app.include_router(ueber_router.router, dependencies=NUR_ANGEMELDET)
+# Über nexmail, Karte „Aktualisierungen“ (Modul updates 0.1.1) unter ``/api/about``: ``GET /api/about`` für jeden (steht
+# in OEFFENTLICHE_PFADE), der Stand nur angemeldet und nur für Betreiber sichtbar (U15), Schalten und Nachsehen nur der
+# Betreiber. Die alten Wege ``/api/ueber`` oben sind eine dünne Hülle darüber (U16).
+from .services import aktualisierung as _aktualisierung  # noqa: E402
+from .vendor.nexupdates import api as nexupdates_api  # noqa: E402
+
+_aktualisierung.konfigurieren()
+app.include_router(
+    nexupdates_api.router(
+        account=angemeldet,
+        operator=nur_betreiber,
+        is_operator=lambda person: bool(person.ist_betreiber),
+    )
+)
 # ⚠️ **Ohne ``NUR_ANGEMELDET``.** Hinweg und Rueckweg gehoeren zur
 # Anmeldung; die Verwaltungs-Adressen darin haengen einzeln am Betreiber.
 app.include_router(oidc_router.router)

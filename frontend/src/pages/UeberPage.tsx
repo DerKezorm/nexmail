@@ -1,33 +1,24 @@
-/* Über nexmail: die `AboutPage` des Bausatzes ui 1.1.0 (Bauplan „Einstellungen", „Über"): Version mit „Version x ist
- * erschienen", „Was ist neu", Lizenz, Quelltext, Veröffentlichungen, Projektseite, „Einen Fehler gefunden?", die Karte
- * „Aktualisierungen" und „Gebaut mit". Jedes Konto sieht sie; der Schalter für die tägliche Nachfrage und „Jetzt
- * nachsehen" gehören dem Betreiber, weil die Frage für die ganze Installation hinausgeht.
+/* Über nexmail: die `AboutPage` des Bausatzes ui (Bauplan „Einstellungen", „Über"): Version mit „Version x ist
+ * erschienen", „Was ist neu", Lizenz, Quelltext, Veröffentlichungen, „Einen Fehler gefunden?", die Karte
+ * „Aktualisierungen" und „Gebaut mit".
  *
- * ⚠️ **Die Seite sagt, dass etwas hinausgeht.** nexmail liefert sogar die Schriften mit, damit es beim Öffnen niemanden
- * anfunkt; die Nachfrage bei GitHub (höchstens einmal in 24 Stunden) ist die einzige Verbindung, die zu nichts
- * Eingerichtetem gehört.
+ * Die Karte „Aktualisierungen" kommt seit dem Durchgang „Module" aus dem Modul updates 0.1.1 (`useUpdates`, Wege unter
+ * `/api/about`): Sie steht nur für Betreiber da (U2, U15). Ein Mitglied sieht seine Version, sonst nichts, und seine Seite
+ * fragt nur nach Version und Lizenz. Der Satz, was hinausgeht, kommt aus dem Modul (`whatGoesOut`): eine Frage an
+ * GitHub, sonst ruft nexmail von sich aus niemanden an (Postfächer, Kalender und alles andere gehören zu etwas, das
+ * jemand eingerichtet hat). Keine Projektseite, solange die Seiten abgeschaltet sind (U18).
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { api, type Ich } from '../api/client'
-import { appPfad } from '../lib/basis'
-import { servermeldung } from '../lib/servermeldung'
+import type { Ich } from '../api/client'
+import { appPfad, BASIS } from '../lib/basis'
+import { zeitpunkt } from '../lib/format'
 import { useWasNeu } from '../lib/wasneu'
 import { AboutPage, Notice, type BuiltWith } from '../vendor/nexui'
+import { useUpdates, useUpdatesTexts, whatGoesOut, type Fetcher } from '../vendor/nexupdates/updates'
 
-interface Auskunft {
-  version: string
-  repo_adresse: string
-  release_adresse: string
-  projektseite: string
-  lizenz: string
-  update_pruefen: boolean
-  geprueft: boolean
-  neueste: string | null
-  neuer_da: boolean
-  geprueft_am: string | null
-}
+const holen: Fetcher = (pfad, init) => fetch(`${BASIS}${pfad}`, { credentials: 'include', ...init })
 
 const BAUSTEINE: BuiltWith[] = [
   { name: 'FastAPI', url: 'https://fastapi.tiangolo.com', licence: 'MIT' },
@@ -48,71 +39,32 @@ const BAUSTEINE: BuiltWith[] = [
 
 export function UeberPage({ ich }: { ich: Ich | null }) {
   const { t, i18n } = useTranslation()
-  const [daten, setDaten] = useState<Auskunft | null>(null)
-  const [fehler, setFehler] = useState<string | null>(null)
-  const [laeuft, setLaeuft] = useState(false)
   const wasNeu = useWasNeu(ich?.version, i18n.language)
+  const wann = useCallback((iso: string) => zeitpunkt(iso, i18n.language), [i18n.language])
+  const stand = useUpdates({ fetcher: holen, operator: Boolean(ich?.ist_betreiber), when: wann, language: i18n.language })
+  const worte = useUpdatesTexts(i18n.language)
 
-  const laden = useCallback(() => {
-    api
-      .holen<Auskunft>('/api/ueber')
-      .then((a) => {
-        setDaten(a)
-        setFehler(null)
-      })
-      .catch((e: unknown) => setFehler(servermeldung(e)))
-  }, [])
-  useEffect(laden, [laden])
-
-  async function jetztPruefen() {
-    setLaeuft(true)
-    try {
-      setDaten(await api.senden<Auskunft>('/api/ueber/pruefen', {}))
-      setFehler(null)
-    } catch (e) {
-      setFehler(servermeldung(e))
-    } finally {
-      setLaeuft(false)
-    }
-  }
-
-  async function schalten(an: boolean) {
-    if (daten) setDaten({ ...daten, update_pruefen: an })
-    try {
-      setDaten(await api.aendern<Auskunft>('/api/ueber/pruefen', { update_pruefen: an }))
-    } catch (e) {
-      setFehler(servermeldung(e))
-      laden()
-    }
-  }
-
-  if (!daten) return fehler ? <Notice tone="danger">{fehler}</Notice> : null
+  if (!stand.about) return stand.problem ? <Notice tone="danger">{stand.problem}</Notice> : null
   return (
     <AboutPage
       app="nexmail"
       logo={appPfad('/favicon.svg?v=2')}
       tagline={t('ueber.untertitel')}
-      version={daten.version}
-      licence={{ name: daten.lizenz, href: 'https://www.gnu.org/licenses/agpl-3.0.html' }}
-      source={daten.repo_adresse}
-      releases={`${daten.repo_adresse}/releases`}
-      project={daten.projektseite && daten.projektseite !== daten.repo_adresse ? daten.projektseite : null}
+      version={stand.about.version}
+      licence={{ name: stand.about.license, href: 'https://www.gnu.org/licenses/agpl-3.0.html' }}
+      source={stand.about.repo_url}
+      releases={stand.about.releases_url}
+      project={stand.about.project_url || null}
       whatsNew={wasNeu}
-      updates={{
-        checkDaily: daten.update_pruefen,
-        checked: daten.geprueft,
-        latest: daten.neueste,
-        newer: daten.neuer_da,
-        checkedAt: daten.geprueft_am ? new Date(daten.geprueft_am).toLocaleString(i18n.language) : null,
-        releaseUrl: daten.release_adresse,
-      }}
+      updates={stand.updates}
+      showUpdates={stand.showUpdates}
       operator={Boolean(ich?.ist_betreiber)}
-      onDaily={(an) => void schalten(an)}
-      onCheck={() => void jetztPruefen()}
-      checking={laeuft}
+      onDaily={stand.onDaily}
+      onCheck={stand.onCheck}
+      checking={stand.checking}
       builtWith={BAUSTEINE}
-      problem={fehler}
-      texts={{ updatesWhatGoesOut: t('ueber.was_hinausgeht') }}
+      problem={stand.problem}
+      texts={{ updatesWhatGoesOut: whatGoesOut(worte, 'nexmail') }}
     />
   )
 }

@@ -1898,8 +1898,7 @@
     "ziehen": "Ziehen ändert die Reihenfolge im Menü „Vorlage“."
   },
   "ueber": {
-    "untertitel": "Ein selbstgehosteter E-Mail-Client",
-    "was_hinausgeht": "Das ist die einzige Verbindung nach draußen, die nicht zu etwas gehört, das du selbst eingerichtet hast. Alle anderen (Postfächer, Kalender, Kontakte, Bilder auf Klick, Benachrichtigungen, KI-Dienst, Anmeldung über einen Anbieter) bedienen etwas, das hier eingetragen ist. Die Schriften liegen im Abbild. Hinaus geht hier nur die Frage nach der neuesten Version: keine Adressen, keine Einstellungen, keine Betreffzeilen. Ausgeschaltet bleibt der Knopf daneben."
+    "untertitel": "Ein selbstgehosteter E-Mail-Client"
   },
   "umzug": {
     "einspielen": "Post einspielen …",

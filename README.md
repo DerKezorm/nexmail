@@ -725,6 +725,14 @@ changes that. Setting `NEXMAIL_SECRET_KEY` moves the key out of the data
 directory, which is the one effective lever: a stolen backup alone is then
 worthless.
 
+**One question goes out by itself: whether a newer version is out.** Once a day,
+when an operator opens *Settings › About nexmail*, nexmail asks GitHub for the
+newest release, without names, contents, settings or its own version, and never
+through a proxy from the environment. The setup asks once whether to do this;
+the operator switches it on the About page, where *Check now* works either way.
+Members see their version and nothing of the check. `NEXMAIL_UPDATE_URL` points
+the question elsewhere.
+
 ## Development
 
 ```bash

@@ -24,7 +24,7 @@ from ..deps import DbSession
 from ..models import Benutzer
 from ..services import anmeldebremse
 from ..services import konten_store as kontenstore
-from ..vendor import nexkonten
+from ..vendor import nexkonten, nexupdates
 from ..services import sitzung as sitzungsdienst
 from ..vendor import nexkonten
 
@@ -51,6 +51,9 @@ class KontoEingabe(BaseModel):
     kontaktadresse: str = Field(default="", max_length=320)
     #: Still aus dem Browser (kein Feld auf der Seite); geaendert wird sie im Profil.
     sprache: str = Field(default="", max_length=35)
+    #: „Nach neuen Versionen sehen“ (Modul updates, U1): auf der Seite vorbelegt an. Fehlt das Feld (ein Skript von
+    #: vorher), bleibt der Schalter ungespeichert, also an wie bisher.
+    update_check: bool | None = None
 
 
 class KontoAntwort(BaseModel):
@@ -109,6 +112,9 @@ def konto_anlegen(
             wache.fehlgeschlagen()
         raise kontenstore.http(fehler) from fehler
     wache.geschafft()
+    if eingabe.update_check is not None:
+        # U1: die Antwort der Einrichtung, nur solange nichts gespeichert ist.
+        nexupdates.at_setup(eingabe.update_check)
 
     neuer = db.get(Benutzer, str(ergebnis.account.id))
     sitzungsdienst.anlegen(db, neuer, request, response, bestaetigt=True)

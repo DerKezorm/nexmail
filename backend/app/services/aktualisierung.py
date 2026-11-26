@@ -1,137 +1,72 @@
-"""Nachsehen, ob es eine neuere Fassung von nexmail gibt.
+"""Nachsehen, ob es eine neuere Version von nexmail gibt: das gemeinsame Modul updates 0.1.1 (``vendor/nexupdates``).
 
-Gefragt wird die oeffentliche GitHub-Schnittstelle, wenn der Betreiber „Ueber
-nexmail" oeffnet, hoechstens einmal in 24 Stunden (Zwischenspeicher im
-Arbeitsspeicher, kein Tagesauftrag). Uebertragen wird nichts ausser der
-Anfrage selbst — keine Adressen, keine Einstellungen, keine Betreffzeilen.
+Bis zum Durchgang „Module“ (26.11.2026) stand hier nexmails eigene, ältere Fassung. Das Modul behebt ihre drei
+Schwächen: Ein Fehlschlag überschreibt den letzten guten Stand nicht mehr (und wird nach einer Stunde wiederholt, nicht
+erst nach 24), die Antwort ist auf 256 KB begrenzt und nur ein Tag der Form ``v1.2.3`` zählt, und es geht weder über
+einen Proxy aus der Umgebung noch einer Weiterleitung nach. Neu ist ``NEXMAIL_UPDATE_URL``.
 
-⚠️ **Das ist die einzige Verbindung nach draussen, die nicht zu etwas gehoert,
-das ein Mensch eingerichtet hat.** Alle anderen (Postfaecher, CalDAV,
-CardDAV, Autoconfig, Bilder, BIMI, KI, Push, OIDC) bedienen etwas, das
-eingetragen oder angeklickt wurde. Bis 0.22.2 stand hier „die einzige Stelle,
-an der nexmail hinausruft", und das stimmte nie. Sie widerspricht dem eigenen
-Grundsatz: Die Schriften liegen im Abbild, damit
-die Anwendung beim Oeffnen niemanden anfunkt. Deshalb steht der Schalter auf
-der Ueber-Seite selbst — dort, wo auch das Ergebnis erscheint — und deshalb
-sagt die Seite in einem Satz, was hinausgeht. Wer ihn ausschaltet, sieht nur
-noch den Knopf „Jetzt pruefen".
+nexmail bleibt bei seinem Schalter ``update_pruefen`` (``"0"`` aus, ``"1"`` an, leer oder fehlend: nie gespeichert,
+also an) und bei seinen alten Wegen ``/api/ueber`` (dünne Hülle in ``routers/ueber.py``). Die Wege des Moduls liegen
+unter ``/api/about``.
 
-⚠️ **Die Pruefung ist Beiwerk.** Faellt GitHub aus, fehlt das Netz oder
-antwortet die Schnittstelle mit einem Fehler, darf davon nichts in der
-Oberflaeche kaputtgehen — dann steht dort einfach nichts. Uebernommen aus
-Nexview (``services/updates.py``), samt dieser Regel.
+⚠️ **Keine Glocke, also kein Blick im Hintergrund** (U19): nexmail hat keine Glocke, der tägliche Blick diente nur dem
+Bescheid dort. Gefragt wird, wenn ein Betreiber „Über nexmail“ öffnet (höchstens einmal am Tag) oder „Jetzt
+nachsehen“ klickt. Ein Mitglied löst nie eine Frage aus und erfährt nichts über den Stand (U2, U15).
+
+⚠️ **Die Prüfung ist Beiwerk.** Fällt GitHub aus, fehlt das Netz oder antwortet die Schnittstelle mit einem Fehler,
+geht davon nichts in der Oberfläche kaputt; dann steht dort einfach kein Stand.
 """
 
 from __future__ import annotations
 
-import asyncio
-import logging
-import re
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-
-import httpx
-
 from .. import __version__
+from ..config import get_settings
+from ..vendor import nexupdates
 
-logger = logging.getLogger("nexmail.aktualisierung")
+#: Der Schalter, wo er immer lag (Tabelle ``einstellung``).
+SCHLUESSEL_UPDATE_PRUEFEN = "update_pruefen"
 
 REPO = "DerKezorm/nexmail"
 REPO_URL = f"https://github.com/{REPO}"
 RELEASES_URL = f"{REPO_URL}/releases"
-PROJEKTSEITE = "https://nexmail.nexapps.dev"
-API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
-
-#: Hoechstens einmal in 24 Stunden. GitHub erlaubt ohne Anmeldung 60 Anfragen je
-#: Stunde und Adresse — davon sind wir damit weit entfernt.
-ABSTAND = timedelta(hours=24)
-
-#: Kurze Zeitgrenze: Die Ueber-Seite soll nicht auf GitHub warten muessen.
-ZEITGRENZE = httpx.Timeout(6.0, connect=4.0)
-
-_MUSTER = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)")
+#: Leer, solange die Projektseiten abgeschaltet sind (seit 17.10.2026, U18): die Zeile „Projektseite“ fällt weg.
+PROJEKTSEITE = ""
 
 
-@dataclass(frozen=True)
-class Stand:
-    jetzige: str
-    neueste: str | None = None
-    neuer_da: bool = False
-    geprueft_am: datetime | None = None
-    release_adresse: str = RELEASES_URL
+def _lesen() -> bool | None:
+    """Der Schalter, wie er gespeichert ist; None, solange ihn nie jemand angefasst hat (leer oder fehlend)."""
+    from ..db import SessionLocal, einstellung_lesen
+
+    with SessionLocal() as db:
+        wert = einstellung_lesen(db, SCHLUESSEL_UPDATE_PRUEFEN)
+    return None if wert == "" else wert != "0"
 
 
-#: Zwischenspeicher im Arbeitsspeicher. Ein Neustart fuehrt zu einer neuen
-#: Abfrage — das ist selten genug und spart eine Tabelle.
-_gemerkt: Stand | None = None
-_schloss = asyncio.Lock()
+def _schreiben(an: bool) -> None:
+    """In der Form von vorher: ``"1"`` an, ``"0"`` aus (eine ältere Fassung liest ihn genauso)."""
+    from ..db import SessionLocal, einstellung_schreiben
+
+    with SessionLocal() as db:
+        einstellung_schreiben(db, SCHLUESSEL_UPDATE_PRUEFEN, "1" if an else "0")
 
 
-def zerlegen(text: str) -> tuple[int, int, int] | None:
-    """``"v1.2.3"`` -> ``(1, 2, 3)``; alles Unverstaendliche -> ``None``."""
-    treffer = _MUSTER.match((text or "").strip())
-    if not treffer:
-        return None
-    return int(treffer.group(1)), int(treffer.group(2)), int(treffer.group(3))
-
-
-def ist_neuer(neueste: str, jetzige: str) -> bool:
-    """⚠️ Verglichen werden Zahlen, nicht Zeichenketten.
-
-    ``"0.10.0" > "0.9.0"`` ist als Text **falsch** — und der Fehler faellt
-    genau einmal auf, naemlich bei der zehnten Nebenfassung.
-    """
-    a, b = zerlegen(neueste), zerlegen(jetzige)
-    if a is None or b is None:
-        return False
-    return a > b
-
-
-async def _abfragen() -> str | None:
-    try:
-        async with httpx.AsyncClient(timeout=ZEITGRENZE) as klient:
-            antwort = await klient.get(
-                API_URL, headers={"accept": "application/vnd.github+json"}
-            )
-            antwort.raise_for_status()
-            return str(antwort.json().get("tag_name") or "") or None
-    except Exception as fehler:  # noqa: BLE001
-        # ⚠️ **Jede Ausnahme**, nicht eine Liste von Namen. In Nexview lief
-        # ``httpx.InvalidURL`` an einem ``httpx.HTTPError`` vorbei und riss
-        # eine ganze Seite mit. Eine misslungene Nebensache darf nichts
-        # kaputtmachen.
-        logger.info("The update check did not get through: %s", fehler)
-        return None
-
-
-async def stand(*, an: bool = True, erzwingen: bool = False) -> Stand:
-    """Der letzte bekannte Stand — bei Bedarf frisch geholt."""
-    global _gemerkt
-
-    if not an and not erzwingen:
-        return Stand(jetzige=__version__)
-
-    jetzt = datetime.now(timezone.utc)
-    async with _schloss:
-        frisch_genug = (
-            _gemerkt is not None
-            and _gemerkt.geprueft_am is not None
-            and jetzt - _gemerkt.geprueft_am < ABSTAND
+def konfigurieren() -> None:
+    """Beim Laden der App (``main``), vor der ersten Anfrage; der Vertragsadapter startet so neu."""
+    nexupdates.configure(
+        nexupdates.AppConfig(
+            app_name="nexmail",
+            version=lambda: __version__,
+            repo=REPO,
+            project_url=PROJEKTSEITE,
+            update_url=lambda: get_settings().update_url,
+            read_switch=_lesen,
+            write_switch=_schreiben,
+            # U19: ohne Glocke kein ``on_newer``, also kein Blick im Hintergrund.
+            on_newer=None,
         )
-        if frisch_genug and not erzwingen:
-            return _gemerkt  # type: ignore[return-value]
-
-        neueste = await _abfragen()
-        _gemerkt = Stand(
-            jetzige=__version__,
-            neueste=neueste,
-            neuer_da=bool(neueste) and ist_neuer(neueste or "", __version__),
-            geprueft_am=jetzt,
-        )
-        return _gemerkt
+    )
 
 
-def zuruecksetzen() -> None:
-    """Nur fuer Tests."""
-    global _gemerkt
-    _gemerkt = None
+#: Die Namen von vorher, für alles, was sie noch ruft.
+ist_neuer = nexupdates.is_newer
+zuruecksetzen = nexupdates.forget

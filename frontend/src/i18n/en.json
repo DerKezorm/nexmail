@@ -1898,8 +1898,7 @@
     "ziehen": "Drag to change the order in the Template menu."
   },
   "ueber": {
-    "untertitel": "A self-hosted email client",
-    "was_hinausgeht": "This is the only connection to the outside that does not belong to something you set up yourself. All the others (mailboxes, calendars, contacts, images on request, notifications, the AI service, sign-in through a provider) serve something entered here. The fonts ship inside the image. All this one sends is the question about the latest version: no addresses, no settings, no subject lines. Switched off, the button next to it still works."
+    "untertitel": "A self-hosted email client"
   },
   "umzug": {
     "einspielen": "Import mail …",

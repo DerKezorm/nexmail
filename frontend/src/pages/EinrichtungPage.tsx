@@ -23,6 +23,7 @@ import {
   setupNotes,
   usernameProblem,
 } from '../vendor/nexkonten/konten'
+import { UpdateSetupRow } from '../vendor/nexupdates/UpdateSetupRow'
 
 interface Props {
   modus: 'dark' | 'light'
@@ -43,6 +44,8 @@ export function EinrichtungPage({ modus, aufModus, aufFertig }: Props) {
   const [wiederholung, setWiederholung] = useState('')
   const [fehler, setFehler] = useState('')
   const [laeuft, setLaeuft] = useState(false)
+  /* „Nach neuen Versionen sehen" (Modul updates, U1): einmal gefragt, vorbelegt an; später unter Über nexmail. */
+  const [updates, setUpdates] = useState(true)
 
   async function kontoAnlegen(e: React.FormEvent) {
     e.preventDefault()
@@ -61,6 +64,7 @@ export function EinrichtungPage({ modus, aufModus, aufFertig }: Props) {
         passwort,
         // Still aus dem Browser, kein Feld (Kontenmodul); geändert wird sie im Profil.
         sprache: i18n.language,
+        update_check: updates,
       })
       /* ⚠️ **Hier ist der Assistent zu Ende** (01.09.2026). Den zweiten Faktor schaltet jeder selbst ein, unter
          Einstellungen → Sicherheit. */
@@ -159,6 +163,8 @@ export function EinrichtungPage({ modus, aufModus, aufFertig }: Props) {
           error={wiederholung && passwort !== wiederholung ? t('account.passwordMismatch') : undefined}
           onChange={(e) => setWiederholung(e.target.value)}
         />
+
+        <UpdateSetupRow app="nexmail" checked={updates} onChange={setUpdates} language={i18n.language} />
 
         {fehler && <Meldung text={fehler} />}
 

@@ -1,11 +1,12 @@
-"""Die Ueber-Seite: Fassung, Herkunft, Lizenz, Update-Stand.
+"""Die alten Wege der Über-Seite (``/api/ueber``): dünne Hülle über dem Modul updates 0.1.1 (U16, E53).
 
-⚠️ **Lesen darf jedes angemeldete Konto** (seit 22.11.2026, wie „Über
-nexnotes"): Fassung, Lizenz und Quelltext sind kein Geheimnis. **Schalten und
-von Hand nachsehen nur der Betreiber**: Der Update-Schalter ruft nach draussen,
-das ist eine Entscheidung ueber die ganze Installation, keine ueber ein Konto.
-Das Nachsehen beim Oeffnen folgt seinem Schalter und hoechstens einmal in 24
-Stunden, egal wer die Seite oeffnet.
+Die Seite selbst nutzt seit dem Durchgang „Module“ die Wege des Moduls unter ``/api/about``. Diese hier bleiben mit
+ihrer Form, ihren deutschen Feldern, Namen und Statuscodes für alles, was sie noch ruft: lesen jedes angemeldete Konto,
+schalten und von Hand nachsehen nur der Betreiber, ohne Anmeldung 401.
+
+⚠️ **Ein Mitglied erfährt nichts über die Prüfung** (U2, U15): Fassung, Lizenz und Quelltext bekommt es wie bisher,
+die Felder zum Stand und der Schalter sind für es leer in ihren alten Typen (``update_pruefen`` false), und sein
+Aufruf fragt nie hinaus. Nur der Blick eines Betreibers fragt (wenn der Stand einen Tag alt ist und der Schalter an).
 """
 
 from __future__ import annotations
@@ -16,13 +17,14 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from .. import __version__
-from ..db import einstellung_lesen, einstellung_schreiben
-from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
+from ..deps import AngemeldeterBenutzer, Betreiber
 from ..services import aktualisierung
+from ..vendor import nexupdates
+from ..vendor.nexupdates import api as nexupdates_api
 
 router = APIRouter(prefix="/api/ueber", tags=["ueber"])
 
-SCHLUESSEL_UPDATE_PRUEFEN = "update_pruefen"
+SCHLUESSEL_UPDATE_PRUEFEN = aktualisierung.SCHLUESSEL_UPDATE_PRUEFEN
 
 
 class Auskunft(BaseModel):
@@ -43,50 +45,42 @@ class Schalter(BaseModel):
     update_pruefen: bool
 
 
-def _an(db) -> bool:
-    """⚠️ Ab Werk **an**.
-
-    Ein leerer Wert heisst also nicht „aus", sondern „noch nie angefasst".
-    """
-    wert = einstellung_lesen(db, SCHLUESSEL_UPDATE_PRUEFEN)
-    return wert != "0"
-
-
-def _auskunft(pruefen: bool, stand: aktualisierung.Stand | None) -> Auskunft:
+def _auskunft(pruefen: bool, stand: nexupdates.State | None) -> Auskunft:
+    """Die alte Form; der Stand so, wie das Modul ihn zeigt (nur ein Tag der festen Form zählt)."""
+    gesehen = nexupdates_api.view(stand, pruefen) if stand is not None else None
     return Auskunft(
         version=__version__,
         repo_adresse=aktualisierung.REPO_URL,
         release_adresse=aktualisierung.RELEASES_URL,
         projektseite=aktualisierung.PROJEKTSEITE,
         update_pruefen=pruefen,
-        geprueft=stand is not None and stand.geprueft_am is not None,
-        neueste=stand.neueste if stand else None,
-        neuer_da=bool(stand and stand.neuer_da),
-        geprueft_am=stand.geprueft_am if stand else None,
+        geprueft=bool(gesehen and gesehen["checked"]),
+        neueste=gesehen["latest"] if gesehen else None,
+        neuer_da=bool(gesehen and gesehen["newer"]),
+        geprueft_am=gesehen["checked_at"] if gesehen else None,
     )
 
 
 @router.get("", response_model=Auskunft)
-async def ueber(_: AngemeldeterBenutzer, db: DbSession) -> Auskunft:
-    pruefen = _an(db)
-    return _auskunft(pruefen, await aktualisierung.stand(an=pruefen))
+def ueber(person: AngemeldeterBenutzer) -> Auskunft:
+    if not person.ist_betreiber:
+        # U15: dieselbe Form, aber nichts über die Prüfung und nie eine Frage.
+        return _auskunft(False, None)
+    an = nexupdates.switch_on()
+    return _auskunft(an, nexupdates.state(on=an))
 
 
 @router.post("/pruefen", response_model=Auskunft)
-async def jetzt_pruefen(_: Betreiber, db: DbSession) -> Auskunft:
+def jetzt_pruefen(_: Betreiber) -> Auskunft:
     """Von Hand nachsehen — auch wenn die Nachfrage beim Öffnen aus ist.
 
     ⚠️ Das ist kein Widerspruch: Ausgeschaltet heisst „nicht **von selbst**
     hinausrufen". Wer hier klickt, hat es gerade entschieden.
     """
-    return _auskunft(_an(db), await aktualisierung.stand(an=True, erzwingen=True))
+    return _auskunft(nexupdates.switch_on(), nexupdates.state(on=True, force=True))
 
 
 @router.put("/pruefen", response_model=Auskunft)
-async def schalter_setzen(eingabe: Schalter, _: Betreiber, db: DbSession) -> Auskunft:
-    einstellung_schreiben(db, SCHLUESSEL_UPDATE_PRUEFEN, "1" if eingabe.update_pruefen else "0")
-    db.commit()
-    return _auskunft(
-        eingabe.update_pruefen,
-        await aktualisierung.stand(an=eingabe.update_pruefen),
-    )
+def schalter_setzen(eingabe: Schalter, _: Betreiber) -> Auskunft:
+    an = nexupdates.set_switch(eingabe.update_pruefen)
+    return _auskunft(an, nexupdates.state(on=an))

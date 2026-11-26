@@ -1,4 +1,8 @@
-"""Die Ueber-Seite und die Update-Nachfrage.
+"""Die Ueber-Seite und die Update-Nachfrage: die alten Wege ``/api/ueber`` als Hülle über dem Modul updates 0.1.1.
+
+Die Wege des Moduls (``/api/about``) prüfen die Vertragstests in ``tests/nexupdates``; hier stehen die alten Wege mit
+ihrer Form, die Regeln für Mitglieder (U15), das Kästchen der Einrichtung (U1) und dass ohne Glocke nichts im
+Hintergrund fragt (U19).
 
 ⚠️ **Der wichtigste Test hier ist ``test_ein_ausfall_bei_github_reisst_nichts_mit``.**
 Die Nachfrage ist Beiwerk. Faellt sie aus, soll dort einfach nichts stehen —
@@ -14,7 +18,9 @@ import pytest
 
 from app import __version__
 from app.services import aktualisierung
-from conftest import anmelden, einrichten, zweiten_benutzer_anlegen
+from app.vendor import nexupdates
+from app.vendor.nexupdates import check as pruefung
+from conftest import EINRICHTUNGSCODE, anmelden, einrichten, zweiten_benutzer_anlegen
 
 
 @pytest.fixture(autouse=True)
@@ -28,18 +34,12 @@ def ohne_gedaechtnis():
 def ohne_netz(monkeypatch):
     """Kein Test ruft GitHub an — sonst haengt der Lauf am fremden Dienst."""
 
-    async def nichts():
-        return None
-
-    monkeypatch.setattr(aktualisierung, "_abfragen", nichts)
+    monkeypatch.setattr(pruefung, "ask", lambda: None)
     yield
 
 
 def _antwortet_mit(monkeypatch, tag: str | None):
-    async def gibt():
-        return tag
-
-    monkeypatch.setattr(aktualisierung, "_abfragen", gibt)
+    monkeypatch.setattr(pruefung, "ask", lambda: tag)
 
 
 # --- Versionsvergleich ---------------------------------------------------- #
@@ -73,7 +73,8 @@ def test_die_seite_nennt_fassung_lizenz_und_herkunft(klient, ohne_netz):
     assert daten["version"] == __version__
     assert daten["lizenz"] == "AGPL-3.0"
     assert daten["repo_adresse"].endswith("/nexmail")
-    assert daten["projektseite"].startswith("https://")
+    # U18: solange die Projektseiten abgeschaltet sind, keine (die Zeile fällt weg); das Feld bleibt, leer.
+    assert daten["projektseite"] == ""
 
 
 def test_jeder_sieht_sie_nur_der_betreiber_schaltet(klient, db, ohne_netz):
@@ -114,11 +115,11 @@ def test_ausgeschaltet_geht_nichts_hinaus(klient, monkeypatch):
     """⚠️ Der Grund fuer den Schalter — nicht nur ein leeres Feld in der Anzeige."""
     gerufen: list[int] = []
 
-    async def zaehlen():
+    def zaehlen():
         gerufen.append(1)
         return "v9.9.9"
 
-    monkeypatch.setattr(aktualisierung, "_abfragen", zaehlen)
+    monkeypatch.setattr(pruefung, "ask", zaehlen)
 
     einrichten(klient)
     klient.put("/api/ueber/pruefen", json={"update_pruefen": False})
@@ -179,16 +180,16 @@ def test_ein_ausfall_bei_github_reisst_nichts_mit(klient, monkeypatch):
             def __init__(self, *a, **k):
                 pass
 
-            async def __aenter__(self):
+            def __enter__(self):
                 return self
 
-            async def __aexit__(self, *a):
+            def __exit__(self, *a):
                 return False
 
-            async def get(self, *a, **k):
+            def stream(self, *a, **k):
                 raise fehler
 
-        monkeypatch.setattr(httpx, "AsyncClient", Attrappe)
+        monkeypatch.setattr(httpx, "Client", Attrappe)
         aktualisierung.zuruecksetzen()
 
         antwort = klient.get("/api/ueber")
@@ -201,14 +202,132 @@ def test_hoechstens_einmal_am_tag(klient, monkeypatch):
     """GitHub erlaubt ohne Anmeldung 60 Anfragen je Stunde und Adresse."""
     gerufen: list[int] = []
 
-    async def zaehlen():
+    def zaehlen():
         gerufen.append(1)
         return "v0.1.0"
 
-    monkeypatch.setattr(aktualisierung, "_abfragen", zaehlen)
+    monkeypatch.setattr(pruefung, "ask", zaehlen)
 
     einrichten(klient)
     for _ in range(4):
         klient.get("/api/ueber")
 
     assert len(gerufen) == 1, f"Es gingen {len(gerufen)} Anfragen hinaus statt einer."
+
+
+# --- Seit dem Modul updates 0.1.1 ------------------------------------------ #
+
+
+def _zaehler(monkeypatch, tag: str = "v99.0.0") -> list[int]:
+    gerufen: list[int] = []
+
+    def zaehlen():
+        gerufen.append(1)
+        return tag
+
+    monkeypatch.setattr(pruefung, "ask", zaehlen)
+    return gerufen
+
+
+def test_ein_mitglied_erfaehrt_nichts_und_fragt_nie(klient, db, monkeypatch):
+    """U2, U15: Fassung, Lizenz und Quelltext wie bisher; der Stand und der Schalter leer in ihren alten Typen, und
+    sein Aufruf geht nie hinaus, auch wenn der Schalter an ist."""
+    gerufen = _zaehler(monkeypatch)
+    einrichten(klient)
+    assert klient.get("/api/ueber").json()["neueste"] == "v99.0.0"
+    _, geheimnis = zweiten_benutzer_anlegen(db)
+    klient.post("/api/auth/abmelden")
+    anmelden(klient, "zweiter", "auch-geheim-456", geheimnis)
+    gerufen.clear()
+    nexupdates.forget()
+
+    daten = klient.get("/api/ueber").json()
+    assert daten["version"] == __version__ and daten["repo_adresse"].endswith("/nexmail")
+    assert (daten["update_pruefen"], daten["geprueft"], daten["neueste"], daten["neuer_da"], daten["geprueft_am"]) == (
+        False,
+        False,
+        None,
+        False,
+        None,
+    )
+    assert "99.0.0" not in klient.get("/api/ueber").text
+    assert gerufen == []
+
+
+def test_ohne_glocke_fragt_der_hintergrund_nie(klient, monkeypatch):
+    """U19: nexmail hat keine Glocke, also kein Blick im Hintergrund, auch nicht mit eingeschaltetem Schalter."""
+    gerufen = _zaehler(monkeypatch)
+    einrichten(klient)
+    klient.put("/api/ueber/pruefen", json={"update_pruefen": True})
+    gerufen.clear()
+    nexupdates.forget()
+    assert nexupdates.current().on_newer is None
+    for _ in range(3):
+        assert nexupdates.look_once() is None
+    assert gerufen == []
+
+
+def test_alte_und_neue_wege_teilen_den_schalter(klient, db, monkeypatch):
+    """Der Schalter liegt, wo er immer lag (``update_pruefen``, ``"0"``/``"1"``); beide Wege lesen und schreiben ihn."""
+    from app.db import einstellung_lesen
+
+    _antwortet_mit(monkeypatch, None)
+    einrichten(klient)
+    assert einstellung_lesen(db, "update_pruefen") == ""
+    klient.put("/api/about/updates", json={"update_check": False})
+    db.expire_all()
+    assert einstellung_lesen(db, "update_pruefen") == "0"
+    assert klient.get("/api/ueber").json()["update_pruefen"] is False
+    klient.put("/api/ueber/pruefen", json={"update_pruefen": True})
+    db.expire_all()
+    assert einstellung_lesen(db, "update_pruefen") == "1"
+    assert klient.get("/api/about/updates").json()["update_check"] is True
+
+
+@pytest.mark.parametrize("an", [True, False])
+def test_die_einrichtung_fragt_einmal(klient, db, monkeypatch, an):
+    """U1: das Kästchen „Nach neuen Versionen sehen“ der Einrichtung wird gespeichert."""
+    from app.db import einstellung_lesen
+
+    _antwortet_mit(monkeypatch, None)
+    antwort = klient.post(
+        "/api/setup/konto",
+        json={
+            "benutzername": "betreiber",
+            "passwort": "sehr-geheim-123",
+            "anzeigename": "Betreiber",
+            "einrichtungscode": EINRICHTUNGSCODE,
+            "update_check": an,
+        },
+    )
+    assert antwort.status_code == 201, antwort.text
+    assert einstellung_lesen(db, "update_pruefen") == ("1" if an else "0")
+    assert klient.get("/api/ueber").json()["update_pruefen"] is an
+
+
+def test_eine_einrichtung_ohne_kaestchen_laesst_den_schalter_ungespeichert(klient, db, ohne_netz):
+    """Ein Skript von vorher schickt das Feld nicht: nichts gespeichert, also an wie bisher."""
+    from app.db import einstellung_lesen
+
+    einrichten(klient)
+    assert einstellung_lesen(db, "update_pruefen") == ""
+    assert klient.get("/api/ueber").json()["update_pruefen"] is True
+
+
+def test_ein_fehlschlag_behaelt_den_letzten_guten_stand(klient, monkeypatch):
+    """Vorher überschrieb ein Fehlschlag den guten Stand für 24 Stunden mit „nichts“."""
+    _antwortet_mit(monkeypatch, "v99.0.0")
+    einrichten(klient)
+    assert klient.post("/api/ueber/pruefen").json()["neueste"] == "v99.0.0"
+    _antwortet_mit(monkeypatch, None)
+    daten = klient.post("/api/ueber/pruefen").json()
+    assert (daten["neueste"], daten["neuer_da"]) == ("v99.0.0", True)
+
+
+def test_nur_ein_tag_der_festen_form_wird_gezeigt(klient, monkeypatch):
+    """Vorher stand jeder Tag ungeprüft in der Anzeige."""
+    einrichten(klient)
+    for tag in ("<script>", "v1.2.3-rc1", "latest"):
+        monkeypatch.setattr(pruefung, "ask", lambda tag=tag: tag)
+        daten = klient.post("/api/ueber/pruefen").json()
+        assert (daten["neueste"], daten["neuer_da"]) == (None, False), tag

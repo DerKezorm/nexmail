@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     # schreibt ihn ins Protokoll, solange es kein Konto gibt. Ein laufendes nexmail fragt nie danach.
     setup_token: str = ""
 
+    # --- Update-Pruefung ----------------------------------------------------
+    #
+    # Wen nexmail fragt, ob eine neuere Version erschienen ist (``NEXMAIL_UPDATE_URL``, Modul updates). Leer: GitHub,
+    # ``releases/latest`` von DerKezorm/nexmail. Auch hier gilt: kein Proxy aus der Umgebung, keine Weiterleitung.
+    update_url: str = ""
+
     # --- Der Takt -----------------------------------------------------------
 
     # Wie oft nexmail von selbst nach neuer Post sieht (Sekunden).
