@@ -164,7 +164,7 @@ export function EinrichtungPage({ modus, aufModus, aufFertig }: Props) {
           onChange={(e) => setWiederholung(e.target.value)}
         />
 
-        <UpdateSetupRow app="nexmail" checked={updates} onChange={setUpdates} language={i18n.language} />
+        <UpdateSetupRow app="nexmail" checked={updates} onChange={setUpdates} language={i18n.language} bell={false} />
 
         {fehler && <Meldung text={fehler} />}
 

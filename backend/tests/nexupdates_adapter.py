@@ -1,13 +1,11 @@
-"""nexupdates contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of updates 0.1.1).
+"""nexupdates contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of updates 0.1.2).
 
 nexmail keeps its switch as text under ``update_pruefen`` (``"0"`` off, ``"1"`` on, nothing stored: on), mounts the
 module's routes under ``/api/about`` and keeps its old routes ``/api/ueber`` as a thin shell (tested in
 ``tests/test_ueber.py``, their form differs).
 
-⚠️ **nexmail has no bell** (U19): no ``on_newer``, so no look in the background. ``bell()`` answers what is true, that
-no operator was ever told anything; a look while the switch is on is skipped by name (TODO updates 0.1.1: the contract
-tests assume a bell, see ``einst-fragen/nexmail-module.md``). That nothing goes out in the background while the switch
-is on is ``test_ueber.py::test_ohne_glocke_fragt_der_hintergrund_nie``.
+⚠️ **nexmail has no bell** (U19): ``has_bell = False``, no ``on_newer``; the contract tests check that the background
+never asks and the first visit of "Über" asks once.
 
 Accounts come lazily: the setup test runs nexmail's real setup route on an empty installation, so ``start`` leaves it
 empty; the first ``client("operator")`` sets up the operator over that same route without the box (as a script of
@@ -18,7 +16,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 from updates_contract import StandardAdapter
 
 KENNWORT = {"operator": "betreib-geheim-789", "member": "mitglied-geheim-456"}
@@ -28,6 +25,7 @@ class Adapter(StandardAdapter):
     package = "app.vendor.nexupdates"
     prefix = "/api/about"
     also: tuple[str, ...] = ()
+    has_bell = False
 
     def start(self) -> None:
         """nexmail's test run (conftest) has a fresh database and data folder for every test; the module is set up as
@@ -129,22 +127,6 @@ class Adapter(StandardAdapter):
     def setup(self, on: bool) -> None:
         """nexmail's real setup route with the box (``update_check``)."""
         self._einrichten(self._neu(), update_check=on)
-
-    def bell(self) -> list[str]:
-        """No bell in nexmail (U19): no operator was ever told anything."""
-        return []
-
-    def bell_notices(self) -> list[tuple[str, str, str]]:
-        pytest.skip("nexmail has no bell (U19); TODO updates 0.1.1")
-
-    def look(self) -> None:
-        """The background's look as nexmail would run it. With the switch on it would only tell a bell nexmail does not
-        have; skipped by name (TODO updates 0.1.1). With the switch off it runs, so 'nothing goes out' is checked."""
-        from app.vendor import nexupdates
-
-        if nexupdates.switch_on():
-            pytest.skip("nexmail has no bell, so no look in the background (U19); TODO updates 0.1.1")
-        nexupdates.look_once()
 
     def description(self) -> dict[str, Any]:
         """nexmail publishes no description (``openapi_url=None``); the contract tests get the app's own."""
