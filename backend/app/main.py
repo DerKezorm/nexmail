@@ -643,7 +643,10 @@ app.include_router(abwesenheit_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(konten.router, dependencies=NUR_ANGEMELDET)
 app.include_router(kontakte.router, dependencies=NUR_ANGEMELDET)
 app.include_router(adressbuecher_router.router, dependencies=NUR_ANGEMELDET)
+from .routers import nexpaper as nexpaper_router  # noqa: E402
+
 app.include_router(nachrichten.router, dependencies=NUR_ANGEMELDET)
+app.include_router(nexpaper_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(absenderbild_router.router, dependencies=NUR_ANGEMELDET)
 app.include_router(regeln.router, dependencies=NUR_ANGEMELDET)
 app.include_router(schlagworte_router.router, dependencies=NUR_ANGEMELDET)

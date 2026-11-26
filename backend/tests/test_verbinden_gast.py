@@ -216,12 +216,23 @@ class Papier:
 
     def __init__(self, erstes_mal_401: bool = False) -> None:
         self.gesehen: list[tuple[str, str, bytes]] = []
+        self.abfragen: list[dict[str, str]] = []
         self.erstes_mal_401 = erstes_mal_401
+
+    #: V38: zwei Tresore zum Ablegen, einer nur zum Lesen.
+    TRESORE = [
+        {"id": 3, "name": "Zuhause", "my_right": "manage"},
+        {"id": 7, "name": "Verein", "my_right": "edit"},
+        {"id": 9, "name": "Nur lesen", "my_right": "read"},
+    ]
 
     def __call__(self, anfrage: httpx.Request) -> httpx.Response:
         self.gesehen.append((anfrage.url.path, anfrage.headers.get("authorization", ""), anfrage.read()))
+        self.abfragen.append(dict(anfrage.url.params))
         if self.erstes_mal_401 and len(self.gesehen) == 1:
             return httpx.Response(401, json={"detail": {"code": "token_invalid"}})
+        if anfrage.method == "GET" and anfrage.url.path == "/api/v1/vaults":
+            return httpx.Response(200, json=self.TRESORE)
         return httpx.Response(201, json={"items": [{"filename": "rechnung.pdf", "status": "created"}]})
 
 
@@ -296,4 +307,33 @@ def test_eine_fremde_mail_geht_nicht_an_nexpaper(nexpaper_welt, monkeypatch):
     assert gefunden.connect("app").status_code == 200
     assert gefunden.app.client("owner").post(f"/api/nachrichten/{nachricht}/anhang/{anhang}/nexpaper").status_code == 404
     assert papier.gesehen == []
+
+
+def test_der_tresor_wird_gewaehlt_und_gemerkt(nexpaper_welt, monkeypatch):
+    """V38: nexmail nennt die Tresore, in die die Verbindung ablegen darf (nicht die nur lesbaren); der gewählte geht
+    als ``vault_id`` mit und ist danach je Konto vorgewählt. Ohne Wahl entscheidet nexpaper wie bisher."""
+    gefunden, _ = nexpaper_welt
+    papier = Papier()
+    monkeypatch.setattr(nexpaper, "TRANSPORT", httpx.MockTransport(papier))
+    nachricht, anhang = _mail_mit_anhang()
+    klient = gefunden.app.client("owner")
+    assert gefunden.connect("app").status_code == 200
+
+    liste = klient.get("/api/nexpaper/tresore")
+    assert liste.status_code == 200, liste.text
+    assert liste.json() == {"tresore": [{"id": 3, "name": "Zuhause"}, {"id": 7, "name": "Verein"}], "zuletzt": None}
+
+    assert klient.post(f"/api/nachrichten/{nachricht}/anhang/{anhang}/nexpaper", json={"tresor": 7}).status_code == 200
+    assert papier.gesehen[-1][0] == "/api/v1/documents" and papier.abfragen[-1] == {"vault_id": "7"}
+    assert klient.get("/api/nexpaper/tresore").json()["zuletzt"] == 7
+
+    # Ohne Wahl (ein Tresor oder ältere Seite): kein ``vault_id``, das Gemerkte bleibt.
+    assert klient.post(f"/api/nachrichten/{nachricht}/anhang/{anhang}/nexpaper").status_code == 200
+    assert "vault_id" not in papier.abfragen[-1]
+    assert klient.get("/api/nexpaper/tresore").json()["zuletzt"] == 7
+    # Ein anderes Konto hat seine eigene Wahl.
+    with SessionLocal() as db:
+        from app.routers import nexpaper as wege
+
+        assert wege.zuletzt(db, db.query(Benutzer).filter_by(benutzername="sam").one().id) is None
 

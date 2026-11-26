@@ -1021,6 +1021,8 @@
   "lesen": {
     "an": "To",
     "kopie": "Cc",
+    "an_nexpaper_tresor": "Vault",
+    "an_nexpaper_ablegen": "Store",
     "an_nexpaper": "Send to nexpaper as a document",
     "an_nexpaper_fertig": "Now in nexpaper",
     "anhaenge_eine": "1 attachment",

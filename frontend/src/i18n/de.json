@@ -1021,6 +1021,8 @@
   "lesen": {
     "an": "An",
     "kopie": "Kopie",
+    "an_nexpaper_tresor": "Tresor",
+    "an_nexpaper_ablegen": "Ablegen",
     "an_nexpaper": "Als Dokument an nexpaper",
     "an_nexpaper_fertig": "Liegt jetzt in nexpaper",
     "anhaenge_eine": "1 Anhang",

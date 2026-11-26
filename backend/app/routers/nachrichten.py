@@ -985,11 +985,25 @@ class AnNexpaper(BaseModel):
     status: str = ""
 
 
+class AnNexpaperWohin(BaseModel):
+    #: V38: der Tresor (aus ``GET /api/nexpaper/tresore``); leer: der, den nexpaper ab Werk nimmt.
+    tresor: int | None = Field(default=None, ge=1, le=2**31 - 1)
+
+
 @router.post("/{nachricht_id}/anhang/{anhang_id}/nexpaper", response_model=AnNexpaper)
-def anhang_an_nexpaper(nachricht_id: int, anhang_id: int, person: AngemeldeterBenutzer, db: DbSession) -> AnNexpaper:
-    """Einen Anhang als Dokument an nexpaper, über die per „Verbinden“ gemachte Verbindung (V19, ``documents.add``).
-    Ohne Verbindung ``nexpaper_nicht_verbunden``."""
+def anhang_an_nexpaper(
+    nachricht_id: int,
+    anhang_id: int,
+    person: AngemeldeterBenutzer,
+    db: DbSession,
+    wohin: AnNexpaperWohin | None = None,
+) -> AnNexpaper:
+    """Einen Anhang als Dokument an nexpaper, über die per „Verbinden“ gemachte Verbindung (V19, ``documents.add``),
+    in den gewählten Tresor (V38, als zuletzt genutzter gemerkt). Ohne Verbindung ``nexpaper_nicht_verbunden``."""
     from ..services import nexpaper
+    from . import nexpaper as nexpaperwege
+
+    tresor = wohin.tresor if wohin is not None else None
 
     nachricht = _meine(db, person, nachricht_id)
     zeile = db.get(Anhang, anhang_id)
@@ -999,10 +1013,10 @@ def anhang_an_nexpaper(nachricht_id: int, anhang_id: int, person: AngemeldeterBe
     if not datei.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     try:
-        ergebnis = nexpaper.senden(str(person.id), zeile.dateiname, datei.read_bytes())
+        ergebnis = nexpaper.senden(str(person.id), zeile.dateiname, datei.read_bytes(), tresor)
     except nexpaper.NexpaperFehler as f:
-        code = status.HTTP_502_BAD_GATEWAY if f.kennung == "nexpaper_nicht_erreichbar" else status.HTTP_409_CONFLICT
-        raise MeldungHttp(code, f.kennung, f.werte) from f
+        raise nexpaperwege.http(f) from f
+    nexpaperwege.merken(db, str(person.id), tresor)
     return AnNexpaper(status=str(ergebnis.get("status", "")))
 
 

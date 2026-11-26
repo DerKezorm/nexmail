@@ -36,9 +36,9 @@ def _gelaufen(konto_id: str, problem: str | None = None) -> None:
         logger.warning("Telling the connection card how nexpaper answered failed", exc_info=True)
 
 
-def senden(konto_id: str, dateiname: str, inhalt: bytes) -> dict[str, Any]:
-    """Die Datei an nexpaper (``POST /api/v1/documents``, Feld ``file``); nach einem 401 einmal mit frischem Token.
-    Gibt das erste Ergebnis nexpapers zurück (``status``: ``created`` oder ``duplicate``)."""
+def _anfrage(konto_id: str, methode: str, pfad: str, **mit: Any) -> httpx.Response:
+    """Eine Anfrage an ``<nexpaper>/api/v1/<pfad>`` mit dem Token der Klick-Verbindung; nach einem 401 einmal mit
+    frischem Token. Sagt der Karte der Verbindung, wie es ausging."""
     for versuch in (1, 2):
         try:
             zugang = verbinden_store.zugriff("nexpaper", konto_id, neu=versuch == 2)
@@ -46,7 +46,6 @@ def senden(konto_id: str, dateiname: str, inhalt: bytes) -> dict[str, Any]:
             raise NexpaperFehler("nexpaper_nicht_erreichbar") from fehler
         except verbinden_store.Abgelehnt as fehler:
             raise NexpaperFehler("nexpaper_nicht_verbunden") from fehler
-        url = f"{zugang.base.rstrip('/')}/api/v1/documents"
         try:
             if TRANSPORT is None:
                 nextasks._pruefen(zugang.base.rstrip("/"))  # noqa: SLF001
@@ -54,11 +53,12 @@ def senden(konto_id: str, dateiname: str, inhalt: bytes) -> dict[str, Any]:
             raise NexpaperFehler("nexpaper_nicht_erreichbar") from fehler
         try:
             with httpx.Client(timeout=ZEITGRENZE, follow_redirects=False, transport=TRANSPORT) as klient:
-                antwort = klient.post(
-                    url,
-                    files={"file": (dateiname or "anhang", inhalt, "application/octet-stream")},
+                antwort = klient.request(
+                    methode,
+                    f"{zugang.base.rstrip('/')}/api/v1/{pfad}",
                     # ⚠️ Kein ``Origin``: nexpaper lehnt Anfragen aus Webseiten an /api/v1 ab.
                     headers={"Authorization": f"Bearer {zugang.token}", "User-Agent": "nexmail"},
+                    **mit,
                 )
         except httpx.HTTPError as fehler:
             logger.info("nexpaper was unreachable: %s", type(fehler).__name__)
@@ -70,15 +70,48 @@ def senden(konto_id: str, dateiname: str, inhalt: bytes) -> dict[str, Any]:
             _gelaufen(konto_id, "token_invalid")
             raise NexpaperFehler("nexpaper_nicht_verbunden")
         _gelaufen(konto_id)
-        if antwort.status_code >= 300:
-            logger.info("nexpaper did not take the file: %s", antwort.status_code)
-            raise NexpaperFehler("nexpaper_nimmt_nicht")
-        try:
-            daten = antwort.json()
-            return dict((daten.get("items") or [{}])[0])
-        except (ValueError, AttributeError, IndexError, TypeError):
-            return {}
+        return antwort
     raise NexpaperFehler("nexpaper_nicht_verbunden")  # pragma: no cover - die Schleife endet oben
 
 
-__all__ = ["NexpaperFehler", "TRANSPORT", "senden"]
+def tresore(konto_id: str) -> list[dict[str, Any]]:
+    """V38: die Tresore, in die die Verbindung Dokumente legen darf (``GET /api/v1/vaults``, nur die freigegebenen,
+    nur mit Recht zum Ändern), als ``{"id", "name"}``."""
+    antwort = _anfrage(konto_id, "GET", "vaults")
+    if antwort.status_code >= 300:
+        raise NexpaperFehler("nexpaper_nimmt_nicht")
+    try:
+        daten = antwort.json()
+    except ValueError as fehler:
+        raise NexpaperFehler("nexpaper_nimmt_nicht") from fehler
+    raus: list[dict[str, Any]] = []
+    for tresor in daten if isinstance(daten, list) else []:
+        if not isinstance(tresor, dict) or not isinstance(tresor.get("id"), int):
+            continue
+        if tresor.get("my_right", "edit") not in ("edit", "manage"):
+            continue
+        raus.append({"id": tresor["id"], "name": str(tresor.get("name") or f"#{tresor['id']}")[:120]})
+    return raus
+
+
+def senden(konto_id: str, dateiname: str, inhalt: bytes, tresor: int | None = None) -> dict[str, Any]:
+    """Die Datei an nexpaper (``POST /api/v1/documents``, Feld ``file``), in ``tresor`` oder den, den nexpaper ab Werk
+    nimmt. Gibt das erste Ergebnis nexpapers zurück (``status``: ``created`` oder ``duplicate``)."""
+    antwort = _anfrage(
+        konto_id,
+        "POST",
+        "documents",
+        params={"vault_id": tresor} if tresor is not None else None,
+        files={"file": (dateiname or "anhang", inhalt, "application/octet-stream")},
+    )
+    if antwort.status_code >= 300:
+        logger.info("nexpaper did not take the file: %s", antwort.status_code)
+        raise NexpaperFehler("nexpaper_nimmt_nicht")
+    try:
+        daten = antwort.json()
+        return dict((daten.get("items") or [{}])[0])
+    except (ValueError, AttributeError, IndexError, TypeError):
+        return {}
+
+
+__all__ = ["NexpaperFehler", "TRANSPORT", "senden", "tresore"]
