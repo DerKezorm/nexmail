@@ -780,7 +780,8 @@ app.include_router(
         # Ohne ``NEXMAIL_CLIENT_IP`` kennt nexmail den Absender nicht; dann zählt die Bremse falscher Schlüssel nach der
         # Adresse der Verbindung, wie in den anderen Apps (TODO mcp 1.1.0, siehe einst-fragen).
         sender=lambda request: _adresse_von(request) or (request.client.host if request.client else ""),
-        notify=_mcp_hinweis.melden,
+        # Über den Namen gerufen, damit die Vertragstests mithören können (``notified``).
+        notify=lambda ereignis, anfrage: _mcp_hinweis.melden(ereignis, anfrage),
     )
 )
 # KI-Anbieter (Modul ki 0.1.0): Server › KI-Anbieter unter ``/api/server/ai`` (Betreiber), Mein Konto › KI unter

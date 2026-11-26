@@ -314,3 +314,29 @@ def test_eine_wartende_rueckfrage_kommt_als_mitteilung_in_den_browser(app, monke
     meldung = gesendet[0]
     assert meldung.ziel == f"/mcp/requests/{wartet['request']}" and "Probe" in meldung.text
     assert "Einkaufsliste" not in meldung.text
+
+
+def test_die_zeile_der_rueckfrage_spricht_die_sprache_des_kontos_und_nennt_namen(app):
+    """mcp 1.1.1 (M-12): „Was es tun will“ nennt die Aufgabe beim Namen, in der Sprache des Kontos; ein Ding eines
+    anderen Kontos bleibt eine Nummer."""
+    from app.models import Benutzer, McpAnfrage
+
+    with SessionLocal() as db:
+        db.get(Benutzer, app.ids["owner"]).sprache = "de"
+        db.commit()
+    made = mcp_key(app, right="write")
+    name, args = app.change_call()
+    assert name == "complete_task"
+    app.client("owner").put(f"{app.prefix}/keys/{made['key']['id']}/rights", json={"rights": {name: "ask"}})
+    assert call(app, made["secret"], name, args)["structuredContent"]["status"] == "waiting"
+    with SessionLocal() as db:
+        zeile = db.query(McpAnfrage).order_by(McpAnfrage.id.desc()).first().zusammenfassung
+    assert zeile == "Aufgabe „Einkaufsliste von owner“ abhaken"
+
+    with SessionLocal() as db:
+        fremd = db.query(Aufgabe).filter(Aufgabe.benutzer_id == app.ids["other"]).first()
+    fremd_id = fremd.id if fremd is not None else 999_999
+    assert call(app, made["secret"], name, {"task_id": fremd_id})["structuredContent"]["status"] == "waiting"
+    with SessionLocal() as db:
+        zeile = db.query(McpAnfrage).order_by(McpAnfrage.id.desc()).first().zusammenfassung
+    assert zeile == f"Aufgabe „#{fremd_id}“ abhaken"

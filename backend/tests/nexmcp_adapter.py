@@ -1,4 +1,4 @@
-"""nexmcp contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of mcp 1.1.0).
+"""nexmcp contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of mcp 1.1.1).
 
 nexmail is new to MCP (decision 1): no older keys, no connected programs, MCP was never on, so ``legacy_keys`` and
 ``legacy_program`` stay empty and ``start_older`` is a fresh start (the older version had nothing of MCP to leave).
@@ -61,6 +61,17 @@ class Adapter(StandardAdapter):
         self.mail: dict[str, int] = {}
         self._clients: list[Any] = []
         self._angemeldet: dict[str, Any] = {}
+        # MCP 14: jeder Ruf von ``notify`` (``mcp_hinweis.melden``), mitgehört und weitergegeben.
+        from app.services import mcp_hinweis
+
+        self._gemeldet: list[tuple[str, Any]] = []
+        self._melden = mcp_hinweis.melden
+
+        def melden(ereignis: str, anfrage: Any) -> None:
+            self._gemeldet.append((ereignis, anfrage.id))
+            self._melden(ereignis, anfrage)
+
+        mcp_hinweis.melden = melden
         with SessionLocal() as db:
             for rolle in ("operator", "owner", "other"):
                 person = Benutzer(
@@ -119,6 +130,9 @@ class Adapter(StandardAdapter):
         self.start()
 
     def stop(self) -> None:
+        from app.services import mcp_hinweis
+
+        mcp_hinweis.melden = self._melden
         for client in self._clients:
             client.__exit__(None, None, None)
 
@@ -148,6 +162,17 @@ class Adapter(StandardAdapter):
         from app.services.schluessel_store import KONFIGURATION
 
         return KONFIGURATION
+
+    def change_arguments(self, request_id: Any, arguments: str) -> None:
+        from sqlalchemy import text
+
+        from app.db import engine
+
+        with engine.begin() as verbindung:
+            verbindung.execute(text("UPDATE mcp_anfrage SET argumente = :a WHERE id = :i"), {"a": arguments, "i": request_id})
+
+    def notified(self) -> list[tuple[str, Any]]:
+        return list(self._gemeldet)
 
     def read_call(self) -> tuple[str, dict[str, Any]]:
         return "search_messages", {"subject": "Einkaufsliste", "limit": 5}

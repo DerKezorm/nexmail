@@ -6,7 +6,8 @@ Mitteilung an die Browser des Kontos, ein Klick öffnet die Seite der Rückfrage
 „Wartende Rückfragen“ steht unter Mein Konto › Verbindungen › KI-Werkzeuge (MCP).
 
 ⚠️ **Nur an Browser, nicht an die iPhone-App**: Die App kennt diese Meldung nicht und öffnete nichts Sinnvolles. Kein
-Inhalt der Anfrage geht hinaus, nur die Zeile des Werkzeugs (``describe``) ohne Argumente aus Mails.
+Inhalt der Anfrage geht hinaus: seit mcp 1.1.1 nennt die Zeile der Rückfrage (``describe``) Betreff, Ordner und
+Aufgabe beim Namen; die Mitteilung sagt deshalb nur, welche Art Werkzeug wartet (``WAS``), die Seite zeigt den Rest.
 """
 
 from __future__ import annotations
@@ -17,6 +18,23 @@ from typing import Any
 logger = logging.getLogger("nexmail.mcp")
 
 TITEL = {"de": "Ein Programm wartet auf dein Ja", "en": "A program is waiting for your yes"}
+#: Was ein Werkzeug tun will, ohne Namen aus Mails (die Mitteilung geht über den Push-Dienst des Browsers).
+WAS = {
+    "de": {
+        "draft_reply": "eine Antwort als Entwurf ablegen",
+        "create_draft": "einen Entwurf ablegen",
+        "set_tags": "Schlagworte einer Mail ändern",
+        "move_message": "eine Mail verschieben",
+        "complete_task": "eine Aufgabe abhaken",
+    },
+    "en": {
+        "draft_reply": "store a reply as a draft",
+        "create_draft": "store a draft",
+        "set_tags": "change the tags of a message",
+        "move_message": "move a message",
+        "complete_task": "tick off a task",
+    },
+}
 TEXT = {
     "de": "„{schluessel}“ möchte: {was}",
     "en": "'{schluessel}' would like to: {was}",
@@ -39,7 +57,7 @@ def melden(ereignis: str, anfrage: Any) -> None:
             sprache = "de" if (person.sprache or "").startswith("de") else "en"
             meldung = push.Meldung(
                 titel=TITEL[sprache],
-                text=TEXT[sprache].format(schluessel=anfrage.key_name, was=anfrage.summary or anfrage.tool)[:200],
+                text=TEXT[sprache].format(schluessel=anfrage.key_name, was=WAS[sprache].get(anfrage.tool, anfrage.tool))[:200],
                 ziel=f"/mcp/requests/{anfrage.id}",
                 marke=f"mcp-{anfrage.id}",
             )
