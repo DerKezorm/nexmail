@@ -18,6 +18,7 @@ import i18next from 'i18next'
 import { ApiFehler } from '../api/client'
 import { oidcErrorKey, oidcFormErrorKey } from '../vendor/nexoidc/oidc'
 import { accountErrorKeyOf } from '../vendor/nexkonten/konten'
+import { KI_TEXTS } from '../vendor/nexki/ki'
 
 /** nexmails alte Kennungen zurück auf die des Kontenmoduls (der Server sendet die alten, `ALTE_KENNUNGEN` in
  *  `services/konten_store.py`); die meisten haben schon einen eigenen Satz unter `serverfehler`. */
@@ -74,6 +75,14 @@ export function servermeldung(fehler: unknown, rueckfall?: string): string {
      stehen in dessen Wortlauten (`oidc.error.*`, `oidc.formError.*`), nicht unter `serverfehler`. */
   const modul = oidcFormErrorKey(kennung) ?? oidcErrorKey(kennung)
   if (modul) return i18next.t(modul)
+
+  /* Das Modul ki nennt auf nexmails alten KI-Wegen die Kennungen, die es vorher nicht gab (Netzregeln, Bremsen:
+     `ai_address_private`, `ai_too_often` …); die Sätze stehen in seinen Wortlauten (`errors.*`). */
+  if (kennung.startsWith('ai_')) {
+    const sprache = i18next.language?.startsWith('de') ? 'de' : i18next.language?.startsWith('fr') ? 'fr' : 'en'
+    const satz = (KI_TEXTS[sprache].errors as Record<string, string>)[kennung]
+    if (satz) return satz
+  }
 
   /* Das Kontenmodul nennt seine Kennungen (`display_name_taken`, `setup_code_wrong` …); die Sätze stehen in seinen
      Wortlauten (`account.*`). */

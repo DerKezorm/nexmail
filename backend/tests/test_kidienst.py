@@ -1021,16 +1021,11 @@ def test_die_liste_gehoert_dem_benutzer(bereit, db, klient):
 
 
 def test_die_frist_steht_in_beiden_haelften_gleich():
-    """⚠️ **Ein Vertrag mit der Oberflaeche.** Sie schreibt „nach 14 Tagen
-    geloescht" in den Hinweis; laufen die Zahlen auseinander, verspricht sie
-    eine andere Frist als die, nach der wirklich geloescht wird."""
-    from pathlib import Path
-    import re
+    """⚠️ **Ein Vertrag mit der Oberflaeche.** Seit dem Modul ki sagt dessen Karte „Was ging hinaus“ die Frist
+    (``AppConfig.events_days``); nexmails Aufräumen nimmt dieselbe Zahl."""
+    from app.services import ki_store
 
-    seite = Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages" / "KiDienst.tsx"
-    treffer = re.search(r"const VORGANG_TAGE = (\d+)", seite.read_text(encoding="utf-8"))
-    assert treffer, "VORGANG_TAGE steht nicht mehr in KiDienst.tsx"
-    assert int(treffer.group(1)) == dienst.VORGANG_TAGE
+    assert ki_store.CONFIG.events_days == dienst.VORGANG_TAGE
 
 
 def test_ein_zu_kurzer_text_geht_nicht_hinaus(bereit):
