@@ -17,7 +17,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, XCircle } from 'lucide-react'
-import { Button, Input, Select, Switch } from '../ds'
+import { Select } from '../ds'
+import { Button, CheckboxRow, Field } from '../vendor/nexui'
 import { Schlagwortfeld } from '../components/Schlagwortfeld'
 import { Absenderfeld } from '../components/Absenderfeld'
 import type { Absenderalias } from '../components/Absenderfeld'
@@ -326,16 +327,7 @@ export function KontoFormular({
 
   return (
     <div className={`flex flex-col gap-4 ${imFenster ? '' : 'max-w-[640px]'}`}>
-      <Input
-        label={t('konto.adresse')}
-        placeholder={t('konto.adresse_platzhalter')}
-        value={felder.adresse}
-        mono
-        autoFocus
-        autoComplete="email"
-        onChange={(e) => setzen({ adresse: e.target.value })}
-        hint={sucht ? t('konto.suche_laeuft') : undefined}
-      />
+      <Field label={t('konto.adresse')} placeholder={t('konto.adresse_platzhalter')} value={felder.adresse} mono autoFocus autoComplete="email" onChange={(e) => setzen({ adresse: e.target.value })} hints={[sucht ? t('konto.suche_laeuft') : undefined]} />
 
       {/* ⚠️ Der „nichts gefunden“-Hinweis verschwindet, sobald die Felder
           stehen — egal woher. Ein Hinweis, der dem Formular unter ihm
@@ -360,21 +352,9 @@ export function KontoFormular({
           („Privat", „Arbeit"), der andere im Absender jeder Mail, die
           hinausgeht — und den liest der Empfänger. Ein Feld für beides hieß:
           Wer sein Postfach „Arbeit" nennt, verschickt Post von „Arbeit". */}
-      <Input
-        label={t('konto.anzeigename')}
-        hint={t('konto.anzeigename_hinweis')}
-        placeholder={t('konto.anzeigename_platzhalter')}
-        value={felder.anzeigename}
-        onChange={(e) => setzen({ anzeigename: e.target.value })}
-      />
+      <Field label={t('konto.anzeigename')} hints={[t('konto.anzeigename_hinweis')]} placeholder={t('konto.anzeigename_platzhalter')} value={felder.anzeigename} onChange={(e) => setzen({ anzeigename: e.target.value })} />
 
-      <Input
-        label={t('konto.absendername')}
-        hint={t('konto.absendername_hinweis')}
-        placeholder={felder.anzeigename || t('konto.absendername_platzhalter')}
-        value={felder.absendername}
-        onChange={(e) => setzen({ absendername: e.target.value })}
-      />
+      <Field label={t('konto.absendername')} hints={[t('konto.absendername_hinweis')]} placeholder={felder.anzeigename || t('konto.absendername_platzhalter')} value={felder.absendername} onChange={(e) => setzen({ absendername: e.target.value })} />
 
       {/* ⚠️ **Hier, nicht unter „Erweitert".** Wer ein Postfach anlegt, weiß
           in dem Moment, ob es privat oder dienstlich ist — später sucht das
@@ -411,12 +391,7 @@ export function KontoFormular({
             </p>
           )}
         </div>
-        <Switch
-          label={t('konto.sofort')}
-          labelVersteckt
-          checked={felder.idle_aktiv}
-          onCheckedChange={(an) => setzen({ idle_aktiv: an })}
-        />
+        <CheckboxRow label={t('konto.sofort')} checked={felder.idle_aktiv} onChange={(an) => setzen({ idle_aktiv: an })} />
       </div>
 
       {zugaenge.length > 0 && (
@@ -436,29 +411,21 @@ export function KontoFormular({
       )}
 
       {!zugangId && (
-      <Input
-        label={t('konto.passwort')}
-        type="password"
-        autoComplete="new-password"
-        hint={
+      <Field label={t('konto.passwort')} type="password" autoComplete="new-password" hints={[
           passwortGespeichert && !passwortBeruehrt
             ? t('konto.passwort_liegt_vor')
             : bestehend && !passwortGespeichert
               ? t('konto.passwort_statt_zustimmung')
               : undefined
-        }
-        value={passwortGespeichert && !passwortBeruehrt ? '••••••••••' : felder.passwort}
-        onFocus={() => {
+        ]} value={passwortGespeichert && !passwortBeruehrt ? '••••••••••' : felder.passwort} onFocus={() => {
           if (passwortGespeichert && !passwortBeruehrt) {
             setPasswortBeruehrt(true)
             setzen({ passwort: '' })
           }
-        }}
-        onChange={(e) => {
+        }} onChange={(e) => {
           setPasswortBeruehrt(true)
           setzen({ passwort: e.target.value })
-        }}
-      />
+        }} />
       )}
 
       {vorschlag?.app_passwort_noetig && !zugangId && (
@@ -565,7 +532,7 @@ export function KontoFormular({
       )}
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
-        <Button loading={testet} disabled={!vollstaendig} onClick={testen}>
+        <Button icon="RefreshCw" kind="secondary" busy={testet} disabled={!vollstaendig} onClick={testen}>
           {testet ? t('konto.test_laeuft') : t('konto.testen')}
         </Button>
         {/* ⚠️ **Beim Anlegen ist der Test Pflicht, beim Bearbeiten nicht.**
@@ -574,13 +541,7 @@ export function KontoFormular({
             aber nur den Anzeigenamen ändert, müsste sonst sein Passwort neu
             eintippen, nur um den Test bestehen zu können. Das ist die Art
             Hürde, an der man aufhört, etwas zu pflegen. */}
-        <Button
-          variant="primary"
-          loading={legtAn}
-          disabled={bestehend ? !vollstaendig : !befund?.ok}
-          onClick={anlegen}
-          title={!bestehend && !befund?.ok ? t('konto.zuerst_testen') : undefined}
-        >
+        <Button icon="Check" kind="primary" busy={legtAn} disabled={bestehend ? !vollstaendig : !befund?.ok} onClick={anlegen} title={!bestehend && !befund?.ok ? t('konto.zuerst_testen') : undefined}>
           {legtAn
             ? t('konto.wird_hinzugefuegt')
             : bestehend
@@ -588,7 +549,7 @@ export function KontoFormular({
               : t('konto.hinzufuegen')}
         </Button>
         {!imFenster && (
-          <Button variant="ghost" onClick={aufAbbrechen}>
+          <Button icon="X" kind="secondary" onClick={aufAbbrechen}>
             {t('aktion.abbrechen')}
           </Button>
         )}
@@ -661,28 +622,9 @@ function Serverblock({ titel, server, port, sicherheit, benutzer, aufAendern }: 
           durchweg länger als die englischen, an denen man so eine Spalte
           unwillkürlich bemisst. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_132px]">
-        <Input
-          label={t('konto.server')}
-          value={server}
-          mono
-          size="sm"
-          onChange={(e) => aufAendern({ server: e.target.value })}
-        />
-        <Input
-          label={t('konto.port')}
-          value={String(port)}
-          mono
-          size="sm"
-          inputMode="numeric"
-          onChange={(e) => aufAendern({ port: Number(e.target.value.replace(/\D/g, '')) || 0 })}
-        />
-        <Input
-          label={t('konto.benutzer')}
-          value={benutzer}
-          mono
-          size="sm"
-          onChange={(e) => aufAendern({ benutzer: e.target.value })}
-        />
+        <Field label={t('konto.server')} value={server} mono onChange={(e) => aufAendern({ server: e.target.value })} />
+        <Field label={t('konto.port')} value={String(port)} mono inputMode="numeric" onChange={(e) => aufAendern({ port: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
+        <Field label={t('konto.benutzer')} value={benutzer} mono onChange={(e) => aufAendern({ benutzer: e.target.value })} />
         <Select
           label={t('konto.sicherheit')}
           size="sm"

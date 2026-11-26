@@ -25,7 +25,8 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Calendar, Check, KeyRound, Mail, Server } from 'lucide-react'
 import { ApiFehler, api } from '../api/client'
 import type { KontoZeile } from '../api/client'
-import { Button, Checkbox, Dialog } from '../ds'
+import { Checkbox, Dialog } from '../ds'
+import { Button } from '../vendor/nexui'
 import { RUECKWEG } from '../lib/oauthrueckweg'
 import { servermeldung } from '../lib/servermeldung'
 
@@ -428,7 +429,7 @@ export function PostfachHinzufuegen({
           )}
 
           <div>
-            <Button variant="secondary" size="sm" onClick={() => void zustimmungHolen(art)}>
+            <Button icon="Plus" kind="secondary" size="sm" onClick={() => void zustimmungHolen(art)}>
               {meine.length > 0 ? t('postfachneu.weiteres_konto') : t(`oauth.verbinden_${art}`)}
             </Button>
           </div>
@@ -482,14 +483,14 @@ export function PostfachHinzufuegen({
   function fussleiste() {
     if (schritt === 'wahl') {
       return (
-        <Button variant="ghost" onClick={schliessen}>
+        <Button icon="X" kind="secondary" onClick={schliessen}>
           {t('aktion.abbrechen')}
         </Button>
       )
     }
     if (schritt === 'zustimmung') {
       return (
-        <Button variant="ghost" onClick={() => setSchritt('wahl')}>
+        <Button icon="ArrowLeft" kind="secondary" onClick={() => setSchritt('wahl')}>
           {t('aktion.zurueck')}
         </Button>
       )
@@ -497,15 +498,10 @@ export function PostfachHinzufuegen({
     if (schritt === 'kalender') {
       return (
         <>
-          <Button variant="ghost" onClick={() => setSchritt('fertig')}>
+          <Button icon="X" kind="secondary" onClick={() => setSchritt('fertig')}>
             {t('postfachneu.kalender_ueberspringen')}
           </Button>
-          <Button
-            variant="primary"
-            loading={laeuft}
-            disabled={laeuft || gewaehlt.length === 0}
-            onClick={() => void kalenderUebernehmen()}
-          >
+          <Button icon="Check" kind="primary" busy={laeuft} disabled={laeuft || gewaehlt.length === 0} onClick={() => void kalenderUebernehmen()}>
             {t('postfachneu.kalender_uebernehmen')}
           </Button>
         </>
@@ -513,13 +509,10 @@ export function PostfachHinzufuegen({
     }
     if (schritt === 'fertig') {
       return (
-        <Button
-          variant="primary"
-          onClick={() => {
+        <Button icon="Check" kind="primary" onClick={() => {
             aufAngelegt()
             schliessen()
-          }}
-        >
+          }}>
           {t('aktion.fertig')}
         </Button>
       )

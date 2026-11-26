@@ -8,11 +8,11 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, BookUser, CalendarDays, Link2, PenLine, Plus, Trash2, Unlink } from 'lucide-react'
+import { AlertTriangle, BookUser, CalendarDays, Link2, PenLine, Plus, Unlink } from 'lucide-react'
 import { api } from '../../api/client'
 import { kalenderAendern, kalenderEntfernen, kalenderLaden } from '../../api/laden'
 import type { KalenderZeile } from '../../api/laden'
-import { Button, IconButton } from '../../ds'
+import { Button } from '../../vendor/nexui'
 import { Kalenderfenster } from '../../components/Kalenderfenster'
 import { Buchfenster } from '../../components/Buchfenster'
 import { useNachfrage } from '../../components/Nachfrage'
@@ -119,17 +119,12 @@ export function KalenderUndBuecher() {
             ) : (
               k.art && <Link2 aria-hidden className="size-4 shrink-0 text-fg-4" />
             )}
-            <IconButton icon={<PenLine />} label={t('kalender.umbenennen')} size="sm" onClick={() => void umbenennen(k)} />
-            <IconButton
-              icon={k.art ? <Unlink /> : <Trash2 />}
-              label={k.art ? t('kalender.trennen') : t('kalender.entfernen')}
-              size="sm"
-              onClick={() => void kalenderWeg(k)}
-            />
+            <Button kind="secondary" size="sm" icon={PenLine} onClick={() => void umbenennen(k)}>{t('kalender.umbenennen')}</Button>
+            <Button kind="secondary" size="sm" icon="Pencil" onClick={() => void kalenderWeg(k)}>{k.art ? t('kalender.trennen') : t('kalender.entfernen')}</Button>
           </div>
         ))}
         <div>
-          <Button iconLeft={<Plus className="size-4" />} onClick={() => setKalenderNeu(true)}>
+          <Button kind="secondary" icon={Plus} onClick={() => setKalenderNeu(true)}>
             {t('kalender.hinzufuegen_kurz')}
           </Button>
         </div>
@@ -151,12 +146,12 @@ export function KalenderUndBuecher() {
               b.art && <Link2 aria-hidden className="size-4 shrink-0 text-fg-4" />
             )}
             {b.art && (
-              <IconButton icon={<Unlink />} label={t('kontakte.buch_trennen')} size="sm" onClick={() => void buchWeg(b)} />
+              <Button kind="danger" size="sm" icon={Unlink} onClick={() => void buchWeg(b)}>{t('kontakte.buch_trennen')}</Button>
             )}
           </div>
         ))}
         <div>
-          <Button iconLeft={<Plus className="size-4" />} onClick={() => setBuchNeu(true)}>
+          <Button kind="secondary" icon={Plus} onClick={() => setBuchNeu(true)}>
             {t('kontakte.buch_verbinden')}
           </Button>
         </div>

@@ -13,7 +13,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pencil, Plus, Tag, Trash2 } from 'lucide-react'
-import { Button, EmptyState, IconButton, Input } from '../ds'
+import { EmptyState } from '../ds'
+import { Button, Field } from '../vendor/nexui'
 import { api, ApiFehler } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
 import { PUNKT_KLASSE } from '../lib/farben'
@@ -163,7 +164,7 @@ export function Schlagworte({ aufGeaendert }: Props) {
           className="flex items-center gap-3 rounded-lg border border-danger bg-danger-soft px-4 py-2.5"
         >
           <span className="min-w-0 flex-1 text-[13px] text-fg-1">{ladefehler}</span>
-          <Button size="sm" onClick={() => void laden()}>
+          <Button icon="RefreshCw" kind="secondary" size="sm" onClick={() => void laden()}>
             {t('stoerung.nochmal')}
           </Button>
         </div>
@@ -223,18 +224,8 @@ export function Schlagworte({ aufGeaendert }: Props) {
                 ))}
               </div>
 
-              <IconButton
-                icon={<Pencil />}
-                label={t('schlagworte.umbenennen')}
-                size="sm"
-                onClick={() => void umbenennen(zeile)}
-              />
-              <IconButton
-                icon={<Trash2 />}
-                label={t('schlagworte.entfernen')}
-                size="sm"
-                onClick={() => void entfernen(zeile)}
-              />
+              <Button kind="secondary" size="sm" icon={Pencil} onClick={() => void umbenennen(zeile)}>{t('schlagworte.umbenennen')}</Button>
+              <Button kind="danger" size="sm" icon={Trash2} onClick={() => void entfernen(zeile)}>{t('schlagworte.entfernen')}</Button>
             </li>
           ))}
         </ul>
@@ -246,24 +237,14 @@ export function Schlagworte({ aufGeaendert }: Props) {
       <div className="flex max-w-[480px] flex-col gap-2">
         <div className="flex items-end gap-2">
           <div className="min-w-0 flex-1">
-            <Input
-              label={t('schlagworte.name')}
-              placeholder={t('schlagworte.name_platzhalter')}
-              value={neuerName}
-              onChange={(e) => setNeuerName(e.target.value)}
-              onKeyDown={(e) => {
+            <Field label={t('schlagworte.name')} placeholder={t('schlagworte.name_platzhalter')} value={neuerName} onChange={(e) => setNeuerName(e.target.value)} onKeyDown={(e) => {
                 if (e.key === 'Enter' && neuerName.trim()) {
                   e.preventDefault()
                   void anlegen()
                 }
-              }}
-            />
+              }} />
           </div>
-          <Button
-            iconLeft={<Plus className="size-4" />}
-            disabled={!neuerName.trim() || beschaeftigt}
-            onClick={() => void anlegen()}
-          >
+          <Button kind="secondary" icon={Plus} disabled={!neuerName.trim() || beschaeftigt} onClick={() => void anlegen()}>
             {t('schlagworte.anlegen')}
           </Button>
         </div>

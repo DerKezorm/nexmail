@@ -9,7 +9,8 @@ import { useTranslation } from 'react-i18next'
 import { PenLine, Plus, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
-import { Button, EmptyState, IconButton, Input, Select, Switch } from '../ds'
+import { EmptyState, Select } from '../ds'
+import { Button, CheckboxRow, Field } from '../vendor/nexui'
 import { Editor } from '../components/Editor'
 import { servermeldung } from '../lib/servermeldung'
 
@@ -74,11 +75,7 @@ export function Signaturen() {
   if (offen) {
     return (
       <div className="flex max-w-[720px] flex-col gap-4">
-        <Input
-          label={t('signaturen.name')}
-          value={offen.name}
-          onChange={(e) => setOffen({ ...offen, name: e.target.value })}
-        />
+        <Field label={t('signaturen.name')} value={offen.name} onChange={(e) => setOffen({ ...offen, name: e.target.value })} />
         <Select
           label={t('signaturen.postfach')}
           hint={t('signaturen.postfach_hinweis')}
@@ -103,20 +100,15 @@ export function Signaturen() {
           />
         </div>
 
-        <Switch
-          checked={offen.standard}
-          label={t('signaturen.standard')}
-          description={t('signaturen.standard_hinweis')}
-          onCheckedChange={(an) => setOffen({ ...offen, standard: an })}
-        />
+        <CheckboxRow checked={offen.standard} label={t('signaturen.standard')} hint={t('signaturen.standard_hinweis')} onChange={(an) => setOffen({ ...offen, standard: an })} />
 
         {fehler && <p className="text-[13px] text-danger">{fehler}</p>}
 
         <div className="flex items-center gap-2">
-          <Button variant="primary" onClick={() => void speichern(offen)}>
+          <Button icon="Check" kind="primary" onClick={() => void speichern(offen)}>
             {t('signaturen.speichern')}
           </Button>
-          <Button variant="ghost" onClick={() => setOffen(null)}>
+          <Button icon="X" kind="secondary" onClick={() => setOffen(null)}>
             {t('aktion.abbrechen')}
           </Button>
         </div>
@@ -127,7 +119,7 @@ export function Signaturen() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <Button variant="primary" iconLeft={<Plus className="size-4" />} onClick={() => setOffen(leer())}>
+        <Button kind="primary" icon={Plus} onClick={() => setOffen(leer())}>
           {t('signaturen.neu')}
         </Button>
         <span className="flex-1" />
@@ -161,11 +153,7 @@ export function Signaturen() {
                     t('signaturen.alle_postfaecher')}
                 </span>
               </button>
-              <IconButton
-                icon={<Trash2 />}
-                label={t('signaturen.entfernen')}
-                size="sm"
-                onClick={() =>
+              <Button kind="danger" size="sm" icon={Trash2} onClick={() =>
                   void (async () => {
                     const ja = await fragen({
                       titel: t('signaturen.entfernen'),
@@ -176,8 +164,7 @@ export function Signaturen() {
                     if (ja !== true) return
                     await mit(() => api.loeschen(`/api/signaturen/${s.id}`))
                   })()
-                }
-              />
+                }>{t('signaturen.entfernen')}</Button>
             </li>
           ))}
         </ul>

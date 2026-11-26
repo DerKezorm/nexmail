@@ -13,7 +13,8 @@ import { Postfachzeichen } from './Postfachzeichen'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Folder, Pencil, Plus, Trash2 } from 'lucide-react'
-import { Badge, IconButton } from '../ds'
+import { Badge } from '../ds'
+import { Button } from '../vendor/nexui'
 import { useNachfrage } from './Nachfrage'
 import { api } from '../api/client'
 import type { KontoZeile } from '../api/client'
@@ -135,19 +136,8 @@ export function Postfachkacheln({ konten, aufHinzufuegen, aufBearbeiten, aufNeuL
               </Badge>
             )}
             <span className="flex-1" />
-            <IconButton
-              icon={<Pencil />}
-              label={t('einstellungen.bearbeiten')}
-              size="sm"
-              onClick={() => aufBearbeiten(k)}
-            />
-            <IconButton
-              icon={<Trash2 />}
-              label={t('einstellungen.entfernen')}
-              size="sm"
-              disabled={entfernt === k.id}
-              onClick={() => void entfernen(k)}
-            />
+            <Button kind="secondary" size="sm" icon={Pencil} onClick={() => aufBearbeiten(k)}>{t('einstellungen.bearbeiten')}</Button>
+            <Button kind="danger" size="sm" icon={Trash2} disabled={entfernt === k.id} onClick={() => void entfernen(k)}>{t('einstellungen.entfernen')}</Button>
           </div>
         </section>
       ))}

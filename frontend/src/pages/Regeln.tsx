@@ -12,12 +12,13 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowDown, ArrowUp, Play, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { Play, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import { schlagworteLaden } from '../api/laden'
 import { useNachfrage } from '../components/Nachfrage'
 import type { Schlagwort } from '../daten/typen'
-import { Button, EmptyState, IconButton, Input, Select, Switch } from '../ds'
+import { EmptyState, Select } from '../ds'
+import { Button, CheckboxRow, Field, IconButton } from '../vendor/nexui'
 import { servermeldung } from '../lib/servermeldung'
 import { GRUPPENTITEL } from '../ds/beschriftung'
 
@@ -250,15 +251,11 @@ export function Regeln({ vorlage = null, aufVorlageGenommen }: Props = {}) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <Button variant="primary" iconLeft={<Plus className="size-4" />} onClick={() => setOffen(leereRegel())}>
+        <Button kind="primary" icon={Plus} onClick={() => setOffen(leereRegel())}>
           {t('regeln.neu')}
         </Button>
         {liste.some((r) => r.aktiv) && (
-          <Button
-            iconLeft={<Play className="size-4" />}
-            disabled={!ordnerGeladen}
-            onClick={() => void jetztAnwenden()}
-          >
+          <Button kind="secondary" icon={Play} disabled={!ordnerGeladen} onClick={() => void jetztAnwenden()}>
             {t('regeln.anwenden')}
           </Button>
         )}
@@ -298,33 +295,12 @@ export function Regeln({ vorlage = null, aufVorlageGenommen }: Props = {}) {
                   {r.stopp ? ` · ${t('regeln.stopp_kurz')}` : ''}
                 </span>
               </button>
-              <Switch
-                checked={r.aktiv}
-                label={t('regeln.aktiv')}
-                kompakt
-                onCheckedChange={(an) =>
+              <CheckboxRow checked={r.aktiv} label={t('regeln.aktiv')} onChange={(an) =>
                   void mit(() => api.aendern(`/api/regeln/${r.id}`, { ...r, aktiv: an }))
-                }
-              />
-              <IconButton
-                icon={<ArrowUp />}
-                label={t('regeln.hoch')}
-                size="sm"
-                disabled={i === 0}
-                onClick={() => void schieben(i, -1)}
-              />
-              <IconButton
-                icon={<ArrowDown />}
-                label={t('regeln.runter')}
-                size="sm"
-                disabled={i === liste.length - 1}
-                onClick={() => void schieben(i, 1)}
-              />
-              <IconButton
-                icon={<Trash2 />}
-                label={t('regeln.entfernen')}
-                size="sm"
-                onClick={() =>
+                } />
+              <IconButton icon="ArrowUp" aria-label={t('regeln.hoch')} disabled={i === 0} onClick={() => void schieben(i, -1)} />
+              <IconButton icon="ArrowDown" aria-label={t('regeln.runter')} disabled={i === liste.length - 1} onClick={() => void schieben(i, 1)} />
+              <Button kind="danger" size="sm" icon={Trash2} onClick={() =>
                   void (async () => {
                     const ja = await fragen({
                       titel: t('regeln.entfernen'),
@@ -335,8 +311,7 @@ export function Regeln({ vorlage = null, aufVorlageGenommen }: Props = {}) {
                     if (ja !== true) return
                     await mit(() => api.loeschen(`/api/regeln/${r.id}`))
                   })()
-                }
-              />
+                }>{t('regeln.entfernen')}</Button>
             </li>
           ))}
         </ul>
@@ -377,12 +352,7 @@ function Formular({
 
   return (
     <div className="flex max-w-[720px] flex-col gap-4">
-      <Input
-        label={t('regeln.name')}
-        placeholder={t('regeln.name_platzhalter')}
-        value={regel.name}
-        onChange={(e) => setzen({ name: e.target.value })}
-      />
+      <Field label={t('regeln.name')} placeholder={t('regeln.name_platzhalter')} value={regel.name} onChange={(e) => setzen({ name: e.target.value })} />
 
       <Select
         label={t('regeln.postfach')}
@@ -450,23 +420,13 @@ function Formular({
               </Select>
             </div>
             <div className="min-w-[200px] flex-1">
-              <Input
-                label={t('regeln.wert')}
-                value={b.wert}
-                onChange={(e) => {
+              <Field label={t('regeln.wert')} value={b.wert} onChange={(e) => {
                   const neu = [...regel.bedingungen]
                   neu[i] = { ...b, wert: e.target.value }
                   setzen({ bedingungen: neu })
-                }}
-              />
+                }} />
             </div>
-            <IconButton
-              icon={<Trash2 />}
-              label={t('regeln.bedingung_weg')}
-              size="sm"
-              disabled={regel.bedingungen.length === 1}
-              onClick={() => setzen({ bedingungen: regel.bedingungen.filter((_, j) => j !== i) })}
-            />
+            <Button kind="danger" size="sm" icon={Trash2} disabled={regel.bedingungen.length === 1} onClick={() => setzen({ bedingungen: regel.bedingungen.filter((_, j) => j !== i) })}>{t('regeln.bedingung_weg')}</Button>
           </div>
         ))}
 
@@ -476,15 +436,11 @@ function Formular({
           <p className="text-[12px] text-warning">{t('regeln.inhalt_hinweis')}</p>
         )}
 
-        <Button
-          size="sm"
-          iconLeft={<Plus className="size-4" />}
-          onClick={() =>
+        <Button kind="secondary" icon={Plus} size="sm" onClick={() =>
             setzen({
               bedingungen: [...regel.bedingungen, { feld: 'von', vergleich: 'enthaelt', wert: '' }],
             })
-          }
-        >
+          }>
           {t('regeln.bedingung_dazu')}
         </Button>
       </fieldset>
@@ -557,39 +513,24 @@ function Formular({
                 </Select>
               </div>
             )}
-            <IconButton
-              icon={<Trash2 />}
-              label={t('regeln.aktion_weg')}
-              size="sm"
-              disabled={regel.aktionen.length === 1}
-              onClick={() => setzen({ aktionen: regel.aktionen.filter((_, j) => j !== i) })}
-            />
+            <Button kind="danger" size="sm" icon={Trash2} disabled={regel.aktionen.length === 1} onClick={() => setzen({ aktionen: regel.aktionen.filter((_, j) => j !== i) })}>{t('regeln.aktion_weg')}</Button>
           </div>
         ))}
 
-        <Button
-          size="sm"
-          iconLeft={<Plus className="size-4" />}
-          onClick={() => setzen({ aktionen: [...regel.aktionen, { art: 'gelesen', wert: '' }] })}
-        >
+        <Button kind="secondary" icon={Plus} size="sm" onClick={() => setzen({ aktionen: [...regel.aktionen, { art: 'gelesen', wert: '' }] })}>
           {t('regeln.aktion_dazu')}
         </Button>
       </fieldset>
 
-      <Switch
-        checked={regel.stopp}
-        label={t('regeln.stopp')}
-        description={t('regeln.stopp_hinweis')}
-        onCheckedChange={(an) => setzen({ stopp: an })}
-      />
+      <CheckboxRow checked={regel.stopp} label={t('regeln.stopp')} hint={t('regeln.stopp_hinweis')} onChange={(an) => setzen({ stopp: an })} />
 
       {fehler && <p className="text-[13px] text-danger">{fehler}</p>}
 
       <div className="flex items-center gap-2">
-        <Button variant="primary" onClick={aufSpeichern}>
+        <Button icon="Check" kind="primary" onClick={aufSpeichern}>
           {t('regeln.speichern')}
         </Button>
-        <Button variant="ghost" onClick={aufAbbrechen}>
+        <Button icon="X" kind="secondary" onClick={aufAbbrechen}>
           {t('aktion.abbrechen')}
         </Button>
       </div>

@@ -12,7 +12,8 @@ import { useTranslation } from 'react-i18next'
 import { FileText, GripVertical, Plus, Trash2 } from 'lucide-react'
 import { api, ApiFehler } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
-import { Button, EmptyState, IconButton, Input } from '../ds'
+import { EmptyState } from '../ds'
+import { Button, Field } from '../vendor/nexui'
 import { Editor } from '../components/Editor'
 
 export interface TextvorlagenZeile {
@@ -101,11 +102,7 @@ export function Textvorlagen() {
   if (offen) {
     return (
       <div className="flex max-w-[720px] flex-col gap-4">
-        <Input
-          label={t('textvorlagen.name')}
-          value={offen.name}
-          onChange={(e) => setOffen({ ...offen, name: e.target.value })}
-        />
+        <Field label={t('textvorlagen.name')} value={offen.name} onChange={(e) => setOffen({ ...offen, name: e.target.value })} />
 
         <div className="flex min-h-[220px] flex-col overflow-hidden rounded-lg border border-line bg-surface-1">
           <Editor
@@ -120,10 +117,10 @@ export function Textvorlagen() {
         {fehler && <p className="text-[13px] text-danger">{fehler}</p>}
 
         <div className="flex items-center gap-2">
-          <Button variant="primary" onClick={() => void speichern(offen)}>
+          <Button icon="Check" kind="primary" onClick={() => void speichern(offen)}>
             {t('textvorlagen.speichern')}
           </Button>
-          <Button variant="ghost" onClick={() => setOffen(null)}>
+          <Button icon="X" kind="secondary" onClick={() => setOffen(null)}>
             {t('aktion.abbrechen')}
           </Button>
         </div>
@@ -139,14 +136,14 @@ export function Textvorlagen() {
           className="flex items-center gap-3 rounded-lg border border-danger bg-danger-soft px-4 py-2.5"
         >
           <span className="min-w-0 flex-1 text-[13px] text-fg-1">{ladefehler}</span>
-          <Button size="sm" onClick={() => void laden()}>
+          <Button icon="RefreshCw" kind="secondary" size="sm" onClick={() => void laden()}>
             {t('stoerung.nochmal')}
           </Button>
         </div>
       )}
 
       <div className="flex items-center gap-2">
-        <Button variant="primary" iconLeft={<Plus className="size-4" />} onClick={() => setOffen(leer())}>
+        <Button kind="primary" icon={Plus} onClick={() => setOffen(leer())}>
           {t('textvorlagen.neu')}
         </Button>
         <span className="flex-1" />
@@ -198,11 +195,7 @@ export function Textvorlagen() {
                   {v.inhalt_html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()}
                 </span>
               </button>
-              <IconButton
-                icon={<Trash2 />}
-                label={t('textvorlagen.entfernen')}
-                size="sm"
-                onClick={() =>
+              <Button kind="danger" size="sm" icon={Trash2} onClick={() =>
                   void (async () => {
                     const ja = await fragen({
                       titel: t('textvorlagen.entfernen'),
@@ -213,8 +206,7 @@ export function Textvorlagen() {
                     if (ja !== true) return
                     await mit(() => api.loeschen(`/api/textvorlagen/${v.id}`))
                   })()
-                }
-              />
+                }>{t('textvorlagen.entfernen')}</Button>
             </li>
           ))}
         </ul>

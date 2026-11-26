@@ -22,7 +22,8 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, ExternalLink, KeyRound, ListChecks, Send, Settings2, Unplug, Webhook } from 'lucide-react'
 import nextasksLogo from '../assets/nextasks.svg'
 import { api } from '../api/client'
-import { Button, Checkbox, Dialog, Input, Select, Switch } from '../ds'
+import { Checkbox, Dialog, Select } from '../ds'
+import { Button, CheckboxRow, Field } from '../vendor/nexui'
 import { listeWaehlen, nextasksListen, type NtBereich } from '../api/nextasks'
 import { symbolFuer } from '../lib/nextasksSymbole'
 import { listenTon } from './AufgabenPage'
@@ -223,7 +224,7 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
                 />
                 <p className="mb-0 text-[12px] text-fg-4">{t('nextasks.weitere_hinweis')}</p>
                 <Knopfreihe>
-                  <Button variant="secondary" onClick={() => void trennen(v)}>
+                  <Button icon="Trash2" kind="danger" onClick={() => void trennen(v)}>
                     {t('todoapps.trennen')}
                   </Button>
                 </Knopfreihe>
@@ -265,10 +266,10 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
                 {!v.fehler && <NextasksListenwahl />}
                 {standardwahl}
                 <Knopfreihe>
-                  <Button variant="secondary" onClick={() => setOffen(v.id)}>
+                  <Button icon="KeyRound" kind="secondary" onClick={() => setOffen(v.id)}>
                     {t('nextime.schluessel_aendern')}
                   </Button>
-                  <Button variant="secondary" onClick={() => void trennen(v)}>
+                  <Button icon="Trash2" kind="danger" onClick={() => void trennen(v)}>
                     {t('todoapps.trennen')}
                   </Button>
                 </Knopfreihe>
@@ -324,15 +325,9 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
           Todo-App verbunden ist (MAIL-2 AC-16). */}
       {stand && (
         <div className="flex flex-col gap-2">
-          <Switch
-            label={t('aufgaben.eigene_schalter')}
-            description={
+          <CheckboxRow label={t('aufgaben.eigene_schalter')} hint={
               alleVerbindungen.length ? t('aufgaben.eigene_schalter_hinweis') : t('aufgaben.eigene_schalter_ohne')
-            }
-            checked={stand.eigene !== false}
-            disabled={stand.eigene !== false && alleVerbindungen.length === 0}
-            onCheckedChange={(an) => void eigeneSchalten(an)}
-          />
+            } checked={stand.eigene !== false} disabled={stand.eigene !== false && alleVerbindungen.length === 0} onChange={(an) => void eigeneSchalten(an)} />
           {umzug && (
             <p role="status" className="mb-0 text-[13px] text-success">
               {umzug.fehlgeschlagen
@@ -387,30 +382,16 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {v.art === 'nextasks' && (
-                    <Button
-                      variant="ghost"
-                      iconLeft={<KeyRound className="size-4" />}
-                      aria-expanded={offen === v.id}
-                      onClick={() => setOffen(offen === v.id ? null : v.id)}
-                    >
+                    <Button kind="secondary" icon={KeyRound} aria-expanded={offen === v.id} onClick={() => setOffen(offen === v.id ? null : v.id)}>
                       {t('todoapps.nextasks_token_neu')}
                     </Button>
                   )}
                   {v.art === 'webhook' && (
-                    <Button
-                      variant="ghost"
-                      iconLeft={<Settings2 className="size-4" />}
-                      aria-expanded={offen === v.id}
-                      onClick={() => setOffen(offen === v.id ? null : v.id)}
-                    >
+                    <Button kind="secondary" icon={Settings2} aria-expanded={offen === v.id} onClick={() => setOffen(offen === v.id ? null : v.id)}>
                       {t('todoapps.einstellungen')}
                     </Button>
                   )}
-                  <Button
-                    variant="ghost"
-                    iconLeft={<Unplug className="size-4" />}
-                    onClick={() => void trennen(v)}
-                  >
+                  <Button kind="secondary" icon={Unplug} onClick={() => void trennen(v)}>
                     {t('todoapps.trennen')}
                   </Button>
                 </div>
@@ -484,23 +465,10 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
             if (zugang.trim()) void verbinden()
           }}
         >
-          <Input
-            label={t('todoapps.token')}
-            type="password"
-            autoComplete="off"
-            mono
-            value={zugang}
-            onChange={(e) => setZugang(e.target.value)}
-          />
-          <Input
-            label={t('todoapps.name')}
-            hint={t('todoapps.name_hinweis')}
-            value={name}
-            maxLength={80}
-            onChange={(e) => setName(e.target.value)}
-          />
+          <Field label={t('todoapps.token')} type="password" autoComplete="off" mono value={zugang} onChange={(e) => setZugang(e.target.value)} />
+          <Field label={t('todoapps.name')} hints={[t('todoapps.name_hinweis')]} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
           <div>
-            <Button type="submit" variant="primary" disabled={!zugang.trim() || laeuft}>
+            <Button icon="Plug" kind="primary" type="submit" disabled={!zugang.trim() || laeuft}>
               {laeuft ? t('todoapps.prueft') : t('todoapps.verbinden')}
             </Button>
           </div>
@@ -523,7 +491,7 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
         abweisbar={false}
         onClose={() => setGeheimnis(null)}
         footer={
-          <Button variant="primary" onClick={() => setGeheimnis(null)}>
+          <Button icon="X" kind="primary" onClick={() => setGeheimnis(null)}>
             {t('aktion.schliessen')}
           </Button>
         }
@@ -599,33 +567,9 @@ function WebhookVerbinden({ aufVerbunden }: { aufVerbunden: (geheimnis: string) 
           if (url.trim() && !laeuft) void verbinden()
         }}
       >
-        <Input
-          label={t('todoapps.webhook_adresse')}
-          hint={t('todoapps.webhook_adresse_hinweis')}
-          placeholder="https://"
-          type="url"
-          mono
-          value={url}
-          maxLength={500}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-        <Input
-          label={t('todoapps.name')}
-          hint={t('todoapps.webhook_name_hinweis')}
-          value={name}
-          maxLength={80}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <Input
-          label={t('todoapps.webhook_geheimnis')}
-          hint={t('todoapps.webhook_geheimnis_hinweis')}
-          type="password"
-          autoComplete="off"
-          mono
-          value={eigenes}
-          maxLength={200}
-          onChange={(e) => setEigenes(e.target.value)}
-        />
+        <Field label={t('todoapps.webhook_adresse')} hints={[t('todoapps.webhook_adresse_hinweis')]} placeholder="https://" type="url" mono value={url} maxLength={500} onChange={(e) => setUrl(e.target.value)} />
+        <Field label={t('todoapps.name')} hints={[t('todoapps.webhook_name_hinweis')]} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+        <Field label={t('todoapps.webhook_geheimnis')} hints={[t('todoapps.webhook_geheimnis_hinweis')]} type="password" autoComplete="off" mono value={eigenes} maxLength={200} onChange={(e) => setEigenes(e.target.value)} />
         <Checkbox
           label={t('todoapps.webhook_nur_senden')}
           description={t('todoapps.webhook_nur_senden_hinweis')}
@@ -644,7 +588,7 @@ function WebhookVerbinden({ aufVerbunden }: { aufVerbunden: (geheimnis: string) 
           </p>
         )}
         <div>
-          <Button type="submit" variant="primary" disabled={!url.trim() || laeuft}>
+          <Button icon="Plug" kind="primary" type="submit" disabled={!url.trim() || laeuft}>
             {laeuft ? t('todoapps.prueft') : t('todoapps.verbinden')}
           </Button>
         </div>
@@ -728,15 +672,7 @@ function WebhookEinstellungen({
             if (url.trim() && !laeuft) void speichern({ ...stand, url })
           }}
         >
-          <Input
-            label={t('todoapps.webhook_adresse')}
-            hint={t('todoapps.webhook_adresse_hinweis')}
-            type="url"
-            mono
-            value={url}
-            maxLength={500}
-            onChange={(e) => setUrl(e.target.value)}
-          />
+          <Field label={t('todoapps.webhook_adresse')} hints={[t('todoapps.webhook_adresse_hinweis')]} type="url" mono value={url} maxLength={500} onChange={(e) => setUrl(e.target.value)} />
           {/* Die Schalter speichern sofort, mit der gespeicherten Adresse:
               Eine halb getippte neue soll dabei nicht mitgehen. */}
           <Checkbox
@@ -758,15 +694,10 @@ function WebhookEinstellungen({
             onCheckedChange={(an) => void speichern({ ...stand, mit_text: an })}
           />
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={laeuft || !url.trim() || url === stand.url}>
+            <Button icon="Check" kind="secondary" type="submit" disabled={laeuft || !url.trim() || url === stand.url}>
               {t('todoapps.adresse_speichern')}
             </Button>
-            <Button
-              variant="ghost"
-              iconLeft={<Send className="size-4" />}
-              disabled={laeuft}
-              onClick={() => void testen()}
-            >
+            <Button kind="secondary" icon={Send} disabled={laeuft} onClick={() => void testen()}>
               {t('todoapps.test_senden')}
             </Button>
           </div>
@@ -905,39 +836,16 @@ function NextasksVerbinden({
           if (url.trim() && token.trim() && !laeuft) void verbinden()
         }}
       >
-        <Input
-          label={t('todoapps.nextasks_adresse')}
-          hint={t('todoapps.nextasks_adresse_hinweis')}
-          placeholder="https://"
-          type="url"
-          mono
-          value={url}
-          maxLength={500}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-        <Input
-          label={t('todoapps.token')}
-          type="password"
-          autoComplete="off"
-          mono
-          value={token}
-          maxLength={500}
-          onChange={(e) => setToken(e.target.value)}
-        />
-        <Input
-          label={t('todoapps.name')}
-          hint={t('todoapps.nextasks_name_hinweis')}
-          value={name}
-          maxLength={80}
-          onChange={(e) => setName(e.target.value)}
-        />
+        <Field label={t('todoapps.nextasks_adresse')} hints={[t('todoapps.nextasks_adresse_hinweis')]} placeholder="https://" type="url" mono value={url} maxLength={500} onChange={(e) => setUrl(e.target.value)} />
+        <Field label={t('todoapps.token')} type="password" autoComplete="off" mono value={token} maxLength={500} onChange={(e) => setToken(e.target.value)} />
+        <Field label={t('todoapps.name')} hints={[t('todoapps.nextasks_name_hinweis')]} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
         {fehler && (
           <p role="alert" className="mb-0 text-[13px] text-danger">
             {fehler}
           </p>
         )}
         <Knopfreihe rechts={schlicht}>
-          <Button type="submit" variant="primary" disabled={!url.trim() || !token.trim() || laeuft}>
+          <Button icon="Plug" kind="primary" type="submit" disabled={!url.trim() || !token.trim() || laeuft}>
             {laeuft ? t('todoapps.prueft') : t('todoapps.verbinden')}
           </Button>
         </Knopfreihe>
@@ -999,23 +907,8 @@ function NextasksErneuern({
       }}
     >
       <p className="mb-0 text-[12px] text-fg-3">{t('todoapps.nextasks_token_neu_hinweis')}</p>
-      <Input
-        label={t('todoapps.nextasks_adresse')}
-        type="url"
-        mono
-        value={url}
-        maxLength={500}
-        onChange={(e) => setUrl(e.target.value)}
-      />
-      <Input
-        label={t('todoapps.token')}
-        type="password"
-        autoComplete="off"
-        mono
-        value={token}
-        maxLength={500}
-        onChange={(e) => setToken(e.target.value)}
-      />
+      <Field label={t('todoapps.nextasks_adresse')} type="url" mono value={url} maxLength={500} onChange={(e) => setUrl(e.target.value)} />
+      <Field label={t('todoapps.token')} type="password" autoComplete="off" mono value={token} maxLength={500} onChange={(e) => setToken(e.target.value)} />
       {fehler && (
         <p role="alert" className="mb-0 text-[13px] text-danger">
           {fehler}
@@ -1023,15 +916,11 @@ function NextasksErneuern({
       )}
       <Knopfreihe rechts={Boolean(aufAbbrechen)}>
         {aufAbbrechen && (
-          <Button type="button" variant="secondary" onClick={aufAbbrechen}>
+          <Button icon="X" kind="secondary" type="button" onClick={aufAbbrechen}>
             {t('aktion.abbrechen')}
           </Button>
         )}
-        <Button
-          type="submit"
-          variant={aufAbbrechen ? 'primary' : undefined}
-          disabled={!url.trim() || !token.trim() || laeuft}
-        >
+        <Button icon="Plug" kind="secondary" type="submit" disabled={!url.trim() || !token.trim() || laeuft}>
           {laeuft ? t('todoapps.prueft') : t('aktion.speichern')}
         </Button>
       </Knopfreihe>

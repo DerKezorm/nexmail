@@ -15,7 +15,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Check } from 'lucide-react'
 import { api, ApiFehler } from '../api/client'
-import { Button, Input, Switch } from '../ds'
+import { Button, CheckboxRow, Field } from '../vendor/nexui'
 import { BESCHRIFTUNG_NORMAL } from '../ds/beschriftung'
 
 interface Stand {
@@ -144,42 +144,21 @@ export function Abwesenheit() {
                     : t('abwesenheit.ruht')}
                 </span>
               )}
-              <Switch
-                checked={e.aktiv}
-                label={t('abwesenheit.einschalten')}
-                kompakt
-                onCheckedChange={(an) => setzen({ aktiv: an })}
-              />
+              <CheckboxRow checked={e.aktiv} label={t('abwesenheit.einschalten')} onChange={(an) => setzen({ aktiv: an })} />
             </div>
 
             {e.aktiv && (
               <>
                 <div className="flex flex-wrap gap-4">
                   <div className="min-w-[150px] flex-1">
-                    <Input
-                      type="date"
-                      label={t('abwesenheit.von')}
-                      value={e.von}
-                      onChange={(ev) => setzen({ von: ev.target.value })}
-                    />
+                    <Field type="date" label={t('abwesenheit.von')} value={e.von} onChange={(ev) => setzen({ von: ev.target.value })} />
                   </div>
                   <div className="min-w-[150px] flex-1">
-                    <Input
-                      type="date"
-                      label={t('abwesenheit.bis')}
-                      hint={e.bis ? undefined : t('abwesenheit.bis_offen')}
-                      value={e.bis}
-                      onChange={(ev) => setzen({ bis: ev.target.value })}
-                    />
+                    <Field type="date" label={t('abwesenheit.bis')} hints={[e.bis ? undefined : t('abwesenheit.bis_offen')]} value={e.bis} onChange={(ev) => setzen({ bis: ev.target.value })} />
                   </div>
                 </div>
 
-                <Input
-                  label={t('abwesenheit.betreff')}
-                  placeholder={t('abwesenheit.betreff_platzhalter')}
-                  value={e.betreff}
-                  onChange={(ev) => setzen({ betreff: ev.target.value })}
-                />
+                <Field label={t('abwesenheit.betreff')} placeholder={t('abwesenheit.betreff_platzhalter')} value={e.betreff} onChange={(ev) => setzen({ betreff: ev.target.value })} />
 
                 <label className="flex flex-col gap-1.5">
                   <span className={BESCHRIFTUNG_NORMAL}>
@@ -202,10 +181,10 @@ export function Abwesenheit() {
                 sagt nichts — er erscheint, sobald es etwas zu speichern gibt. */}
             {geaendert && (
               <div className="flex items-center gap-3">
-                <Button variant="primary" size="sm" onClick={() => void speichern(e)}>
+                <Button icon="Check" kind="primary" size="sm" onClick={() => void speichern(e)}>
                   {t('aktion.speichern')}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setzen(s)}>
+                <Button icon="X" kind="secondary" size="sm" onClick={() => setzen(s)}>
                   {t('aktion.abbrechen')}
                 </Button>
               </div>
