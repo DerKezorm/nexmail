@@ -9,8 +9,8 @@ import { useTranslation } from 'react-i18next'
 import { PenLine, Plus, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import { useNachfrage } from '../components/Nachfrage'
-import { EmptyState, Select } from '../ds'
-import { Button, CheckboxRow, Field } from '../vendor/nexui'
+import { EmptyState } from '../ds'
+import { Button, CheckboxRow, Field, SelectField } from '../vendor/nexui'
 import { Editor } from '../components/Editor'
 import { servermeldung } from '../lib/servermeldung'
 
@@ -76,19 +76,13 @@ export function Signaturen() {
     return (
       <div className="flex max-w-[720px] flex-col gap-4">
         <Field label={t('signaturen.name')} value={offen.name} onChange={(e) => setOffen({ ...offen, name: e.target.value })} />
-        <Select
+        <SelectField
           label={t('signaturen.postfach')}
-          hint={t('signaturen.postfach_hinweis')}
+          hints={[t('signaturen.postfach_hinweis')]}
           value={offen.konto_id}
           onChange={(e) => setOffen({ ...offen, konto_id: e.target.value })}
-        >
-          <option value="">{t('signaturen.alle_postfaecher')}</option>
-          {konten.map((k) => (
-            <option key={k.id} value={k.id}>
-              {k.adresse}
-            </option>
-          ))}
-        </Select>
+          options={[{ value: '', label: t('signaturen.alle_postfaecher') }, ...konten.map((k) => ({ value: k.id, label: k.adresse }))]}
+        />
 
         <div className="flex min-h-[220px] flex-col overflow-hidden rounded-lg border border-line bg-surface-1">
           <Editor

@@ -17,8 +17,8 @@ import { api } from '../api/client'
 import { schlagworteLaden } from '../api/laden'
 import { useNachfrage } from '../components/Nachfrage'
 import type { Schlagwort } from '../daten/typen'
-import { EmptyState, Select } from '../ds'
-import { Button, CheckboxRow, Field, IconButton } from '../vendor/nexui'
+import { EmptyState } from '../ds'
+import { Button, CheckboxRow, Field, IconButton, SelectField } from '../vendor/nexui'
 import { servermeldung } from '../lib/servermeldung'
 import { GRUPPENTITEL } from '../ds/beschriftung'
 
@@ -354,19 +354,16 @@ function Formular({
     <div className="flex max-w-[720px] flex-col gap-4">
       <Field label={t('regeln.name')} placeholder={t('regeln.name_platzhalter')} value={regel.name} onChange={(e) => setzen({ name: e.target.value })} />
 
-      <Select
+      <SelectField
         label={t('regeln.postfach')}
-        hint={t('regeln.postfach_hinweis')}
+        hints={[t('regeln.postfach_hinweis')]}
         value={regel.konto_id}
         onChange={(e) => setzen({ konto_id: e.target.value })}
-      >
-        <option value="">{t('regeln.alle_postfaecher')}</option>
-        {konten.map((k) => (
-          <option key={k.id} value={k.id}>
-            {k.adresse}
-          </option>
-        ))}
-      </Select>
+        options={[
+          { value: '', label: t('regeln.alle_postfaecher') },
+          ...konten.map((k) => ({ value: k.id, label: k.adresse })),
+        ]}
+      />
 
       {/* --- Bedingungen ------------------------------------------------- */}
       <fieldset className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
@@ -374,19 +371,20 @@ function Formular({
           {t('regeln.wenn')}
         </legend>
 
-        <Select
+        <SelectField
           label={t('regeln.verknuepfung')}
           value={regel.verknuepfung}
           onChange={(e) => setzen({ verknuepfung: e.target.value })}
-        >
-          <option value="und">{t('regeln.und')}</option>
-          <option value="oder">{t('regeln.oder')}</option>
-        </Select>
+          options={[
+            { value: 'und', label: t('regeln.und') },
+            { value: 'oder', label: t('regeln.oder') },
+          ]}
+        />
 
         {regel.bedingungen.map((b, i) => (
           <div key={i} className="flex flex-wrap items-end gap-2">
             <div className="w-[140px]">
-              <Select
+              <SelectField
                 label={t('regeln.feld')}
                 value={b.feld}
                 onChange={(e) => {
@@ -394,16 +392,13 @@ function Formular({
                   neu[i] = { ...b, feld: e.target.value }
                   setzen({ bedingungen: neu })
                 }}
-              >
-                {FELDER.map((f) => (
-                  <option key={f} value={f}>
-                    {t(`regeln.feld_${f}`)}
-                  </option>
-                ))}
-              </Select>
+                options={[
+                  ...FELDER.map((f) => ({ value: f, label: t(`regeln.feld_${f}`) })),
+                ]}
+              />
             </div>
             <div className="w-[180px]">
-              <Select
+              <SelectField
                 label={t('regeln.vergleich')}
                 value={b.vergleich}
                 onChange={(e) => {
@@ -411,13 +406,10 @@ function Formular({
                   neu[i] = { ...b, vergleich: e.target.value }
                   setzen({ bedingungen: neu })
                 }}
-              >
-                {VERGLEICHE.map((v) => (
-                  <option key={v} value={v}>
-                    {t(`regeln.vergleich_${v}`)}
-                  </option>
-                ))}
-              </Select>
+                options={[
+                  ...VERGLEICHE.map((v) => ({ value: v, label: t(`regeln.vergleich_${v}`) })),
+                ]}
+              />
             </div>
             <div className="min-w-[200px] flex-1">
               <Field label={t('regeln.wert')} value={b.wert} onChange={(e) => {
@@ -454,7 +446,7 @@ function Formular({
         {regel.aktionen.map((a, i) => (
           <div key={i} className="flex flex-wrap items-end gap-2">
             <div className="w-[200px]">
-              <Select
+              <SelectField
                 label={t('regeln.aktion')}
                 value={a.art}
                 onChange={(e) => {
@@ -462,17 +454,14 @@ function Formular({
                   neu[i] = { ...a, art: e.target.value, wert: '' }
                   setzen({ aktionen: neu })
                 }}
-              >
-                {ARTEN.map((art) => (
-                  <option key={art} value={art}>
-                    {t(`regeln.aktion_${art}`)}
-                  </option>
-                ))}
-              </Select>
+                options={[
+                  ...ARTEN.map((art) => ({ value: art, label: t(`regeln.aktion_${art}`) })),
+                ]}
+              />
             </div>
             {a.art === 'verschieben' && (
               <div className="min-w-[220px] flex-1">
-                <Select
+                <SelectField
                   label={t('regeln.zielordner')}
                   value={a.wert}
                   onChange={(e) => {
@@ -480,37 +469,31 @@ function Formular({
                     neu[i] = { ...a, wert: e.target.value }
                     setzen({ aktionen: neu })
                   }}
-                >
-                  <option value="">—</option>
-                  {ziele.map((o) => (
-                    <option key={o.id} value={String(o.id)}>
-                      {o.pfad}
-                    </option>
-                  ))}
-                </Select>
+                  options={[
+                    { value: '', label: '—' },
+                    ...ziele.map((o) => ({ value: String(o.id), label: o.pfad })),
+                  ]}
+                />
               </div>
             )}
             {/* ⚠️ **Der Wert ist das Atom, nicht der Name.** Umbenennen ändert
                 nur die Anzeige; eine Regel mit dem Namen liefe danach ins Leere. */}
             {a.art === 'schlagwort' && (
               <div className="min-w-[220px] flex-1">
-                <Select
+                <SelectField
                   label={t('regeln.schlagwort')}
                   value={a.wert}
-                  hint={marken.length === 0 ? t('regeln.schlagwort_keins') : undefined}
+                  hints={marken.length === 0 ? [t('regeln.schlagwort_keins')] : []}
                   onChange={(e) => {
                     const neu = [...regel.aktionen]
                     neu[i] = { ...a, wert: e.target.value }
                     setzen({ aktionen: neu })
                   }}
-                >
-                  <option value="">—</option>
-                  {marken.map((s) => (
-                    <option key={s.id} value={s.atom}>
-                      {s.name}
-                    </option>
-                  ))}
-                </Select>
+                  options={[
+                    { value: '', label: '—' },
+                    ...marken.map((s) => ({ value: s.atom, label: s.name })),
+                  ]}
+                />
               </div>
             )}
             <Button kind="danger" size="sm" icon={Trash2} disabled={regel.aktionen.length === 1} onClick={() => setzen({ aktionen: regel.aktionen.filter((_, j) => j !== i) })}>{t('regeln.aktion_weg')}</Button>

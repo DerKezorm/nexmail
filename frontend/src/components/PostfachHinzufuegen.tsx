@@ -25,8 +25,10 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Calendar, Check, KeyRound, Mail, Server } from 'lucide-react'
 import { ApiFehler, api } from '../api/client'
 import type { KontoZeile } from '../api/client'
-import { Checkbox, Dialog } from '../ds'
-import { Button } from '../vendor/nexui'
+// TODO ui 1.1.0: nexuis Dialog schliesst auch beim Klick daneben; dieses Fenster darf das nicht, solange ein Postfach
+// angelegt wird (siehe ``abweisbar`` unten). Bis der Bausatz das kann, bleibt nexmails eigenes (einst-fragen/nexmail.md).
+import { Dialog } from '../ds'
+import { Button, CheckboxRow } from '../vendor/nexui'
 import { RUECKWEG } from '../lib/oauthrueckweg'
 import { servermeldung } from '../lib/servermeldung'
 
@@ -452,13 +454,13 @@ export function PostfachHinzufuegen({
           )}
           <div className="flex flex-col gap-1.5">
             {(gefunden ?? []).map((k) => (
-              <Checkbox
+              <CheckboxRow
                 key={k.url}
                 label={k.name}
-                description={k.schon_verbunden ? t('kalender.schon_verbunden') : undefined}
+                hint={k.schon_verbunden ? t('kalender.schon_verbunden') : undefined}
                 disabled={k.schon_verbunden}
                 checked={gewaehlt.includes(k.url)}
-                onCheckedChange={(an) =>
+                onChange={(an) =>
                   setGewaehlt((alt) => (an ? [...alt, k.url] : alt.filter((u) => u !== k.url)))
                 }
               />

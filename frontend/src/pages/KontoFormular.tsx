@@ -17,8 +17,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, XCircle } from 'lucide-react'
-import { Select } from '../ds'
-import { Button, CheckboxRow, Field } from '../vendor/nexui'
+import { Button, CheckboxRow, Field, SelectField } from '../vendor/nexui'
 import { Schlagwortfeld } from '../components/Schlagwortfeld'
 import { Absenderfeld } from '../components/Absenderfeld'
 import type { Absenderalias } from '../components/Absenderfeld'
@@ -327,7 +326,7 @@ export function KontoFormular({
 
   return (
     <div className={`flex flex-col gap-4 ${imFenster ? '' : 'max-w-[640px]'}`}>
-      <Field label={t('konto.adresse')} placeholder={t('konto.adresse_platzhalter')} value={felder.adresse} mono autoFocus autoComplete="email" onChange={(e) => setzen({ adresse: e.target.value })} hints={[sucht ? t('konto.suche_laeuft') : undefined]} />
+      <Field label={t('konto.adresse')} placeholder={t('konto.adresse_platzhalter')} value={felder.adresse} mono autoFocus autoComplete="email" onChange={(e) => setzen({ adresse: e.target.value })} hints={sucht ? [t('konto.suche_laeuft')] : []} />
 
       {/* ⚠️ Der „nichts gefunden“-Hinweis verschwindet, sobald die Felder
           stehen — egal woher. Ein Hinweis, der dem Formular unter ihm
@@ -395,19 +394,16 @@ export function KontoFormular({
       </div>
 
       {zugaenge.length > 0 && (
-        <Select
+        <SelectField
           label={t('konto.anmeldung')}
           value={zugangId}
           onChange={(e) => setZugangId(e.target.value)}
-          hint={zugangId ? t('konto.anmeldung_oauth_hinweis') : undefined}
-        >
-          <option value="">{t('konto.anmeldung_passwort')}</option>
-          {zugaenge.map((z) => (
-            <option key={z.id} value={z.id}>
-              {z.adresse || z.art}
-            </option>
-          ))}
-        </Select>
+          hints={zugangId ? [t('konto.anmeldung_oauth_hinweis')] : []}
+          options={[
+            { value: '', label: t('konto.anmeldung_passwort') },
+            ...zugaenge.map((z) => ({ value: z.id, label: z.adresse || z.art })),
+          ]}
+        />
       )}
 
       {!zugangId && (
@@ -417,7 +413,7 @@ export function KontoFormular({
             : bestehend && !passwortGespeichert
               ? t('konto.passwort_statt_zustimmung')
               : undefined
-        ]} value={passwortGespeichert && !passwortBeruehrt ? '••••••••••' : felder.passwort} onFocus={() => {
+        ].filter(Boolean)} value={passwortGespeichert && !passwortBeruehrt ? '••••••••••' : felder.passwort} onFocus={() => {
           if (passwortGespeichert && !passwortBeruehrt) {
             setPasswortBeruehrt(true)
             setzen({ passwort: '' })
@@ -625,9 +621,8 @@ function Serverblock({ titel, server, port, sicherheit, benutzer, aufAendern }: 
         <Field label={t('konto.server')} value={server} mono onChange={(e) => aufAendern({ server: e.target.value })} />
         <Field label={t('konto.port')} value={String(port)} mono inputMode="numeric" onChange={(e) => aufAendern({ port: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
         <Field label={t('konto.benutzer')} value={benutzer} mono onChange={(e) => aufAendern({ benutzer: e.target.value })} />
-        <Select
+        <SelectField
           label={t('konto.sicherheit')}
-          size="sm"
           value={sicherheit}
           options={SICHERHEITEN}
           onChange={(e) => aufAendern({ sicherheit: e.target.value })}

@@ -154,7 +154,7 @@ export function Abwesenheit() {
                     <Field type="date" label={t('abwesenheit.von')} value={e.von} onChange={(ev) => setzen({ von: ev.target.value })} />
                   </div>
                   <div className="min-w-[150px] flex-1">
-                    <Field type="date" label={t('abwesenheit.bis')} hints={[e.bis ? undefined : t('abwesenheit.bis_offen')]} value={e.bis} onChange={(ev) => setzen({ bis: ev.target.value })} />
+                    <Field type="date" label={t('abwesenheit.bis')} hints={e.bis ? [] : [t('abwesenheit.bis_offen')]} value={e.bis} onChange={(ev) => setzen({ bis: ev.target.value })} />
                   </div>
                 </div>
 

@@ -13,8 +13,7 @@ import { Postfachzeichen } from './Postfachzeichen'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Folder, Pencil, Plus, Trash2 } from 'lucide-react'
-import { Badge } from '../ds'
-import { Button } from '../vendor/nexui'
+import { Badge, Button } from '../vendor/nexui'
 import { useNachfrage } from './Nachfrage'
 import { api } from '../api/client'
 import type { KontoZeile } from '../api/client'
@@ -81,7 +80,7 @@ export function Postfachkacheln({ konten, aufHinzufuegen, aufBearbeiten, aufNeuL
                 wie jedes andere — und niemand wüsste, warum es keine
                 Passwortfelder hat. */}
             {ANBIETER[k.oauth_art ?? ''] && (
-              <Badge tone="info">{ANBIETER[k.oauth_art ?? '']}</Badge>
+              <Badge tone="accent">{ANBIETER[k.oauth_art ?? '']}</Badge>
             )}
           </div>
 
@@ -123,15 +122,17 @@ export function Postfachkacheln({ konten, aufHinzufuegen, aufBearbeiten, aufNeuL
               /* ⚠️ **Übersetzt über die Kennung, ganzer Satz als title.** Ein
                  deutscher Server-Satz bliebe auf Englisch deutsch, und
                  `slice(0, 40)` schnitt ihn mitten im Wort ab („abgewie"). */
-              <Badge tone="danger" dot title={k.letzter_fehler}>
-                <span className="max-w-40 truncate">
-                  {k.letzter_fehler_art
-                    ? t(`konto.fehler_${k.letzter_fehler_art}`, { defaultValue: k.letzter_fehler })
-                    : k.letzter_fehler}
-                </span>
-              </Badge>
+              <span title={k.letzter_fehler} className="min-w-0">
+                <Badge tone="danger">
+                  <span className="max-w-40 truncate">
+                    {k.letzter_fehler_art
+                      ? t(`konto.fehler_${k.letzter_fehler_art}`, { defaultValue: k.letzter_fehler })
+                      : k.letzter_fehler}
+                  </span>
+                </Badge>
+              </span>
             ) : (
-              <Badge tone="success" dot>
+              <Badge tone="on">
                 {t('einstellungen.aktiv')}
               </Badge>
             )}
