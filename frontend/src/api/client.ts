@@ -220,6 +220,10 @@ export interface Ich {
   neues_passwort?: string
   /** Kontenmodul Teil 2: die Mail „Neue Anmeldung“, im Profil abschaltbar. */
   mail_neue_anmeldung?: boolean
+  /** konten 1.1.0: hell, dunkel oder wie das System, am Konto; `""` noch nicht gewählt. */
+  theme?: string
+  /** konten 1.1.0 (E23): die Box „Adresse noch nicht bestätigt“ zeigen. */
+  adresse_unbestaetigt?: boolean
 }
 
 export interface Schritt {

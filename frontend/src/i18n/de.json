@@ -264,7 +264,8 @@
     "eindunkeln_hinweis": "Newsletter bringen fast immer ihr eigenes Weiß mit und stehen als helle Platte im dunklen Fenster. Eingeschaltet werden sie umgekehrt statt umgefärbt: Der Abstand zwischen Schrift und Grund bleibt genau erhalten, Bilder werden zurückgedreht. Geht es bei einer Mail daneben, schaltet das Menü über der Mail sie einzeln zurück. Wirkt nur im dunklen Modus.",
     "modus_hell": "Hell",
     "modus_dunkel": "Dunkel",
-    "modus_system": "Wie das System"
+    "modus_system": "Wie das System",
+    "liste_titel": "Liste und Lesen"
   },
   "einladung": {
     "titel": "Willkommen, {{name}}",
@@ -1107,7 +1108,7 @@
     "verbinden_google": "Google-Konto verbinden",
     "verbinden_microsoft": "Microsoft-Konto verbinden",
     "keine_zugaenge": "Noch keine Zustimmung erteilt.",
-    "nicht_eingerichtet": "Dafür muss der Betreiber erst eine App eintragen (Einstellungen → Server → Mail).",
+    "nicht_eingerichtet": "Nicht eingerichtet",
     "trennen": "Trennen",
     "trennen_frage": "Zustimmung für {{adresse}} trennen?",
     "trennen_text": "nexmail vergisst seine Token. Beim Anbieter selbst bleibt die Erlaubnis bestehen, dort widerrufst du sie im eigenen Konto.",
@@ -1549,7 +1550,6 @@
     "benutzername_ungueltig": "2 bis 64 Zeichen: a bis z, Ziffern, Punkt, Bindestrich, Unterstrich.",
     "benutzername_vergeben": "Diesen Benutzernamen hat schon jemand.",
     "betreiber_an_sich_selbst": "Du bist schon Betreiber.",
-    "betreiber_entfernen": "Der Betreiber lässt sich nicht entfernen.",
     "caldav_abfrage_gescheitert": "Der Kalenderserver hat die Abfrage abgelehnt.",
     "caldav_abgewiesen": "Benutzername oder Passwort weist der Kalenderserver ab.",
     "caldav_adresse_fehlt": "Ohne Adresse geht es nicht.",
@@ -1688,7 +1688,6 @@
     "passwort_zu_kurz": "Das Passwort braucht mindestens {{min}} Zeichen.",
     "port_ungueltig": "Der Port liegt außerhalb des Möglichen.",
     "postausgang_abgelehnt": "Der Postausgang hat abgelehnt ({{code}}): {{grund}}",
-    "postausgang_anmeldung_abgewiesen": "Der Postausgang hat Benutzername oder Passwort abgewiesen.",
     "postausgang_fehlt": "Es ist kein Postausgang für nexmail selbst eingerichtet. Er steht unter Einstellungen → Server → Mail.",
     "postausgang_nicht_erreichbar": "Der Postausgang {{server}}:{{port}} ist nicht erreichbar.",
     "postfach_schon_da": "Dieses Postfach ist schon eingerichtet.",
@@ -1733,7 +1732,6 @@
     "umfang_unbekannt": "Diesen Umfang gibt es nicht.",
     "vcard_zu_gross": "Die Datei ist größer als 5 MB, das ist keine vCard.",
     "vergleich_unbekannt": "Den Vergleich „{{vergleich}}“ gibt es nicht.",
-    "versand_gescheitert": "Die Mail ließ sich nicht absenden: {{grund}}",
     "regel_ohne_schlagwort": "„Schlagwort setzen“ braucht ein Schlagwort.",
     "verschieben_ohne_ziel": "„Verschieben“ braucht einen Zielordner.",
     "vorkommen_fehlt": "Ohne Vorkommen geht es nicht.",
@@ -1818,7 +1816,11 @@
     "eigene_aufgaben_aus": "Die eigene Aufgabenliste von nexmail ist ausgeschaltet. Wähl eine Liste in einer verbundenen Todo-App.",
     "eigene_aufgaben_ohne_verbindung": "Ohne verbundene Todo-App lässt sich die eigene Aufgabenliste nicht ausschalten.",
     "benutzer_nicht_gefunden": "Dieses Konto gibt es nicht.",
-    "enrolment_expired": "Das hat zu lange gedauert. Fang noch einmal an."
+    "enrolment_expired": "Das hat zu lange gedauert. Fang noch einmal an.",
+    "unbekannte_stufe": "Diese Stufe gibt es nicht.",
+    "wrong_password": "Das Passwort stimmt nicht.",
+    "fresh_sign_in_needed": "Melde dich zuerst noch einmal bei deinem Anbieter an.",
+    "second_factor_required": "Dieser Schlüssel wirkt erst, wenn sein Konto einen zweiten Faktor einrichtet."
   },
   "sicherheit": {
     "alle_beenden": "Alle anderen Geräte abmelden",
@@ -2143,7 +2145,10 @@
     "nachrichten_zahl_other": "{{zahl}} Nachrichten",
     "entfernen_zahlen": "Mit ihm gehen {{postfaecher}} und {{nachrichten}}, dazu Kontakte, Regeln und Signaturen. Auf dem Mailserver bleibt alles unberührt; nexmail vergisst nur.",
     "entfernen_ohne_zahlen": "Mit ihm gehen seine Postfächer und Nachrichten, dazu Kontakte, Regeln und Signaturen. Auf dem Mailserver bleibt alles unberührt; nexmail vergisst nur.",
-    "ki_karte_text": "Gilt für alle Konten. Ob ein einzelnes Konto KI nutzen darf, steht unter „Konten“."
+    "ki_karte_text": "Gilt für alle Konten. Ob ein einzelnes Konto KI nutzen darf, steht unter „Konten“.",
+    "funktionen_titel": "Funktionen für alle Konten",
+    "zeitzone_titel": "Zeitzone des Servers",
+    "was_du_siehst": "Als Betreiber siehst du Namen, Anmeldung, Rolle und die Zahl der Postfächer jedes Kontos, aber nie den Inhalt seiner Mails, Kontakte, Termine oder Aufgaben und nie seine Passwörter."
   },
   "wiedervorlage": {
     "menue": "Wiedervorlage",
@@ -2254,5 +2259,31 @@
   },
   "speicher": {
     "enthaelt": "Eine Sicherung enthält die ganze Datenbank: Postfächer samt Zugängen, Kontakte, Kalender, Regeln, Signaturen, Aufgaben, Konten und Einstellungen. Anhänge kommen nicht hinein, die liegen noch im Postfach. Herunterladen gibt ein verschlüsseltes Archiv ohne Nachrichten hinaus."
+  },
+  "mailversand": {
+    "satz": "Über diesen Server verschickt nexmail Einladungen, Links für ein neues Passwort, Links zum Bestätigen einer Adresse, die Mail bei einer neuen Anmeldung und Bescheide, wenn sich am Konto etwas ändert. Die Post deiner Postfächer geht weiter über die Postfächer selbst."
+  },
+  "pwa": {
+    "install": {
+      "title": "Auf diesem Gerät installieren",
+      "text": "Installiert startet nexmail wie eine App: im eigenen Fenster ohne Browserleiste und mit eigenem Symbol.",
+      "button": "Installieren",
+      "asked": "Der Browser hat gefragt. Hast du zugestimmt, findest du nexmail bei deinen Apps.",
+      "ios": "Auf iPhone und iPad: Teilen › Zum Home-Bildschirm.",
+      "installed": "nexmail läuft auf diesem Gerät schon als installierte App.",
+      "safari": "In Safari auf dem Mac: Ablage › Zum Dock hinzufügen.",
+      "firefox": "Firefox kann Web-Apps nicht installieren. Öffne nexmail dafür in einem anderen Browser, etwa Chrome, Edge oder Safari.",
+      "other": "Bietet dein Browser hier keinen Knopf an, findest du das Installieren in seinem Menü, etwa unter „App installieren“ oder „Zum Startbildschirm hinzufügen“."
+    }
+  },
+  "geraete": {
+    "titel": "Geräte",
+    "ohne_namen": "Gerät ohne Namen",
+    "mitteilungen_an": "Mitteilungen an",
+    "mitteilungen_aus": "Mitteilungen aus",
+    "zuletzt": "zuletzt {{wann}}",
+    "trennen": "Trennen",
+    "keine": "Noch kein iPhone oder iPad verbunden.",
+    "verbinden": "iPhone oder iPad verbinden"
   }
 }

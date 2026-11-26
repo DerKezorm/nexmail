@@ -5,7 +5,7 @@
  * wird hier einmal auf `ListedAccount` abgebildet, nirgends sonst.
  */
 import { profilbildAdresse } from '../components/Profilbild'
-import type { AccountCaps, ListedAccount, ListedInvite, OwnAction } from '../vendor/nexkonten/konten'
+import { capsOf, type AccountCaps, type ListedAccount, type ListedInvite, type OwnAction } from '../vendor/nexkonten/konten'
 
 /** Eine Zeile von `GET /api/benutzer`. */
 export interface BenutzerZeile {
@@ -33,6 +33,10 @@ export interface BenutzerZeile {
   zuletzt_gesehen?: string | null
   /** Der Stand des Profilbilds; `null` ohne Bild. */
   profilbild?: string | null
+  /** konten 1.1.0: vom Betreiber gesperrt seit, gelöscht am, endgültig weg am (ISO; `null` nicht). */
+  gesperrt_seit?: string | null
+  geloescht_am?: string | null
+  endgueltig_am?: string | null
 }
 
 /** Eine offene Einladung von `GET /api/benutzer` (abgelaufene inbegriffen). */
@@ -50,44 +54,26 @@ export interface EinladungsZeile {
   gemailt?: boolean
 }
 
-/** Was nexmails Server für den Betreiber kann (`ACCOUNT_CAPS`, Bestandsaufnahme vom 25.11.2026): Namen ändern,
- *  Adresse entfernen, Link für ein neues Passwort, zweiten Faktor zurücksetzen, Anbieter lösen, löschen. Keine Rollen
- *  (der Betreiber-Haken wandert, er wird übergeben), kein Sperren, kein „Überall abmelden“, kein Zurückholen. */
-export const APP_CAPS: AccountCaps = {
+/** Was nexmails Server für den Betreiber kann: Namen ändern, Adresse entfernen, Link für ein neues Passwort, zweiten
+ *  Faktor zurücksetzen, Anbieter lösen (nexmails eigene, wie vor konten 1.1.0), dazu seit konten 1.1.0 überall gleich
+ *  Rollen (mehrere Betreiber), Sperren, Löschen mit 30 Tagen Zurückholen und „KI erlaubt“ (`capsOf`). Kein „Überall
+ *  abmelden“. „Betreiber übergeben“ fällt weg (Bauplan „Einstellungen“). */
+export const APP_CAPS: AccountCaps = capsOf('nexmail', {
   rename: true,
-  roles: false,
   emailRemove: true,
   resetLink: true,
   factorReset: true,
   signOut: false,
   unlink: true,
-  blocking: false,
-  remove: true,
-  restore: false,
+})
+
+/** nexmail hat seit konten 1.1.0 nichts Eigenes mehr im Fenster „Verwalten“: „KI erlaubt“ ist ein Recht des Moduls. */
+export function eigenes(): OwnAction[] {
+  return []
 }
 
-/** Der Name von nexmails eigenem Knopf und Haken im Fenster „Verwalten“. */
-export const UEBERGEBEN = 'handOver'
-export const KI_ERLAUBT = 'aiAllowed'
-
-/** nexmails Eigenes im Fenster „Verwalten“: „Betreiber übergeben“ in „Ändern“ vor „Adresse entfernen“, nicht am
- *  eigenen Konto; „KI erlaubt“ als Haken in „Rechte“, sofort gespeichert. */
-export function eigenes(zeile: Pick<BenutzerZeile, 'ki_erlaubt'>): OwnAction[] {
-  return [
-    {
-      name: UEBERGEBEN,
-      label: 'verwaltung.betreiber_uebergeben_knopf',
-      group: 'change',
-      button: 'handOver',
-      before: 'account.emailRemove',
-      notSelf: true,
-    },
-    { name: KI_ERLAUBT, label: 'verwaltung.ki_erlaubt', group: 'rights', checked: zeile.ki_erlaubt },
-  ]
-}
-
-/** Die Fassung für die Prüfungen der Vorlage (`APP_OWN`): ein Konto, dem KI erlaubt ist. */
-export const APP_OWN: readonly OwnAction[] = eigenes({ ki_erlaubt: true })
+/** Die Fassung für die Prüfungen der Vorlage (`APP_OWN`). */
+export const APP_OWN: readonly OwnAction[] = eigenes()
 
 /** Eine Zeile so, wie die Liste des Moduls sie kennt. */
 export function alsKonto(zeile: BenutzerZeile, eigeneId: string | undefined): ListedAccount {
@@ -109,6 +95,11 @@ export function alsKonto(zeile: BenutzerZeile, eigeneId: string | undefined): Li
     // ⚠️ Ohne laufende Sitzung weiß nexmail nicht, wann jemand zuletzt da war: dann keine Angabe statt „Nie“.
     ...(zeile.zuletzt_gesehen ? { lastSeenAt: zeile.zuletzt_gesehen } : {}),
     picture: zeile.profilbild ? profilbildAdresse(zeile.id, zeile.profilbild) : null,
+    blocked: Boolean(zeile.gesperrt_seit || zeile.geloescht_am),
+    blockedAt: zeile.gesperrt_seit ?? null,
+    deletedAt: zeile.geloescht_am ?? null,
+    purgeAt: zeile.endgueltig_am ?? null,
+    rights: zeile.ki_erlaubt ? ['ai'] : [],
   }
 }
 

@@ -10,8 +10,9 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2 } from 'lucide-react'
-import { Button, IconButton, Select, Switch } from '../ds'
+import { appPfad } from '../lib/basis'
+import { pfadVon } from './einstellungen/bereiche'
+import { Box, Card, CheckboxRow, Notice, NotifyWays, SelectField } from '../vendor/nexui'
 import { api } from '../api/client'
 import * as push from '../lib/push'
 import { PushSchrittFehler } from '../lib/pushlage'
@@ -178,196 +179,117 @@ export function Benachrichtigungen() {
       year: 'numeric',
     })
 
+  const dieser = geraete?.find((g) => g.dieses) ?? null
+  const gesperrt = lage === 'unmoeglich' || lage === 'abgelehnt' || lage === 'kein_home'
+
   return (
-    <div className="flex flex-col gap-6">
-      {fehler && (
-        <p className="rounded-lg border border-danger-line bg-danger-soft px-3 py-2 text-[13px] text-danger-text">
-          {fehler}
-        </p>
-      )}
+    <>
+      {fehler && <Notice tone="danger">{fehler}</Notice>}
 
-      {/* --- Dieses Gerät ------------------------------------------------ */}
-      <section className="flex flex-col gap-4">
-        <div>
-          <h2 className="mb-1 text-[13px] font-semibold text-fg-1">
-            {t('push.geraet_titel')}
-          </h2>
-          <p className="text-[12px] text-fg-3">{t('push.geraet_hinweis')}</p>
-        </div>
+      {/* Bauplan „Einstellungen": erste Karte „Auf welchem Weg" (Bausatz `NotifyWays`). nexmail meldet über diesen
+          Browser (Web Push) und die iPhone-App, nicht per Mail. */}
+      <NotifyWays
+        subtitle={t('push.geraet_hinweis')}
+        browser={{
+          on: lage === 'bereit',
+          onTurnOn: () => void (lage === 'erlaubt_ohne_anmeldung' ? nachholen() : erlauben()),
+          onTurnOff: () => dieser && void geraetWeg(dieser),
+          onProbe: () => void probe(),
+          busy: laeuft,
+          probing: probeGesagt,
+          disabled: gesperrt,
+          note: (
+            <>
+              {t(`push.lage_${lage}`)}. {t(`push.lage_${lage}_hinweis`)} {t('push.ios_hinweis')}
+            </>
+          ),
+        }}
+        browsers={{
+          items: (geraete ?? []).map((g) => ({
+            id: String(g.id),
+            name: g.geraet || t('push.unbekanntes_geraet'),
+            current: g.dieses,
+            detail: `${t('push.angemeldet_am', { datum: datum(g.angelegt) })} · ${
+              g.zuletzt_erreicht ? t('push.zuletzt_erreicht', { datum: datum(g.zuletzt_erreicht) }) : t('push.nie_erreicht')
+            }`,
+          })),
+          onRemove: (id) => {
+            const zeile = geraete?.find((g) => String(g.id) === id)
+            if (zeile) void geraetWeg(zeile)
+          },
+        }}
+        devices={{ href: appPfad(pfadVon('connections')) }}
+      />
 
-        <div className="flex flex-wrap items-center gap-4 rounded-lg border border-accent-line bg-accent-soft px-4 py-3.5">
-          <div className="min-w-[230px] flex-1">
-            <b className="block text-[13.5px] font-semibold text-fg-1">
-              {t(`push.lage_${lage}`)}
-            </b>
-            <span className="text-[12px] text-fg-3">{t(`push.lage_${lage}_hinweis`)}</span>
-          </div>
-          {lage === 'bereit' ? (
-            <Button variant="secondary" onClick={probe}>
-              {probeGesagt ? t('push.probe_unterwegs') : t('push.probe')}
-            </Button>
-          ) : lage === 'abgemeldet' ? (
-            /* ⚠️ Kein Nachfragen noetig — die Erlaubnis steht ja noch. Ein
-               Klick genuegt, und `anmelden()` loescht dabei den Merker. */
-            <Button onClick={erlauben} disabled={laeuft}>
-              {t('push.wieder_anmelden')}
-            </Button>
-          ) : lage === 'erlaubt_ohne_anmeldung' ? (
-            <Button onClick={nachholen} disabled={laeuft}>
-              {t('push.anmelden_nachholen')}
-            </Button>
-          ) : (
-            /* ⚠️ `kein_home` sperrt mit: Auf einem iPhone im gewöhnlichen
-               Reiter führt die Nachfrage zu nichts, und ein Knopf, der nichts
-               bewirkt, schickt einen auf die falsche Fährte. */
-            <Button
-              onClick={erlauben}
-              disabled={
-                laeuft ||
-                lage === 'unmoeglich' ||
-                lage === 'abgelehnt' ||
-                lage === 'kein_home'
-              }
-            >
-              {t('push.erlauben')}
-            </Button>
-          )}
-        </div>
-
-        {/* ⚠️ Steht immer da, nicht nur auf einem iPhone: Wer am Rechner für
-            sein Telefon nachsieht, findet den Schritt sonst nie. */}
-        <div>
-          <b className="block text-[13px] font-medium text-fg-1">{t('push.ios_titel')}</b>
-          <span className="text-[12px] text-fg-4">{t('push.ios_hinweis')}</span>
-        </div>
-      </section>
-
-      {/* --- Wobei ------------------------------------------------------- */}
-      <section className="flex flex-col gap-4 border-t border-line-subtle pt-5">
-        <div>
-          <h2 className="mb-1 text-[13px] font-semibold text-fg-1">{t('push.wobei_titel')}</h2>
-          <p className="text-[12px] text-fg-3">{t('push.wobei_hinweis')}</p>
-        </div>
-
+      {/* nexmails eigene Karte: worüber du hörst. */}
+      <Card id="notify-what" icon="Bell" title={t('push.wobei_titel')} subtitle={t('push.wobei_hinweis')}>
         {einst && (
           <>
-            <Switch
+            <CheckboxRow
               checked={einst.push_termine}
               label={t('push.termine')}
-              description={t('push.termine_hinweis')}
-              onCheckedChange={(an) => stellen({ push_termine: an })}
+              hint={t('push.termine_hinweis')}
+              onChange={(an) => stellen({ push_termine: an })}
             />
-
-            <Switch
+            <CheckboxRow
               checked={einst.push_mail}
               label={t('push.mail')}
-              description={t('push.mail_hinweis')}
-              onCheckedChange={(an) => stellen({ push_mail: an })}
+              hint={t('push.mail_hinweis')}
+              onChange={(an) => stellen({ push_mail: an })}
             />
-
             {einst.push_mail && (
-              <div className="ml-4 flex flex-col gap-4 border-l-2 border-line-subtle pl-4">
-                <Select
+              <Box title={t('push.mail')}>
+                <SelectField
                   label={t('push.ordner')}
                   value={einst.push_mail_alle_ordner ? 'alle' : 'posteingang'}
-                  onChange={(e) =>
-                    stellen({ push_mail_alle_ordner: e.target.value === 'alle' })
-                  }
+                  onChange={(e) => stellen({ push_mail_alle_ordner: e.target.value === 'alle' })}
                   options={[
                     { value: 'posteingang', label: t('push.ordner_posteingang') },
                     { value: 'alle', label: t('push.ordner_alle') },
                   ]}
-                  hint={
-                    einst.push_mail_alle_ordner
-                      ? t('push.ordner_alle_hinweis')
-                      : t('push.ordner_posteingang_hinweis')
-                  }
+                  hints={[einst.push_mail_alle_ordner ? t('push.ordner_alle_hinweis') : t('push.ordner_posteingang_hinweis')]}
                 />
-                <Switch
+                <CheckboxRow
                   checked={einst.push_mail_nur_ungelesen}
                   label={t('push.nur_ungelesen')}
-                  description={t('push.nur_ungelesen_hinweis')}
-                  onCheckedChange={(an) => stellen({ push_mail_nur_ungelesen: an })}
+                  hint={t('push.nur_ungelesen_hinweis')}
+                  onChange={(an) => stellen({ push_mail_nur_ungelesen: an })}
                 />
-                <Switch
+                <CheckboxRow
                   checked={einst.push_mail_buendeln}
                   label={t('push.buendeln')}
-                  description={t('push.buendeln_hinweis')}
-                  onCheckedChange={(an) => stellen({ push_mail_buendeln: an })}
+                  hint={t('push.buendeln_hinweis')}
+                  onChange={(an) => stellen({ push_mail_buendeln: an })}
                 />
-              </div>
+              </Box>
             )}
+          </>
+        )}
+      </Card>
 
-            <Switch
-              checked={einst.push_ruhezeit}
-              label={t('push.ruhezeit')}
-              description={t('push.ruhezeit_hinweis')}
-              onCheckedChange={(an) => stellen({ push_ruhezeit: an })}
-            />
-
+      <Card id="quiet-hours" icon="BellOff" title={t('push.ruhezeit')} subtitle={t('push.ruhezeit_hinweis')}>
+        {einst && (
+          <>
+            <CheckboxRow checked={einst.push_ruhezeit} label={t('push.ruhezeit')} onChange={(an) => stellen({ push_ruhezeit: an })} />
             {einst.push_ruhezeit && (
-              <div className="ml-4 flex flex-wrap gap-4 border-l-2 border-line-subtle pl-4">
-                <Select
+              <div className="flex flex-wrap gap-4">
+                <SelectField
                   label={t('push.ruhezeit_von')}
                   value={einst.push_ruhezeit_von}
                   onChange={(e) => stellen({ push_ruhezeit_von: e.target.value })}
-                  options={UHRZEITEN}
+                  options={UHRZEITEN.map((u) => ({ value: u, label: u }))}
                 />
-                <Select
+                <SelectField
                   label={t('push.ruhezeit_bis')}
                   value={einst.push_ruhezeit_bis}
                   onChange={(e) => stellen({ push_ruhezeit_bis: e.target.value })}
-                  options={UHRZEITEN}
+                  options={UHRZEITEN.map((u) => ({ value: u, label: u }))}
                 />
               </div>
             )}
           </>
         )}
-      </section>
-
-      {/* --- Geräte ------------------------------------------------------ */}
-      <section className="flex flex-col gap-4 border-t border-line-subtle pt-5">
-        <div>
-          <h2 className="mb-1 text-[13px] font-semibold text-fg-1">
-            {t('push.geraete_titel')}
-          </h2>
-          <p className="text-[12px] text-fg-3">{t('push.geraete_hinweis')}</p>
-        </div>
-
-        {geraete === null ? null : geraete.length === 0 ? (
-          <p className="text-[13px] text-fg-4">{t('push.keine_geraete')}</p>
-        ) : (
-          <ul className="flex flex-col">
-            {geraete.map((g) => (
-              <li
-                key={g.id}
-                className="flex items-center gap-3 border-b border-line-subtle py-2.5 last:border-b-0"
-              >
-                <div className="min-w-0 flex-1">
-                  <span
-                    className={`block truncate text-[13px] ${g.dieses ? 'text-accent' : 'text-fg-2'}`}
-                  >
-                    {g.geraet || t('push.unbekanntes_geraet')}
-                    {g.dieses && ` ${t('push.dieses')}`}
-                  </span>
-                  <span className="text-[12px] text-fg-4">
-                    {t('push.angemeldet_am', { datum: datum(g.angelegt) })}
-                    {g.zuletzt_erreicht
-                      ? ` · ${t('push.zuletzt_erreicht', { datum: datum(g.zuletzt_erreicht) })}`
-                      : ` · ${t('push.nie_erreicht')}`}
-                  </span>
-                </div>
-                <IconButton
-                  icon={<Trash2 />}
-                  size="sm"
-                  label={t('push.geraet_entfernen')}
-                  onClick={() => geraetWeg(g)}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+      </Card>
+    </>
   )
 }

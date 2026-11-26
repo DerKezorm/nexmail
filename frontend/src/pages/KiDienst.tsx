@@ -17,9 +17,9 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, ExternalLink, Lock, Pencil, Unplug } from 'lucide-react'
+import { ExternalLink, Unplug } from 'lucide-react'
 import { api } from '../api/client'
-import { Button, Input, Select, Switch } from '../ds'
+import { Badge, Box, Button, Buttons, Card, CheckboxRow, Field, Notice, Segment, SelectField } from '../vendor/nexui'
 import { useNachfrage } from '../components/Nachfrage'
 import { KiVorgaenge } from '../components/KiVorgaenge'
 import { servermeldung } from '../lib/servermeldung'
@@ -183,244 +183,165 @@ export function KiDienst({ ichNeuLaden }: { ichNeuLaden?: () => void }) {
 
   /* --- Der Betreiber hat es gesperrt ------------------------------------ */
   if (stand && !stand.erlaubt) {
-    /* ⚠️ **Kein Formular, das man ausfuellen und dann nicht benutzen kann.**
-       Ein Zugang, den man einrichtet und der beim ersten Handgriff abgewiesen
-       wird, ist die schlechtere Auskunft — dieselbe Regel wie beim leeren
-       Entwurf. */
+    /* ⚠️ **Kein Formular, das man ausfuellen und dann nicht benutzen kann.** Ein Zugang, den man einrichtet und der
+       beim ersten Handgriff abgewiesen wird, ist die schlechtere Auskunft. */
     return (
-      <div className="flex max-w-[720px] flex-col gap-4">
-        <div className="flex items-start gap-3 rounded-lg border border-line bg-surface-2 px-4 py-3">
-          <Lock className="mt-0.5 size-4 shrink-0 text-fg-4" aria-hidden />
-          <div className="flex flex-col gap-1">
-            <span className="text-[13px] font-semibold text-fg-1">{t('ki.gesperrt')}</span>
-            <p className="mb-0 text-[13px] text-fg-2">{t('ki.gesperrt_text')}</p>
-          </div>
-        </div>
-      </div>
+      <Card id="ai" icon="Sparkles" title={t('ki.dienst')}>
+        <Notice tone="warn" title={t('ki.gesperrt')}>
+          {t('ki.gesperrt_text')}
+        </Notice>
+      </Card>
     )
   }
 
   return (
-    <div className="flex max-w-[720px] flex-col gap-6">
-      {/* --- Der Schalter ------------------------------------------------ */}
-      <div className="flex flex-col gap-2">
-        <Switch
+    <>
+      <Card id="ai" icon="Sparkles" title={t('ki.dienst')} subtitle={t('ki.warnung')}>
+        <CheckboxRow
           label={t('ki.schalter')}
-          description={t('ki.schalter_hinweis')}
+          hint={t('ki.schalter_hinweis')}
           checked={stand?.aktiv ?? false}
           disabled={speichert || (!stand?.aktiv && !steht)}
-          onCheckedChange={(an) => void sichern({ aktiv: an })}
+          onChange={(an) => void sichern({ aktiv: an })}
         />
-        {!steht && <p className="mb-0 text-[12px] text-fg-4">{t('ki.erst_einrichten')}</p>}
-      </div>
+        {!steht && <p className="m-0 text-sm">{t('ki.erst_einrichten')}</p>}
 
-      {/* --- Eingegangene Post ------------------------------------------- */}
-      {/* ⚠️ **Ein eigener Schalter unter dem ersten.** Der erste gilt dem
-          eigenen Entwurf; hier geht Text hinaus, den jemand anderes
-          geschrieben hat. Gesperrt nennt die Zeile den Grund. */}
-      {stand?.aktiv && (
-        <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
-          {stand.fremde_post_erlaubt ? (
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 flex-col gap-1">
-                <span className="text-[13px] font-semibold text-fg-1">{t('ki.fremde_post')}</span>
-                <p className="mb-0 text-[12px] text-fg-3">{t('ki.fremde_post_hinweis')}</p>
-              </div>
-              <Switch
-                label={t('ki.fremde_post_schalter')}
-                labelVersteckt
-                checked={stand.fremde_post}
-                disabled={speichert}
-                onCheckedChange={(an) => void sichern({ fremde_post: an })}
-              />
-            </div>
+        {/* ⚠️ **Ein eigener Schalter unter dem ersten.** Der erste gilt dem eigenen Entwurf; hier geht Text hinaus, den
+            jemand anderes geschrieben hat. Gesperrt nennt die Zeile den Grund. */}
+        {stand?.aktiv &&
+          (stand.fremde_post_erlaubt ? (
+            <CheckboxRow
+              label={t('ki.fremde_post')}
+              hint={t('ki.fremde_post_hinweis')}
+              checked={stand.fremde_post}
+              disabled={speichert}
+              onChange={(an) => void sichern({ fremde_post: an })}
+            />
           ) : (
-            <p className="mb-0 text-[12px] text-fg-3">{t('ki.fremde_post_gesperrt')}</p>
-          )}
-        </section>
-      )}
+            <Notice tone="warn">{t('ki.fremde_post_gesperrt')}</Notice>
+          ))}
 
-      {/* --- Der eine Zugang, wenn er steht ------------------------------ */}
-      {steht && !richtetEin && (
-        <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
-          <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{t('ki.verbunden')}</h2>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-col gap-1">
-              <span className="text-[13px] font-semibold text-fg-1">
-                {anbietername(stand!.url) || t('ki.eigener_dienst')}
-              </span>
-              <span className="truncate text-[12px] text-fg-3">{stand!.url}</span>
-              <span className="text-[12px] text-fg-3">
-                {t('ki.modell')}: {stand!.modell}
-                {stand!.schluessel_da && ` · ${t('ki.schluessel_liegt')}`}
-              </span>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <Button variant="ghost" iconLeft={<Pencil className="size-4" />} onClick={bearbeiten}>
-                {t('aktion.bearbeiten')}
-              </Button>
-              <Button
-                variant="ghost"
-                iconLeft={<Unplug className="size-4" />}
-                disabled={speichert}
-                onClick={() => void trennen()}
-              >
-                {t('ki.trennen')}
-              </Button>
-            </div>
-          </div>
-          {gemeldet && <p className="mb-0 text-[13px] text-success-text">{gemeldet}</p>}
-          {fehler && (
-            <p role="alert" className="mb-0 text-[13px] text-danger">
-              {fehler}
-            </p>
-          )}
-        </section>
-      )}
-
-      {/* --- Einrichten -------------------------------------------------- */}
-      {richtetEin && (
-        <>
-          <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
-            <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{t('ki.dienst')}</h2>
-            <p className="mb-0 text-[13px] text-fg-2">{t('ki.dienst_hinweis')}</p>
-
-            <div className="flex flex-wrap gap-2">
-              {KACHELN.map((k) => (
-                <button
-                  key={k.id}
-                  type="button"
-                  aria-pressed={url === k.url}
-                  onClick={() => kachelWaehlen(k.url)}
-                  className={`rounded-md border px-3 py-1.5 text-[13px] transition-colors ${
-                    url === k.url
-                      ? 'border-accent bg-accent-soft text-accent'
-                      : 'border-line bg-surface-3 text-fg-2 hover:border-line-strong'
-                  }`}
-                >
-                  {k.name}
-                </button>
-              ))}
-            </div>
-
-            {/* ⚠️ Ein Verweis statt einer Erklärung: Ein toter Link ist sichtbar,
-                ein veralteter Satz nicht. */}
-            {KACHELN.filter((k) => k.url === url).map((k) => (
-              <a
-                key={k.id}
-                href={k.wo}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex w-fit items-center gap-1.5 text-[12px] text-accent hover:underline"
-              >
-                {t('ki.schluessel_holen', { name: k.name })}
-                <ExternalLink className="size-3.5" aria-hidden />
-              </a>
-            ))}
-          </section>
-
-          <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
-            <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{t('ki.zugang')}</h2>
-
-            <Input
-              label={t('ki.adresse')}
-              value={url}
-              placeholder="https://…/v1/"
-              onChange={(e) => {
-                setUrl(e.target.value)
-                setModelle(null)
-              }}
-            />
-            <Input
-              type="password"
-              label={t('ki.schluessel')}
-              placeholder={stand?.schluessel_da ? t('ki.schluessel_liegt_da') : ''}
-              hint={t('ki.schluessel_hinweis')}
-              value={schluessel}
-              onChange={(e) => setSchluessel(e.target.value)}
-            />
-
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                variant="ghost"
-                disabled={!url.trim() || laedt}
-                loading={laedt}
-                onClick={() => void modelleHolen()}
-              >
-                {t('ki.modelle_laden')}
-              </Button>
-              <span className="text-[12px] text-fg-4">{t('ki.modelle_laden_hinweis')}</span>
-            </div>
-
-            {/* ⚠️ Auswahl statt Freitext — ein Modellname ist ein Tippfehlerfeld. */}
-            {modelle && !vonHand && (
-              <Select
-                label={t('ki.modell')}
-                value={modell}
-                onChange={(e) => setModell(e.target.value)}
-              >
-                {modelle.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name ? `${m.name} — ${m.id}` : m.id}
-                  </option>
-                ))}
-              </Select>
-            )}
-
-            {(vonHand || (!modelle && modell)) && (
-              <Input
-                label={t('ki.modell')}
-                value={modell}
-                hint={vonHand ? t('ki.modell_von_hand') : undefined}
-                onChange={(e) => setModell(e.target.value)}
-              />
-            )}
-
-            {fehler && (
-              <p role="alert" className="mb-0 text-[13px] text-danger">
-                {fehler}
-              </p>
-            )}
-            {gemeldet && <p className="mb-0 text-[13px] text-success-text">{gemeldet}</p>}
-
-            <div className="flex justify-end gap-2">
-              {steht && (
-                <Button variant="ghost" onClick={() => setRichtetEin(false)} disabled={speichert}>
-                  {t('aktion.abbrechen')}
+        {/* --- Der eine Zugang, wenn er steht ------------------------------ */}
+        {steht && !richtetEin && (
+          <Box
+            title={anbietername(stand!.url) || t('ki.eigener_dienst')}
+            badge={<Badge tone="on">{t('ki.verbunden')}</Badge>}
+            hint={`${stand!.url} · ${t('ki.modell')}: ${stand!.modell}${stand!.schluessel_da ? ` · ${t('ki.schluessel_liegt')}` : ''}`}
+            actions={
+              <Buttons>
+                <Button kind="secondary" icon="Pencil" onClick={bearbeiten}>
+                  {t('aktion.bearbeiten')}
                 </Button>
-              )}
-              <Button
-                variant="primary"
-                disabled={!bereit || speichert}
-                onClick={() =>
-                  void sichern(
-                    {
-                      url,
-                      modell,
-                      // ⚠️ Nicht mitgeschickt heisst unverändert — sonst verlöre
-                      // man den Schlüssel, sobald man nur das Modell wechselt.
-                      ...(schluessel.trim() ? { schluessel: schluessel.trim() } : {}),
-                    },
-                    () => setRichtetEin(false),
-                  )
+                <Button kind="danger" icon={Unplug} disabled={speichert} onClick={() => void trennen()}>
+                  {t('ki.trennen')}
+                </Button>
+              </Buttons>
+            }
+          >
+            {gemeldet && <Notice tone="ok">{gemeldet}</Notice>}
+            {fehler && <Notice tone="danger">{fehler}</Notice>}
+          </Box>
+        )}
+
+        {/* --- Einrichten -------------------------------------------------- */}
+        {richtetEin && (
+          <>
+            <Segment
+              label={t('ki.dienst')}
+              hints={[t('ki.dienst_hinweis')]}
+              value={KACHELN.find((k) => k.url === url)?.id ?? ''}
+              onChange={(id) => {
+                const k = KACHELN.find((x) => x.id === id)
+                if (k) kachelWaehlen(k.url)
+              }}
+              options={KACHELN.map((k) => ({ value: k.id, label: k.name }))}
+            />
+            {/* ⚠️ Ein Verweis statt einer Erklärung: Ein toter Link ist sichtbar, ein veralteter Satz nicht. */}
+            {KACHELN.filter((k) => k.url === url).map((k) => (
+              <Buttons key={k.id}>
+                <Button kind="secondary" size="sm" icon={ExternalLink} href={k.wo}>
+                  {t('ki.schluessel_holen', { name: k.name })}
+                </Button>
+              </Buttons>
+            ))}
+
+            <Box title={t('ki.zugang')}>
+              <Field
+                label={t('ki.adresse')}
+                value={url}
+                placeholder="https://…/v1/"
+                onChange={(e) => {
+                  setUrl(e.target.value)
+                  setModelle(null)
+                }}
+                action={
+                  <Button kind="secondary" icon="RefreshCw" disabled={!url.trim() || laedt} busy={laedt} onClick={() => void modelleHolen()}>
+                    {t('ki.modelle_laden')}
+                  </Button>
                 }
-              >
-                {t('aktion.speichern')}
-              </Button>
-            </div>
-          </section>
-        </>
-      )}
+                hints={[t('ki.modelle_laden_hinweis')]}
+              />
+              <Field
+                type="password"
+                label={t('ki.schluessel')}
+                placeholder={stand?.schluessel_da ? t('ki.schluessel_liegt_da') : ''}
+                hints={[t('ki.schluessel_hinweis')]}
+                value={schluessel}
+                onChange={(e) => setSchluessel(e.target.value)}
+              />
+              {/* ⚠️ Auswahl statt Freitext — ein Modellname ist ein Tippfehlerfeld. */}
+              {modelle && !vonHand && (
+                <SelectField
+                  label={t('ki.modell')}
+                  value={modell}
+                  onChange={(e) => setModell(e.target.value)}
+                  options={modelle.map((m) => ({ value: m.id, label: m.name ? `${m.name} (${m.id})` : m.id }))}
+                />
+              )}
+              {(vonHand || (!modelle && modell)) && (
+                <Field
+                  label={t('ki.modell')}
+                  value={modell}
+                  hints={vonHand ? [t('ki.modell_von_hand')] : []}
+                  onChange={(e) => setModell(e.target.value)}
+                />
+              )}
+              {fehler && <Notice tone="danger">{fehler}</Notice>}
+              {gemeldet && <Notice tone="ok">{gemeldet}</Notice>}
+              <Buttons end>
+                {steht && (
+                  <Button kind="secondary" icon="X" onClick={() => setRichtetEin(false)} disabled={speichert}>
+                    {t('aktion.abbrechen')}
+                  </Button>
+                )}
+                <Button
+                  kind="primary"
+                  icon="Check"
+                  disabled={!bereit || speichert}
+                  onClick={() =>
+                    void sichern(
+                      {
+                        url,
+                        modell,
+                        // ⚠️ Nicht mitgeschickt heisst unverändert — sonst verlöre man den Schlüssel, sobald man nur
+                        // das Modell wechselt.
+                        ...(schluessel.trim() ? { schluessel: schluessel.trim() } : {}),
+                      },
+                      () => setRichtetEin(false),
+                    )
+                  }
+                >
+                  {t('aktion.speichern')}
+                </Button>
+              </Buttons>
+            </Box>
+          </>
+        )}
+      </Card>
 
       {/* --- Was hinausging ---------------------------------------------- */}
       <KiVorgaenge tage={VORGANG_TAGE} />
-
-      {/* --- Was das heißt ----------------------------------------------- */}
-      <div className="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning-soft px-4 py-3">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
-        <p className="mb-0 text-[13px] text-warning-text">{t('ki.warnung')}</p>
-      </div>
       {nachfrage}
-    </div>
+    </>
   )
 }

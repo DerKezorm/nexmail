@@ -16,7 +16,7 @@
  * Seit 25.11.2026 nur aus dem gemeinsamen Bausatz (`vendor/nexui`, bauplaene/ui) wie in nexnotes: Bild als Kasten,
  * Knöpfe mit Art und Symbol aus `BUTTONS` (konten 0.3.8) über `AccountButton`.
  */
-import { LogOut, UserRound } from 'lucide-react'
+import { UserRound } from 'lucide-react'
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, type Ich } from '../../api/client'
@@ -35,6 +35,7 @@ import {
   USERNAME_MAX,
   type PagePart,
 } from '../../vendor/nexkonten/konten'
+import { SignOutCard, UnconfirmedEmailBox } from '../../vendor/nexkonten/AccountCards'
 import { Box, Card, Field, Notice, SelectField } from '../../vendor/nexui'
 
 /** nexmails eigene Teile des Profils, nach denen des Moduls. */
@@ -290,7 +291,7 @@ export function Profil({
         {erledigt && !fehler && <Notice tone="ok">{erledigt}</Notice>}
       </div>
 
-      <Card id="profil" icon={UserRound} title={t(PAGES.profile.title)}>
+      <Card id="profile" icon={UserRound} title={t(PAGES.profile.title)}>
         {/* `layout: 'stacked'`: ein Teil unter dem anderen, auch auf breiten Bildschirmen. Die drei Felder, die
             „Speichern“ zusammen sichert (`saveFields`), stehen in einem Formular, der Knopf darunter. */}
         {sichtbar.map((name) =>
@@ -316,15 +317,19 @@ export function Profil({
             </form>
           ) : null,
         )}
+        {/* konten 1.1.0 (E23): nur für eine ab jetzt eingetragene, noch nicht bestätigte Adresse, mit Mailserver. */}
+        {ich?.adresse_unbestaetigt && ich.kontaktadresse && (
+          <UnconfirmedEmailBox
+            t={t}
+            email={ich.kontaktadresse}
+            onSend={() => api.senden('/api/auth/ich/kontaktadresse/beweisen', {})}
+            errorText={(fehler) => servermeldung(fehler, t('anmeldung.fehler_allgemein'))}
+          />
+        )}
       </Card>
 
-      <Card id="abmelden" icon={LogOut} title={t('profil.abmelden_titel')} subtitle={t('profil.abmelden_text')}>
-        <div>
-          <AccountButton name="signOut" onClick={aufAbmelden}>
-            {t('anmeldung.abmelden')}
-          </AccountButton>
-        </div>
-      </Card>
+      {/* konten 1.1.0 (E15): der Satz des Moduls, mit nexmails Wort für seine Dinge. */}
+      <SignOutCard t={t} things={t('einstellungen.dinge')} provider={ich?.hat_kennwort === false} onSignOut={aufAbmelden} />
       {dialog}
     </div>
   )

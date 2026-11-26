@@ -136,6 +136,35 @@ export default function Start() {
     void pruefen()
   }, [pruefen])
 
+  /* ⚠️ **Hell oder dunkel gilt seit konten 1.1.0 für das Konto auf allen Geräten** (E5). Hat das Konto noch keine
+     Wahl, übernimmt der Server einmal den Wert dieses Browsers (`nexmail.modus`); danach folgt der Browser dem Konto.
+     Der Wert im Browser bleibt für die Seiten vor der Anmeldung. */
+  const kontoTheme = ich?.theme
+  useEffect(() => {
+    if (!ich) return
+    if (kontoTheme === '') {
+      void api
+        .senden<Ich>('/api/auth/ich/theme/browser', { wert: wahl })
+        .then(setIch)
+        .catch(() => undefined)
+    } else if (kontoTheme && kontoTheme !== wahl && ['light', 'dark', 'system'].includes(kontoTheme)) {
+      setModus(kontoTheme as Darstellungswahl)
+    }
+    // Nur wenn sich das Konto ändert, nicht bei jedem Umschalten hier (das schreibt `darstellungSetzen`).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ich?.id, kontoTheme])
+
+  const darstellungSetzen = useCallback(
+    (neu: Darstellungswahl) => {
+      setModus(neu)
+      void api
+        .aendern<Ich>('/api/auth/ich/theme', { theme: neu })
+        .then(setIch)
+        .catch(() => undefined)
+    },
+    [setModus],
+  )
+
   if (lage === 'laedt') {
     return <div className="h-full bg-canvas" />
   }
@@ -237,7 +266,7 @@ export default function Start() {
         modus={modus}
         aufModus={setModus}
         darstellung={wahl}
-        aufDarstellung={setModus}
+        aufDarstellung={darstellungSetzen}
         ich={ich}
         ichNeuLaden={() => void ichNeuLaden()}
         aufAbmelden={() => void pruefen()}

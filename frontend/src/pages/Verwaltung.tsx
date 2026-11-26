@@ -1,46 +1,54 @@
-/* Die Teile der Gruppe „Server" in den Einstellungen — was der Anwendung
- * gehört, nicht dem Benutzer.
+/* Server › Allgemein nach dem Bauplan „Einstellungen": nur Karten, aus dem Bausatz ui 1.1.0.
  *
- * ⚠️ **Seit dem 22.11.2026 keine eigene Seite mehr.** Bis dahin war das die
- * „Verwaltung" mit Reitern hinter einem Zahnrad in der Leiste. Jetzt steht
- * alles in den Einstellungen, gegliedert wie in nexnotes (`einstellungen/
- * bereiche.ts`); die Unterscheidung unten gilt weiter, sie heißt nur
- * „Mein Konto" gegen „Server".
+ * 1. „Funktionen für alle Konten" (SlidersHorizontal): Kalender- und Adressbuchserver im eigenen Netz, Text der Mail
+ *    an Webhooks. Beide wirken beim Anhaken, nicht über „Speichern".
+ * 2. „Schnittstellen" (Modul schluessel): API für Mitglieder, iPhone-App erlauben.
+ * 3. nexmails eigene Karte „Zeitzone des Servers".
  *
- * ⚠️ **Zwei Einstellungsseiten, und der Unterschied ist die Zuständigkeit.**
+ * Die öffentliche Adresse steht seit dem Bauplan nur noch unter Server › Anmeldung.
  *
- * Unter „Einstellungen" im Benutzermenü steht, was **diesem Menschen** gehört:
- * seine Postfächer, seine Regeln, seine Signaturen, sein zweiter Faktor. Hier
- * steht, was der **Anwendung** gehört und für alle gilt: Protokoll, Server,
- * später Benutzerverwaltung und OIDC.
- *
- * Vermischt man beides, entsteht die Frage „ändere ich das gerade für mich
- * oder für alle?" — und die stellt sich bei jedem einzelnen Feld neu.
- *
- * ⚠️ **Nur der Betreiber sieht das.** Nicht ausgeblendet aus Höflichkeit,
- * sondern weil im Protokoll steht, wer wann was getan hat: Bei mehreren
- * Benutzern wäre das ein Fenster in fremde Vorgänge.
+ * ⚠️ **Nur der Betreiber sieht das.** Was hier steht, gilt für alle Konten.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Network, ScrollText, Server, Webhook } from 'lucide-react'
-import { api } from '../api/client'
-import { Button, Input, Select, Switch } from '../ds'
+import { api, modulAnfrage } from '../api/client'
+import { InterfacesCard } from '../vendor/nexschluessel/InterfacesCard'
 import { servermeldung } from '../lib/servermeldung'
+import { Button, Card, CheckboxRow, Field, Notice } from '../vendor/nexui'
 
-/** Server → Allgemein: öffentliche Adresse, Zeitzone und die Riegel, die für
- *  alle gelten. */
-export function ServerAllgemein() {
+export function ServerAllgemein({ dokuHref }: { dokuHref?: string }) {
+  return (
+    <>
+      <FunktionenFuerAlle />
+      {/* Modul schluessel: „Programmschnittstelle (API) für Mitglieder" und „iPhone-App erlauben" (ersetzt den Schalter
+          in der alten Karte „API-Schlüssel" und den in „iPhone verbinden"). */}
+      <InterfacesCard request={modulAnfrage} docsHref={dokuHref} />
+      <ZeitzoneDesServers />
+    </>
+  )
+}
+
+function FunktionenFuerAlle() {
   const { t } = useTranslation()
-  const [adresse, setAdresse] = useState('')
+  return (
+    <Card id="general-features" icon="SlidersHorizontal" title={t('verwaltung.funktionen_titel')}>
+      <EigenesNetz />
+      <WebhookMailtext />
+    </Card>
+  )
+}
+
+/** „Zeitzone des Servers" (nexmail): in ihr stehen Zeiten in Mails, Plänen und Sicherungen. Ein Feld mit eigenem
+ *  Speichern, der Knopf auf Höhe des Felds. Die öffentliche Adresse bleibt dabei, wie sie ist. */
+function ZeitzoneDesServers() {
+  const { t } = useTranslation()
   const [zeitzone, setZeitzone] = useState('')
+  const [adresse, setAdresse] = useState('')
   const [fehler, setFehler] = useState('')
   const [gespeichert, setGespeichert] = useState(false)
 
   const laden = useCallback(async () => {
-    const e = await api.holen<{ oeffentliche_adresse: string; zeitzone: string }>(
-      '/api/einstellungen',
-    )
+    const e = await api.holen<{ oeffentliche_adresse: string; zeitzone: string }>('/api/einstellungen')
     setAdresse(e.oeffentliche_adresse ?? '')
     setZeitzone(e.zeitzone ?? '')
   }, [])
@@ -53,10 +61,7 @@ export function ServerAllgemein() {
     setFehler('')
     setGespeichert(false)
     try {
-      await api.aendern('/api/einstellungen', {
-        oeffentliche_adresse: adresse.trim(),
-        zeitzone: zeitzone.trim(),
-      })
+      await api.aendern('/api/einstellungen', { oeffentliche_adresse: adresse, zeitzone: zeitzone.trim() })
       setGespeichert(true)
     } catch (f) {
       setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
@@ -64,43 +69,22 @@ export function ServerAllgemein() {
   }
 
   return (
-    <div className="flex max-w-[560px] flex-col gap-4">
-      <Input
-        label={t('verwaltung.oeffentliche_adresse')}
-        hint={t('verwaltung.oeffentliche_adresse_hinweis')}
-        placeholder="https://mail.example.org"
-        value={adresse}
-        onChange={(e) => setAdresse(e.target.value)}
-      />
-      <Input
+    <Card id="server-time-zone" icon="Globe" title={t('verwaltung.zeitzone_titel')}>
+      <Field
         label={t('darstellung.zeitzone')}
-        hint={t('verwaltung.zeitzone_hinweis')}
+        hints={[t('verwaltung.zeitzone_hinweis')]}
         placeholder="Europe/Berlin"
         value={zeitzone}
         onChange={(e) => setZeitzone(e.target.value)}
+        action={
+          <Button kind="primary" icon="Check" onClick={() => void speichern()}>
+            {t('aktion.speichern')}
+          </Button>
+        }
       />
-
-      {fehler && <p className="mb-0 text-[13px] text-danger">{fehler}</p>}
-      {gespeichert && !fehler && (
-        <p className="mb-0 text-[13px] text-accent-text">{t('darstellung.gespeichert')}</p>
-      )}
-
-      <div>
-        <Button variant="primary" iconLeft={<Server className="size-4" />} onClick={() => void speichern()}>
-          {t('verwaltung.speichern')}
-        </Button>
-      </div>
-
-      <p className="mb-0 flex items-start gap-2 text-[12px] text-fg-4">
-        <ScrollText className="mt-0.5 size-3.5 shrink-0" />
-        {t('verwaltung.gilt_fuer_alle')}
-      </p>
-
-      <EigenesNetz />
-
-      <WebhookMailtext />
-
-    </div>
+      {fehler && <Notice tone="danger">{fehler}</Notice>}
+      {gespeichert && !fehler && <Notice tone="ok">{t('darstellung.gespeichert')}</Notice>}
+    </Card>
   )
 }
 
@@ -140,27 +124,17 @@ function EigenesNetz() {
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-[240px] flex-1 flex-col gap-1">
-          <span className="flex items-center gap-2 text-[13px] font-semibold text-fg-1">
-            <Network className="size-4 text-fg-4" aria-hidden />
-            {t('verwaltung.eigenes_netz')}
-          </span>
-          <p className="mb-0 text-[12px] text-fg-3">{t('verwaltung.eigenes_netz_hinweis')}</p>
-        </div>
-        <div className="shrink-0">
-          <Switch
-            label={t('verwaltung.eigenes_netz_erlauben')}
-            labelVersteckt
-            checked={erlaubt ?? false}
-            disabled={erlaubt === null}
-            onCheckedChange={(an) => void umlegen(an)}
-          />
-        </div>
-      </div>
-      {fehler && <p className="mb-0 text-[13px] text-danger">{fehler}</p>}
-    </section>
+    <>
+      <CheckboxRow
+        label={t('verwaltung.eigenes_netz')}
+        hint={t('verwaltung.eigenes_netz_hinweis')}
+        checked={erlaubt ?? false}
+        disabled={erlaubt === null}
+        onChange={(an) => void umlegen(an)}
+        testId="eigenes-netz"
+      />
+      {fehler && <Notice tone="danger">{fehler}</Notice>}
+    </>
   )
 }
 
@@ -171,14 +145,6 @@ function EigenesNetz() {
  * Wahl schicken lassen. Ob Mailtext das Haus verlässt, entscheidet der
  * Betreiber; der Benutzer schaltet es danach an seinem Webhook ein.
  */
-
-/** Was der Mailversand zuletzt tat (Mailmodul): Zeitpunkte als ISO, Fehler als Kennung ``mail_*``. */
-interface Poststand {
-  zuletzt_ok: string | null
-  letzter_fehler: string
-  letzter_fehler_am: string | null
-  wartend: number
-}
 
 function WebhookMailtext() {
   const { t } = useTranslation()
@@ -205,228 +171,16 @@ function WebhookMailtext() {
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-[240px] flex-1 flex-col gap-1">
-          <span className="flex items-center gap-2 text-[13px] font-semibold text-fg-1">
-            <Webhook className="size-4 text-fg-4" aria-hidden />
-            {t('verwaltung.webhook_mailtext')}
-          </span>
-          <p className="mb-0 text-[12px] text-fg-3">{t('verwaltung.webhook_mailtext_hinweis')}</p>
-        </div>
-        <div className="shrink-0">
-          <Switch
-            label={t('verwaltung.webhook_mailtext_erlauben')}
-            labelVersteckt
-            checked={erlaubt ?? false}
-            disabled={erlaubt === null}
-            onCheckedChange={(an) => void umlegen(an)}
-          />
-        </div>
-      </div>
-      {fehler && <p className="mb-0 text-[13px] text-danger">{fehler}</p>}
-    </section>
-  )
-}
-
-/** Der Postausgang, mit dem **nexmail selbst** Post verschickt.
- *
- * ⚠️ **Nicht das Postfach des Betreibers dafür nehmen.** Das wäre schnell
- * gebaut und dauerhaft falsch: Der Betreiber könnte sein Postfach nicht mehr
- * entfernen, ohne die Einladungen mitzunehmen; jede Systemmail käme von seiner
- * privaten Adresse; und ein Homelab ohne eingerichtetes Postfach könnte
- * niemanden einladen.
- */
-export function Postausgang() {
-  const { t, i18n } = useTranslation()
-  const [f, setF] = useState({
-    server: '',
-    port: 587,
-    sicherheit: 'starttls',
-    benutzer: '',
-    absender: '',
-    absendername: 'nexmail',
-  })
-  const [passwort, setPasswort] = useState('')
-  const [liegtVor, setLiegtVor] = useState(false)
-  // Mailmodul: letzter Versand, letzter Fehler, was noch auf einen Versuch wartet.
-  const [stand, setStand] = useState<Poststand | null>(null)
-  const [probeAn, setProbeAn] = useState('')
-  const [fehler, setFehler] = useState('')
-  const [meldung, setMeldung] = useState('')
-  const [laeuft, setLaeuft] = useState(false)
-
-  const laden = useCallback(async () => {
-    const a = await api.holen<typeof f & Poststand & { passwort_liegt_vor: boolean }>(
-      '/api/einstellungen/postausgang',
-    )
-    setF({
-      server: a.server,
-      port: a.port,
-      sicherheit: a.sicherheit,
-      benutzer: a.benutzer,
-      absender: a.absender,
-      absendername: a.absendername,
-    })
-    setLiegtVor(a.passwort_liegt_vor)
-    setStand({
-      zuletzt_ok: a.zuletzt_ok ?? null,
-      letzter_fehler: a.letzter_fehler ?? '',
-      letzter_fehler_am: a.letzter_fehler_am ?? null,
-      wartend: a.wartend ?? 0,
-    })
-  }, [])
-
-  useEffect(() => {
-    void laden().catch(() => undefined)
-  }, [laden])
-
-  async function mit(tun: () => Promise<unknown>, gut: string) {
-    setFehler('')
-    setMeldung('')
-    setLaeuft(true)
-    try {
-      await tun()
-      setMeldung(gut)
-      await laden()
-    } catch (fehl) {
-      setFehler(servermeldung(fehl, t('anmeldung.fehler_allgemein')))
-    } finally {
-      setLaeuft(false)
-    }
-  }
-
-  return (
-    <section className="mt-4 flex flex-col gap-4 border-t border-line-subtle pt-6">
-      <div>
-        <h2 className="mb-1 text-[13px] font-semibold text-fg-1">{t('verwaltung.postausgang')}</h2>
-        <p className="mb-0 text-[12px] text-fg-3">{t('verwaltung.postausgang_hinweis')}</p>
-      </div>
-
-      <div className="grid grid-cols-[1fr_120px_150px] gap-3">
-        <Input
-          label={t('konto.server')}
-          placeholder="smtp.example.org"
-          value={f.server}
-          onChange={(e) => setF({ ...f, server: e.target.value })}
-        />
-        <Input
-          label={t('konto.port')}
-          inputMode="numeric"
-          value={String(f.port)}
-          onChange={(e) => setF({ ...f, port: Number(e.target.value.replace(/\D/g, '')) || 0 })}
-        />
-        <Select
-          label={t('konto.sicherheit')}
-          value={f.sicherheit}
-          onChange={(e) => setF({ ...f, sicherheit: e.target.value })}
-          options={[
-            { value: 'starttls', label: 'STARTTLS' },
-            { value: 'ssl', label: 'SSL/TLS' },
-            { value: 'keine', label: t('konto.keine') },
-          ]}
-        />
-      </div>
-      {/* Mailmodul: ohne Verschlüsselung erlaubt, aber mit deutlicher Warnung (Passwort und Links im Klartext). */}
-      {f.sicherheit === 'keine' && (
-        <p role="note" className="mb-0 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-[12px] text-warning-text">
-          {t('mail.warningUnencrypted')}
-        </p>
-      )}
-
-      <div className="grid grid-cols-2 gap-3">
-        <Input
-          label={t('konto.benutzer')}
-          value={f.benutzer}
-          onChange={(e) => setF({ ...f, benutzer: e.target.value })}
-        />
-        <Input
-          label={t('konto.passwort')}
-          type="password"
-          autoComplete="new-password"
-          hint={liegtVor ? t('verwaltung.postausgang_liegt_vor') : undefined}
-          value={passwort}
-          onChange={(e) => setPasswort(e.target.value)}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <Input
-          label={t('verwaltung.postausgang_absender')}
-          placeholder="nexmail@example.org"
-          value={f.absender}
-          onChange={(e) => setF({ ...f, absender: e.target.value })}
-        />
-        <Input
-          label={t('verwaltung.postausgang_absendername')}
-          value={f.absendername}
-          onChange={(e) => setF({ ...f, absendername: e.target.value })}
-        />
-      </div>
-
-      {/* Mailmodul: Der Betreiber sieht, ob Systemmails hinausgehen; eine Mail, die scheitert, versucht es nach 1, 5,
-          15, 60 und 180 Minuten noch einmal. */}
-      {stand?.zuletzt_ok && (
-        <p className="mb-0 text-[12px] text-fg-3">
-          {t('mail.lastOk', { when: new Date(stand.zuletzt_ok).toLocaleString(i18n.language) })}
-        </p>
-      )}
-      {stand?.letzter_fehler && stand.letzter_fehler_am && (
-        <p className="mb-0 text-[12px] text-danger">
-          {t('mail.lastError', {
-            when: new Date(stand.letzter_fehler_am).toLocaleString(i18n.language),
-            error: t(`mail.error.${stand.letzter_fehler}`, { defaultValue: t('mail.error.unknown') }),
-          })}
-          {stand.wartend > 0 && ` (${stand.wartend})`}
-        </p>
-      )}
-
-      {fehler && <p className="mb-0 text-[13px] text-danger">{fehler}</p>}
-      {meldung && !fehler && <p className="mb-0 text-[13px] text-accent-text">{meldung}</p>}
-
-      <div className="flex flex-wrap items-end gap-2">
-        <Button
-          variant="primary"
-          loading={laeuft}
-          onClick={() =>
-            void mit(
-              () =>
-                api.aendern('/api/einstellungen/postausgang', {
-                  ...f,
-                  // ⚠️ Leer heißt „unverändert", nicht „kein Passwort" — sonst
-                  // verliert den Zugang, wer nur den Absendernamen ändert.
-                  passwort: passwort ? passwort : null,
-                }),
-              t('darstellung.gespeichert'),
-            )
-          }
-        >
-          {t('verwaltung.speichern')}
-        </Button>
-
-        {/* ⚠️ **Die Probe ist kein Beiwerk.** Ein Postausgang, der erst bei
-            der ersten Einladung scheitert, lässt den Betreiber glauben, sie
-            sei unterwegs — und den Eingeladenen warten. */}
-        <div className="w-[220px]">
-          <Input
-            label={t('verwaltung.postausgang_probe_an')}
-            placeholder="name@example.com"
-            value={probeAn}
-            onChange={(e) => setProbeAn(e.target.value)}
-          />
-        </div>
-        <Button
-          disabled={!probeAn.includes('@')}
-          onClick={() =>
-            void mit(
-              () => api.senden('/api/einstellungen/postausgang/probe', { an: probeAn.trim() }),
-              t('verwaltung.postausgang_probe_ok'),
-            )
-          }
-        >
-          {t('verwaltung.postausgang_probe')}
-        </Button>
-      </div>
-    </section>
+    <>
+      <CheckboxRow
+        label={t('verwaltung.webhook_mailtext')}
+        hint={t('verwaltung.webhook_mailtext_hinweis')}
+        checked={erlaubt ?? false}
+        disabled={erlaubt === null}
+        onChange={(an) => void umlegen(an)}
+        testId="webhook-mailtext"
+      />
+      {fehler && <Notice tone="danger">{fehler}</Notice>}
+    </>
   )
 }

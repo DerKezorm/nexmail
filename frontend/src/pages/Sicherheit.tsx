@@ -388,7 +388,7 @@ export function Sicherheit({
       {fehler && <Notice tone="danger">{fehler}</Notice>}
       {/* `layout: 'stacked'`: ein Teil unter dem anderen, auch auf breiten Bildschirmen. Die des Moduls und die
           Anmeldeanbieter in der Karte „Sicherheit“, Google und Microsoft danach als eigene Karte. */}
-      <Card id="sicherheit" icon={ShieldCheck} title={t(PAGES.security.title)}>
+      <Card id="security" icon={ShieldCheck} title={t(PAGES.security.title)}>
         {SICHERHEIT_TEILE.filter((name) => name in teile && !eigeneKarte(name)).map((name) => (
           <Fragment key={name}>{teile[name]()}</Fragment>
         ))}

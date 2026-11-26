@@ -36,15 +36,15 @@ function leaves(tree: Tree, prefix = ''): [string, string][] {
   })
 }
 
-const values = { email: 'kim@example.com', when: 'today', error: 'mail_unreachable' }
-const fill: Record<string, string> = { ...postVariables(APP_NAME), ...values }
+const values = { email: 'kim@example.com', when: 'today', error: 'mail_unreachable', count: 3 }
+const fill: Record<string, string | number> = { ...postVariables(APP_NAME), ...values }
 
 describe('the post texts', () => {
   for (const [language, tree] of [['de', de], ['en', en]] as const) {
     it(`are all in the app in ${language}, word for word`, async () => {
       await i18n.changeLanguage(language)
       for (const [key, text] of leaves(tree as Tree)) {
-        const expected = text.replace(/\{\{(\w+)\}\}/g, (_, name: string) => fill[name] ?? '')
+        const expected = text.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(fill[name] ?? ''))
         expect(i18n.t(key, values), key).toBe(expected)
       }
     })

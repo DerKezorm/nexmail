@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Mail, Users } from 'lucide-react'
-import { api } from '../api/client'
+import { modulAnfrage, api } from '../api/client'
 import type { Ich } from '../api/client'
 import { AccountButton } from '../components/AccountButton'
 import { confirmOf } from '../lib/accountButton'
@@ -70,7 +70,9 @@ import {
   SelectField,
   type IconName,
 } from '../vendor/nexui'
-import { alsEinladung, alsKonto, APP_CAPS, eigenes, KI_ERLAUBT, UEBERGEBEN, type BenutzerZeile, type EinladungsZeile } from './kontenliste'
+import { WhatYouSeeCard } from '../vendor/nexkonten/AccountCards'
+import { AllKeysCard } from '../vendor/nexschluessel/AllKeysCard'
+import { alsEinladung, alsKonto, APP_CAPS, eigenes, type BenutzerZeile, type EinladungsZeile } from './kontenliste'
 
 interface Bestand {
   benutzer: BenutzerZeile[]
@@ -180,10 +182,10 @@ export function Benutzerverwaltung({ ich, ichNeuLaden }: { ich?: Ich | null; ich
   const geoeffnet = offen === null ? null : (zeilen.find((z) => z.id === offen) ?? null)
 
   return (
-    <div className="flex max-w-[720px] flex-col gap-6">
-      {!bestand.postausgang_da && <Notice tone="warn">{t('verwaltung.kein_postausgang')}</Notice>}
-
-      <Card id="benutzer" icon={Users} title={t(ACCOUNT_LIST.title)} subtitle={t(ACCOUNT_LIST.subtitle, { count: accountCount(konten) })} testId="kontenliste">
+    <>
+      <Card id="accounts" icon={Users} title={t(ACCOUNT_LIST.title)} subtitle={t(ACCOUNT_LIST.subtitle, { count: accountCount(konten) })} testId="kontenliste">
+        {/* nexmails Hinweis ohne Postausgang bleibt (aus post), jetzt in der Karte. */}
+        {!bestand.postausgang_da && <Notice tone="warn">{t('verwaltung.kein_postausgang')}</Notice>}
         <div>
           <AccountButton name="account.invite" testId="einladen" onClick={() => setEinladen(true)} />
         </div>
@@ -213,7 +215,7 @@ export function Benutzerverwaltung({ ich, ichNeuLaden }: { ich?: Ich | null; ich
       </Card>
 
       {bestand.einladungen.length > 0 && (
-        <Card id="einladungen" icon={Mail} title={t(OPEN_INVITES.title)} testId="offene-einladungen">
+        <Card id="invites" icon={Mail} title={t(OPEN_INVITES.title)} testId="offene-einladungen">
           <Rows label={t(OPEN_INVITES.title)}>
             {bestand.einladungen.map((e) => {
               /* ⚠️ Abgelaufene bleiben sichtbar — sonst verschwindet eine Einladung lautlos und der Betreiber
@@ -234,6 +236,12 @@ export function Benutzerverwaltung({ ich, ichNeuLaden }: { ich?: Ich | null; ich
           </Rows>
         </Card>
       )}
+
+      {/* konten 1.1.0: „Was du siehst“, mit nexmails Satz. */}
+      <WhatYouSeeCard t={t} text={t('verwaltung.was_du_siehst')} />
+
+      {/* Modul schluessel: alle API-Schlüssel aller Konten, Sperren und Entsperren (neu in nexmail). */}
+      <AllKeysCard request={modulAnfrage} words={{ rights: { count: t('apischluessel.stufe_kurz_anzahl'), headers: t('apischluessel.stufe_kurz_betreff') } }} />
 
       {geoeffnet && (
         <Verwalten
@@ -285,7 +293,7 @@ export function Benutzerverwaltung({ ich, ichNeuLaden }: { ich?: Ich | null; ich
           }
         />
       )}
-    </div>
+    </>
   )
 }
 
@@ -331,7 +339,7 @@ function Verwalten({
     note: angabe.note ? t(angabe.note) : undefined,
     testId: `angabe-${angabe.fact}`,
   }))
-  const gruppen = manageGroups(accountActions(konto, APP_CAPS, eigenes(zeile)))
+  const gruppen = manageGroups(accountActions(konto, APP_CAPS, eigenes()))
 
   const beginnen = (handlung: Extract<AccountAction, { type: 'button' }>) => {
     const grund = handlung.name.split(':')[0]
@@ -360,8 +368,8 @@ function Verwalten({
    * ⚠️ **„KI erlaubt“ ohne Rückfrage, anders als Löschen und Übergeben.** Es ist mit demselben Klick umkehrbar und
    * kostet niemandem seinen Zugang; die Schlüssel bleiben stehen. Eine Rückfrage für jeden Haken macht die
    * Verwaltung unbenutzbar, und dann wird sie umgangen. */
-  const haken = (name: string, an: boolean) => {
-    if (name !== KI_ERLAUBT) return
+  const haken = (handlung: Extract<AccountAction, { type: 'check' }>, an: boolean) => {
+    if (handlung.right !== 'ai') return
     void vorgang.los(() => api.aendern(`/api/benutzer/${zeile.id}/ki`, { erlaubt: an })).then((gut) => gut && aufGeaendert(konto.self))
   }
 
@@ -393,7 +401,7 @@ function Verwalten({
                     label={t(handlung.label)}
                     checked={handlung.checked}
                     disabled={vorgang.laeuft}
-                    onChange={(an) => haken(handlung.name, an)}
+                    onChange={(an) => haken(handlung, an)}
                     testId={`verwalten-${handlung.name}`}
                   />
                 ),
@@ -458,19 +466,14 @@ function Bestaetigen({
   const vorgang = useVorgang()
   const handlung = wartend.handlung
   const grund = handlung.name.split(':')[0]
-  const uebergeben = grund === UEBERGEBEN
   const spec = grund in MANAGE_CONFIRM ? MANAGE_CONFIRM[grund as keyof typeof MANAGE_CONFIRM] : null
   const fragtPasswort = (spec?.confirm ?? 'password') === 'password'
-  // ⚠️ Übergeben prüft das Passwort selbst (`POST /api/benutzer/{id}/betreiber`); ohne Passwort geht es nicht.
-  const feldZeigen = fragtPasswort && (betreiberHatPasswort || uebergeben)
+  const feldZeigen = fragtPasswort && betreiberHatPasswort
   const werte = { name, provider: handlung.values?.provider ?? '', email: zeile.kontaktadresse ?? '', app: 'nexmail' }
   const passkeys = wartend.ueberblick?.passkeys ?? []
 
   const zeilen: ReactNode[] = []
-  if (uebergeben) {
-    // ⚠️ **Danach ist man selbst keiner mehr.** Der Haken wandert, er wird nicht vergeben.
-    zeilen.push(<p key="text" className="m-0 text-sm">{t('verwaltung.uebergeben_text', { wer: name })}</p>)
-  } else if (spec?.text && grund !== 'account.factorReset') {
+  if (spec?.text && grund !== 'account.factorReset') {
     zeilen.push(<p key="text" className="m-0 text-sm">{t(spec.text, werte)}</p>)
   }
   if (grund === 'account.remove') {
@@ -497,14 +500,18 @@ function Bestaetigen({
       if (teil === 'factorResetDevices') zeilen.push(<CheckboxRow key={teil} label={t('account.factorResetDevices')} checked={geraete} onChange={setGeraete} />)
     }
   }
-  if (fragtPasswort) zeilen.push(<p key="bestaetigen" className="m-0 text-sm text-[var(--nexui-text-muted)]">{t(confirmLine(betreiberHatPasswort || uebergeben))}</p>)
+  if (fragtPasswort) zeilen.push(<p key="bestaetigen" className="m-0 text-sm text-[var(--nexui-text-muted)]">{t(confirmLine(betreiberHatPasswort))}</p>)
 
   async function ausfuehren(): Promise<{ weg: boolean; ichAuch: boolean }> {
     const id = zeile.id
-    if (uebergeben) {
-      await api.senden(`/api/benutzer/${id}/betreiber`, { passwort })
-      return { weg: false, ichAuch: true }
+    // konten 1.1.0: Rollen (mehrere Betreiber), Sperren, Entsperren, Zurückholen, alle mit dem eigenen Passwort.
+    if (grund === 'account.makeOperator' || grund === 'account.makeMember') {
+      await api.aendern(`/api/benutzer/${id}/rolle`, { betreiber: grund === 'account.makeOperator', passwort })
+      return { weg: false, ichAuch: false }
     }
+    if (grund === 'account.block') await api.senden(`/api/benutzer/${id}/sperren`, { passwort })
+    if (grund === 'account.unblock') await api.senden(`/api/benutzer/${id}/entsperren`, { passwort })
+    if (grund === 'account.restore') await api.senden(`/api/benutzer/${id}/zurueckholen`, { passwort })
     if (grund === 'account.emailRemove') await api.senden(`/api/benutzer/${id}/kontaktadresse-entfernen`, { passwort })
     if (grund === 'account.factorReset') {
       await api.senden(`/api/benutzer/${id}/zweiter-faktor-zuruecksetzen`, {
@@ -517,8 +524,9 @@ function Bestaetigen({
       await api.loeschen(`/api/oidc/admin/accounts/${zeile.nummer}/links/${handlung.provider.id}`, { password: passwort })
     }
     if (grund === 'account.remove') {
+      // Seit konten 1.1.0 bleibt das Konto 30 Tage in der Liste (zum Zurückholen).
       await api.loeschen(`/api/benutzer/${id}`, { passwort })
-      return { weg: true, ichAuch: false }
+      return { weg: false, ichAuch: false }
     }
     return { weg: false, ichAuch: false }
   }

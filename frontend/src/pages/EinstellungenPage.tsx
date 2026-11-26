@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Building2, FileText, Inbox, ListChecks, ListFilter, RefreshCw, Tag } from 'lucide-react'
+import { FileText, Inbox, ListChecks, ListFilter, RefreshCw, Tag } from 'lucide-react'
 import { Dialog } from '../ds'
 import { Beschriftung } from '../ds/beschriftung'
 import type { Ich } from '../api/client'
@@ -36,7 +36,8 @@ import { Benachrichtigungen } from './Benachrichtigungen'
 import { Darstellung } from './Darstellung'
 import { KontoFormular } from './KontoFormular'
 import { Schlagworte } from './Schlagworte'
-import { ApiSchluessel } from './ApiSchluessel'
+import { ApiKeysCard } from '../vendor/nexschluessel/ApiKeysCard'
+import { Installieren } from './einstellungen/Installieren'
 import { IphoneVerbinden } from './IphoneVerbinden'
 import { Sicherheit } from './Sicherheit'
 import { Regeln, type RegelVorlage } from './Regeln'
@@ -48,11 +49,12 @@ import { KiAnbieter, KiSeite } from './KiSeite'
 import { UeberPage } from './UeberPage'
 import { Benutzerverwaltung } from './Benutzerverwaltung'
 import { OauthVerwaltung } from './OauthVerwaltung'
-import { OidcVerwaltung } from './OidcVerwaltung'
 import { Protokoll } from './Protokoll'
 import { Sicherungen } from './Sicherungen'
-import { Postausgang, ServerAllgemein } from './Verwaltung'
+import { ServerAllgemein } from './Verwaltung'
+import { MailCard } from '../vendor/nexpost/MailCard'
 import { Profil } from './einstellungen/Profil'
+import { Anmeldung } from './einstellungen/Anmeldung'
 import { NexApps } from './einstellungen/NexApps'
 import { KalenderUndBuecher } from './einstellungen/KalenderUndBuecher'
 import { Karte } from './einstellungen/Karte'
@@ -67,13 +69,25 @@ import {
   type Bereich,
   type BereichDef,
 } from './einstellungen/bereiche'
-import { api } from '../api/client'
+import { api, modulAnfrage } from '../api/client'
 import type { KontoZeile } from '../api/client'
 
 const APP = 'nexmail'
 
+/** Die Beschreibung der Schnittstelle `/api/v1` (Abschnitt im README des Quelltexts). */
+const API_DOKU = 'https://github.com/DerKezorm/nexmail#dashboards-read-only-api-keys'
+
+/** nexmails alte Kennungen der Systempost und ihre Namen im Mailmodul (wie `services/kontenpost._ALTE_POSTKENNUNGEN`). */
+const ALTE_POSTKENNUNGEN: Record<string, string> = {
+  empfaenger_abgelehnt: 'mail_recipient_refused',
+  absender_abgelehnt: 'mail_sender_refused',
+  postausgang_nicht_erreichbar: 'mail_unreachable',
+  postausgang_fehlt: 'mail_off',
+}
+
 /** Wo der Hinweis „Zweiter Faktor ist abgeschaltet“ oben steht (`NOTICES` im Kontenmodul). */
-const NOTHAMMER_BEREICHE: Bereich[] = ['profile', 'security', 'sign-in']
+/* Auf „Anmeldung“ zeigt ihn `SignInPage` selbst (ganz oben). */
+const NOTHAMMER_BEREICHE: Bereich[] = ['profile', 'security']
 
 export type { Bereich } from './einstellungen/bereiche'
 
@@ -247,20 +261,32 @@ export function EinstellungenPage({
       case 'calendars':
         return <KalenderUndBuecher />
       case 'connections':
+        /* Bauplan „Einstellungen", Verbindungen: Geräte, Auf diesem Gerät installieren, die anderen nex-Apps, nexmails
+           eigene Karte „Aufgaben" (Todoist, Webhook), API-Schlüssel (Modul schluessel). nexmail hat keinen MCP-Zugang,
+           darum keine Karte „KI-Werkzeuge (MCP)" (E27). */
         return (
           <>
-            {/* MAIL-1 AC-2: die nex-Apps zuerst, als Karten wie in nextime. */}
+            <IphoneVerbinden />
+            <Installieren />
             <NexApps />
-            <Karte id="todoapps" symbol={ListChecks} titel={t('einstellungen.aufgaben')}>
+            <Karte id="tasks" symbol={ListChecks} titel={t('einstellungen.aufgaben')}>
               {/* nextasks steht in seiner Karte oben (Befund 1 vom 24.11.2026). */}
               <TodoApps teil="ohne-nextasks" />
             </Karte>
-            <Karte id="iphone" symbol="Smartphone" titel={t('einstellungen.iphone')}>
-              <IphoneVerbinden istBetreiber={Boolean(ich?.ist_betreiber)} />
-            </Karte>
-            <Karte id="api" symbol="KeyRound" titel={t('einstellungen.api')}>
-              <ApiSchluessel istBetreiber={Boolean(ich?.ist_betreiber)} />
-            </Karte>
+            <ApiKeysCard
+              request={modulAnfrage}
+              things={t('einstellungen.dinge')}
+              words={{
+                rights: { count: t('apischluessel.stufe_anzahl'), headers: t('apischluessel.stufe_betreff') },
+                rightHints: { count: t('apischluessel.stufe_anzahl_hinweis'), headers: t('apischluessel.stufe_betreff_hinweis') },
+                options: { tasks: t('apischluessel.aufgaben'), tags: t('apischluessel.schlagworte') },
+                optionHints: { tasks: t('apischluessel.aufgaben_hinweis'), tags: t('apischluessel.schlagworte_hinweis') },
+                areas: t('apischluessel.postfaecher'),
+              }}
+              docsHref={API_DOKU}
+              securityHref={appPfad(pfadVon('security'))}
+              operator={Boolean(ich?.ist_betreiber)}
+            />
           </>
         )
       case 'mailboxes':
@@ -324,18 +350,15 @@ export function EinstellungenPage({
       case 'ai-provider':
         return <KiAnbieter ichNeuLaden={ichNeuLaden} />
       case 'general':
-        return <ServerAllgemein />
+        return <ServerAllgemein dokuHref={API_DOKU} />
       case 'sign-in':
-        return <OidcVerwaltung />
+        return <Anmeldung ich={ich} />
       case 'mail':
+        /* Karte „Mail" aus dem Mailmodul (post 1.1.0), danach nexmails zweite Karte „Google und Microsoft". */
         return (
           <>
-            <Karte id="postausgang" symbol="Mail" titel={t('verwaltung.postausgang')}>
-              <Postausgang />
-            </Karte>
-            <Karte id="oauth" symbol={Building2} titel={t('verwaltung.oauth')}>
-              <OauthVerwaltung />
-            </Karte>
+            <MailCard request={modulAnfrage} subtitle={t('mailversand.satz')} appCodes={ALTE_POSTKENNUNGEN} />
+            <OauthVerwaltung />
           </>
         )
       case 'storage':

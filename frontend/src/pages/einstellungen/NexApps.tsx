@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Unlink } from 'lucide-react'
+import { Unlink } from 'lucide-react'
 import { api, ApiFehler } from '../../api/client'
 import {
   kalenderEntfernen,
@@ -25,13 +25,12 @@ import {
   type KalenderZeile,
   type NextimeStand,
 } from '../../api/laden'
-import { Button, Checkbox, Input } from '../../ds'
+import { Badge, Box, Button, Buttons, Checkbox, Collapsible, Field, Notice, Row, Rows } from '../../vendor/nexui'
 import { useNachfrage } from '../../components/Nachfrage'
 import { kalenderPunkt } from '../../lib/farben'
 import { servermeldung } from '../../lib/servermeldung'
 import type { ZielStand } from '../../lib/aufgabenziele'
 import { AUFGABENZIELE_GEAENDERT, TodoApps } from '../TodoApps'
-import { Abschnitt, Knopfreihe, Lage } from './Verbindungsteile'
 import nextimeLogo from '../../assets/nextime.svg'
 import nextasksLogo from '../../assets/nextasks.svg'
 
@@ -43,9 +42,6 @@ function gruppenName(k: KalenderZeile, t: (s: string) => string): string {
   return k.herkunft || 'nextime'
 }
 
-/** Woran „Kalender hinzufügen" sagt: zur nextime-Karte, aufgeklappt. */
-export const ZU_NEXTIME = 'nexmail:zu-nextime'
-const MARKE = 'nexmail.nextimeKarteAuf'
 
 /** Die Marke aus „Kalender hinzufügen" setzen; ⚠️ im Browser-Speicher, weil die
  *  Karte dabei erst entsteht. Fehlt der Speicher, geht die Karte eben zu auf. */
@@ -75,46 +71,10 @@ function wirt(url: string): string {
   }
 }
 
-function KarteKopf({
-  logo,
-  name,
-  satz,
-  lage,
-  offen,
-  aufKlick,
-  steuert,
-}: {
-  logo: string
-  name: string
-  satz: string
-  lage: React.ReactNode
-  offen?: boolean
-  aufKlick: () => void
-  /** Die Kennung dessen, was der Knopf aufklappt; ohne: ein Sprung. */
-  steuert?: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={aufKlick}
-      aria-expanded={steuert ? Boolean(offen) : undefined}
-      aria-controls={steuert}
-      className="flex w-full items-start gap-4 rounded-xl p-5 text-left transition-colors duration-[var(--dur-fast)] hover:bg-surface-2"
-    >
-      <img src={logo} alt="" aria-hidden className="size-10 shrink-0 rounded-[10px]" />
-      <span className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="text-[16px] font-semibold text-fg-1">{name}</span>
-        <span className="text-[13px] leading-relaxed text-fg-3">{satz}</span>
-        {!offen && <span className="pt-1">{lage}</span>}
-      </span>
-      {offen ? (
-        <ChevronDown aria-hidden className="mt-1 size-4 shrink-0 text-fg-4" />
-      ) : (
-        <ChevronRight aria-hidden className="mt-1 size-4 shrink-0 text-fg-4" />
-      )}
-    </button>
-  )
-}
+/** Woran „Kalender hinzufügen" sagt: zur nextime-Karte, aufgeklappt. */
+export const ZU_NEXTIME = 'nexmail:zu-nextime'
+const MARKE = 'nexmail.nextimeKarteAuf'
+
 
 export function NexApps() {
   const { t } = useTranslation()
@@ -257,15 +217,15 @@ export function NexApps() {
         void verbinden()
       }}
     >
-      {!erneuern && <p className="mb-0 text-[13px] text-fg-3">{t('nextime.hinweis')}</p>}
-      <Input
+      {!erneuern && <p className="m-0 text-sm">{t('nextime.hinweis')}</p>}
+      <Field
         label={t('nextime.adresse')}
         value={adresse}
         placeholder="https://kalender.example.com"
         onChange={(e) => setAdresse(e.target.value)}
-        hint={t('nextime.adresse_hinweis')}
+        hints={[t('nextime.adresse_hinweis')]}
       />
-      <Input
+      <Field
         label={t('nextime.schluessel')}
         type="password"
         autoComplete="off"
@@ -273,21 +233,22 @@ export function NexApps() {
         placeholder="nt_api_…"
         onChange={(e) => setSchluessel(e.target.value)}
       />
-      <Knopfreihe rechts>
+      <Buttons end>
         {erneuern && (
-          <Button type="button" variant="secondary" onClick={() => setAendern(false)}>
+          <Button kind="secondary" icon="X" onClick={() => setAendern(false)}>
             {t('aktion.abbrechen')}
           </Button>
         )}
         <Button
           type="submit"
-          variant="primary"
-          loading={laeuft}
+          kind="primary"
+          icon="Plug"
+          busy={laeuft}
           disabled={laeuft || !adresse.trim() || !schluessel.trim()}
         >
           {t('nextime.verbinden')}
         </Button>
-      </Knopfreihe>
+      </Buttons>
     </form>
   )
 
@@ -307,157 +268,121 @@ export function NexApps() {
   /* Erfolg und Fehler stehen unter der Statuszeile, nicht unter den Knöpfen. */
   const meldungen = (
     <>
-      {hinweis && <p className="mb-0 text-[13px] text-success">{hinweis}</p>}
-      {fehler && <p role="alert" className="mb-0 text-[13px] text-danger">{fehler}</p>}
+      {hinweis && <Notice tone="ok">{hinweis}</Notice>}
+      {fehler && <Notice tone="danger">{fehler}</Notice>}
     </>
   )
 
+  /** Zugeklappt: „verbunden · host“ (Bauplan, Verbindungen 3). */
+  const status = (an: boolean | null, gestoert: boolean, wo: string) =>
+    an === null ? null : an ? (
+      <Badge tone={gestoert ? 'warn' : 'on'}>
+        {gestoert ? t('nextime.gestoert') : t('nextime.verbunden')}
+        {wo ? ` · ${wo}` : ''}
+      </Badge>
+    ) : (
+      <Badge tone="off">{t('nextime.nicht_verbunden')}</Badge>
+    )
+
   return (
     <>
-      <div className="flex flex-col gap-4">
-        {/* --- nextime ---------------------------------------------------- */}
-        <div className="rounded-xl border border-line bg-surface-1" role="region" aria-label="nextime">
-          <KarteKopf
-            logo={nextimeLogo}
-            name="nextime"
-            satz={t('nextime.satz')}
-            offen={offen}
-            steuert="nextime-verbindung"
-            aufKlick={() => {
-              setOffen((o) => !o)
-              if (nextime?.adresse) setAdresse(nextime.adresse)
-            }}
-            lage={
-              nextime === null ? null : verbunden ? (
-                nextime.letzterFehler ? (
-                  <Lage art="warn" text={t('nextime.gestoert')} adresse={wirt(nextime.adresse)} />
-                ) : (
-                  <Lage art="ok" text={t('nextime.verbunden')} adresse={wirt(nextime.adresse)} />
-                )
-              ) : (
-                <Lage art="aus" text={t('nextime.nicht_verbunden')} />
-              )
-            }
-          />
-          {offen && (
-            <div id="nextime-verbindung" className="flex flex-col gap-4 border-t border-line-subtle p-5">
-              {verbunden && nextime && !aendern ? (
-                <>
-                  <Lage
-                    art={nextime.letzterFehler ? 'warn' : 'ok'}
-                    text={nextime.letzterFehler ? t('nextime.gestoert') : t('nextime.verbunden')}
-                    adresse={wirt(nextime.adresse)}
-                    zusatz={t('nextime.zeigt')}
-                  />
-                  {meldungen}
-                  {nextime.letzterFehler && (
-                    <p role="alert" className="mb-0 text-[13px] text-warning">
-                      {servermeldung(new ApiFehler(409, nextime.letzterFehler), t('nextime.gestoert'))}
-                    </p>
-                  )}
-                  {/* Welche Kalender nexmail nimmt. ⚠️ **Nicht gewählte erscheinen
-                      nirgends** in nexmail; die Haken in der Kalender-Seitenleiste
-                      bleiben fürs schnelle Ein- und Ausblenden. */}
-                  {geordnet && geordnet.length > 0 && (
-                    <Abschnitt titel={t('nextime.auswahl_titel')} hinweis={t('nextime.auswahl_hinweis')}>
-                      {geordnet.map((k, i) => {
-                        const kopf = gruppenName(k, t)
-                        const neu = i === 0 || gruppenName(geordnet[i - 1], t) !== kopf
-                        return (
-                          <div key={k.id} className="flex flex-col">
-                            {neu && (
-                              <span className={`text-[13px] font-medium text-fg-1 ${i ? 'pt-2' : ''}`}>{kopf}</span>
-                            )}
-                            <span className="flex items-center gap-2 py-0.5 pl-6 text-[13px]">
-                              <span aria-hidden className={`size-2.5 shrink-0 rounded-sm ${kalenderPunkt(k)}`} />
-                              <Checkbox
-                                label={k.name}
-                                checked={k.gewaehlt !== false}
-                                onCheckedChange={(an) => void waehlen(k, an)}
-                              />
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </Abschnitt>
-                  )}
-                  {doppelte.length > 0 && (
-                    <Abschnitt titel={t('nextime.doppelt_titel')} hinweis={t('nextime.doppelt_hinweis')}>
-                      <ul className="m-0 flex list-none flex-col gap-1 p-0">
-                        {doppelte.map((k) => (
-                          <li key={k.id} className="flex items-center gap-2 text-[13px]">
-                            <span className="min-w-0 flex-1 truncate text-fg-1">
-                              {k.name}
-                              {k.herkunft && <span className="text-fg-4"> · {k.herkunft}</span>}
-                            </span>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              iconLeft={<Unlink className="size-3.5" />}
-                              onClick={() => void kalenderTrennen(k)}
-                            >
-                              {t('kalender.trennen')}
-                            </Button>
-                          </li>
-                        ))}
-                      </ul>
-                    </Abschnitt>
-                  )}
-                  <Knopfreihe>
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        setAdresse(nextime.adresse)
-                        setSchluessel('')
-                        setHinweis('')
-                        setAendern(true)
-                      }}
-                    >
-                      {t('nextime.schluessel_aendern')}
-                    </Button>
-                    <Button variant="secondary" onClick={() => void trennen()}>
-                      {t('nextime.trennen')}
-                    </Button>
-                  </Knopfreihe>
-                </>
-              ) : (
-                <>
-                  {meldungen}
-                  {formular(verbunden)}
-                </>
-              )}
-            </div>
-          )}
-        </div>
+      {/* --- nextime ---------------------------------------------------- */}
+      <Collapsible
+        variant="card"
+        id="nextime"
+        logo={nextimeLogo}
+        title="nextime"
+        subtitle={t('nextime.satz')}
+        open={offen}
+        onOpenChange={(auf) => {
+          setOffen(auf)
+          if (auf && nextime?.adresse) setAdresse(nextime.adresse)
+        }}
+        status={status(nextime === null ? null : verbunden, Boolean(nextime?.letzterFehler), wirt(nextime?.adresse ?? ''))}
+      >
+        {verbunden && nextime && !aendern ? (
+          <>
+            <p className="m-0 text-sm">{t('nextime.zeigt')}</p>
+            {meldungen}
+            {nextime.letzterFehler && (
+              <Notice tone="warn">{servermeldung(new ApiFehler(409, nextime.letzterFehler), t('nextime.gestoert'))}</Notice>
+            )}
+            {/* Welche Kalender nexmail nimmt. ⚠️ **Nicht gewählte erscheinen nirgends** in nexmail; die Haken in der
+                Kalender-Seitenleiste bleiben fürs schnelle Ein- und Ausblenden. */}
+            {geordnet && geordnet.length > 0 && (
+              <Box title={t('nextime.auswahl_titel')} hint={t('nextime.auswahl_hinweis')}>
+                {geordnet.map((k, i) => {
+                  const kopf = gruppenName(k, t)
+                  const neu = i === 0 || gruppenName(geordnet[i - 1], t) !== kopf
+                  return (
+                    <div key={k.id} className="flex flex-col">
+                      {neu && <span className={`text-sm font-medium ${i ? 'pt-2' : ''}`}>{kopf}</span>}
+                      <span className="flex items-center gap-2 py-0.5 pl-6 text-sm">
+                        <span aria-hidden className={`size-2.5 shrink-0 rounded-sm ${kalenderPunkt(k)}`} />
+                        <Checkbox label={k.name} checked={k.gewaehlt !== false} onChange={(an) => void waehlen(k, an)} />
+                      </span>
+                    </div>
+                  )
+                })}
+              </Box>
+            )}
+            {doppelte.length > 0 && (
+              <Box title={t('nextime.doppelt_titel')} hint={t('nextime.doppelt_hinweis')}>
+                <Rows label={t('nextime.doppelt_titel')}>
+                  {doppelte.map((k) => (
+                    <Row
+                      key={k.id}
+                      name={k.name}
+                      detail={k.herkunft || undefined}
+                      action={
+                        <Button size="sm" kind="danger" icon={Unlink} onClick={() => void kalenderTrennen(k)}>
+                          {t('kalender.trennen')}
+                        </Button>
+                      }
+                    />
+                  ))}
+                </Rows>
+              </Box>
+            )}
+            <Buttons>
+              <Button
+                kind="secondary"
+                icon="KeyRound"
+                onClick={() => {
+                  setAdresse(nextime.adresse)
+                  setSchluessel('')
+                  setHinweis('')
+                  setAendern(true)
+                }}
+              >
+                {t('nextime.schluessel_aendern')}
+              </Button>
+              <Button kind="danger" icon={Unlink} onClick={() => void trennen()}>
+                {t('nextime.trennen')}
+              </Button>
+            </Buttons>
+          </>
+        ) : (
+          <>
+            {meldungen}
+            {formular(verbunden)}
+          </>
+        )}
+      </Collapsible>
 
-        {/* --- nextasks --------------------------------------------------- */}
-        <div className="rounded-xl border border-line bg-surface-1" role="region" aria-label="nextasks">
-          <KarteKopf
-            logo={nextasksLogo}
-            name="nextasks"
-            satz={t('nextime.nextasks_satz')}
-            offen={nextasksOffen}
-            steuert="nextasks-verbindung"
-            aufKlick={() => setNextasksOffen((o) => !o)}
-            lage={
-              nextasks === null ? null : nextasks.verbunden ? (
-                nextasks.fehler ? (
-                  <Lage art="warn" text={t('nextime.gestoert')} adresse={wirt(nextasks.adresse)} />
-                ) : (
-                  <Lage art="ok" text={t('nextime.verbunden')} adresse={wirt(nextasks.adresse)} />
-                )
-              ) : (
-                <Lage art="aus" text={t('nextime.nicht_verbunden')} />
-              )
-            }
-          />
-          {nextasksOffen && (
-            <div id="nextasks-verbindung" className="border-t border-line-subtle p-5">
-              <TodoApps teil="nextasks" />
-            </div>
-          )}
-        </div>
-      </div>
+      {/* --- nextasks --------------------------------------------------- */}
+      <Collapsible
+        variant="card"
+        id="nextasks"
+        logo={nextasksLogo}
+        title="nextasks"
+        subtitle={t('nextime.nextasks_satz')}
+        open={nextasksOffen}
+        onOpenChange={setNextasksOffen}
+        status={status(nextasks === null ? null : nextasks.verbunden, Boolean(nextasks?.fehler), wirt(nextasks?.adresse ?? ''))}
+      >
+        <TodoApps teil="nextasks" />
+      </Collapsible>
       {nachfrage}
     </>
   )

@@ -12,9 +12,9 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { api } from '../api/client'
-import { Button } from '../ds'
+import { Button, Buttons, Card, Notice } from '../vendor/nexui'
 import { useNachfrage } from './Nachfrage'
 import { servermeldung } from '../lib/servermeldung'
 import { vorgangFehler } from '../lib/kivorgang'
@@ -85,25 +85,18 @@ export function KiVorgaenge({ tage }: { tage: number }) {
      einmal liest und danach nie wieder. */
   if (zeilen !== null && zeilen.length === 0 && !fehler) return null
 
+  /* Seit dem Bauplan „Einstellungen" eine Karte des Bausatzes unter Mein Konto › KI. */
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <h2 className="mb-0 text-[13px] font-semibold text-fg-1">{t('ki.vorgaenge')}</h2>
-          <p className="mb-0 text-[12px] text-fg-3">{t('ki.vorgaenge_hinweis', { tage })}</p>
-        </div>
-        {zeilen && zeilen.length > 0 && (
-          <Button variant="ghost" iconLeft={<Trash2 className="size-4" />} onClick={() => void leeren()}>
+    <Card id="ai-log" icon="ScrollText" title={t('ki.vorgaenge')} subtitle={t('ki.vorgaenge_hinweis', { tage })}>
+      {zeilen && zeilen.length > 0 && (
+        <Buttons>
+          <Button kind="danger" size="sm" icon="Trash2" onClick={() => void leeren()}>
             {t('ki.liste_leeren')}
           </Button>
-        )}
-      </div>
-
-      {fehler && (
-        <p role="alert" className="mb-0 text-[13px] text-danger">
-          {fehler}
-        </p>
+        </Buttons>
       )}
+
+      {fehler && <Notice tone="danger">{fehler}</Notice>}
 
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {(zeilen ?? []).map((v) => {
@@ -167,6 +160,6 @@ export function KiVorgaenge({ tage }: { tage: number }) {
         })}
       </ul>
       {nachfrage}
-    </section>
+    </Card>
   )
 }

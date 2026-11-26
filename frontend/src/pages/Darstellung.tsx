@@ -14,8 +14,9 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Info, Monitor, Moon, Sun, Trash2 } from 'lucide-react'
-import { Button, IconButton, Select, Switch, Tabs } from '../ds'
+import { Image as ImageIcon, Inbox } from 'lucide-react'
+import { AppearanceCard } from '../vendor/nexkonten/AccountCards'
+import { Box, Button, Card, CheckboxRow, Notice, Row, Rows, SelectField } from '../vendor/nexui'
 import { api } from '../api/client'
 import { useGemerkt } from '../lib/haken'
 import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from '../lib/wischen'
@@ -192,243 +193,164 @@ export function Darstellung({ ichNeuLaden, modus, aufModus }: Props = {}) {
     n === 0 ? t('darstellung.aufraeumen_aus') : t('darstellung.aufraeumen_tage', { n })
 
   return (
-    <div className="flex max-w-[560px] flex-col gap-5">
-      <p className="mb-0 flex items-start gap-2 text-[12px] text-fg-4">
-        <Info className="mt-0.5 size-3.5 shrink-0" />
-        {t('darstellung.nur_dieses_geraet')}
-      </p>
+    <>
+      {/* konten 1.1.0 (E5, E17): „Aussehen" zuerst, gilt für das Konto auf allen Geräten. */}
+      {modus && aufModus && <AppearanceCard theme={modus} onChange={(m) => aufModus(m)} />}
 
-      {modus && aufModus && (
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-fg-2">{t('nav.modus')}</span>
-          <div>
-            <Tabs
-              variant="segment"
-              activeId={modus}
-              onSelect={(m) => aufModus(m as 'dark' | 'light' | 'system')}
-              tabs={[
-                { id: 'light', label: t('darstellung.modus_hell'), icon: <Sun className="size-4" /> },
-                { id: 'dark', label: t('darstellung.modus_dunkel'), icon: <Moon className="size-4" /> },
-                { id: 'system', label: t('darstellung.modus_system'), icon: <Monitor className="size-4" /> },
-              ]}
-            />
-          </div>
-        </div>
-      )}
+      <Card id="list" icon={Inbox} title={t('darstellung.liste_titel')} subtitle={t('darstellung.nur_dieses_geraet')}>
+        <SelectField
+          label={t('darstellung.dichte')}
+          hints={[t('darstellung.dichte_hinweis')]}
+          value={dichte}
+          onChange={(e) => setDichte(e.target.value as Dichte)}
+          options={[
+            { value: 'normal', label: t('darstellung.dichte_normal') },
+            { value: 'kompakt', label: t('darstellung.dichte_kompakt') },
+          ]}
+        />
+        <SelectField
+          label={t('darstellung.gelesen')}
+          hints={[t('darstellung.gelesen_hinweis')]}
+          value={String(gelesenNach)}
+          onChange={(e) => setGelesenNach(Number(e.target.value))}
+          options={[
+            { value: '0', label: t('darstellung.gelesen_sofort') },
+            { value: '2', label: t('darstellung.gelesen_sekunden', { n: 2 }) },
+            { value: '5', label: t('darstellung.gelesen_sekunden', { n: 5 }) },
+            { value: '10', label: t('darstellung.gelesen_sekunden', { n: 10 }) },
+            { value: '-1', label: t('darstellung.gelesen_hand') },
+          ]}
+        />
+        <SelectField
+          label={t('darstellung.danach')}
+          hints={[t('darstellung.danach_hinweis')]}
+          value={danach}
+          onChange={(e) => setDanach(e.target.value as Danach)}
+          options={DANACH_REIHE.map((d) => ({ value: d, label: t(`darstellung.danach_${d}`) }))}
+        />
+        <SelectField
+          label={t('darstellung.rueckholen')}
+          hints={[t('darstellung.rueckholen_hinweis')]}
+          value={String(rueckholen)}
+          onChange={(e) => setRueckholen(Number(e.target.value))}
+          options={[
+            { value: '0', label: t('darstellung.rueckholen_aus') },
+            { value: '5', label: t('darstellung.rueckholen_sekunden', { n: 5 }) },
+            { value: '10', label: t('darstellung.rueckholen_sekunden', { n: 10 }) },
+            { value: '30', label: t('darstellung.rueckholen_sekunden', { n: 30 }) },
+          ]}
+        />
+        <SelectField
+          label={t('darstellung.wisch_links')}
+          hints={[t('darstellung.wisch_hinweis')]}
+          value={wischLinks}
+          onChange={(e) => setWischLinks(e.target.value as WischAktion)}
+          options={WISCH_AKTIONEN.map((a) => ({ value: a, label: t(`darstellung.wisch_${a}`) }))}
+        />
+        <SelectField
+          label={t('darstellung.wisch_rechts')}
+          value={wischRechts}
+          onChange={(e) => setWischRechts(e.target.value as WischAktion)}
+          options={WISCH_AKTIONEN.map((a) => ({ value: a, label: t(`darstellung.wisch_${a}`) }))}
+        />
+        <CheckboxRow
+          checked={anreisser}
+          label={t('darstellung.anreisser')}
+          hint={t('darstellung.anreisser_hinweis')}
+          onChange={setAnreisser}
+        />
+        <CheckboxRow
+          checked={absenderbilder}
+          label={t('darstellung.absenderbilder')}
+          hint={t('darstellung.absenderbilder_hinweis')}
+          onChange={setAbsenderbilder}
+        />
+        <CheckboxRow checked={punkte} label={t('darstellung.punkte')} hint={t('darstellung.punkte_hinweis')} onChange={setPunkte} />
+        <CheckboxRow
+          checked={eindunkeln}
+          label={t('darstellung.eindunkeln')}
+          hint={t('darstellung.eindunkeln_hinweis')}
+          onChange={setEindunkeln}
+        />
+      </Card>
 
-      <Select
-        label={t('darstellung.dichte')}
-        hint={t('darstellung.dichte_hinweis')}
-        value={dichte}
-        onChange={(e) => setDichte(e.target.value as Dichte)}
-      >
-        <option value="normal">{t('darstellung.dichte_normal')}</option>
-        <option value="kompakt">{t('darstellung.dichte_kompakt')}</option>
-      </Select>
-
-      <Select
-        label={t('darstellung.gelesen')}
-        hint={t('darstellung.gelesen_hinweis')}
-        value={String(gelesenNach)}
-        onChange={(e) => setGelesenNach(Number(e.target.value))}
-      >
-        <option value="0">{t('darstellung.gelesen_sofort')}</option>
-        <option value="2">{t('darstellung.gelesen_sekunden', { n: 2 })}</option>
-        <option value="5">{t('darstellung.gelesen_sekunden', { n: 5 })}</option>
-        <option value="10">{t('darstellung.gelesen_sekunden', { n: 10 })}</option>
-        <option value="-1">{t('darstellung.gelesen_hand')}</option>
-      </Select>
-
-      <Select
-        label={t('darstellung.danach')}
-        hint={t('darstellung.danach_hinweis')}
-        value={danach}
-        onChange={(e) => setDanach(e.target.value as Danach)}
-      >
-        {DANACH_REIHE.map((d) => (
-          <option key={d} value={d}>
-            {t(`darstellung.danach_${d}`)}
-          </option>
-        ))}
-      </Select>
-
-      <Select
-        label={t('darstellung.rueckholen')}
-        hint={t('darstellung.rueckholen_hinweis')}
-        value={String(rueckholen)}
-        onChange={(e) => setRueckholen(Number(e.target.value))}
-      >
-        <option value="0">{t('darstellung.rueckholen_aus')}</option>
-        <option value="5">{t('darstellung.rueckholen_sekunden', { n: 5 })}</option>
-        <option value="10">{t('darstellung.rueckholen_sekunden', { n: 10 })}</option>
-        <option value="30">{t('darstellung.rueckholen_sekunden', { n: 30 })}</option>
-      </Select>
-
-      <Select
-        label={t('darstellung.wisch_links')}
-        hint={t('darstellung.wisch_hinweis')}
-        value={wischLinks}
-        onChange={(e) => setWischLinks(e.target.value as WischAktion)}
-      >
-        {WISCH_AKTIONEN.map((a) => (
-          <option key={a} value={a}>
-            {t(`darstellung.wisch_${a}`)}
-          </option>
-        ))}
-      </Select>
-
-      <Select
-        label={t('darstellung.wisch_rechts')}
-        value={wischRechts}
-        onChange={(e) => setWischRechts(e.target.value as WischAktion)}
-      >
-        {WISCH_AKTIONEN.map((a) => (
-          <option key={a} value={a}>
-            {t(`darstellung.wisch_${a}`)}
-          </option>
-        ))}
-      </Select>
-
-      <Switch
-        checked={anreisser}
-        label={t('darstellung.anreisser')}
-        description={t('darstellung.anreisser_hinweis')}
-        onCheckedChange={setAnreisser}
-      />
-
-      <Switch
-        checked={absenderbilder}
-        label={t('darstellung.absenderbilder')}
-        description={t('darstellung.absenderbilder_hinweis')}
-        onCheckedChange={setAbsenderbilder}
-      />
-
-      <Switch
-        checked={punkte}
-        label={t('darstellung.punkte')}
-        description={t('darstellung.punkte_hinweis')}
-        onCheckedChange={setPunkte}
-      />
-
-      <Switch
-        checked={eindunkeln}
-        label={t('darstellung.eindunkeln')}
-        description={t('darstellung.eindunkeln_hinweis')}
-        onCheckedChange={setEindunkeln}
-      />
-
-      <section className="mt-2 flex flex-col gap-4 border-t border-line-subtle pt-5">
-        <div className="flex flex-col gap-1">
-          <h2 className="mb-0 text-[13px] font-semibold text-fg-1">
-            {t('darstellung.aufraeumen_titel')}
-          </h2>
-          {/* Der eine Satz, der die Folge nennt: endgültig, auch auf dem Server. */}
-          <p className="mb-0 text-[12px] text-fg-4">{t('darstellung.aufraeumen_hinweis')}</p>
-        </div>
-
+      {/* Der eine Satz, der die Folge nennt: endgültig, auch auf dem Server. */}
+      <Card id="cleanup" icon="Trash2" title={t('darstellung.aufraeumen_titel')} subtitle={t('darstellung.aufraeumen_hinweis')}>
         {aufraeumenFehler && (
-          <div className="flex items-center gap-3">
-            <p className="mb-0 text-[13px] text-danger">{aufraeumenFehler}</p>
-            <Button variant="ghost" size="sm" onClick={aufraeumenLaden}>
+          <Notice tone="danger">
+            {aufraeumenFehler}{' '}
+            <Button kind="secondary" size="sm" icon="RefreshCw" onClick={aufraeumenLaden}>
               {t('stoerung.nochmal')}
             </Button>
-          </div>
+          </Notice>
         )}
-
         {aufraeumen && (
           <>
-            <Select
+            <SelectField
               label={t('darstellung.aufraeumen_papierkorb')}
               value={String(aufraeumen.papierkorb_tage)}
               onChange={(e) => aufraeumenStellen('papierkorb_tage', Number(e.target.value))}
-            >
-              {AUFRAEUMEN_STUFEN.map((n) => (
-                <option key={n} value={String(n)}>
-                  {stufenText(n)}
-                </option>
-              ))}
-            </Select>
-
-            <Select
+              options={AUFRAEUMEN_STUFEN.map((n) => ({ value: String(n), label: stufenText(n) }))}
+            />
+            <SelectField
               label={t('darstellung.aufraeumen_junk')}
               value={String(aufraeumen.junk_tage)}
               onChange={(e) => aufraeumenStellen('junk_tage', Number(e.target.value))}
-            >
-              {AUFRAEUMEN_STUFEN.map((n) => (
-                <option key={n} value={String(n)}>
-                  {stufenText(n)}
-                </option>
-              ))}
-            </Select>
+              options={AUFRAEUMEN_STUFEN.map((n) => ({ value: String(n), label: stufenText(n) }))}
+            />
           </>
         )}
-      </section>
+      </Card>
 
-      <section className="mt-2 flex flex-col gap-4 border-t border-line-subtle pt-5">
-        <div className="flex flex-col gap-1">
-          <h2 className="mb-0 text-[13px] font-semibold text-fg-1">
-            {t('darstellung.bilder_titel')}
-          </h2>
-          <p className="mb-0 text-[12px] text-fg-4">{t('darstellung.bilder_hinweis')}</p>
-        </div>
-
+      <Card id="images" icon={ImageIcon} title={t('darstellung.bilder_titel')} subtitle={t('darstellung.bilder_hinweis')}>
         {bilderFehler && (
-          <div className="flex items-center gap-3">
-            <p className="mb-0 text-[13px] text-danger">{bilderFehler}</p>
-            <Button variant="ghost" size="sm" onClick={bilderLaden}>
+          <Notice tone="danger">
+            {bilderFehler}{' '}
+            <Button kind="secondary" size="sm" icon="RefreshCw" onClick={bilderLaden}>
               {t('stoerung.nochmal')}
             </Button>
-          </div>
+          </Notice>
         )}
-
         {bilder && (
           <>
-            <Switch
+            <CheckboxRow
               checked={bilder.immer_laden}
               label={t('darstellung.bilder_immer')}
-              description={t('darstellung.bilder_immer_hinweis')}
-              onCheckedChange={bilderStellen}
+              hint={t('darstellung.bilder_immer_hinweis')}
+              onChange={bilderStellen}
             />
-
-            <Switch
+            <CheckboxRow
               checked={bilder.logos}
               label={t('darstellung.logos')}
-              description={t('darstellung.logos_hinweis')}
-              onCheckedChange={logosStellen}
+              hint={t('darstellung.logos_hinweis')}
+              onChange={logosStellen}
             />
-
-            <div className="flex flex-col gap-2">
-              <p className="mb-0 text-[13px] font-medium text-fg-2">
-                {t('darstellung.bilder_absender')}
-              </p>
-              {bilder.absender.length === 0 ? (
-                <p className="mb-0 text-[12px] text-fg-4">
-                  {t('darstellung.bilder_absender_leer')}
-                </p>
-              ) : (
-                <ul className="flex list-none flex-col gap-1 p-0">
+            <Box title={t('darstellung.bilder_absender')} hint={bilder.absender.length === 0 ? t('darstellung.bilder_absender_leer') : undefined}>
+              {bilder.absender.length > 0 && (
+                <Rows label={t('darstellung.bilder_absender')}>
                   {bilder.absender.map((adresse) => (
-                    <li
+                    <Row
                       key={adresse}
-                      className="flex items-center gap-2 rounded-md border border-line bg-surface-1 px-3 py-1.5"
-                    >
-                      <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-fg-2">
-                        {adresse}
-                      </span>
-                      <IconButton
-                        icon={<Trash2 />}
-                        size="sm"
-                        label={t('darstellung.bilder_absender_entfernen', { adresse })}
-                        onClick={() => absenderEntfernen(adresse)}
-                      />
-                    </li>
+                      name={<span className="font-mono text-xs">{adresse}</span>}
+                      action={
+                        <Button
+                          kind="danger"
+                          size="sm"
+                          icon="Trash2"
+                          aria-label={t('darstellung.bilder_absender_entfernen', { adresse })}
+                          onClick={() => absenderEntfernen(adresse)}
+                        >
+                          {t('einstellungen.entfernen')}
+                        </Button>
+                      }
+                    />
                   ))}
-                </ul>
+                </Rows>
               )}
-            </div>
+            </Box>
           </>
         )}
-      </section>
-    </div>
+      </Card>
+    </>
   )
 }

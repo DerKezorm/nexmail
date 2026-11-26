@@ -264,7 +264,8 @@
     "eindunkeln_hinweis": "Newsletters almost always bring their own white and sit as a bright slab in a dark window. Switched on, they are inverted rather than recoloured: the distance between text and background stays exactly as it was, and images are turned back. If it goes wrong on one mail, the menu above it switches that one back. Only takes effect in dark mode.",
     "modus_hell": "Light",
     "modus_dunkel": "Dark",
-    "modus_system": "Like the system"
+    "modus_system": "Like the system",
+    "liste_titel": "List and reading"
   },
   "einladung": {
     "titel": "Welcome, {{name}}",
@@ -1107,7 +1108,7 @@
     "verbinden_google": "Connect a Google account",
     "verbinden_microsoft": "Connect a Microsoft account",
     "keine_zugaenge": "No consent given yet.",
-    "nicht_eingerichtet": "The operator has to register an app first (Settings → Server → Mail).",
+    "nicht_eingerichtet": "Not set up",
     "trennen": "Disconnect",
     "trennen_frage": "Disconnect the consent for {{adresse}}?",
     "trennen_text": "nexmail forgets its tokens. The permission stays with the provider itself. Revoke it there in your own account.",
@@ -1549,7 +1550,6 @@
     "benutzername_ungueltig": "2 to 64 characters: a to z, digits, dot, hyphen, underscore.",
     "benutzername_vergeben": "Someone has this username already.",
     "betreiber_an_sich_selbst": "You are the operator already.",
-    "betreiber_entfernen": "The operator cannot be removed.",
     "caldav_abfrage_gescheitert": "The calendar server refused the query.",
     "caldav_abgewiesen": "The calendar server refuses that username or password.",
     "caldav_adresse_fehlt": "An address is required.",
@@ -1688,7 +1688,6 @@
     "passwort_zu_kurz": "The password needs at least {{min}} characters.",
     "port_ungueltig": "That port is out of range.",
     "postausgang_abgelehnt": "The outgoing server refused ({{code}}): {{grund}}",
-    "postausgang_anmeldung_abgewiesen": "The outgoing server refused the username or password.",
     "postausgang_fehlt": "nexmail has no outgoing server of its own set up. It is under Settings → Server → Mail.",
     "postausgang_nicht_erreichbar": "The outgoing server {{server}}:{{port}} is unreachable.",
     "postfach_schon_da": "That mailbox is already set up.",
@@ -1733,7 +1732,6 @@
     "umfang_unbekannt": "There is no such scope.",
     "vcard_zu_gross": "The file is larger than 5 MB; that is not a vCard.",
     "vergleich_unbekannt": "There is no comparison “{{vergleich}}”.",
-    "versand_gescheitert": "The mail could not be sent: {{grund}}",
     "regel_ohne_schlagwort": "“Add a tag” needs a tag.",
     "verschieben_ohne_ziel": "“Move” needs a target folder.",
     "vorkommen_fehlt": "An occurrence is required.",
@@ -1818,7 +1816,11 @@
     "eigene_aufgaben_aus": "nexmail's own task list is switched off. Pick a list in a connected to-do app.",
     "eigene_aufgaben_ohne_verbindung": "Without a connected to-do app, nexmail's own task list cannot be switched off.",
     "benutzer_nicht_gefunden": "There is no such account.",
-    "enrolment_expired": "That took too long. Start again."
+    "enrolment_expired": "That took too long. Start again.",
+    "unbekannte_stufe": "There is no such level.",
+    "wrong_password": "The password is wrong.",
+    "fresh_sign_in_needed": "Sign in again with your provider first.",
+    "second_factor_required": "This key works once its account sets up a second factor."
   },
   "sicherheit": {
     "alle_beenden": "Sign out all other devices",
@@ -2143,7 +2145,10 @@
     "nachrichten_zahl_other": "{{zahl}} messages",
     "entfernen_zahlen": "With it go {{postfaecher}} and {{nachrichten}}, along with contacts, rules and signatures. Everything on the mail server stays untouched; nexmail only forgets.",
     "entfernen_ohne_zahlen": "With it go its mailboxes and messages, along with contacts, rules and signatures. Everything on the mail server stays untouched; nexmail only forgets.",
-    "ki_karte_text": "Applies to every account. Whether a single account may use AI is set under “Accounts”."
+    "ki_karte_text": "Applies to every account. Whether a single account may use AI is set under “Accounts”.",
+    "funktionen_titel": "Features for every account",
+    "zeitzone_titel": "Time zone of the server",
+    "was_du_siehst": "As an operator you see the name, sign-in, role and number of mailboxes of every account, but never the content of its mail, contacts, events or tasks, and never its passwords."
   },
   "wiedervorlage": {
     "menue": "Snooze",
@@ -2254,5 +2259,31 @@
   },
   "speicher": {
     "enthaelt": "A backup holds the whole database: mailboxes with their access, contacts, calendars, rules, signatures, tasks, accounts and settings. Attachments stay out, they are still in the mailbox. A download is an encrypted archive without messages."
+  },
+  "mailversand": {
+    "satz": "Through this server nexmail sends invitations, links for a new password, links to confirm an address, the mail about a new sign-in and notes when something changes at an account. The mail of your mailboxes still goes through the mailboxes themselves."
+  },
+  "pwa": {
+    "install": {
+      "title": "Install on this device",
+      "text": "Installed, nexmail starts like an app: in its own window without the browser's bar, with its own icon.",
+      "button": "Install",
+      "asked": "The browser asked. If you agreed, you find nexmail among your apps.",
+      "ios": "On iPhone and iPad: Share › Add to Home Screen.",
+      "installed": "nexmail runs as an installed app on this device already.",
+      "safari": "In Safari on the Mac: File › Add to Dock.",
+      "firefox": "Firefox cannot install web apps. Open nexmail in another browser for it, such as Chrome, Edge or Safari.",
+      "other": "If your browser offers no button here, installing is in its menu, such as “Install app” or “Add to Home screen”."
+    }
+  },
+  "geraete": {
+    "titel": "Devices",
+    "ohne_namen": "Unnamed device",
+    "mitteilungen_an": "Notifications on",
+    "mitteilungen_aus": "Notifications off",
+    "zuletzt": "last {{wann}}",
+    "trennen": "Disconnect",
+    "keine": "No iPhone or iPad connected yet.",
+    "verbinden": "Connect an iPhone or iPad"
   }
 }
