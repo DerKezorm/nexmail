@@ -211,6 +211,57 @@ sauber. Die Module sind ab hier eingefroren.
 Lauf) 3089 bestanden, 4 übersprungen; vitest 304 grün in 36 Dateien; `npm run lint` und `npm run build` grün. Kein
 Playwright.
 
+## 0h. Durchgang „Einstellungen“ (`ui` 1.1.0, `konten` 1.1.0, `oidc` 1.2.0, `post` 1.1.0, `log` 1.0.0, `sicherung` 1.0.1, `schluessel` 1.0.0)
+
+Nach dem Bauplan „Einstellungen“ (nexlore, `Development/nexapps/Baupläne/Bauplan Einstellungen.md`, E1 bis E34) am
+25. und 26.11.2026, Zweig `einst-desktop`. Module aus `bauplaene-stand` (`bef0132`), `sync.py check` für alle sieben
+`ok`, jede Vorlage im Frontend mit ihrer Kopfzeile `// Vorlage <Paket> <Fassung>`.
+
+| Bereich (`/settings/<slug>`) | Woher | Was gewandert ist |
+|---|---|---|
+| Mein Konto › Profil (`profile`) | konten 1.1.0 `PAGES.profile`, `SignOutCard`, `UnconfirmedEmailBox` | unverändert die Felder; „Adresse noch nicht bestätigt“ neu als Kasten, beim ersten Start gelten zählende Adressen einmal als bewiesen (E23) |
+| Sicherheit (`security`) | konten `PAGES.security`, oidc `SignInProviders` | dazu nexmails Karte „Google- und Microsoft-Konten“ (app-eigen); Passwortfelder mit dem Wortlaut des Moduls, Mindestlänge 12 wie der Server |
+| Darstellung (`appearance`) | konten `AppearanceCard` (Theme am Konto, `benutzer.theme`) | nexmails Dichte, Lesebereich, Bilder, Logos als eigene Karten danach; das Theme des Browsers wird beim ersten Laden übernommen (`/api/auth/ich/theme/browser`) |
+| Kalender und Adressbücher (`calendars`), KI (`ai`) | nexmail | KI: nur der persönliche Zugang; „KI-Anbieter“ unter Server |
+| Benachrichtigungen (`notifications`) | ui `NotifyWays` | „Worüber“ und „Ruhezeit“ als nexmails Karten; keine Server-Karte für Web Push (nichts einzustellen, E33) |
+| Verbindungen (`connections`) | schluessel `ApiKeysCard`, ui `Collapsible` | Karte „Geräte“ statt „iPhone verbinden“ (`GET /api/app-kopplung/geraete`, Koppeln im Fenster), „Auf diesem Gerät installieren“, nextime und nextasks, „Aufgaben“ (Todoist, Webhook) als app-eigene Karten; keine MCP-Karte (E27) |
+| Mail › Postfächer, Regeln, Signaturen, Abwesenheit, Schlagworte | nexmail | nur Karten; Knöpfe, Felder, Auswahl, Haken aus dem Bausatz; „Postfach bearbeiten“ im Fenster des Bausatzes |
+| Server › Allgemein (`general`) | schluessel `InterfacesCard` | „Funktionen für alle Konten“, „Zeitzone des Servers“ (app-eigen); die öffentliche Adresse steht nur noch unter Anmeldung |
+| Server › Anmeldung (`sign-in`) | konten `SignInPage` (`GET/PUT /api/server/sign-in`, `…/readiness`), oidc `SignInProviders` | Reihenfolge des Bauplans; die Schalter `anmeldung_passwort`, `zwei_faktor_fuer_alle`, `passkeys_erlaubt` unter ihren Namen |
+| Server › Mail (`mail`) | post `MailCard` unter `/api/server/mail` | zweite Karte „Google und Microsoft“; `systempost.senden` ist leer (nur noch die Testbrücke des Tests „Bestand“), die Post der Postfächer bleibt, wie sie war |
+| Server › Speicher und Sicherung (`storage`) | sicherung 1.0.1 `StorageArea` unter `/api/server/storage` | alte `.db`-Rücksetzpunkte und neue ZIPs in einer Liste, Uhrzeit (`sicherung_uhrzeit`, 03:00), monatlich, schlankes verschlüsseltes Herunterladen (E22); die alten Wege `/api/sicherung/*` über das Modul |
+| Server › KI-Anbieter (`ai-provider`) | nexmail | was vorher „KI für alle“ in der Verwaltung war |
+| Server › Konten (`accounts`) | konten 1.1.0 Kontenliste, `WhatYouSeeCard`, schluessel `AllKeysCard` | Rollen (mehrere Betreiber), Sperren, Löschen mit 30 Tagen Zurückholen (`manage.purge_due` im Takt), „KI erlaubt“; „Betreiber übergeben“ entfällt, `POST /api/benutzer/{id}/betreiber` bleibt als alter Weg |
+| Server › Log (`log`) | log 1.0.0 `LogCard` unter `/api/logs` | „Wie lange“ wird Ausführlichkeit (gespeicherte deutsche Stufen gelten weiter), nexmails Schwärzungen bleiben, Herunterladen als Text (E21); `/api/protokoll` bleibt |
+| Über nexmail (`about`) | ui `AboutPage` | „Fassung“ heißt „Version“ |
+
+Die alten Adressen (`/einstellungen/…`, deutsche Namen wie `/settings/postfaecher`) ersetzen sich per
+`replaceState` durch die neuen (`bereiche.ts` `ALTE_NAMEN`, Test `bereiche.test.ts`, Spec „Alte Adressen“).
+
+**Alte Wege, die bleiben:** `/api/apischluessel` (ruft `keys.make/change/revoke`, `switches.change`), `/api/v1`
+(`keys.authenticate` in `deps.api_zugriff`, alte Kennungen, ruhende Schlüssel 401 `second_factor_required`),
+`/api/protokoll`, `/api/sicherung/*`, `/api/benutzer/{id}/betreiber`, `/postausgang` und `/postausgang/probe`,
+`/api/app/1` unverändert. Kein Schlüssel wird neu gehasht; neu ist nur die Spalte `api_schluessel.gesperrt`
+(eine ältere Fassung liest sie nicht, Rückweg im README von schluessel).
+
+**Umwege mit TODO** (Fragen in `einst-fragen/nexmail.md`): `TODO ui 1.1.0` in `components/PostfachHinzufuegen.tsx`
+und `pages/TodoApps.tsx` (Fenster, das nur über seinen Knopf zugeht; bis dahin nexmails `ds/Dialog`). Der
+Vertragstest „Herunterladen bei `download_password`“ von sicherung ist rot (Modulfehler, Frage 2), ohne Umweg.
+
+**Nach Stufe 1:** `Kalenderfenster`, `Buchfenster` und `Nachfrage` bleiben auf `ds/Dialog`, weil die App sie auch
+außerhalb der Einstellungen nutzt (E33).
+
+**Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` (ohne ruff, nexmail hat keins; pytest ohne
+xdist): pytest 3204 bestanden, 6 übersprungen, 2 rot. Rot 1: `test_meldungen.py::test_der_katalog_traegt_keine_leichen`
+(drei Kennungen kamen nur noch über `KONFIGURATION.error_codes`), danach im Test als „über das Schlüsselmodul“
+genannt und grün (gegen eine Mutation geprüft, Rückgabecode 1). Rot 2: der Vertragstest von sicherung zum
+Herunterladen bei `download_password` (Modulfehler, ohne Umweg). `tsc --noEmit` sauber, vitest 388 grün in 43
+Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender Schlüssel über
+den alten Weg, gesperrter Schlüssel über `/api/v1`, gelöschtes Konto ohne Post, fremder Browser nicht entfernbar.
+Test „Bestand“ unverändert. **Playwright nicht gelaufen** (hier kein Browser); die Specs unter `frontend/tests` sind
+auf den Bausatz umgestellt (`settings-nav`, `settings-area-*`, Testkennungen der Module) und nur mit `tsc`
+geprüft.
+
 ## 1. Bestand heute (0.33.0)
 
 ### Datenmodell
