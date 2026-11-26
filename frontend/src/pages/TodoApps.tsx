@@ -22,8 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, ExternalLink, KeyRound, ListChecks, Send, Settings2, Unplug, Webhook } from 'lucide-react'
 import nextasksLogo from '../assets/nextasks.svg'
 import { api } from '../api/client'
-import { Dialog } from '../ds'
-import { Button, Checkbox, CheckboxRow, CopyRow, Field, SelectField } from '../vendor/nexui'
+import { Button, Buttons, Checkbox, CheckboxRow, CopyRow, Dialog, Field, SelectField } from '../vendor/nexui'
 import { listeWaehlen, nextasksListen, type NtBereich } from '../api/nextasks'
 import { symbolFuer } from '../lib/nextasksSymbole'
 import { listenTon } from './AufgabenPage'
@@ -460,28 +459,26 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
         }}
       />
 
-      {/* TODO ui 1.1.0: nexuis Dialog schliesst auch beim Klick daneben; dieses Geheimnis steht nur einmal da. Bis der
-          Bausatz ein Fenster kennt, das nur ueber seinen Knopf zugeht, bleibt hier nexmails eigenes (Frage in
-          einst-fragen/nexmail.md). */}
-      <Dialog
-        open={geheimnis !== null}
-        width={520}
-        title={t('todoapps.webhook_verbunden_titel')}
-        abweisbar={false}
-        onClose={() => setGeheimnis(null)}
-        footer={
-          <Button icon="X" kind="primary" onClick={() => setGeheimnis(null)}>
-            {t('aktion.schliessen')}
-          </Button>
-        }
-      >
-        {geheimnis && (
+      {/* Das Geheimnis steht nur dieses eine Mal da: nicht wegklickbar, nur über „Schließen“ (ui 1.1.0 `dismissable`, E38). */}
+      {geheimnis !== null && (
+        <Dialog
+          title={t('todoapps.webhook_verbunden_titel')}
+          dismissable={false}
+          onClose={() => setGeheimnis(null)}
+          closeLabel={t('aktion.schliessen')}
+          testId="webhook-geheimnis-fenster"
+        >
           <div className="flex flex-col gap-3">
             <p className="m-0 text-sm">{t('todoapps.webhook_geheimnis_einmal')}</p>
             <CopyRow value={geheimnis} label={t('todoapps.webhook_geheimnis')} testId="webhook-geheimnis" />
+            <Buttons end>
+              <Button icon="X" kind="primary" onClick={() => setGeheimnis(null)}>
+                {t('aktion.schliessen')}
+              </Button>
+            </Buttons>
           </div>
-        )}
-      </Dialog>
+        </Dialog>
+      )}
 
       {nachfrage}
     </div>

@@ -24,6 +24,7 @@ export function Protokoll() {
       base="/api/logs"
       downloadHref={appPfad('/api/logs/download')}
       things={t('einstellungen.dinge')}
+      thingsDative={t('einstellungen.dinge_dativ')}
       when={wann}
       clock={(iso, sprache) => uhrzeit(iso, sprache)}
     />

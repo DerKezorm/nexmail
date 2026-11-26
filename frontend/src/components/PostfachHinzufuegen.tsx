@@ -25,10 +25,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Calendar, Check, KeyRound, Mail, Server } from 'lucide-react'
 import { ApiFehler, api } from '../api/client'
 import type { KontoZeile } from '../api/client'
-// TODO ui 1.1.0: nexuis Dialog schliesst auch beim Klick daneben; dieses Fenster darf das nicht, solange ein Postfach
-// angelegt wird (siehe ``abweisbar`` unten). Bis der Bausatz das kann, bleibt nexmails eigenes (einst-fragen/nexmail.md).
-import { Dialog } from '../ds'
-import { Button, CheckboxRow } from '../vendor/nexui'
+import { Button, Buttons, CheckboxRow, Dialog } from '../vendor/nexui'
 import { RUECKWEG } from '../lib/oauthrueckweg'
 import { servermeldung } from '../lib/servermeldung'
 
@@ -346,17 +343,17 @@ export function PostfachHinzufuegen({
 
   return (
     <Dialog
-      open
-      width={560}
       /* ⚠️ **Nicht wegklickbar, solange etwas läuft.** Das Anlegen dauert
          Sekunden — in denen klickt man; ein Klick daneben schloss das Fenster,
-         die Arbeit lief weiter, und die Frage nach den Kalendern kam nie. */
-      abweisbar={!laeuft && schritt !== 'legt_an'}
+         die Arbeit lief weiter, und die Frage nach den Kalendern kam nie.
+         Der Knopf oben rechts und „Abbrechen“ bleiben (ui 1.1.0 `dismissable`, E38). */
+      dismissable={!laeuft && schritt !== 'legt_an'}
       title={t('postfachneu.hinzufuegen_titel')}
-      description={schritt === 'wahl' ? t('postfachneu.hinzufuegen_text') : undefined}
       onClose={schliessen}
-      footer={fussleiste()}
+      closeLabel={t('aktion.schliessen')}
+      testId="postfach-neu-fenster"
     >
+      {schritt === 'wahl' && <p className="mt-0 mb-3 text-sm">{t('postfachneu.hinzufuegen_text')}</p>}
       {fehler && (
         <p className="mb-3 flex items-start gap-2 rounded-md bg-danger-soft px-3 py-2 text-[12px] leading-relaxed text-danger">
           <AlertTriangle aria-hidden className="mt-px size-4 shrink-0" />
@@ -479,6 +476,9 @@ export function PostfachHinzufuegen({
           </span>
         </p>
       )}
+      <div className="mt-4">
+        <Buttons end>{fussleiste()}</Buttons>
+      </div>
     </Dialog>
   )
 

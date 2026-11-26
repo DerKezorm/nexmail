@@ -201,11 +201,13 @@ export function EinstellungenPage({
   const gewollt = gewuenscht ?? 'profile'
   const bereich = ich ? erlaubterBereich(gewollt, ich) : gewollt
   const dinge = t('einstellungen.dinge')
+  /* E34: nach „mit deinen“ der Dativ; bei nexmail dasselbe Wort (Mails/Mails). */
+  const dingeDativ = t('einstellungen.dinge_dativ')
   const kit = NEXUI_TEXTS[languageOf(i18n.language)]
   const worte = (def: BereichDef) =>
     def.eigen || def.id === 'ai-provider'
       ? { titel: t(`einstellungen.bereiche.${def.id}.titel`), text: t(`einstellungen.bereiche.${def.id}.text`) }
-      : { titel: areaText(kit, def.id, { app: APP, things: dinge })?.title ?? def.id, text: '' }
+      : { titel: areaText(kit, def.id, { app: APP, things: dinge, thingsDative: dingeDativ })?.title ?? def.id, text: '' }
   const eigen = bereichDef(bereich)
   const eigeneWorte = eigen.eigen || eigen.id === 'ai-provider' ? worte(eigen) : null
 
@@ -276,6 +278,7 @@ export function EinstellungenPage({
             <ApiKeysCard
               request={modulAnfrage}
               things={t('einstellungen.dinge')}
+              thingsDative={t('einstellungen.dinge_dativ')}
               words={{
                 rights: { count: t('apischluessel.stufe_anzahl'), headers: t('apischluessel.stufe_betreff') },
                 rightHints: { count: t('apischluessel.stufe_anzahl_hinweis'), headers: t('apischluessel.stufe_betreff_hinweis') },
@@ -385,6 +388,7 @@ export function EinstellungenPage({
               <SettingsNav
                 app={APP}
                 things={dinge}
+                thingsDative={dingeDativ}
                 groups={gruppen}
                 about={{ href: appPfad(pfadVon(UEBER.id)), slug: UEBER.id }}
                 current={gewuenscht === null ? undefined : bereich}
@@ -401,7 +405,7 @@ export function EinstellungenPage({
               />
             }
           >
-            <SettingsPage slug={bereich} app={APP} things={dinge} title={eigeneWorte?.titel} subtitle={eigeneWorte?.text || undefined}>
+            <SettingsPage slug={bereich} app={APP} things={dinge} thingsDative={dingeDativ} title={eigeneWorte?.titel} subtitle={eigeneWorte?.text || undefined}>
               {/* konten 0.3.3: Der Nothammer ist unten, deutlich oben auf den Kontoseiten und bei der Anmeldung. */}
               {ich?.zwei_faktor_aus && NOTHAMMER_BEREICHE.includes(bereich) && <FaktorAusHinweis />}
               {inhalt()}
