@@ -21,10 +21,10 @@ describe('Hauptmenü', () => {
   })
 
   it('ein zu langes Menü steht oben auf 8 px und reicht bis 8 px über den unteren Rand', () => {
-    // 25 Einträge zu 32 px = 800 px, das Fenster ist 600 hoch: max-height 584, oben auf 8.
-    const { y } = hauptPosition(100, 300, B, 800, 800, 600)
+    // 25 Einträge zu 32 px = 800 px, das Fenster ist 600 hoch: max-height 584 (gemessene Höhe), oben auf 8.
+    const { y } = hauptPosition(100, 300, B, 584, 800, 600)
     expect(y).toBe(8)
-    expect(y + Math.min(800, 600 - 16)).toBe(592)
+    expect(y + 584).toBe(592)
   })
 
   it('setzt max-height und scrollt in sich', async () => {

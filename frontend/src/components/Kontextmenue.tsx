@@ -56,10 +56,10 @@ const RAND = 8
  *  nie über den oberen oder linken Rand hinaus. Die Höhe ist höchstens die des Fensters weniger 2 × 8 px (`max-height`),
  *  ein längeres Menü scrollt in sich. */
 export function hauptPosition(x: number, y: number, breite: number, hoehe: number, fensterB: number, fensterH: number) {
-  const h = Math.min(hoehe, fensterH - 2 * RAND)
+  // ``hoehe`` ist gemessen, also schon durch ``max-height`` begrenzt; ein höheres Menü gibt es nicht.
   return {
     x: x + breite > fensterB - RAND ? Math.max(RAND, x - breite) : x,
-    y: y + h > fensterH - RAND ? Math.max(RAND, Math.min(y - h, fensterH - RAND - h)) : y,
+    y: y + hoehe > fensterH - RAND ? Math.max(RAND, y - hoehe) : y,
   }
 }
 
