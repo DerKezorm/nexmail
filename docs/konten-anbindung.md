@@ -308,6 +308,11 @@ und `summary` aller 394 Wege des Stands `konten` fest (`openapi_namen_konten.jso
 „Verwalten“ und die anderen kleinen Knöpfe `sm`, Test `components/AccountButton.test.tsx`); zwischen den Karten von
 Profil und Sicherheit 24 px wie überall (`gap-6`).
 
+**Playwright auf dem Surface (8b820d2), Nacharbeit:** keine Funktion fehlte; Specs umgestellt, ohne abzuschwächen
+(sichtbare Zeile der Bausatz-`Table`, Zahl allein im Umzugsfenster, Feld „API-Schlüssel“ bei nextime, „Neu in nexmail …“
+auf der Über-Seite, Rückkehr-Adressen in ihren `CopyRow`-Feldern, Knopf `notify-browser-on` samt Lage „Erlaubt, aber
+nicht angemeldet“, der nächste Abschnitt um eine Überschrift in der Karte „Aufgaben“).
+
 **Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 86a0cce, E45 bis E49 (ohne ruff, nexmail
 hat keins; pytest ohne xdist; zuletzt nach den Galerie-Funden): pytest 3305 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
