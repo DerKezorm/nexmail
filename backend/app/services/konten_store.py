@@ -900,6 +900,18 @@ class KontenStore:
         self.db.execute(update(Benutzer).where(Benutzer.id == str(account_id)).values(geloescht_am=at))
         self._auffrischen(account_id)
 
+    def on_shut_out(self, account: "Account") -> None:
+        """konten 1.1.0 (E38), nach dem Commit, einmal je Wechsel: das Konto ist draussen. nexmail haelt ab hier an,
+        was am Zustand des Kontos haengt: keine Meldung an seine Browser (``push.draussen``), kein Abgleich seiner
+        Postfaecher, Kalender, Adressbuecher und Todo-Apps (``models.konto_drin`` in den Runden des Takts). Die Abos
+        und Verbindungen bleiben gespeichert."""
+        logger.info("Account is out: pushes and syncs hold account=%s", account.id)
+
+    def on_back(self, account: "Account") -> None:
+        """konten 1.1.0 (E38): das Konto meldet sich wieder an; Meldungen gehen wieder hinaus, die naechste Runde des
+        Takts gleicht wieder ab, ohne dass jemand etwas neu einrichtet."""
+        logger.info("Account is back: pushes and syncs go on account=%s", account.id)
+
     def shut_out(self, account_id: AccountId) -> None:
         """Nach Sperren oder Loeschen: kein Weg mehr hinein. Browser, wartende Anmeldungen und gekoppelte iPhones
         enden, ein QR-Code, den noch niemand gescannt hat, verfaellt, die Kennung bekannter Browser wird neu.

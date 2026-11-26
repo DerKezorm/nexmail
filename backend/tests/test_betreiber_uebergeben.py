@@ -268,3 +268,45 @@ def test_ein_geloeschtes_konto_bekommt_keine_post_und_zurueckgeholt_wieder(klien
     assert klient.post(f"/api/benutzer/{anderer.id}/zurueckholen", json={"passwort": KENNWORT}).status_code == 200
     db.expire_all()
     assert PostStore(db).recipient(anderer.id) is not None
+
+
+def test_gesperrt_oder_geloescht_ruhen_die_abgleiche_und_laufen_danach_wieder(klient, db, welt, monkeypatch):
+    """konten 1.1.0 (E38): solange ein Konto draussen ist, holt der Takt seine Postfaecher nicht ab und gleicht seine
+    Kalender, Adressbuecher und Todo-Apps nicht ab; entsperrt oder zurueckgeholt laeuft alles mit der naechsten Runde
+    wieder an. Postfach und Verbindungen bleiben stehen."""
+    from app.db import SessionLocal
+    from app.models import Konto
+    from app.services import abgleich, adressbuchabgleich, kalenderabgleich, takt
+
+    _ich, anderer = welt
+    konto = Konto(
+        benutzer_id=anderer.id, anzeigename="Zweiter", adresse="zweiter@example.com", imap_server="imap.example.com",
+        imap_benutzer="zweiter", smtp_server="smtp.example.com", smtp_benutzer="zweiter",
+    )
+    db.add(konto)
+    db.commit()
+    postfaecher: list[str] = []
+    kalender: list[str] = []
+    monkeypatch.setattr(abgleich, "konto_abgleichen", lambda _db, k, **_kw: postfaecher.append(k.id) or {})
+    monkeypatch.setattr(kalenderabgleich, "alle_abgleichen", lambda _db, p: kalender.append(p.id) or {})
+    monkeypatch.setattr(adressbuchabgleich, "alle_abgleichen", lambda _db, p: {})
+
+    def runde() -> tuple[bool, bool]:
+        postfaecher.clear()
+        kalender.clear()
+        takt.einmal()
+        with SessionLocal() as s:
+            takt.kalender_runde(s)
+        return konto.id in postfaecher, anderer.id in kalender
+
+    assert runde() == (True, True)
+    assert klient.post(f"/api/benutzer/{anderer.id}/sperren", json={"passwort": KENNWORT}).status_code == 200
+    assert runde() == (False, False)
+    assert klient.post(f"/api/benutzer/{anderer.id}/entsperren", json={"passwort": KENNWORT}).status_code == 200
+    assert runde() == (True, True)
+    assert klient.request("DELETE", f"/api/benutzer/{anderer.id}", json={"passwort": KENNWORT}).status_code == 204
+    assert runde() == (False, False)
+    assert klient.post(f"/api/benutzer/{anderer.id}/zurueckholen", json={"passwort": KENNWORT}).status_code == 200
+    assert runde() == (True, True)
+    db.expire_all()
+    assert db.get(Konto, konto.id) is not None

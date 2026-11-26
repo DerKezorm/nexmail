@@ -78,6 +78,13 @@ def neue_id() -> str:
     return uuid.uuid4().hex
 
 
+def konto_drin():
+    """Die Bedingung „das Konto ist nicht draussen“ fuer Abfragen (konten 1.1.0, E38): weder gesperrt noch geloescht.
+    Solange es draussen ist, gehen keine Meldungen an es, und seine Postfaecher, Kalender, Adressbuecher und Todo-Apps
+    werden nicht abgeglichen; die Abos und Verbindungen bleiben, damit es beim Zurueckholen ganz zurueckkommt."""
+    return Benutzer.gesperrt_seit.is_(None) & Benutzer.geloescht_am.is_(None)
+
+
 class Benutzer(Base):
     """Ein Mensch, der sich anmeldet.
 

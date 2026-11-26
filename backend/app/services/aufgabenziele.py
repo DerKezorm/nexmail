@@ -44,7 +44,7 @@ from .. import crypto
 from ..config import get_settings
 from ..db import einstellung_lesen
 from ..meldung import Meldung
-from ..models import Aufgabe, Aufgabenverbindung, Benutzer, Konto, Nachricht, neue_id
+from ..models import Aufgabe, Aufgabenverbindung, Benutzer, Konto, Nachricht, konto_drin, neue_id
 from . import adresse as adressdienst
 from . import aufgaben, bereinigen, nextasks, schlagworte, todoist, webhook
 
@@ -1295,7 +1295,9 @@ def alle_abgleichen(db: Session) -> None:
     """Fuer den Takt: jeder Benutzer mit mindestens einer Verbindung."""
     leute = db.scalars(
         select(Benutzer).where(
-            Benutzer.id.in_(select(Aufgabenverbindung.benutzer_id).distinct())
+            Benutzer.id.in_(select(Aufgabenverbindung.benutzer_id).distinct()),
+            # konten 1.1.0 (E38): nicht fuer ein Konto, das gesperrt oder geloescht ist.
+            konto_drin(),
         )
     )
     for person in list(leute):

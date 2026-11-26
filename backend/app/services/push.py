@@ -59,7 +59,7 @@ from sqlalchemy.orm import Session
 from .. import crypto
 from ..config import get_settings
 from ..db import SessionLocal, einstellung_lesen, einstellung_schreiben
-from ..models import Benutzer, Konto, Nachricht, Ordner, PushAnmeldung, Sitzung, utcnow
+from ..models import Benutzer, Konto, Nachricht, Ordner, PushAnmeldung, Sitzung, konto_drin, utcnow
 from .zeit import zone_der_anwendung
 
 logger = logging.getLogger("nexmail.push")
@@ -364,8 +364,16 @@ def _geraete(db: Session, person: Benutzer) -> list[Sitzung]:
     )
 
 
+def draussen(person: Benutzer) -> bool:
+    """Gesperrt oder geloescht (konten 1.1.0, E38): dann geht keine Meldung hinaus. Die Abos bleiben gespeichert;
+    nach dem Entsperren oder Zurueckholen kommt alles wieder an, ohne dass jemand einen Browser neu anmeldet."""
+    return person.gesperrt_seit is not None or person.geloescht_am is not None
+
+
 def hat_empfaenger(db: Session, person: Benutzer) -> bool:
-    """Gibt es irgendwo jemanden, der eine Meldung annimmt?"""
+    """Gibt es irgendwo jemanden, der eine Meldung annimmt? Fuer ein Konto, das draussen ist: nein."""
+    if draussen(person):
+        return False
     return bool(person.push_anmeldungen) or bool(_geraete(db, person))
 
 
@@ -474,6 +482,8 @@ def an_benutzer(db: Session, person: Benutzer, meldung: Meldung) -> bool:
     mit — und hier heisst das, dass das Telefon schweigt, weil ein alter
     Browser auf dem Zweitrechner klemmt.
     """
+    if draussen(person):
+        return False
     angekommen = False
     for anmeldung in list(person.push_anmeldungen):
         try:
@@ -551,7 +561,7 @@ def erinnerungen_runde() -> int:
     hinaus = 0
     with SessionLocal() as db:
         leute = db.scalars(
-            select(Benutzer).where(Benutzer.push_termine.is_(True))
+            select(Benutzer).where(Benutzer.push_termine.is_(True), konto_drin())
         ).all()
         for person in leute:
             # Der Name VOR der Arbeit, wie in der Aufraeumrunde: Ist die

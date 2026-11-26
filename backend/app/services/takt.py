@@ -249,11 +249,13 @@ def kalender_runde(db) -> None:
     dieselbe Sorte Arbeit. Erst die Liste, dann die Arbeit; ein Buch, das
     klemmt, hält weder die anderen noch die Kalender auf.
     """
-    from ..models import Benutzer
+    from ..models import Benutzer, konto_drin
     from .adressbuchabgleich import alle_abgleichen as buecher_abgleichen
     from .kalenderabgleich import alle_abgleichen
 
-    for person in list(db.scalars(select(Benutzer))):
+    # konten 1.1.0 (E38): ein gesperrtes oder geloeschtes Konto wird nicht abgeglichen; zurueckgeholt laeuft es mit
+    # der naechsten Runde wieder an.
+    for person in list(db.scalars(select(Benutzer).where(konto_drin()))):
         alle_abgleichen(db, person)
         buecher_abgleichen(db, person)
 
@@ -357,7 +359,18 @@ def einmal() -> dict[str, int]:
         # zweiter, der dasselbe tut.
         protokoll.ablauf_pruefen(db)
 
-        konten = db.execute(select(Konto).where(Konto.aktiv.is_(True))).scalars().all()
+        # konten 1.1.0 (E38): die Postfaecher eines gesperrten oder geloeschten Kontos halten an, bis es zurueck ist.
+        from ..models import Benutzer, konto_drin
+
+        konten = (
+            db.execute(
+                select(Konto)
+                .join(Benutzer, Konto.benutzer_id == Benutzer.id)
+                .where(Konto.aktiv.is_(True), konto_drin())
+            )
+            .scalars()
+            .all()
+        )
         for konto in konten:
             if _halt.is_set():
                 break

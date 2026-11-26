@@ -447,6 +447,30 @@ class Adapter(StandardAdapter):
             zeile.geloescht_am = zeile.geloescht_am - timedelta(days=days)
             db.commit()
 
+    def push_ready(self, account_id: Any) -> bool | None:
+        """Ob eine Meldung jetzt an ``account_id`` hinausginge (konten 1.1.0, E38): ein Browser-Abo des Kontos (beim
+        ersten Mal angelegt, danach dasselbe), dann ``push.an_benutzer`` mit einer Zustellung, die nur mitzaehlt. Wahr,
+        wenn sie versucht wurde."""
+        from app.db import SessionLocal
+        from app.models import Benutzer, PushAnmeldung
+        from app.services import push
+
+        endpunkt = f"https://push.example.com/{account_id}"
+        versucht: list[str] = []
+        echt = push.zustellen
+        push.zustellen = lambda _db, anmeldung, _meldung: versucht.append(anmeldung.endpunkt)
+        try:
+            with SessionLocal() as db:
+                if db.query(PushAnmeldung).filter_by(endpunkt=endpunkt).first() is None:
+                    db.add(PushAnmeldung(benutzer_id=str(account_id), endpunkt=endpunkt, p256dh="p", auth="a"))
+                    db.commit()
+                person = db.get(Benutzer, str(account_id))
+                db.refresh(person)
+                push.an_benutzer(db, person, push.Meldung(titel="Probe", text="Probe", ziel="/", marke="probe"))
+        finally:
+            push.zustellen = echt
+        return endpunkt in versucht
+
     def provider_active(self, on: bool) -> None:
         """Ein Anbieter in ``oidc_anbieter`` (aktiv oder aus), wie ihn der Betreiber anlegt."""
         from app.db import SessionLocal
