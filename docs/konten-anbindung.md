@@ -313,6 +313,12 @@ Profil und Sicherheit 24 px wie überall (`gap-6`).
 auf der Über-Seite, Rückkehr-Adressen in ihren `CopyRow`-Feldern, Knopf `notify-browser-on` samt Lage „Erlaubt, aber
 nicht angemeldet“, der nächste Abschnitt um eine Überschrift in der Karte „Aufgaben“).
 
+**Zweiter Surface-Lauf (7f944dd):** „unterlagen.txt“ war kein roher Schlüssel, sondern der Dateiname des Anhangs der
+Probe-Mail aus `anhang_erinnerung.spec.ts` im Lesebereich; Dateinamen tragen jetzt `data-dateiname` (wie Rechnernamen
+`data-adresse`), der Wächter übergeht genau diese. nextime: der Rechnername steht im Zustand der Karte („verbunden ·
+zeit.example.com“), nichts fehlte. oauth: je Anbieter ein Feld „Client-ID“, der Spec nimmt den Kasten „Google“. Der
+Antwort-Test schickt seine eigene Probe-Mail und läuft damit auch allein.
+
 **Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 86a0cce, E45 bis E49 (ohne ruff, nexmail
 hat keins; pytest ohne xdist; zuletzt nach den Galerie-Funden): pytest 3305 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
