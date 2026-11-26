@@ -40,6 +40,9 @@ import { ApiKeysCard } from '../vendor/nexschluessel/ApiKeysCard'
 import { ToolsCard } from '../vendor/nexschluessel/ToolsCard'
 import { PendingRequests, ToolRights } from '../vendor/nexmcp'
 import { mcpSchluesselWorte, mcpWorte } from '../lib/mcpWorte'
+import { ConnectionsArea } from '../vendor/nexverbinden'
+import nextimeLogo from '../assets/nextime.svg'
+import nextasksLogo from '../assets/nextasks.svg'
 import { Installieren } from './einstellungen/Installieren'
 import { IphoneVerbinden } from './IphoneVerbinden'
 import { Sicherheit } from './Sicherheit'
@@ -273,7 +276,16 @@ export function EinstellungenPage({
           <>
             <IphoneVerbinden />
             <Installieren />
-            <NexApps />
+            {/* Andere nex-Apps (Modul verbinden 0.1.1): je Partner eine Karte, „Mit … verbinden“ oder von Hand; nur
+                Partner, die nexmail nutzt (V20: nextime, nextasks). Kalender- und Listenwahl in der Karte (V23). */}
+            <ConnectionsArea
+              app="nexmail"
+              request={modulAnfrage}
+              logos={{ nextime: nextimeLogo, nextasks: nextasksLogo }}
+              manual={{ nextime: <NexApps nur="nextime" />, nextasks: <NexApps nur="nextasks" /> }}
+              extra={(view) => (view.partner === 'nextime' || view.partner === 'nextasks' ? <NexApps nur={view.partner} /> : null)}
+              language={i18n.language}
+            />
             <Karte id="tasks" symbol={ListChecks} titel={t('einstellungen.aufgaben')}>
               {/* nextasks steht in seiner Karte oben (Befund 1 vom 24.11.2026). */}
               <TodoApps teil="ohne-nextasks" />

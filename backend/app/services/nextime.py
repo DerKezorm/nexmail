@@ -68,6 +68,9 @@ class Zugang:
     #: Die Adresse, unter der nextime läuft, ohne Schrägstrich am Ende.
     url: str
     token: str
+    #: Modul verbinden: das Konto einer per Klick gemachten Verbindung; dann geht jede Anfrage über
+    #: ``nexverbinden.call`` statt mit einem API-Schlüssel (``token`` leer).
+    ueber: str = ""
 
 
 @dataclass
@@ -85,12 +88,14 @@ class Ich:
 def zugang_lesen(roh: str) -> Zugang:
     try:
         daten = json.loads(roh)
-        return Zugang(url=str(daten["url"]), token=str(daten["token"]))
+        return Zugang(url=str(daten["url"]), token=str(daten["token"]), ueber=str(daten.get("ueber") or ""))
     except (ValueError, TypeError, KeyError) as fehler:
         raise NextimeFehler("nextime_zugang_kaputt") from fehler
 
 
 def zugang_schreiben(zugang: Zugang) -> str:
+    if zugang.ueber:
+        return json.dumps({"url": zugang.url, "token": "", "ueber": zugang.ueber})
     return json.dumps({"url": zugang.url, "token": zugang.token})
 
 
@@ -212,6 +217,19 @@ def _absage(antwort: httpx.Response, methode: str, pfad: str) -> NoReturn:
     raise NextimeFehler("nextime_fehler", status=status)
 
 
+def _ueber_verbindung(zugang: Zugang, methode: str, pfad: str, *, params, rumpf) -> httpx.Response:
+    """Dieselbe Anfrage über die Klick-Verbindung (Modul verbinden, V18): Absagen und JSON wie mit einem Schlüssel."""
+    from . import verbinden_store
+
+    try:
+        antwort = verbinden_store.anfragen("nextime", zugang.ueber, methode, f"/api/v1/{pfad}", params=params, rumpf=rumpf)
+    except verbinden_store.Unerreichbar as fehler:
+        raise NextimeFehler("nextime_nicht_erreichbar") from fehler
+    if antwort.status_code >= 300:
+        _absage(antwort, methode, pfad)
+    return antwort
+
+
 def _anfrage(
     zugang: Zugang,
     methode: str,
@@ -226,6 +244,8 @@ def _anfrage(
     ⚠️ **Die Adresse wird bei jedem Aufruf neu geprüft**: Der Betreiber kann
     das eigene Netz inzwischen gesperrt haben.
     """
+    if zugang.ueber:
+        return _ueber_verbindung(zugang, methode, pfad, params=params, rumpf=json_rumpf)
     if not zugang.token:
         raise NextimeFehler("nextime_zugang_fehlt")
     if TRANSPORT is None:

@@ -96,6 +96,25 @@ def verbinden(db: Session, person: Benutzer, url: str, token: str) -> tuple[Next
     if not token or len(token) > nextime.MAX_TOKEN:
         raise VerbindungFehler("nextime_schluessel_fehlt")
     neu = nextime.Zugang(url=nextime.adresse_bereinigen(url), token=token)
+    return _verbinden_mit(db, person, neu)
+
+
+def ueber_klick(db: Session, person: Benutzer, adresse: str) -> tuple[NextimeVerbindung, int]:
+    """Modul verbinden (V18): nach „Mit nextime verbinden“ dieselbe Zeile wie von Hand, mit ``ueber`` statt eines
+    Schlüssels; Kalenderwahl und „doppelte Kalender“ bleiben bei gleicher Adresse."""
+    return _verbinden_mit(db, person, nextime.Zugang(url=adresse.rstrip("/"), token="", ueber=person.id))
+
+
+def alter_schluessel(db: Session, person: Benutzer) -> str | None:
+    """Der API-Schlüssel einer von Hand eingetragenen Verbindung (für ``old_key``), sonst ``None``."""
+    v = verbindung(db, person)
+    if v is None:
+        return None
+    alt = zugang(v)
+    return None if alt.ueber else alt.token or None
+
+
+def _verbinden_mit(db: Session, person: Benutzer, neu: nextime.Zugang) -> tuple[NextimeVerbindung, int]:
     ich = nextime.pruefen(neu)
     zahl = len(nextime.kalender(neu))
 

@@ -175,6 +175,20 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
     "/api/oauth/revoke": (
         "Ein Programm beendet seinen Zugang selbst (RFC 7009); wer ein Token kennt, darf es beenden."
     ),
+    "/api/connect/token": (
+        "Eine andere nex-App tauscht den Code einer Zustimmung oder erneuert ihren Zugang (Modul verbinden); sie hat "
+        "keine Sitzung hier. PKCE, ein Code einmal, ein verbrauchtes Token wieder gebracht beendet die Verbindung."
+    ),
+    "/api/connect/revoke": (
+        "Eine andere nex-App beendet ihre Verbindung (RFC 7009, Modul verbinden); wer ein Token kennt, darf es beenden."
+    ),
+    "/api/connect/retire": (
+        "Ein alter API-Schlüssel beendet sich selbst, nachdem eine App neu verbunden hat (Modul verbinden); nexmail "
+        "gewährt keinem Partner etwas, der Weg antwortet nur."
+    ),
+    "/api/connect/hello": (
+        "Eine verbundene nex-App prüft ihre Verbindung mit ihrem Token (Modul verbinden), ohne Sitzung."
+    ),
     "/api/health": (
         "Der Docker-Healthcheck läuft ohne Anmeldung — er soll ja gerade dann "
         "antworten, wenn etwas nicht stimmt."
@@ -788,6 +802,42 @@ app.include_router(
         account_id=lambda person: person.id,
     ),
     dependencies=NUR_ANGEMELDET,
+)
+# Andere nex-Apps verbinden (Modul verbinden 0.1.1): ``/.well-known/nex-app``, ``/api/connect/…``; die Seiten
+# ``/connect/app`` und ``/connect/return`` macht die Oberfläche. Die alten Wege (``/api/aufgabenziele/…/nextasks``,
+# ``/api/nextime``) bleiben.
+from .services import verbinden_store as _verbinden  # noqa: E402
+from .vendor.nexverbinden import api as nexverbinden_api  # noqa: E402
+
+
+def _verbinden_store_fuer(db: DbSession):
+    return _verbinden.store_fuer(db)
+
+
+def _alter_schluessel(store, konto_id, partner: str):
+    from .models import Benutzer
+    from .services import aufgabenziele, nextimeverbindung
+
+    person = store.db.get(Benutzer, str(konto_id))
+    if person is None:
+        return None
+    if partner == "nextasks":
+        return aufgabenziele.nextasks_alter_schluessel(store.db, person)
+    if partner == "nextime":
+        return nextimeverbindung.alter_schluessel(store.db, person)
+    return None
+
+
+app.include_router(
+    nexverbinden_api.router(
+        config=_verbinden.CONFIG,
+        store=_verbinden_store_fuer,
+        account=angemeldet,
+        operator=nur_betreiber,
+        address=_adresse_fuer_programme,
+        on_connected=lambda store, konto_id, partner: _verbinden.ueber_klick(partner, store, konto_id),
+        old_key=_alter_schluessel,
+    )
 )
 # Die Wege des Moduls sicherung (``/api/server/storage``), nur für Betreiber.
 app.include_router(sicherung.modul_router, dependencies=NUR_ANGEMELDET)

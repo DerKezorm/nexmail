@@ -361,6 +361,32 @@ def nextasks_verbinden(
     return v
 
 
+def nextasks_ueber_klick(db: Session, person: Benutzer, adresse: str) -> Aufgabenverbindung:
+    """Modul verbinden (V18): nach „Mit nextasks verbinden“ dieselbe Zeile wie von Hand, mit ``ueber`` statt eines
+    Schlüssels. Eine vorhandene Verbindung behält Listen, Haken und Aufgaben und bekommt nur den neuen Zugang (der alte
+    Schlüssel endet danach beim Partner von selbst, ``old_key``)."""
+    zugang = nextasks.Zugang(url=adresse.rstrip("/"), token="", ueber=person.id)
+    nextasks.pruefen(zugang)
+    v = next((x for x in verbindungen(db, person) if x.art == "nextasks"), None)
+    if v is None:
+        v = Aufgabenverbindung(id=neue_id(), benutzer_id=person.id, art="nextasks", name="")
+        db.add(v)
+    v.zugang = crypto.verschluesseln(nextasks.zugang_schreiben(zugang), _kontext(v.id))
+    v.letzter_fehler = ""
+    db.commit()
+    logger.info("nextasks was connected by a click.")
+    return v
+
+
+def nextasks_alter_schluessel(db: Session, person: Benutzer) -> str | None:
+    """Der API-Schlüssel einer von Hand eingetragenen nextasks-Verbindung (für ``old_key``), sonst ``None``."""
+    v = next((x for x in verbindungen(db, person) if x.art == "nextasks"), None)
+    if v is None:
+        return None
+    zugang = _nextasks_zugang(v)
+    return None if zugang.ueber else zugang.token or None
+
+
 def nextasks_adresse(db: Session, person: Benutzer, verbindung_id: str) -> str:
     """Die Adresse, zum Vorbelegen. ⚠️ **Nie der Token.**"""
     return _nextasks_zugang(_nextasks(db, person, verbindung_id)).url

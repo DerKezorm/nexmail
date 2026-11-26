@@ -76,7 +76,9 @@ export const ZU_NEXTIME = 'nexmail:zu-nextime'
 const MARKE = 'nexmail.nextimeKarteAuf'
 
 
-export function NexApps() {
+/** `nur`: nur der Inhalt der Karte eines Partners (für die Karte des Moduls verbinden: Kalender- und Listenwahl offen in
+ *  der Karte, V23; die Form von Hand unter „Von Hand verbinden“). Ohne: beide Karten wie bisher. */
+export function NexApps({ nur }: { nur?: 'nextime' | 'nextasks' } = {}) {
   const { t } = useTranslation()
   const { fragen, fenster: nachfrage } = useNachfrage()
   const [nextime, setNextime] = useState<NextimeStand | null>(null)
@@ -284,22 +286,8 @@ export function NexApps() {
       <Badge tone="off">{t('nextime.nicht_verbunden')}</Badge>
     )
 
-  return (
+  const nextimeInhalt = (
     <>
-      {/* --- nextime ---------------------------------------------------- */}
-      <Collapsible
-        variant="card"
-        id="nextime"
-        logo={nextimeLogo}
-        title="nextime"
-        subtitle={t('nextime.satz')}
-        open={offen}
-        onOpenChange={(auf) => {
-          setOffen(auf)
-          if (auf && nextime?.adresse) setAdresse(nextime.adresse)
-        }}
-        status={status(nextime === null ? null : verbunden, Boolean(nextime?.letzterFehler), wirt(nextime?.adresse ?? ''))}
-      >
         {verbunden && nextime && !aendern ? (
           <>
             <p className="m-0 text-sm">{t('nextime.zeigt')}</p>
@@ -368,6 +356,29 @@ export function NexApps() {
             {formular(verbunden)}
           </>
         )}
+    </>
+  )
+
+  if (nur === 'nextime') return <>{nextimeInhalt}{nachfrage}</>
+  if (nur === 'nextasks') return <TodoApps teil="nextasks" />
+
+  return (
+    <>
+      {/* --- nextime ---------------------------------------------------- */}
+      <Collapsible
+        variant="card"
+        id="nextime"
+        logo={nextimeLogo}
+        title="nextime"
+        subtitle={t('nextime.satz')}
+        open={offen}
+        onOpenChange={(auf) => {
+          setOffen(auf)
+          if (auf && nextime?.adresse) setAdresse(nextime.adresse)
+        }}
+        status={status(nextime === null ? null : verbunden, Boolean(nextime?.letzterFehler), wirt(nextime?.adresse ?? ''))}
+      >
+        {nextimeInhalt}
       </Collapsible>
 
       {/* --- nextasks --------------------------------------------------- */}

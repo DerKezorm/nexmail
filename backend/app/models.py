@@ -2493,3 +2493,79 @@ class McpAnfrage(Base):
     ergebnis: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     zusammenfassung: Mapped[str] = mapped_column(Text, default="")
     gefaehrlich: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+# --- Andere nex-Apps verbinden (Modul verbinden 0.1.1) ------------------------------------------------------------ #
+#
+# Die Tabellen des Moduls in seiner Vorlage (``verbinden_partner.SCHEMA``), als ORM-Tabellen, damit Schemapflege,
+# Sicherung und Tests sie kennen. Die alten Verbindungen (``aufgabenverbindung``, ``nextime_verbindung``) bleiben, wie
+# sie sind; das Modul liest sie nur (``Store.legacy``).
+
+
+class VbVerbindung(Base):
+    __tablename__ = "vb_connections"
+    __table_args__ = (UniqueConstraint("account_id", "partner"),)
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    account_id: Mapped[str] = mapped_column(Text, ForeignKey("benutzer.id", ondelete="CASCADE"))
+    partner: Mapped[str] = mapped_column(Text)
+    partner_base: Mapped[str] = mapped_column(Text)
+    partner_account: Mapped[str] = mapped_column(Text)
+    uses: Mapped[str] = mapped_column(Text)
+    grants: Mapped[str] = mapped_column(Text)
+    areas_granted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    areas_used: Mapped[str | None] = mapped_column(Text, nullable=True)
+    held: Mapped[str] = mapped_column(Text)
+    issued_access_hash: Mapped[str] = mapped_column(Text, unique=True)
+    issued_refresh_hash: Mapped[str] = mapped_column(Text, unique=True)
+    issued_access_expires: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text)
+    used_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ok_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    state: Mapped[str] = mapped_column(Text)
+    stale_since: Mapped[str | None] = mapped_column(Text, nullable=True)
+    problem: Mapped[str | None] = mapped_column(Text, nullable=True)
+    partner_version: Mapped[str] = mapped_column(Text, default="", server_default="")
+
+
+class VbAnlauf(Base):
+    __tablename__ = "vb_pending"
+
+    state_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    account_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    partner: Mapped[str | None] = mapped_column(Text, nullable=True)
+    partner_base: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verifier: Mapped[str | None] = mapped_column(Text, nullable=True)
+    areas_granted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class VbCode(Base):
+    __tablename__ = "vb_codes"
+
+    code_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    account_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    partner: Mapped[str | None] = mapped_column(Text, nullable=True)
+    partner_base: Mapped[str | None] = mapped_column(Text, nullable=True)
+    redirect_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    challenge: Mapped[str | None] = mapped_column(Text, nullable=True)
+    areas_granted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class VbVerbraucht(Base):
+    __tablename__ = "vb_spent"
+
+    token_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    connection_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class VbWartend(Base):
+    __tablename__ = "vb_waiting"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    partner_base: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    since: Mapped[str | None] = mapped_column(Text, nullable=True)

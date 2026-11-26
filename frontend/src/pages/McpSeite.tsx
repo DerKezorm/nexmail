@@ -14,12 +14,18 @@ import { mcpWorte } from '../lib/mcpWorte'
 import { appPfad, ohneBasis } from '../lib/basis'
 import { zeitpunkt } from '../lib/format'
 import { ConsentPage, RequestPage } from '../vendor/nexmcp'
+import { ConsentPage as VerbindenZustimmung, ReturnPage as VerbindenZurueck } from '../vendor/nexverbinden'
 import { Button } from '../vendor/nexui'
 
 /** Welche Seite des Moduls die Adresse meint, sonst `null`. */
-export function mcpSeiteVon(pfad: string): { art: 'zustimmung' } | { art: 'rueckfrage'; nummer: string } | null {
+export function mcpSeiteVon(
+  pfad: string,
+): { art: 'zustimmung' | 'verbinden' | 'zurueck' } | { art: 'rueckfrage'; nummer: string } | null {
   const ohne = ohneBasis(pfad) ?? ''
   if (ohne === '/oauth/authorize') return { art: 'zustimmung' }
+  // Modul verbinden 0.1.1: die festen Orte der Zustimmung einer anderen nex-App und des Rücksprungs.
+  if (ohne === '/connect/app') return { art: 'verbinden' }
+  if (ohne === '/connect/return') return { art: 'zurueck' }
   const treffer = /^\/mcp\/requests\/([^/]+)$/.exec(ohne)
   return treffer ? { art: 'rueckfrage', nummer: decodeURIComponent(treffer[1]) } : null
 }
@@ -30,13 +36,17 @@ export function McpSeite({ seite }: { seite: NonNullable<ReturnType<typeof mcpSe
   return (
     <div className="flex min-h-full items-start justify-center overflow-auto bg-canvas px-4 py-10" data-testid="mcp-seite">
       <div className="flex w-full max-w-[620px] flex-col gap-4">
-        {seite.art === 'zustimmung' ? (
+        {seite.art === 'verbinden' ? (
+          <VerbindenZustimmung request={modulAnfrage} language={i18n.language} />
+        ) : seite.art === 'zurueck' ? (
+          <VerbindenZurueck app="nexmail" request={modulAnfrage} done={appPfad('/settings/connections')} language={i18n.language} />
+        ) : seite.art === 'zustimmung' ? (
           <ConsentPage request={modulAnfrage} areaWord={t('mcp.postfaecher')} words={worte} language={i18n.language} />
         ) : (
           <>
             <RequestPage
               request={modulAnfrage}
-              id={seite.nummer}
+              id={'nummer' in seite ? seite.nummer : ''}
               words={worte}
               language={i18n.language}
               when={(iso, sprache) => zeitpunkt(iso, sprache)}

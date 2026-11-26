@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 import { api, modulAnfrage } from '../api/client'
 import { InterfacesCard } from '../vendor/nexschluessel/InterfacesCard'
 import { McpOperatorSettings } from '../vendor/nexmcp'
+import { ConnectionsOperatorCard } from '../vendor/nexverbinden'
 import { mcpWorte } from '../lib/mcpWorte'
 import { LanguagesCard } from '../vendor/nexsprachen/LanguagesCard'
 import { eigeneSprachenVergessen, englischeTexte } from '../i18n'
@@ -36,6 +37,8 @@ export function ServerAllgemein({ dokuHref }: { dokuHref?: string }) {
       />
       {/* Bauplan Allgemein (E48): keine Karte „Grenzen“ (nexmail hat nichts zu begrenzen), kein „Web Push“ (nichts
           einzustellen, E33); „Sprachen“ aus dem Modul sprachen (E51); danach nexmails eigene Karte. */}
+      {/* V22: „Andere nex-Apps“ (Modul verbinden) nach „Schnittstellen“, vor „Sprachen“. */}
+      <ConnectionsOperatorCard app="nexmail" request={modulAnfrage} />
       <Sprachen />
       <ZeitzoneDesServers />
     </>
