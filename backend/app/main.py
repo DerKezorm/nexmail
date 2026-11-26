@@ -702,25 +702,27 @@ app.include_router(sicherung.modul_router, dependencies=NUR_ANGEMELDET)
 app.include_router(bilder_router.router)
 
 # Server › Allgemein › Sprachen (Modul sprachen 1.0.0, E51): die eigenen Sprachen des Betreibers in
-# ``<data>/locales``. Lesen ohne Anmeldung (Anmeldeseite), Hochladen und Entfernen nur der Betreiber; Ablehnungen in
-# nexmails Form (``detail`` die Kennung, ``werte`` daneben). Die Vorlage macht die Seite (sie kennt die englischen Texte).
-from .meldung import MeldungHttp  # noqa: E402
+# ``<data>/locales``. Lesen ohne Anmeldung (Anmeldeseite), Hochladen und Entfernen nur der Betreiber; Ablehnungen in der
+# Form des Moduls (E52, die Karte des Moduls versteht sie). Die Vorlage macht die Seite (sie kennt die englischen Texte).
 from .vendor import nexsprachen  # noqa: E402
 from .vendor.nexsprachen import api as nexsprachen_api  # noqa: E402
 
-nexsprachen.configure(
-    nexsprachen.AppConfig(
-        app_name="nexmail",
-        folder=lambda: get_settings().data_dir / "locales",
-        built_in={"de": "Deutsch", "en": "English"},
+
+def sprachen_einrichten() -> None:
+    """Beim Start: das Modul kennt nexmails Ordner und Sprachen, dann räumt es weg, was ein abgebrochenes Hochladen
+    liegen ließ (``tidy_at_start``, E52). Auch der Vertragsadapter startet so neu (``restart``)."""
+    nexsprachen.configure(
+        nexsprachen.AppConfig(
+            app_name="nexmail",
+            folder=lambda: get_settings().data_dir / "locales",
+            built_in={"de": "Deutsch", "en": "English"},
+        )
     )
-)
-app.include_router(
-    nexsprachen_api.router(
-        operator=nur_betreiber,
-        error=lambda code, _text, status_code, werte: MeldungHttp(status_code, code, werte or None),
-    )
-)
+    nexsprachen.tidy_at_start()
+
+
+sprachen_einrichten()
+app.include_router(nexsprachen_api.router(operator=nur_betreiber))
 
 
 # --- Die gebaute Oberfläche ausliefern ---------------------------------- #

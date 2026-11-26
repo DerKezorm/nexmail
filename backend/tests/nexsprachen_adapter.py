@@ -85,6 +85,12 @@ class Adapter(StandardAdapter):
         shutil.rmtree(nexsprachen.locales_dir(), ignore_errors=True)
         nexsprachen.forget()
 
+    def restart(self) -> None:
+        """Wie beim Start der App: das Modul neu einrichten und aufräumen (``main.sprachen_einrichten``)."""
+        from app.main import sprachen_einrichten
+
+        sprachen_einrichten()
+
     def client(self, role: str) -> Any:
         from fastapi.testclient import TestClient
 
@@ -96,8 +102,3 @@ class Adapter(StandardAdapter):
             self._clients.append(client)
             return client
         return self._rollen[role]
-
-    def refusal(self, response: Any) -> tuple[str, dict[str, Any]]:
-        """nexmails Form: ``{"detail": "<kennung>", "werte": {...}}`` (``meldung.MeldungHttp``)."""
-        body = response.json()
-        return str(body["detail"]), dict(body.get("werte") or {})

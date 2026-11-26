@@ -1760,8 +1760,7 @@
     "unbekannte_stufe": "There is no such level.",
     "wrong_password": "The password is wrong.",
     "fresh_sign_in_needed": "Sign in again with your provider first.",
-    "second_factor_required": "This key works once its account sets up a second factor.",
-    "sprache_unbekannt": "There is no such language here."
+    "second_factor_required": "This key works once its account sets up a second factor."
   },
   "sicherheit": {
     "alle_beenden": "Sign out all other devices",

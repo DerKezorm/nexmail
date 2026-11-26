@@ -457,9 +457,9 @@ def test_passwort_vergessen_schickt_sofort_und_nimmt_den_link_bei_einem_fehler_z
         assert db.query(PostAusgang).count() == 0
 
 
-def test_die_profilsprache_ist_eine_die_nexmail_spricht(klient):
-    """Modul sprachen (E51): eingebaut oder eine Datei des Betreibers (``nexsprachen.known``); eine unbekannte Sprache
-    wird abgewiesen, ein Tag wie ``de-AT`` zählt am Sprachteil."""
+def test_alter_weg_nimmt_einen_unbekannten_code_wie_vorher(klient):
+    """E52: die Profilsprache nimmt an, was sie vor dem Modul sprachen annahm. Ein gültiger, aber hier unbekannter Code
+    (``nl`` ohne Datei des Betreibers) geht wie vorher durch, ``de-AT`` auch; was kein Code ist, wird ``""``."""
     import shutil
 
     from app.vendor import nexsprachen
@@ -467,12 +467,9 @@ def test_die_profilsprache_ist_eine_die_nexmail_spricht(klient):
     einrichten(klient)
     shutil.rmtree(nexsprachen.locales_dir(), ignore_errors=True)
     nexsprachen.forget()
-    try:
-        abgewiesen = klient.put("/api/auth/ich/sprache", json={"sprache": "nl"})
-        assert abgewiesen.status_code == 400 and abgewiesen.json()["detail"] == "sprache_unbekannt"
-        assert klient.put("/api/auth/ich/sprache", json={"sprache": "de-AT"}).status_code == 200
-        assert klient.put("/api/locales/nl", content=b'{"a": "b"}', headers={"content-type": "application/json"}).status_code == 200
-        assert klient.put("/api/auth/ich/sprache", json={"sprache": "nl"}).json()["sprache"] == "nl"
-    finally:
-        shutil.rmtree(nexsprachen.locales_dir(), ignore_errors=True)
-        nexsprachen.forget()
+    assert not nexsprachen.known("nl")
+    antwort = klient.put("/api/auth/ich/sprache", json={"sprache": "nl"})
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json()["sprache"] == "nl"
+    assert klient.put("/api/auth/ich/sprache", json={"sprache": "de-AT"}).json()["sprache"] == "de-AT"
+    assert klient.put("/api/auth/ich/sprache", json={"sprache": "kein code!"}).json()["sprache"] == ""
