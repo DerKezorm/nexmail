@@ -1,3 +1,4 @@
+// Vorlage nexkonten 1.1.0
 // @vitest-environment jsdom
 /**
  * Since 1.1.0: the module's cards in the app (``SignInPage.tsx``, ``AccountCards.tsx``): built from the ui kit, in the

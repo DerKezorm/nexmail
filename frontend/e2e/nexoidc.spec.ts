@@ -1,3 +1,4 @@
+// Vorlage nexoidc 1.2.0
 /**
  * Ende-zu-Ende-Tests der gemeinsamen Anmeldung (einmal vom Modul kopiert, dann nexmails Datei).
  *

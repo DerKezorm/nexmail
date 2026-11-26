@@ -1,3 +1,4 @@
+// Vorlage nexlog 1.0.0
 // @vitest-environment jsdom
 /**
  * The card "Log" of the module in the app: built from the ui kit (Segment, Table, Button, ConfirmDialog), the module's

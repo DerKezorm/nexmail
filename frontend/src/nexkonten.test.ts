@@ -1,3 +1,4 @@
+// Vorlage nexkonten 1.1.0
 // @vitest-environment jsdom
 // nexmail: jsdom because the pages it reads their order from reach `client.ts`, which reads the base from the DOM.
 /**

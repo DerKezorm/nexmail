@@ -1,3 +1,4 @@
+// Vorlage nexpost 1.1.0
 /**
  * Every text of the post module is in the app, in German and English, through the app's own i18n, and the mail
  * server card shows the module's fields in the module's order. Copied once by the module's `tools/sync.py` to

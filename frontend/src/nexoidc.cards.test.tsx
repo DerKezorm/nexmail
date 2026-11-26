@@ -1,3 +1,4 @@
+// Vorlage nexoidc 1.2.0
 // @vitest-environment jsdom
 /**
  * Since 1.2.0: the cards "Sign-in providers" and "authentik in one step" (``SignInProviders.tsx``) in the app: built

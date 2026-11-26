@@ -1,3 +1,4 @@
+// Vorlage nexschluessel 1.0.0
 // @vitest-environment jsdom
 /**
  * The cards of the module in the app: "API-Schlüssel", "KI-Werkzeuge (MCP)", "Schnittstellen" and "API-Schlüssel aller

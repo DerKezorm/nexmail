@@ -1,3 +1,4 @@
+// Vorlage nexoidc 1.2.0
 /**
  * Every text of the oidc module is in the app, in German and English, through the app's own i18n. Copied once
  * from the module; then the app's file. Fill in the places marked APP.
