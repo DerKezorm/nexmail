@@ -958,7 +958,7 @@ export function VerfassenFenster({
                   className="flex items-center gap-2 rounded-md border border-line bg-surface-2 px-2.5 py-1.5"
                 >
                   <Paperclip className="size-3.5 shrink-0 text-fg-4" />
-                  <span className="max-w-[24ch] truncate text-[12px] text-fg-1">{a.dateiname}</span>
+                  <span data-dateiname className="max-w-[24ch] truncate text-[12px] text-fg-1">{a.dateiname}</span>
                   <span className="text-[11px] tabular-nums text-fg-4">{groesse(a.groesse, 'de')}</span>
                   <button
                     type="button"

@@ -875,7 +875,9 @@ export function Lesebereich({
                   >
                     <Download className="size-4 shrink-0 text-fg-4" />
                     <span className="min-w-0">
-                      <span className="block max-w-[22ch] truncate text-[13px] text-fg-1">
+                      {/* `data-dateiname`: Ein Dateiname („unterlagen.txt“) ist kein Übersetzungsschlüssel (Wächter in
+                          tests/hilfen.ts). */}
+                      <span data-dateiname className="block max-w-[22ch] truncate text-[13px] text-fg-1">
                         {a.dateiname}
                       </span>
                       <span className="block text-[11px] tabular-nums text-fg-4">

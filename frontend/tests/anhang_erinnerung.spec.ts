@@ -24,6 +24,29 @@ test.describe.configure({ mode: 'serial' })
  * kann — beide Tests teilen ihn: Der zweite antwortet auf die Mail des ersten. */
 const betreff = `ZZ-Anhangprobe ${Date.now()}`
 
+/** Eine Mail mit „im Anhang“ im Text und einem Anhang an das eigene Testpostfach (keine Nachfrage, weil ein Anhang
+ *  dran ist). Der zweite Test schickt sie sich selbst, damit er auch allein läuft (`--last-failed`, eigener Worker):
+ *  vorher hing er an der Mail des ersten Tests, deren Betreff mit jedem Laden der Datei ein anderer ist. */
+async function probeSenden(page: Page, ueber: string): Promise<void> {
+  await page.getByRole('button', { name: 'Neue Nachricht' }).first().click()
+  const fenster = page.getByRole('dialog', { name: 'Neue Nachricht' })
+  await expect(fenster).toBeVisible()
+  await page.waitForTimeout(1000)
+  const selbst = await vonTestpostfach(fenster)
+  await fenster.getByPlaceholder('Name oder Adresse').first().fill(selbst)
+  await fenster.getByPlaceholder('Betreff').fill(ueber)
+  await fenster.locator('[contenteditable="true"]').first().click()
+  await page.keyboard.press('Control+Home')
+  await page.keyboard.type('Die Unterlagen liegen im Anhang.')
+  await fenster
+    .locator('input[type="file"]')
+    .setInputFiles({ name: 'unterlagen.txt', mimeType: 'text/plain', buffer: Buffer.from('Probeinhalt') })
+  await expect(fenster.getByText('unterlagen.txt')).toBeVisible()
+  await fenster.getByRole('button', { name: 'Senden', exact: true }).click()
+  await expect(frage(page)).toHaveCount(0)
+  await expect(fenster, 'Die Probe-Mail ging nicht hinaus.').toBeHidden({ timeout: 30_000 })
+}
+
 /** Die Überschrift der Nachfrage — genau daran erkennt der Test sie. */
 const frage = (page: Page) => page.getByRole('heading', { name: 'Ohne Anhang senden?' })
 
@@ -119,6 +142,9 @@ test('Eine Antwort, deren Zitat „im Anhang" enthält, fragt nicht nach', async
 
   const absagen = serverabsagen(page)
   await anmelden(page)
+  // Eigene Probe-Mail statt der des ersten Tests: derselbe Inhalt („im Anhang“ im Text, ein Anhang), eigener Betreff.
+  const antwortBetreff = `${betreff} Antwortprobe`
+  await probeSenden(page, antwortBetreff)
 
   const baum = postfach(page)
   await baum.getByRole('button', { name: /Posteingang|Inbox/ }).first().click()
@@ -126,7 +152,7 @@ test('Eine Antwort, deren Zitat „im Anhang" enthält, fragt nicht nach', async
   /* Auf die Zustellung warten: nachsehen, von Hand abgleichen, wieder
      nachsehen. ⚠️ Auf den Bestand warten, nie auf die Uhr allein — und der
      Aktualisieren-Knopf ist während eines laufenden Abgleichs gesperrt. */
-  const zeile = page.locator('button[draggable="true"]').filter({ hasText: betreff }).first()
+  const zeile = page.locator('button[draggable="true"]').filter({ hasText: antwortBetreff }).first()
   const aktualisieren = page.getByRole('button', { name: 'Aktualisieren' })
   for (let versuch = 0; versuch < 14; versuch++) {
     if (await zeile.isVisible().catch(() => false)) break
@@ -137,7 +163,7 @@ test('Eine Antwort, deren Zitat „im Anhang" enthält, fragt nicht nach', async
   }
   await expect(
     zeile,
-    'Die Mail aus dem ersten Test ist nicht angekommen — ohne sie gibt es nichts zu zitieren.',
+    'Die Probe-Mail ist nicht angekommen — ohne sie gibt es nichts zu zitieren.',
   ).toBeVisible()
 
   /* Antworten: Das Zitat trägt „im Anhang", der eigene Text nicht. */
@@ -172,7 +198,7 @@ test('Eine Antwort, deren Zitat „im Anhang" enthält, fragt nicht nach', async
   await absagen.pruefen()
 
   /* Aufräumen — die Tests laufen gegen ein echtes Postfach: die zugestellte
-     Mail und die eintreffende Antwort aus dem Posteingang, danach beide
+     Probe-Mail und die eintreffende Antwort aus dem Posteingang, die Mail des ersten Tests, danach alle
      Fassungen aus „Gesendet". */
   await rechtsklick(page, zeile)
   await page.getByRole('menuitem', { name: 'Löschen' }).click()
@@ -181,7 +207,7 @@ test('Eine Antwort, deren Zitat „im Anhang" enthält, fragt nicht nach', async
   /* Auf die Antwort an sich selbst warten und auch sie wegräumen. */
   const antwortZeile = page
     .locator('button[draggable="true"]')
-    .filter({ hasText: `AW: ${betreff}` })
+    .filter({ hasText: `AW: ${antwortBetreff}` })
     .first()
   for (let versuch = 0; versuch < 14; versuch++) {
     if (await antwortZeile.isVisible().catch(() => false)) break
@@ -194,6 +220,14 @@ test('Eine Antwort, deren Zitat „im Anhang" enthält, fragt nicht nach', async
   await rechtsklick(page, antwortZeile)
   await page.getByRole('menuitem', { name: 'Löschen' }).click()
   await expect(antwortZeile).toHaveCount(0, { timeout: 20_000 })
+
+  /* Die Mail des ersten Tests (gleicher Betreff-Anfang), falls sie inzwischen da ist, ebenso. */
+  const reste = page.locator('button[draggable="true"]').filter({ hasText: betreff })
+  for (let rest = await reste.count(); rest > 0; rest--) {
+    await rechtsklick(page, reste.first())
+    await page.getByRole('menuitem', { name: 'Löschen' }).click()
+    await expect(reste).toHaveCount(rest - 1, { timeout: 20_000 })
+  }
 
   await baum.getByRole('button', { name: /Gesendet|Sent/ }).first().click()
   const gesendete = page.locator('button[draggable="true"]').filter({ hasText: betreff })

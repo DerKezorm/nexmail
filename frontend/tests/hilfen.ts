@@ -389,8 +389,9 @@ export async function keineRohenSchluessel(seite: Page) {
       if (!text || text.includes(' ')) continue
       // Adressen und Dateinamen sehen ähnlich aus, sind aber keine Schlüssel.
       if (text.includes('@') || text.includes('/') || text.includes(':')) continue
-      // Ein Rechnername ohne Schema (`tasks.example.com`) ist so gekennzeichnet.
-      if (el.closest('[data-adresse]')) continue
+      // Ein Rechnername ohne Schema (`tasks.example.com`) ist so gekennzeichnet, ebenso ein Dateiname
+      // (`unterlagen.txt`, Anhang einer Mail aus anhang_erinnerung.spec.ts). Nur genau diese Stellen, nicht jeder Punkt.
+      if (el.closest('[data-adresse], [data-dateiname]')) continue
       if (muster.test(text)) treffer.push(text)
     }
     return treffer

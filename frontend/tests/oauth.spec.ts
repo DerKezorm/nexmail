@@ -42,7 +42,9 @@ test('Der Satz zu „In production" steht da, bevor jemand anfängt', async ({ p
 })
 
 test('Ohne Client-ID lässt sich nichts speichern', async ({ page }) => {
-  const google = page.locator('section').filter({ hasText: 'Google' }).first()
+  // Der Kasten „Google“ selbst (je Anbieter genau ein Feld „Client-ID“); die Karte „Google und Microsoft“ umschließt beide.
+  const google = page.getByRole('heading', { name: 'Google', exact: true }).locator('xpath=ancestor::section[1]')
+  await expect(google.getByLabel('Client-ID')).toHaveCount(1)
   await google.getByLabel('Client-ID').fill('')
   await expect(google.getByRole('button', { name: 'Speichern' })).toBeDisabled()
 })

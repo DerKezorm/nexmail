@@ -74,7 +74,8 @@ test('Die Karte verbindet nextime mit Adresse und Schlüssel (AC-1, AC-2)', asyn
   await expect.poll(() => geschickt.length).toBe(1)
   expect(geschickt[0]).toEqual({ adresse: 'https://zeit.example.com', schluessel: 'probe-sch-1' })
   await expect(karte.getByText('Verbunden, 3 Kalender.')).toBeVisible()
-  await expect(karte.getByText('zeit.example.com', { exact: true })).toBeVisible()
+  // Der Rechnername steht seit der Collapsible-Karte im Zustand oben („verbunden · zeit.example.com“).
+  await expect(karte.getByText(/· zeit\.example\.com$/)).toBeVisible()
   await expect(page.getByRole('region', { name: 'nextasks' })).toBeVisible()
   // Aufbau wie in nextime (gemeldet am 24.11.2026): das Formular ist weg, unten
   // stehen „Schlüssel ändern" und „Trennen" nebeneinander.
