@@ -160,10 +160,21 @@ def _aufraeumschleife() -> None:
     while not _aufraeumen_halt.wait(aufraeumen.NACHSEHEN_SEKUNDEN):
         try:
             aufraeumen.runde()
+            konten_endgueltig_loeschen()
         except Exception as fehler:  # noqa: BLE001
             # Der Faden darf nie sterben - sonst hoert das Aufraeumen still
             # auf, und der Papierkorb waechst, obwohl eine Zahl eingestellt ist.
             logger.warning("The auto-clean check failed a round: %s", fehler)
+
+
+def konten_endgueltig_loeschen() -> list[str]:
+    """konten 1.1.0: Konten, deren 30 Tage zum Zurueckholen um sind, endgueltig entfernen (``manage.purge_due``)."""
+    from ..db import SessionLocal
+    from ..vendor import nexkonten
+    from . import konten_store
+
+    with SessionLocal() as db:
+        return [str(k) for k in nexkonten.manage.purge_due(konten_store.store_fuer(db))]
 
 
 def aufraeumplan_starten() -> None:

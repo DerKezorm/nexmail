@@ -148,6 +148,11 @@ class Ich(BaseModel):
     neues_passwort: str = ""
     #: Die Mail „Neue Anmeldung“ (Teil 2), je Person im Profil abschaltbar.
     mail_neue_anmeldung: bool = True
+    #: konten 1.1.0: hell, dunkel oder wie das System, fuer das Konto auf allen Geraeten; ``""`` noch nicht gewaehlt
+    #: (dann gibt die Oberflaeche einmal den Wert des Browsers, ``POST /api/auth/ich/theme/browser``).
+    theme: str = ""
+    #: konten 1.1.0 (E23): die Box „Adresse noch nicht bestaetigt“ (``profiles.needs_proof``, nur mit Mailserver).
+    adresse_unbestaetigt: bool = False
 
 
 def bremsschluessel(store, eingetippt: str, request: Request) -> str:
@@ -717,7 +722,14 @@ def ich(person: Benutzer, db) -> Ich:
         sprache=person.sprache or "",
         neues_passwort=person.neues_passwort or "",
         mail_neue_anmeldung=bool(person.mail_neue_anmeldung),
+        theme=person.theme or "",
+        adresse_unbestaetigt=_unbestaetigt(db, person),
     )
+
+
+def _unbestaetigt(db, person: Benutzer) -> bool:
+    konto = kontenstore.store_fuer(db).get_account(person.id)
+    return konto is not None and nexkonten.profiles.needs_proof(konto, mail_server=kontenpost.mail_moeglich(db))
 
 
 def _anbieter_der_adresse(db, person: Benutzer) -> str:
@@ -942,6 +954,48 @@ def neue_anmeldung_setzen(eingabe: Schalter, person: AngemeldeterBenutzer, db: D
     person.mail_neue_anmeldung = eingabe.an
     db.commit()
     return ich(person, db)
+
+
+class Theme(BaseModel):
+    theme: str = Field(max_length=16)
+
+
+class BrowserTheme(BaseModel):
+    #: Was der Browser bisher unter ``nexmail.modus`` hielt (``"dark"``, ``"light"``, ``"system"``), roh.
+    wert: str = Field(default="", max_length=32)
+
+
+@router.put("/ich/theme", response_model=Ich)
+def theme_setzen(eingabe: Theme, person: AngemeldeterBenutzer, db: DbSession) -> Ich:
+    """Hell, dunkel oder wie das System (konten 1.1.0, ``profiles.change_theme``), fuer das Konto auf allen Geraeten."""
+    try:
+        nexkonten.profiles.change_theme(kontenstore.store_fuer(db), person.id, eingabe.theme)
+    except nexkonten.AccountError as fehler:
+        raise kontenstore.http(fehler) from fehler
+    db.expire(person)
+    return ich(person, db)
+
+
+@router.post("/ich/theme/browser", response_model=Ich)
+def theme_vom_browser(eingabe: BrowserTheme, person: AngemeldeterBenutzer, db: DbSession) -> Ich:
+    """Beim ersten Laden nach 1.1.0: ein Konto ohne Wahl uebernimmt einmal den Wert dieses Browsers
+    (``profiles.adopt_theme``); eines mit Wahl behaelt sie."""
+    nexkonten.profiles.adopt_theme(kontenstore.store_fuer(db), person.id, eingabe.wert)
+    db.expire(person)
+    return ich(person, db)
+
+
+@router.post("/ich/kontaktadresse/beweisen", status_code=204)
+def adresse_beweisen(person: AngemeldeterBenutzer, request: Request, db: DbSession) -> None:
+    """„Link schicken" in der Box „Adresse noch nicht bestaetigt" (konten 1.1.0, ``profiles.prove_email``)."""
+    try:
+        mail = nexkonten.profiles.prove_email(kontenstore.store_fuer(db), person.id)
+    except nexkonten.AccountError as fehler:
+        raise kontenstore.http(fehler) from fehler
+    try:
+        kontenpost.senden(db, mail)
+    except systempost.PostFehler as fehler:
+        raise MeldungHttp.aus(fehler, status.HTTP_502_BAD_GATEWAY) from fehler
 
 
 class Sprache(BaseModel):

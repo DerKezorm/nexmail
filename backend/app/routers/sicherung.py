@@ -364,9 +364,9 @@ def _alt(eintrag: nexsicherung.Entry) -> Ruecksetzpunkt:
     )
 
 
-def _nicht_gefunden(fehler: nexsicherung.BackupError) -> MeldungHttp:
-    kennung = "ruecksetzpunkt_weg" if fehler.code == "not_found" else fehler.code
-    return MeldungHttp(status.HTTP_404_NOT_FOUND, kennung, {})
+def _nicht_gefunden(fehler: nexsicherung.BackupError) -> MeldungHttp:  # noqa: ARG001
+    """Wie vorher: eine Sicherung, die es nicht (mehr) gibt, ist 404 ``ruecksetzpunkt_weg``."""
+    return MeldungHttp(status.HTTP_404_NOT_FOUND, "ruecksetzpunkt_weg", {})
 
 
 @router.get("/liste", response_model=Uebersicht)
@@ -459,6 +459,11 @@ def betreiber_fuer_sicherung(request: Request, sitzung: AktiveSitzung, db: DbSes
     return person
 
 
+def _ablehnung(kennung: str) -> dict[str, str]:
+    """Die Form, die die Seite des Moduls liest (``detail.code``)."""
+    return {"code": kennung}
+
+
 def _bestaetigen(request: Request, person: Benutzer, passwort: str) -> None:
     """Das Passwort des Betreibers noch einmal (Herunterladen, Wiederherstellen, Löschen, Hochladen), an der Bremse
     des Kontenmoduls (``confirm:<Konto>``). Ein Konto ohne Passwort braucht eine frische Anmeldung beim Anbieter."""
@@ -470,7 +475,7 @@ def _bestaetigen(request: Request, person: Benutzer, passwort: str) -> None:
         if not nexkonten.common.fresh_sign_in(getattr(request.state, "nexmail_angemeldet_um", None)):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": "fresh_sign_in_needed", "message": "Sign in again with your provider first."},
+                detail=_ablehnung("fresh_sign_in_needed"),
             )
         return
     wache = anmeldebremse.bestaetigen(person.id)
@@ -478,7 +483,7 @@ def _bestaetigen(request: Request, person: Benutzer, passwort: str) -> None:
         wache.fehlgeschlagen()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "wrong_password", "message": "The password is wrong."},
+            detail=_ablehnung("wrong_password"),
         )
     wache.geschafft()
 

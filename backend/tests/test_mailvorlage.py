@@ -1,5 +1,8 @@
 """Wie eine Mail aussieht, die nexmail selbst verschickt.
 
+Seit post 1.1.0 baut das Mailmodul jede Systemmail (``nexpost``, mit nexmails Logo aus ``mailvorlage.LOGO``);
+``systempost`` verschickt nichts mehr selbst. Die Zusicherungen gelten jetzt fuer die Mail des Moduls.
+
 ⚠️ **Der wichtigste Test hier ist der ueber die nachgeladenen Bilder.** nexmail
 klinkt in fremder Post jedes ``<img src="https://…">`` aus, weil es dem
 Absender die Oeffnung meldet. Eine eigene Mail, die genau das tut, waere nicht
@@ -48,27 +51,29 @@ def gefangen(monkeypatch):
     return kasten
 
 
-def _mail_bauen(gefangen, html: str | None = None):
+def _mail_bauen(gefangen):
+    """Ein Brief des Mailmoduls (``app_letters.write``) mit Ueberschrift, Absatz, Knopf, so wie nexmail ihn
+    verschickt (``outbox.deliver_now`` ueber nexmails Store)."""
+    from app.services import post_store
+    from app.vendor import nexpost
+
     with SessionLocal() as db:
         systempost.schreiben(
             db,
             systempost.Postausgang(server="s.example", absender="nexmail@example.com"),
             "geheim",
         )
-        systempost.senden(
-            db,
+        brief = nexpost.app_letters.write(
             "wer@example.com",
-            "Probe",
-            "Nur Text.\nMit Link: https://mail.example/einladung/abc\n",
-            html
-            if html is not None
-            else mailvorlage.rahmen(
-                ueberschrift="Hallo Anna",
-                absaetze=["Ein Satz."],
-                knopf=("Passwort vergeben", "https://mail.example/einladung/abc"),
-                fusszeile="Der Link gilt 7 Tage.",
-            ),
+            kind="probe",
+            subject="Probe",
+            language="de",
+            heading="Hallo Anna",
+            paragraphs=["Ein Satz."],
+            link="https://mail.example/einladung/abc",
+            action="Passwort vergeben",
         )
+        nexpost.outbox.deliver_now(post_store.PostStore(db), brief)
     return message_from_bytes(gefangen[0])
 
 
@@ -144,7 +149,7 @@ def test_das_logo_haengt_wirklich_an(klient, gefangen):
 
     bilder = [t for t in mail.walk() if t.get_content_type() == "image/png"]
     assert len(bilder) == 1, "Das Logo liegt nicht als Anhang in der Mail."
-    assert bilder[0].get("Content-ID") == f"<{mailvorlage.LOGO_KENNUNG}>"
+    assert bilder[0].get("Content-ID") == "<logo>"
     assert len(bilder[0].get_payload(decode=True)) > 500
 
 
@@ -188,9 +193,16 @@ def test_ohne_logodatei_geht_die_mail_trotzdem(klient, gefangen, monkeypatch):
     schlechteste Ergebnis von allen."""
     from pathlib import Path
 
+    from app.services import post_store
+
     einrichten(klient)
     monkeypatch.setattr(mailvorlage, "LOGO", Path("gibtesnicht.png"))
-    mail = _mail_bauen(gefangen)
+    post_store.einrichten()
+    try:
+        mail = _mail_bauen(gefangen)
+    finally:
+        monkeypatch.undo()
+        post_store.einrichten()
 
     arten = [t.get_content_type() for t in mail.walk()]
     assert "text/html" in arten

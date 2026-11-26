@@ -416,6 +416,17 @@ def test_entfernen_verlangt_das_eigene_passwort(klient, zweiter_klient):
         antwort = klient.request("DELETE", f"/api/benutzer/{anna}", json=rumpf)
         assert (antwort.status_code, antwort.json()["detail"]) == (401, "kennwort_falsch")
     assert klient.request("DELETE", f"/api/benutzer/{anna}", json={"passwort": PASSWORT}).status_code == 204
+    # konten 1.1.0: erst geloescht (30 Tage zurueckholbar), dann endgueltig weg.
+    from datetime import timedelta
+
+    from app.services import takt
+
+    with SessionLocal() as db:
+        zeile = db.get(Benutzer, anna)
+        assert zeile.geloescht_am is not None
+        zeile.geloescht_am = zeile.geloescht_am - timedelta(days=31)
+        db.commit()
+    assert takt.konten_endgueltig_loeschen() == [anna]
     with SessionLocal() as db:
         assert db.get(Benutzer, anna) is None
 

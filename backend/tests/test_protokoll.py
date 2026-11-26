@@ -255,7 +255,8 @@ def test_der_alte_weg_antwortet_in_seiner_alten_form(klient):
     assert gesetzt.status_code == 200, gesetzt.text
     assert gesetzt.json()["stufe"] == "alles"
     assert gesetzt.json()["bis"], "Eine tiefe Stufe ohne Ablauf über den alten Weg."
-    # Derselbe Stand über den neuen Weg des Moduls.
+    # Derselbe Stand über den alten Weg und über den neuen des Moduls.
+    assert klient.get("/api/protokoll/stand").json()["stufe"] == "alles"
     assert klient.get("/api/logs/level").json()["mode"] == "trace"
 
     assert klient.put("/api/protokoll/stufe", json={"stufe": "sehr-laut"}).status_code == 400

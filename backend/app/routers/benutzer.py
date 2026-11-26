@@ -64,6 +64,11 @@ class BenutzerZeile(BaseModel):
     gesperrt: bool = False
     zuletzt_gesehen: datetime | None = None
     profilbild: str | None = None
+    #: konten 1.1.0: vom Betreiber gesperrt seit (leer: nicht), geloescht am (leer: nicht) und wann es dann
+    #: endgueltig geht (30 Tage danach, ``manage.purge_at``).
+    gesperrt_seit: datetime | None = None
+    geloescht_am: datetime | None = None
+    endgueltig_am: datetime | None = None
 
 
 class EinladungsZeile(BaseModel):
@@ -151,6 +156,9 @@ def _zeile(db, person: Benutzer, verknuepft: dict | None = None) -> BenutzerZeil
             )
         ),
         profilbild=person.profilbild_am.isoformat() if person.profilbild_am else None,
+        gesperrt_seit=person.gesperrt_seit,
+        geloescht_am=person.geloescht_am,
+        endgueltig_am=nexkonten.manage.purge_at(person.geloescht_am) if person.geloescht_am else None,
     )
 
 
@@ -259,44 +267,104 @@ class Uebergabe(BaseModel):
 
 @router.post("/{benutzer_id}/betreiber", status_code=status.HTTP_204_NO_CONTENT)
 def betreiber_uebergeben(
-    benutzer_id: str, eingabe: Uebergabe, ich: Betreiber, request: Request, db: DbSession
+    benutzer_id: str, eingabe: Uebergabe, ich: Betreiber, sitzung: AktiveSitzung, db: DbSession
 ) -> None:
-    """Den Betreiber-Haken an jemand anderen geben.
+    """Den anderen zum Betreiber machen (der alte Weg „Betreiber uebergeben").
 
-    ⚠️ **Genau ein Betreiber, immer.** Der Haken wandert, er wird nicht
-    vergeben: Wer ihn abgibt, hat ihn danach nicht mehr. Zwei Betreiber waeren
-    nicht schlimm, aber null waeren das Ende — aus der Anwendung heraus fuehrt
-    dann kein Weg zurueck.
-
-    ⚠️ **Das eigene Passwort steht davor.** Das ist der teuerste Knopf in der
-    ganzen Verwaltung: Wer ihn drueckt, gibt die Verwaltung ab und kann sie
-    sich nicht zurueckholen. Eine geklaute Sitzung genuegt dafuer nicht —
-    dieselbe Ueberlegung wie beim Abschalten des zweiten Faktors.
-
-    ⚠️ **Danach laesst sich der alte Betreiber entfernen.** Genau dafuer gibt
-    es diesen Weg: Wer die Wohnung wechselt, hinterlaesst sonst eine
-    Installation, an die niemand mehr herankommt.
+    ⚠️ **Seit konten 1.1.0 gibt es mehrere Betreiber**, und „Betreiber uebergeben" faellt weg (Bauplan
+    „Einstellungen"). Der Weg bleibt fuer alles, was ihn kennt, und tut jetzt dasselbe wie „Zum Betreiber machen":
+    Der andere wird Betreiber, wer ihn ruft, bleibt es (niemand stuft sich selbst zurueck). Mit dem eigenen Passwort,
+    gezaehlt an der Bremse des Moduls (``confirm:<Betreiber>``).
     """
-    wache = anmeldebremse.bestaetigen(ich.id)
-    if not benutzerdienst.passwort_stimmt(ich, eingabe.passwort):
-        wache.fehlgeschlagen()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="kennwort_falsch"
+    if benutzer_id == ich.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="betreiber_an_sich_selbst")
+    try:
+        nexkonten.manage.set_role(
+            kontenstore.store_fuer(db),
+            benutzer_id,
+            True,
+            actor_id=ich.id,
+            password=eingabe.passwort,
+            actor_confirmed=_bestaetigt(ich, sitzung),
         )
-    wache.geschafft()
+    except nexkonten.AccountError as fehler:
+        raise _abgelehnt(fehler) from fehler
+    logger.warning("Operator role given to another account by=%s", ich.benutzername)
 
+
+class Rolle(BaseModel):
+    betreiber: bool
+    passwort: str = Field(default="", max_length=300)
+
+
+@router.put("/{benutzer_id}/rolle", response_model=BenutzerZeile)
+def rolle_setzen(benutzer_id: str, eingabe: Rolle, ich: Betreiber, sitzung: AktiveSitzung, db: DbSession) -> BenutzerZeile:
+    """„Zum Betreiber machen" / „Zum Mitglied machen" (konten 1.1.0, ``manage.set_role``): nie am eigenen Konto, nie
+    der letzte Betreiber, der sich anmelden kann; mit dem eigenen Passwort."""
+    try:
+        nexkonten.manage.set_role(
+            kontenstore.store_fuer(db),
+            benutzer_id,
+            eingabe.betreiber,
+            actor_id=ich.id,
+            password=eingabe.passwort,
+            actor_confirmed=_bestaetigt(ich, sitzung),
+        )
+    except nexkonten.AccountError as fehler:
+        raise _abgelehnt(fehler) from fehler
+    return _zeile(db, _person(db, benutzer_id))
+
+
+class NurPasswort(BaseModel):
+    passwort: str = Field(default="", max_length=300)
+
+
+def _person(db, benutzer_id: str) -> Benutzer:
+    db.expire_all()
     person = db.get(Benutzer, benutzer_id)
     if person is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    if person.id == ich.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="betreiber_an_sich_selbst"
-        )
+    return person
 
-    person.ist_betreiber = True
-    ich.ist_betreiber = False
-    db.commit()
-    logger.warning("The operator flag was handed over to another user.")
+
+@router.post("/{benutzer_id}/sperren", response_model=BenutzerZeile)
+def sperren(benutzer_id: str, eingabe: NurPasswort, ich: Betreiber, sitzung: AktiveSitzung, db: DbSession) -> BenutzerZeile:
+    """Sperren (konten 1.1.0, ``manage.block``): kein Weg mehr hinein, alles bleibt. Browser, wartende Anmeldungen und
+    gekoppelte iPhones enden; API-Schluessel werden abgewiesen, solange es gesperrt ist."""
+    try:
+        nexkonten.manage.block(
+            kontenstore.store_fuer(db), benutzer_id, actor_id=ich.id, password=eingabe.passwort,
+            actor_confirmed=_bestaetigt(ich, sitzung),
+        )
+    except nexkonten.AccountError as fehler:
+        raise _abgelehnt(fehler) from fehler
+    return _zeile(db, _person(db, benutzer_id))
+
+
+@router.post("/{benutzer_id}/entsperren", response_model=BenutzerZeile)
+def entsperren(benutzer_id: str, eingabe: NurPasswort, ich: Betreiber, sitzung: AktiveSitzung, db: DbSession) -> BenutzerZeile:
+    """Entsperren: das Konto meldet sich wieder an; Sitzungen von vorher bleiben beendet."""
+    try:
+        nexkonten.manage.unblock(
+            kontenstore.store_fuer(db), benutzer_id, actor_id=ich.id, password=eingabe.passwort,
+            actor_confirmed=_bestaetigt(ich, sitzung),
+        )
+    except nexkonten.AccountError as fehler:
+        raise _abgelehnt(fehler) from fehler
+    return _zeile(db, _person(db, benutzer_id))
+
+
+@router.post("/{benutzer_id}/zurueckholen", response_model=BenutzerZeile)
+def zurueckholen(benutzer_id: str, eingabe: NurPasswort, ich: Betreiber, sitzung: AktiveSitzung, db: DbSession) -> BenutzerZeile:
+    """Ein geloeschtes Konto zurueckholen, solange seine 30 Tage laufen (``manage.restore``)."""
+    try:
+        nexkonten.manage.restore(
+            kontenstore.store_fuer(db), benutzer_id, actor_id=ich.id, password=eingabe.passwort,
+            actor_confirmed=_bestaetigt(ich, sitzung),
+        )
+    except nexkonten.AccountError as fehler:
+        raise _abgelehnt(fehler) from fehler
+    return _zeile(db, _person(db, benutzer_id))
 
 
 class Entfernen(BaseModel):
@@ -313,16 +381,15 @@ def entfernen(
     db: DbSession,
     eingabe: Entfernen | None = None,
 ) -> None:
-    """Einen Benutzer mit allem entfernen, was ihm gehoert. Auf dem Mailserver bleibt alles.
+    """Einen Benutzer loeschen: seit konten 1.1.0 30 Tage zurueckholbar, danach mit allem weg, was ihm gehoert. Auf
+    dem Mailserver bleibt alles.
 
     ⚠️ **Mit dem eigenen Passwort des Betreibers** (seit der Kontenliste des Moduls, konten 0.3.9), im Rumpf
     ``{"passwort": …}``; falsch oder fehlend: 401 ``kennwort_falsch``, gezaehlt an der Bremse des Moduls
     (``confirm:<Betreiber>``). Eine geklaute Sitzung soll fuer das Teuerste der Verwaltung nicht reichen.
 
-    ⚠️ **Der Betreiber selbst geht nicht.** Danach haette nexmail niemanden,
-    der die Verwaltung oeffnen kann — und aus der Anwendung heraus fuehrt kein
-    Weg zurueck. Wer den Betreiber wechseln will, uebergibt den Haken; das ist
-    ein anderer Vorgang und keine Loeschung.
+    ⚠️ **Das eigene Konto geht nicht, und der letzte Betreiber nicht** (``last_operator``): Danach haette nexmail
+    niemanden, der die Verwaltung oeffnen kann.
     """
     person = db.get(Benutzer, benutzer_id)
     if person is None:
@@ -332,23 +399,18 @@ def entfernen(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="sich_selbst_entfernen",
         )
-    if person.ist_betreiber:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="betreiber_entfernen",
-        )
+    # konten 1.1.0: geloescht heisst 30 Tage zurueckholbar (``manage.remove``), danach geht es endgueltig
+    # (``manage.purge_due`` im Aufraeumplan). Ein Betreiber geht, solange ein anderer bleibt, der sich anmelden kann.
     try:
-        nexkonten.common.acting(
+        nexkonten.manage.remove(
             kontenstore.store_fuer(db),
             person.id,
-            ich.id,
-            eingabe.passwort if eingabe is not None else "",
-            confirm_self=False,
+            actor_id=ich.id,
+            password=eingabe.passwort if eingabe is not None else "",
             actor_confirmed=_bestaetigt(ich, sitzung),
         )
     except nexkonten.AccountError as fehler:
         raise _abgelehnt(fehler) from fehler
-    benutzerdienst.entfernen(db, person)
 
 
 class KiErlaubnis(BaseModel):
@@ -369,8 +431,12 @@ def ki_erlaubnis(
     person = db.get(Benutzer, benutzer_id)
     if person is None:
         raise MeldungHttp.aus(Meldung("benutzer_nicht_gefunden"), status.HTTP_404_NOT_FOUND)
-    kidienst.erlauben_fuer(db, person, eingabe.erlaubt)
-    return _zeile(db, person)
+    # konten 1.1.0: „KI erlaubt" ist ein Recht des Moduls (``manage.set_right``), in nexmails Spalte ``ki_erlaubt``.
+    try:
+        nexkonten.manage.set_right(kontenstore.store_fuer(db), person.id, "ai", eingabe.erlaubt, actor_id=ich.id)
+    except nexkonten.AccountError as fehler:
+        raise _abgelehnt(fehler) from fehler
+    return _zeile(db, _person(db, benutzer_id))
 
 
 # --- Kontenmodul: was der Betreiber an fremden Konten aendert ------------------------------------------------------- #

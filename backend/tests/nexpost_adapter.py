@@ -17,6 +17,7 @@ from post_contract import Legacy, StandardAdapter, password
 
 class Adapter(StandardAdapter):
     package = "app.vendor.nexpost"
+    mail_prefix = "/api/server/mail"
 
     def start(self) -> None:
         from app.services import post_store
@@ -132,3 +133,62 @@ class Adapter(StandardAdapter):
         briefe = [brief for brief in gefangen.letters if brief.kind == "new_sign_in"]
         assert briefe, [brief.kind for brief in gefangen.letters]
         return briefe[0]
+
+    # --- post 1.1.0 ---------------------------------------------------------------------------------------------------
+
+    def account(self, address: str, *, language: str, name: str, confirmed: bool) -> Any:
+        from app.db import SessionLocal
+        from app.models import Benutzer
+
+        with SessionLocal() as db:
+            person = Benutzer(
+                benutzername=f"konto{len(db.query(Benutzer).all()) + 1}",
+                anzeigename=name,
+                passwort_hash="",
+                kontaktadresse=address,
+                kontaktadresse_zaehlt=confirmed,
+                sprache=language,
+            )
+            db.add(person)
+            db.commit()
+            return person.id
+
+    def client(self, role: str) -> Any:
+        """nexmails TestClient: ``anonymous`` ohne Sitzung, ``member`` und ``operator`` angemeldet (Sitzung als
+        Cookie). Das Mailmodul haengt dort unter ``/api/server/mail`` (``main.py``)."""
+        import secrets
+        from datetime import timedelta
+
+        from fastapi.testclient import TestClient
+
+        from app.db import SessionLocal
+        from app.main import app
+        from app.models import Benutzer, Sitzung, utcnow
+        from app.services import sitzung as sitzungsdienst
+
+        klient = TestClient(app)
+        if role == "anonymous":
+            return klient
+        token = secrets.token_urlsafe(32)
+        with SessionLocal() as db:
+            person = Benutzer(
+                benutzername=f"{role}{secrets.token_hex(3)}",
+                anzeigename=role,
+                passwort_hash="",
+                ist_betreiber=role == "operator",
+            )
+            db.add(person)
+            db.flush()
+            db.add(
+                Sitzung(
+                    benutzer_id=person.id,
+                    token_hash=sitzungsdienst._hash(token),
+                    bestaetigt=True,
+                    art="browser",
+                    gueltig_bis=utcnow() + timedelta(days=1),
+                )
+            )
+            db.commit()
+        klient.cookies.set(sitzungsdienst.COOKIE_NAME, token)
+        return klient
+

@@ -9,8 +9,9 @@ Datenbanksitzung, also eine Anfrage.
 ``kontaktadresse`` ``email``. Was das Modul darueber hinaus braucht, kam ergaenzend dazu (``models.Benutzer``,
 ``services/konten_wanderung``).
 
-⚠️ **nexmail sperrt keine Konten.** ``blocked`` ist immer falsch, ``is_locked`` auch: Die Bremse gegen Raten steht
-im Arbeitsspeicher (``services/anmeldebremse``) und zaehlt seit dem Modul am Konto (``login.attempt_key``).
+⚠️ **Seit konten 1.1.0 sperrt und loescht der Betreiber Konten** (``gesperrt_seit``, ``geloescht_am``; geloescht heisst
+30 Tage zurueckholbar). ``blocked`` ist wahr fuer beides; die Bremse gegen Raten steht weiter im Arbeitsspeicher
+(``services/anmeldebremse``) und am Konto (``fehlversuche``/``gesperrt_bis``, ``is_locked``).
 """
 
 from __future__ import annotations
@@ -65,6 +66,7 @@ from ..vendor.nexkonten.model2 import (
 )
 from ..vendor.nexkonten.model2 import Passkey as PasskeyDaten
 from ..vendor.nexkonten.model2 import Session as SitzungDaten
+from ..vendor.nexkonten.model3 import SignInSettings
 from . import benutzer as benutzerdienst
 
 #: Die Schalter des Betreibers (Teil 2): „Zweiten Faktor fuer alle verlangen“ (ab Werk aus) und „Passkeys erlaubt“
@@ -193,7 +195,7 @@ class KontenStore:
             email_source=zeile.kontaktadresse_herkunft or "",
             pending_email=wartet or "",
             has_password=bool(zeile.passwort_hash),
-            blocked=False,
+            blocked=zeile.gesperrt_seit is not None or zeile.geloescht_am is not None,
             operator=bool(zeile.ist_betreiber),
             picture=bild,
             language=zeile.sprache or "",
@@ -201,6 +203,10 @@ class KontenStore:
             offered_email_provider=zeile.angebotene_adresse_von or "",
             declined_email=zeile.abgelehnte_adresse or "",
             password_changed_at=zeile.passwort_geaendert,
+            blocked_at=zeile.gesperrt_seit,
+            deleted_at=zeile.geloescht_am,
+            theme=zeile.theme or "",
+            rights=frozenset({"ai"} if zeile.ki_erlaubt else ()),
         )
 
     def count_accounts(self) -> int:
@@ -864,6 +870,109 @@ class KontenStore:
         self._auffrischen(account_id)
 
     # --- Transaktion ---------------------------------------------------------------------------------------------
+    # --- konten 1.1.0: Kontofunktionen des Betreibers (``model3.ManageStore``) --------------------------------------
+    def active_operators(self) -> int:
+        return int(
+            self.db.scalar(
+                select(func.count())
+                .select_from(Benutzer)
+                .where(
+                    Benutzer.ist_betreiber.is_(True),
+                    Benutzer.gesperrt_seit.is_(None),
+                    Benutzer.geloescht_am.is_(None),
+                )
+            )
+            or 0
+        )
+
+    def set_operator(self, account_id: AccountId, operator: bool) -> None:
+        self.db.execute(update(Benutzer).where(Benutzer.id == str(account_id)).values(ist_betreiber=bool(operator)))
+        self._auffrischen(account_id)
+
+    def set_blocked(self, account_id: AccountId, at: datetime | None) -> None:
+        werte: dict = {"gesperrt_seit": at}
+        if at is None:
+            werte.update(fehlversuche=0, gesperrt_bis=None)
+        self.db.execute(update(Benutzer).where(Benutzer.id == str(account_id)).values(**werte))
+        self._auffrischen(account_id)
+
+    def set_deleted(self, account_id: AccountId, at: datetime | None) -> None:
+        self.db.execute(update(Benutzer).where(Benutzer.id == str(account_id)).values(geloescht_am=at))
+        self._auffrischen(account_id)
+
+    def shut_out(self, account_id: AccountId) -> None:
+        """Nach Sperren oder Loeschen: kein Weg mehr hinein. Browser, wartende Anmeldungen und gekoppelte iPhones
+        enden, ein QR-Code, den noch niemand gescannt hat, verfaellt, die Kennung bekannter Browser wird neu.
+        API-Schluessel bleiben stehen, werden aber abgewiesen, solange das Konto gesperrt oder geloescht ist
+        (``deps.api_zugriff``); Anbieter und Passkeys weist das Modul ab (``Account.blocked``)."""
+        self.db.execute(delete(Sitzung).where(Sitzung.benutzer_id == str(account_id)))
+        self.db.execute(delete(AppKopplung).where(AppKopplung.benutzer_id == str(account_id)))
+        self.renew_device_key(account_id)
+
+    def deleted_before(self, moment: datetime) -> list[AccountId]:
+        return list(
+            self.db.scalars(
+                select(Benutzer.id).where(Benutzer.geloescht_am.is_not(None), Benutzer.geloescht_am <= moment)
+            )
+        )
+
+    def purge_account(self, account_id: AccountId) -> None:
+        """Endgueltig weg, wie bisher das Entfernen (``benutzerdienst.entfernen``: Postfaecher, Nachrichten, Kontakte,
+        Regeln, Signaturen …; auf dem Mailserver bleibt alles). Der Benutzername bleibt fuer immer belegt."""
+        from . import benutzer as benutzerdienst
+
+        zeile = self.db.get(Benutzer, str(account_id))
+        if zeile is None:
+            return
+        # Reserviert den Namen selbst (``frueherer_name`` mit ``konto = ""``) und committet.
+        benutzerdienst.entfernen(self.db, zeile)
+
+    def set_storage_limit(self, account_id: AccountId, limit: int | None) -> None:
+        raise NotImplementedError("nexmail has no storage limit per account (konten config.FEATURES)")
+
+    def set_right(self, account_id: AccountId, right: str, allowed: bool) -> None:
+        if right != "ai":
+            raise NotImplementedError(right)
+        self.db.execute(update(Benutzer).where(Benutzer.id == str(account_id)).values(ki_erlaubt=bool(allowed)))
+        self._auffrischen(account_id)
+
+    # --- konten 1.1.0: hell oder dunkel (``ThemeStore``) ------------------------------------------------------------
+    def set_theme(self, account_id: AccountId, theme: str) -> None:
+        self.db.execute(update(Benutzer).where(Benutzer.id == str(account_id)).values(theme=theme))
+        self._auffrischen(account_id)
+
+    # --- konten 1.1.0: Schalter der Seite Anmeldung (``SignInStore``) -----------------------------------------------
+    def sign_in_settings(self) -> "SignInSettings":
+        from ..db import einstellung_lesen
+        from ..routers.oidc import SCHLUESSEL_PASSWORT
+
+        return SignInSettings(
+            password_login=einstellung_lesen(self.db, SCHLUESSEL_PASSWORT) != "aus",
+            factor_required=einstellung_lesen(self.db, SCHALTER_FAKTOR_FUER_ALLE) == "1",
+            passkeys_allowed=einstellung_lesen(self.db, SCHALTER_PASSKEYS) != "0",
+        )
+
+    def save_sign_in_settings(self, settings: "SignInSettings") -> None:
+        from ..models import Einstellung
+        from ..routers.oidc import SCHLUESSEL_PASSWORT
+
+        for schluessel, wert in (
+            (SCHLUESSEL_PASSWORT, "an" if settings.password_login else "aus"),
+            (SCHALTER_FAKTOR_FUER_ALLE, "1" if settings.factor_required else "0"),
+            (SCHALTER_PASSKEYS, "1" if settings.passkeys_allowed else "0"),
+        ):
+            zeile = self.db.get(Einstellung, schluessel)
+            if zeile is None:
+                self.db.add(Einstellung(schluessel=schluessel, wert=wert))
+            else:
+                zeile.wert = wert
+        self.db.flush()
+
+    def active_providers(self) -> int:
+        from .oidc_store import SqlStore
+
+        return sum(1 for entry in SqlStore(self.db).list_providers() if entry.enabled)
+
     def commit(self) -> None:
         self.db.commit()
 

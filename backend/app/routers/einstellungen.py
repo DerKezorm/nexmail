@@ -369,20 +369,19 @@ def postausgang_schreiben(
 
 
 @router.post("/postausgang/probe", status_code=status.HTTP_204_NO_CONTENT)
-def postausgang_proben(eingabe: Probe, _: Betreiber, db: DbSession) -> None:
-    """Eine Probemail verschicken.
+def postausgang_proben(eingabe: Probe, _: Betreiber, request: Request, db: DbSession) -> None:
+    """Eine Probemail verschicken: seit post 1.1.0 die Testmail des Mailmoduls (mit Logo, in der Sprache der Seite).
 
-    ⚠️ **Der Knopf ist kein Beiwerk.** Ein Postausgang, der erst bei der ersten
-    Einladung scheitert, laesst den Betreiber im Glauben, sie sei unterwegs —
-    und den Eingeladenen warten. Hier scheitert er sofort und mit Grund.
+    ⚠️ **Der Knopf ist kein Beiwerk.** Ein Postausgang, der erst bei der ersten Einladung scheitert, laesst den
+    Betreiber im Glauben, sie sei unterwegs, und den Eingeladenen warten. Hier scheitert er sofort und mit Grund.
     """
+    from ..services import kontenpost, post_store
+    from ..vendor import nexpost
+
+    sprache = (request.headers.get("accept-language") or "en")[:2].lower()
     try:
-        systempost.senden(
-            db,
-            eingabe.an,
-            "Probe von nexmail",
-            "Diese Mail bestätigt, dass nexmail selbst Post verschicken kann.\n"
-            "Damit funktionieren Einladungen.\n",
+        nexpost.outbox.test_mail(
+            post_store.PostStore(db), eingabe.an, language=sprache if sprache in ("de", "en", "fr") else "en"
         )
-    except systempost.PostFehler as fehler:
-        raise MeldungHttp.aus(fehler, status.HTTP_502_BAD_GATEWAY) from fehler
+    except nexpost.MailError as fehler:
+        raise MeldungHttp.aus(kontenpost._postfehler(fehler, eingabe.an), status.HTTP_502_BAD_GATEWAY) from fehler

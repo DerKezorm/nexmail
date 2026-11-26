@@ -90,7 +90,7 @@ def sofort_senden(db: Session, mail: Mail) -> None:
     """„Passwort vergessen“ (konten 0.3.10): **sofort, nie ueber die Outbox.** Geht die Mail nicht hinaus, wirft
     das, und das Modul nimmt den Link wieder weg (``resets.forgot_in_background``); ueber die Outbox bliebe ein Link,
     den niemand bekam, und der Mensch wartete auf eine Mail, die erst eine Stunde spaeter oder nie kommt."""
-    nexpost.send.deliver(post_store.PostStore(db).mail_settings(), _brief(db, mail))
+    nexpost.outbox.deliver_now(post_store.PostStore(db), _brief(db, mail))
 
 
 def einladung_senden(db: Session, einladung: Einladung, einladungslink: str, tage: int) -> None:
@@ -112,7 +112,7 @@ def einladung_senden(db: Session, einladung: Einladung, einladungslink: str, tag
         link=einladungslink,
     )
     try:
-        nexpost.send.deliver(post_store.PostStore(db).mail_settings(), brief)
+        nexpost.outbox.deliver_now(post_store.PostStore(db), brief)
     except nexpost.MailError as fehler:
         raise _postfehler(fehler, brief.to) from fehler
 
@@ -126,7 +126,11 @@ _ALTE_POSTKENNUNGEN = {
 }
 
 
+#: Was keiner der alten Kennungen entspricht.
+POSTKENNUNG_SONST = "postausgang_abgelehnt"
+
+
 def _postfehler(fehler: Exception, an: str) -> systempost.PostFehler:
     code = getattr(fehler, "code", "")
     grund = getattr(fehler, "detail", "") or str(fehler)
-    return systempost.PostFehler(_ALTE_POSTKENNUNGEN.get(code, "postausgang_abgelehnt"), an=an, grund=grund, code="")
+    return systempost.PostFehler(_ALTE_POSTKENNUNGEN.get(code, POSTKENNUNG_SONST), an=an, grund=grund, code="")

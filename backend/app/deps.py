@@ -69,6 +69,9 @@ def angemeldete_sitzung(request: Request, db: DbSession) -> Sitzung:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="zweiter_faktor_noetig",
         )
+    # konten 1.1.0: Sperren und Loeschen beenden alle Sitzungen (``shut_out``); stuende doch noch eine, gilt sie nicht.
+    if lage.benutzer.gesperrt_seit is not None or lage.benutzer.geloescht_am is not None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="nicht_angemeldet")
     # Wer handelt, steht ab hier in jeder Zeile dieser Anfrage (Modul log): ``[vorgang u:benutzername]``.
     nexlog.set_actor(lage.benutzer.benutzername)
     return lage
@@ -158,12 +161,23 @@ def api_zugriff(request: Request, db: DbSession) -> ApiSchluessel:
             detail="api_schluessel_abgeschaltet",
         )
     schluessel = apidienst.finden(db, wert.strip())
+    # konten 1.1.0: Der Schluessel eines gesperrten oder geloeschten Kontos bleibt stehen, wirkt aber nicht.
+    if schluessel is not None:
+        inhaber = db.get(Benutzer, schluessel.benutzer_id)
+        if inhaber is None or inhaber.gesperrt_seit is not None or inhaber.geloescht_am is not None:
+            schluessel = None
     if schluessel is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="api_schluessel_ungueltig",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # schluessel 1.0.0 (ruhende Schluessel, 24.11.2026): verlangt der Betreiber einen zweiten Faktor und das Konto hat
+    # keinen, wirken seine Schluessel erst, wenn es einen einrichtet. Anlegen bleibt, die Seite sagt es dazu.
+    from .services import schluessel_store
+
+    if schluessel_store.store_fuer(db).keys_wait(schluessel.benutzer_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="second_factor_required")
     return schluessel
 
 

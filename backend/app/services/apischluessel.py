@@ -216,7 +216,8 @@ def finden(db: Session, klartext: str) -> ApiSchluessel | None:
     zeile = db.scalars(
         select(ApiSchluessel).where(ApiSchluessel.schluessel_hash == _hash(klartext))
     ).first()
-    if zeile is None:
+    if zeile is None or zeile.gesperrt is not None:
+        # schluessel 1.0.0: ein gesperrter Schluessel wirkt nicht, bis der Betreiber ihn entsperrt.
         return None
     jetzt = utcnow()
     zuletzt: datetime | None = zeile.zuletzt_benutzt

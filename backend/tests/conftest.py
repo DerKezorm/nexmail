@@ -146,6 +146,16 @@ def frische_datenbank():
 
 
 @pytest.fixture(autouse=True)
+def post_sofort(monkeypatch):
+    """post 1.1.0 stoesst nach dem Commit eine Runde der Outbox in einem eigenen Faden an; in Tests geht eine
+    eingereihte Mail sofort in der Anfrage hinaus (``post_store.IM_FADEN``), sonst hinge jede Zusicherung ueber
+    verschickte Post am Zufall der Faeden."""
+    from app.services import post_store
+
+    monkeypatch.setattr(post_store, "IM_FADEN", False)
+
+
+@pytest.fixture(autouse=True)
 def post_bruecke():
     """Das Mailmodul verschickt ueber ``smtplib``; in Tests geht jede Mail stattdessen an ``systempost.senden``
     (Empfaenger, Betreff, Text, HTML), das viele Tests abfangen. Nichts geht ins Netz."""

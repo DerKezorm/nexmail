@@ -17,17 +17,12 @@ voraussetzt, sagt das vorher — statt beim Absenden zu scheitern.
 from __future__ import annotations
 
 import logging
-import smtplib
-import ssl
 from dataclasses import dataclass
-from email.message import EmailMessage
-from email.utils import formataddr, formatdate, make_msgid
 
 from sqlalchemy.orm import Session
 
 from .. import crypto
 from ..db import einstellung_lesen, einstellung_schreiben
-from . import mailvorlage
 from ..meldung import Meldung
 
 logger = logging.getLogger("nexmail.systempost")
@@ -44,7 +39,6 @@ S_PASSWORT = "system_smtp_passwort"
 S_ABSENDER = "system_smtp_absender"
 S_ABSENDERNAME = "system_smtp_absendername"
 
-ZEITGRENZE = 30
 
 
 @dataclass
@@ -102,94 +96,9 @@ def passwort_lesen(db: Session) -> str:
     return crypto.entschluesseln(roh, KONTEXT) if roh else ""
 
 
-def senden(db: Session, an: str, betreff: str, text: str, html: str = "") -> None:
-    """Eine Systemmail verschicken. Wirft ``PostFehler`` mit klarem Satz.
-
-    ⚠️ **Der Textteil ist Pflicht, der HTML-Teil eine Zugabe.** Wer seinen
-    Client auf Nur-Text stellt — und in dieser Zielgruppe tun das einige —
-    bekaeme sonst eine leere Mail. Deshalb ``multipart/alternative``: erst der
-    Text, dann das HTML.
-
-    ⚠️ **Was das HTML mitbringt, haengt an der Mail.** Ein Bild von einer
-    fremden Adresse waere ein Zaehlpixel — nexmail klinkt genau solche in
-    fremder Post aus. Siehe ``mailvorlage``.
-    """
-    angaben = lesen(db)
-    if not angaben.eingerichtet:
-        raise PostFehler(
-            "postausgang_fehlt"
-        )
-
-    mail = EmailMessage()
-    mail["From"] = formataddr((angaben.absendername, angaben.absender))
-    mail["To"] = an
-    mail["Subject"] = betreff
-    # Pflichtfelder nach RFC 5322. smtplib ergaenzt sie nicht, und ohne Date
-    # verwerfen iCloud, Outlook und Gmail die Mail still.
-    mail["Date"] = formatdate(localtime=True)
-    mail["Message-ID"] = make_msgid(domain=angaben.absender.split("@")[-1])
-    mail.set_content(text)
-    if html:
-        mailvorlage.anhaengen(mail, html)
-
-    try:
-        if angaben.sicherheit == "ssl":
-            verbindung = smtplib.SMTP_SSL(angaben.server, angaben.port, timeout=ZEITGRENZE)
-        else:
-            verbindung = smtplib.SMTP(angaben.server, angaben.port, timeout=ZEITGRENZE)
-            if angaben.sicherheit == "starttls":
-                verbindung.starttls(context=ssl.create_default_context())
-    except Exception as fehler:  # noqa: BLE001
-        logger.warning("System mailer could not connect to %s:%s", angaben.server, angaben.port)
-        raise PostFehler(
-            "postausgang_nicht_erreichbar", server=angaben.server, port=angaben.port
-        ) from fehler
-
-    try:
-        if angaben.benutzer:
-            try:
-                verbindung.login(angaben.benutzer, passwort_lesen(db))
-            except smtplib.SMTPAuthenticationError as fehler:
-                raise PostFehler(
-                    "postausgang_anmeldung_abgewiesen"
-                ) from fehler
-        verbindung.send_message(mail)
-    except PostFehler:
-        raise
-    except smtplib.SMTPRecipientsRefused as fehler:
-        # ⚠️ **Der haeufigste Fall, und der mit der nutzlosesten Meldung.**
-        # Ein Tippfehler in der Adresse sah am 01.09.2026 aus wie „Die Mail
-        # liess sich nicht absenden" — also wie ein kaputter Postausgang. Der
-        # Server sagt genau, was er nicht mag; das gehoert weitergereicht.
-        grund = next(iter(fehler.recipients.values()), (0, b""))
-        text = grund[1].decode("utf-8", "replace") if isinstance(grund[1], bytes) else str(grund[1])
-        raise PostFehler(
-            "empfaenger_abgelehnt", an=an, grund=text.strip()
-        ) from fehler
-    except smtplib.SMTPSenderRefused as fehler:
-        raise PostFehler(
-            "absender_abgelehnt", absender=angaben.absender
-        ) from fehler
-    except smtplib.SMTPResponseException as fehler:
-        # ⚠️ **Der Satz des Servers, nicht sein Python-Abbild.** Ohne das steht
-        # in der Oberflaeche „(554, b'5.7.1 Your email was rejected …')" — mit
-        # Klammern, Praefix und Anfuehrungszeichen. Der Betreiber soll den Satz
-        # lesen, nicht ihn aus einem Tupel herausschaelen.
-        roh = fehler.smtp_error
-        satz = roh.decode("utf-8", "replace") if isinstance(roh, bytes) else str(roh)
-        raise PostFehler(
-            "postausgang_abgelehnt", code=fehler.smtp_code, grund=satz.strip()
-        ) from fehler
-    except Exception as fehler:  # noqa: BLE001
-        logger.warning("System mailer failed while sending: %s", type(fehler).__name__)
-        raise PostFehler("versand_gescheitert", grund=str(fehler)[:200]) from fehler
-    finally:
-        try:
-            verbindung.quit()
-        except Exception:  # noqa: BLE001
-            pass
-
-    # ⚠️ Die Adresse gehoert **nicht** ins Protokoll — auch nicht auf der
-    # ausfuehrlichsten Stufe. Wer eingeladen wurde, ist eine persoenliche
-    # Angabe, und ein Protokoll wandert in Fehlerberichte.
-    logger.info("A system mail was sent.")
+def senden(db: Session, an: str, betreff: str, text: str, html: str = "") -> None:  # noqa: ARG001
+    """⚠️ **Seit post 1.1.0 verschickt nexmail hier nichts mehr.** Jede Systemmail geht ueber das Mailmodul
+    (``services/post_store``, ``services/kontenpost``), samt Probemail (die Testmail des Moduls, mit Logo und in der
+    Sprache der Seite). Der Name bleibt als der Punkt, an dem die Tests die Post abfangen (``tests/conftest.py``,
+    ``post_bruecke``: das SMTP des Moduls endet in Tests hier; der Test „Bestand" faengt dort seine Post)."""
+    logger.debug("A system mail reached the test sink.")

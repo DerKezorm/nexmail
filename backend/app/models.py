@@ -162,6 +162,13 @@ class Benutzer(Base):
     #: von vorher (dann „unbekannt“) und bei Konten ohne Passwort. Das Auffrischen des Hashes nach einer Anmeldung
     #: zaehlt nicht als Aenderung.
     passwort_geaendert: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+    #: konten 1.1.0 (Bauplan „Einstellungen", Konten). ``gesperrt_seit``: vom Betreiber gesperrt (leer: nicht);
+    #: ``geloescht_am``: geloescht, 30 Tage zurueckholbar, danach endgueltig weg (``manage.purge_due``);
+    #: ``theme``: hell, dunkel oder wie das System, fuer das Konto auf allen Geraeten (leer: noch nicht gewaehlt, dann
+    #: uebernimmt der Server einmal den Wert des Browsers, ``nexmail.modus``). Der Bestand bekommt alle drei leer.
+    gesperrt_seit: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+    geloescht_am: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+    theme: Mapped[str] = mapped_column(String(8), default="", server_default="")
 
     # --- Der KI-Dienst dieses Menschen ---------------------------------- #
     #
@@ -387,6 +394,11 @@ class PostAusgang(Base):
     versuche: Mapped[int] = mapped_column(Integer, default=0)
     fehler: Mapped[str] = mapped_column(String(500), default="")
     verschickt: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)
+    #: post 1.1.0: die Kopfzeilen des Briefs (JSON, nur ``Content-Language`` und ``List-Unsubscribe``) und sein
+    #: Schluessel (``daily:42:2026-11-25``): ein Brief mit einem Schluessel, den die Outbox schon hat, kommt nicht zweimal
+    #: hinein. Zeilen von vorher: beide leer.
+    kopfzeilen: Mapped[str] = mapped_column(Text, default="", server_default="")
+    schluessel: Mapped[str | None] = mapped_column(String(200), nullable=True, default=None, unique=True)
 
 
 class Passkey(Base):
@@ -2349,3 +2361,6 @@ class ApiSchluessel(Base):
     #: Minute: Ein Dashboard fragt alle paar Sekunden, und jede Abfrage wuerde
     #: sonst zum Schreibvorgang.
     zuletzt_benutzt: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    #: schluessel 1.0.0: vom Betreiber gesperrt seit (leer: nicht). Bis zum Entsperren abgewiesen, die Zeile bleibt.
+    #: ⚠️ Eine aeltere Fassung liest die Spalte nicht: dort wirkte ein gesperrter Schluessel wieder.
+    gesperrt: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, default=None)

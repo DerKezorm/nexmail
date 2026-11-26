@@ -377,6 +377,22 @@ def test_der_betreiber_laesst_sich_nicht_entfernen(klient, db):
     assert db.query(Benutzer).count() == 1
 
 
+def _endgueltig(db, benutzer_id: str) -> None:
+    """konten 1.1.0: Loeschen laesst 30 Tage zum Zurueckholen; danach raeumt der Aufraeumplan endgueltig weg. Hier
+    gleich: die Tage als vergangen, dann die Runde des Aufraeumplans."""
+    from datetime import timedelta
+
+    from app.services import takt
+
+    db.expire_all()
+    zeile = db.get(Benutzer, benutzer_id)
+    assert zeile is not None and zeile.geloescht_am is not None, "geloescht heisst seit 1.1.0 erst einmal: 30 Tage da"
+    zeile.geloescht_am = zeile.geloescht_am - timedelta(days=31)
+    db.commit()
+    assert takt.konten_endgueltig_loeschen() == [benutzer_id]
+    db.expire_all()
+
+
 def test_entfernen_nimmt_alles_mit(klient, db):
     """⚠️ **Der Waechter ueber die Vollstaendigkeit.**
 
@@ -404,6 +420,7 @@ def test_entfernen_nimmt_alles_mit(klient, db):
     assert (falsch.status_code, falsch.json()["detail"]) == (401, "kennwort_falsch")
     assert db.query(Benutzer).filter(Benutzer.id == ihre_id).count() == 1
     assert klient.request("DELETE", f"/api/benutzer/{ihre_id}", json={"passwort": PASSWORT}).status_code == 204
+    _endgueltig(db, ihre_id)
 
     reste = {}
     for tabelle in Base.metadata.sorted_tables:
@@ -431,6 +448,7 @@ def test_die_eigenen_daten_bleiben_unberuehrt(klient, db):
     db.commit()
 
     assert klient.request("DELETE", f"/api/benutzer/{person.id}", json={"passwort": PASSWORT}).status_code == 204
+    _endgueltig(db, person.id)
 
     uebrig = db.query(Kontakt).all()
     assert [k.name for k in uebrig] == ["Meiner"]

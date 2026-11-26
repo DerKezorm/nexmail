@@ -23,7 +23,7 @@ from . import __version__
 from .config import get_settings
 from . import meldung as meldungsmodul
 from .db import SessionLocal, init_db
-from .deps import angemeldet, nur_geraet
+from .deps import DbSession, angemeldet, nur_betreiber, nur_geraet
 from .middleware import (
     AppFristMiddleware,
     BasisPfadMiddleware,
@@ -631,6 +631,58 @@ app.include_router(einladung_router.router)
 # vor der Einrichtung (ohne Anmeldung, siehe Liste oben) und die beiden
 # Wege danach (mit). Die Abhaengigkeit haengt deshalb am einzelnen Endpunkt.
 app.include_router(sicherung.router)
+# Server › Anmeldung (Kontenmodul 1.1.0): Schalter und „Bereit fürs Internet?“, nur für Betreiber.
+from .routers import anmeldung_server as anmeldung_server_router  # noqa: E402
+
+app.include_router(anmeldung_server_router.router, dependencies=NUR_ANGEMELDET)
+
+
+def _post_store(db: DbSession):
+    """Der Store des Mailmoduls ueber die Sitzung der Anfrage (Server › Mail)."""
+    from .services.post_store import PostStore
+
+    return PostStore(db)
+
+
+# Server › Mail (Mailmodul post 1.1.0): Ansicht, Speichern, Testmail; nur fuer Betreiber. Die alten Wege
+# ``/api/einstellungen/postausgang`` bleiben.
+from .vendor.nexpost import api as nexpost_api  # noqa: E402
+
+app.include_router(nexpost_api.router(operator=nur_betreiber, store=_post_store), dependencies=NUR_ANGEMELDET)
+
+
+def _schluessel_store(db: DbSession):
+    """Der Store des Moduls schluessel ueber die Sitzung der Anfrage."""
+    from .services.schluessel_store import SchluesselStore
+
+    return SchluesselStore(db)
+
+
+def _adresse_fuer_programme(request: Request) -> str:
+    """Die Adresse, unter der Programme nexmail erreichen: die eingestellte, sonst die dieser Anfrage."""
+    from .db import SessionLocal
+    from .services import kontenpost
+
+    with SessionLocal() as db:
+        return kontenpost.oeffentliche_adresse(db) or (str(request.base_url).rstrip("/") + einstellungen_.url_base)
+
+
+# Mein Konto › Verbindungen „API-Schluessel", Server › Allgemein „Schnittstellen", Server › Konten „API-Schluessel aller
+# Konten" (Modul schluessel 1.0.0) unter ``/api/connections``. Nur Browser-Sitzungen (``deps._sitzung`` laesst ausserhalb
+# von ``/api/app/`` kein Geraetetoken herein). Die alten Wege ``/api/apischluessel`` bleiben.
+from .services.schluessel_store import KONFIGURATION as _SCHLUESSEL  # noqa: E402
+from .vendor.nexschluessel import api as nexschluessel_api  # noqa: E402
+
+app.include_router(
+    nexschluessel_api.router(
+        config=_SCHLUESSEL,
+        store=_schluessel_store,
+        account=angemeldet,
+        operator=nur_betreiber,
+        address=_adresse_fuer_programme,
+    ),
+    dependencies=NUR_ANGEMELDET,
+)
 # Die Wege des Moduls sicherung (``/api/server/storage``), nur für Betreiber.
 app.include_router(sicherung.modul_router, dependencies=NUR_ANGEMELDET)
 # ⚠️ **Ohne ``NUR_ANGEMELDET``, und das ist keine Nachlaessigkeit.** Die

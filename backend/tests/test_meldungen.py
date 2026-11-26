@@ -47,6 +47,12 @@ def _stellen() -> list[tuple[str, int, str]]:
     for datei in sorted(APP.rglob("*.py")):
         if "__pycache__" in datei.parts:
             continue
+        # ⚠️ **Die gemeinsamen Module (``app/vendor``) sind ausgenommen, und zwar begruendet.** Sie geben ihre
+        # Ablehnungen als ``{"code", "message"}``; die Oberflaeche uebersetzt ueber ``code`` mit den Wortlauten des
+        # Moduls (``frontend/src/vendor/*/*.json``), den englischen Satz sieht nur, wer die Antwort roh liest.
+        # Geaendert werden sie nur in bauplaene, nie hier.
+        if "vendor" in datei.relative_to(APP).parts:
+            continue
         baum = ast.parse(datei.read_text(encoding="utf-8"))
         rel = datei.relative_to(APP.parent).as_posix()
 
@@ -84,6 +90,14 @@ def _ueber_das_kontenmodul() -> set[str]:
     from app.services.konten_store import ALTE_KENNUNGEN
 
     return set(ALTE_KENNUNGEN.values())
+
+
+def _ueber_das_mailmodul() -> set[str]:
+    """Die alten Kennungen, unter denen nexmail Ablehnungen des Mailmoduls nach aussen gibt
+    (``kontenpost._postfehler``): seit post 1.1.0 verschickt nur noch das Modul, nexmail bildet seine Kennungen ab."""
+    from app.services.kontenpost import _ALTE_POSTKENNUNGEN, POSTKENNUNG_SONST
+
+    return set(_ALTE_POSTKENNUNGEN.values()) | {POSTKENNUNG_SONST}
 
 
 def test_kein_satz_fuer_menschen_im_server():
@@ -128,7 +142,7 @@ def test_jede_kennung_steht_im_katalog():
     ⚠️ **In beiden Sprachen.** Nur eine zu pflegen heisst: In der anderen steht
     ``ordner_name_fehlt`` auf dem Bildschirm.
     """
-    genannt = {text for _, _, text in _stellen() if KENNUNG.match(text)} | _ueber_das_kontenmodul()
+    genannt = {text for _, _, text in _stellen() if KENNUNG.match(text)} | _ueber_das_kontenmodul() | _ueber_das_mailmodul()
     de, en = _katalog("de"), _katalog("en")
 
     fehlt_de = sorted(genannt - set(de))
@@ -143,7 +157,7 @@ def test_der_katalog_traegt_keine_leichen():
     ⚠️ **Sonst traut sich niemand mehr, etwas zu löschen.** Ein Katalog, in dem
     die Hälfte tot ist, wird nur noch ergänzt.
     """
-    genannt = {text for _, _, text in _stellen() if KENNUNG.match(text)} | _ueber_das_kontenmodul()
+    genannt = {text for _, _, text in _stellen() if KENNUNG.match(text)} | _ueber_das_kontenmodul() | _ueber_das_mailmodul()
     uebrig = sorted(set(_katalog("de")) - genannt)
     assert not uebrig, f"Im Katalog, aber im Server nirgends genannt: {uebrig}"
 

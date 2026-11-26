@@ -360,6 +360,19 @@ def init_db() -> None:
     neue_spalten = _fehlende_spalten()
     if neue_spalten:
         logger.info("Schema updated, columns added: %s", ", ".join(neue_spalten))
+    if "benutzer.theme" in neue_spalten:
+        # ⚠️ **E23, genau einmal (mit der Spalte von konten 1.1.0):** Adressen von vor dem Update gelten als
+        # bestaetigt. Sonst zeigte das Profil jedem Bestandskonto „Adresse noch nicht bestaetigt", obwohl die
+        # Adresse seit Jahren gilt. Neu eingetragene, noch nicht bestaetigte Adressen bleiben unbestaetigt.
+        with engine.begin() as verbindung:
+            bewiesen = verbindung.execute(
+                text(
+                    "UPDATE benutzer SET kontaktadresse_bewiesen = 1 "
+                    "WHERE kontaktadresse != '' AND kontaktadresse_zaehlt = 1"
+                )
+            ).rowcount
+        if bewiesen:
+            logger.info("Addresses of before the update count as confirmed: %s", bewiesen)
 
     # ⚠️ **Nach den Spalten.** Ein Index kann auf einer Spalte stehen,
     # die es eine Zeile weiter oben noch nicht gab.

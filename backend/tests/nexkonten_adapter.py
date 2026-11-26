@@ -38,7 +38,8 @@ class Adapter(StandardAdapter):
     lock_after: int | None = 10
     #: Was nexmail nicht hat (konten 0.3.2): keine gesperrten Konten (ein Konto ist da oder entfernt), kein zweiter
     #: Faktor je Konto (nur der Schalter fuer alle), keine Einladungen fuer mehrere.
-    blocking = False
+    #: Seit konten 1.1.0 sperrt der Betreiber Konten (``gesperrt_seit``) und loescht sie mit 30 Tagen zum Zurueckholen.
+    blocking = True
     required_second_factor = False
     reusable_invites = False
 
@@ -76,10 +77,6 @@ class Adapter(StandardAdapter):
         picture: bool = False,
         second_factor: str = "none",
     ) -> Any:
-        if blocked:
-            # Nur noch Vertragstests ohne Abfrage von ``blocking`` kommen hierher (test_no_link_goes_out_where_it_must_not
-            # mit ``blocked``, konten 0.3.2): nexmail hat keine gesperrten Konten.
-            pytest.skip("nexmail blocks no accounts (an account is there or removed)")
         from app.db import SessionLocal
         from app.models import Benutzer, utcnow
         from app.services import benutzer as benutzerdienst
@@ -97,6 +94,7 @@ class Adapter(StandardAdapter):
                 profilbild=png() if picture else None,
                 profilbild_am=utcnow() if picture else None,
                 totp_bestaetigt=second_factor == "active",
+                gesperrt_seit=utcnow() if blocked else None,
             )
             db.add(person)
             db.flush()
@@ -437,6 +435,73 @@ class Adapter(StandardAdapter):
                 db.commit()
             klient.cookies.set(sitzungsdienst.COOKIE_NAME, token)
         return klient.get(f"/api/auth/profilbild/{owner}").status_code
+
+    # --- konten 1.1.0 -----------------------------------------------------------------------------------------------
+
+    def age_deletion(self, account_id: Any, days: int) -> None:
+        from app.db import SessionLocal
+        from app.models import Benutzer
+
+        with SessionLocal() as db:
+            zeile = db.get(Benutzer, str(account_id))
+            zeile.geloescht_am = zeile.geloescht_am - timedelta(days=days)
+            db.commit()
+
+    def provider_active(self, on: bool) -> None:
+        """Ein Anbieter in ``oidc_anbieter`` (aktiv oder aus), wie ihn der Betreiber anlegt."""
+        from app.db import SessionLocal
+        from app.models import OidcAnbieter
+
+        with SessionLocal() as db:
+            for zeile in db.query(OidcAnbieter).all():
+                db.delete(zeile)
+            db.flush()
+            db.add(
+                OidcAnbieter(
+                    kuerzel="probe",
+                    anzeigename="Probe",
+                    issuer="https://auth.example.com/application/o/nexmail/",
+                    client_id="nexmail",
+                    aktiv=on,
+                    eingeschaltet=on,
+                )
+            )
+            db.commit()
+
+    def readiness(self, operator: Any) -> dict[str, Any]:
+        """Ueber ``GET /api/server/sign-in/readiness``, angemeldet als dieser Betreiber, ueber https."""
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        klient = TestClient(app, base_url="https://testserver")
+        self._anmelden_als(klient, operator)
+        antwort = klient.get("/api/server/sign-in/readiness")
+        assert antwort.status_code == 200, antwort.text
+        return antwort.json()
+
+    @staticmethod
+    def _anmelden_als(klient: Any, account_id: Any) -> None:
+        """Eine bestaetigte Browser-Sitzung fuer das Konto, als Cookie dieses Klienten (wie nach dem Anmelden)."""
+        import secrets
+
+        from app.db import SessionLocal
+        from app.models import Sitzung, utcnow
+        from app.services import sitzung as sitzungsdienst
+
+        token = secrets.token_urlsafe(32)
+        with SessionLocal() as db:
+            db.add(
+                Sitzung(
+                    benutzer_id=str(account_id),
+                    token_hash=sitzungsdienst._hash(token),
+                    bestaetigt=True,
+                    art="browser",
+                    gueltig_bis=utcnow() + timedelta(days=1),
+                )
+            )
+            db.commit()
+        klient.cookies.set(sitzungsdienst.COOKIE_NAME, token)
 
 
 def _postausgang_einrichten() -> None:

@@ -149,6 +149,33 @@ def riegel_setzen(eingabe: Riegel, person: Betreiber, db: DbSession) -> Riegel:
     return Riegel(erlaubt=app_kopplung.erlauben(db, eingabe.erlaubt))
 
 
+class GekoppeltesGeraet(BaseModel):
+    id: str
+    geraet: str
+    zuletzt_gesehen: datetime
+    #: Ob das Geraet Mitteilungen bekommt (es hat sich beim Push-Vermittler angemeldet).
+    mitteilungen: bool
+
+
+@router.get("/geraete", response_model=list[GekoppeltesGeraet])
+def geraete(person: AngemeldeterBenutzer, db: DbSession) -> list[GekoppeltesGeraet]:
+    """Die gekoppelten iPhones und iPads dieses Kontos (Mein Konto › Verbindungen, Karte „Geraete"). Trennen geht
+    ueber ``DELETE /api/sitzungen/{id}`` wie bisher."""
+    from sqlalchemy import select
+
+    from ..models import Sitzung, utcnow
+
+    zeilen = db.scalars(
+        select(Sitzung)
+        .where(Sitzung.benutzer_id == person.id, Sitzung.art == "geraet", Sitzung.gueltig_bis > utcnow())
+        .order_by(Sitzung.zuletzt_gesehen.desc())
+    )
+    return [
+        GekoppeltesGeraet(id=z.id, geraet=z.geraet or "", zuletzt_gesehen=z.zuletzt_gesehen, mitteilungen=bool(z.push_ticket))
+        for z in zeilen
+    ]
+
+
 @router.get("/{kennung}", response_model=KopplungStand)
 def stand(kennung: str, person: AngemeldeterBenutzer, db: DbSession) -> KopplungStand:
     """Ist der Code abgeholt? Die Seite fragt das alle paar Sekunden."""
