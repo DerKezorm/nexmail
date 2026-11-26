@@ -753,7 +753,7 @@ def _vorgang_ergaenzen(
         if zeile is None:
             if fehler is None or gesendet is None:
                 return
-            # TODO ki 0.1.0: eine unlesbare Antwort (kein JSON) schreibt das Modul nicht in „Was ging hinaus"
+            # TODO ki 0.1.1 (noch offen seit 0.1.0): eine unlesbare Antwort (kein JSON) schreibt das Modul nicht in „Was ging hinaus"
             # (``client.ask``), obwohl der Text draußen war (K5). Bis das Modul es tut, schreibt nexmail die Zeile.
             modell, auftrag, system, user = gesendet
             text = json.dumps({"system": system, "user": user}, ensure_ascii=False)

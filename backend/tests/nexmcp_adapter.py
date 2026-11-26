@@ -6,7 +6,7 @@ The operator can take AI from an account ("KI erlaubt"), so ``has_ai``.
 
 ⚠️ **Mailboxes are required on an MCP key made by hand** (plan: "Bereiche = Postfächer (Pflicht wie heute)",
 ``KeyKind.areas_required``), while the contract's ``mcp_key`` sends none. The clients here add the account's mailboxes
-to a new MCP key that names none, the way nexmail's page makes one (TODO mcp 1.1.0, see ``einst-fragen``). Every other
+to a new MCP key that names none, the way nexmail's page makes one (TODO mcp 1.1.1, open since 1.1.0, see ``einst-fragen``). Every other
 request goes to the real routes unchanged.
 """
 

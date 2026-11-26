@@ -1,4 +1,4 @@
-"""nexki contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of ki 0.1.0).
+"""nexki contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of ki 0.1.1).
 
 nexmail before the module: each account its own AI service (``Benutzer.ki_url``/``ki_modell``/``ki_schluessel``
 sealed with ``benutzer:<id>:ki``, ``ki_aktiv``), the operator's main switch ``einstellung.ki_erlaubt``, "KI erlaubt"
@@ -8,8 +8,10 @@ per account ``Benutzer.ki_erlaubt``; so its older form is ``own``. The module's 
 ⚠️ **The button tasks run through nexmail's own function** (``kidienst.text_bearbeiten``, the editor's "Rechtschreibung"),
 whose routes (``/api/ki/text``) keep their German codes and status 400 (E55). The contract reads the module's codes and
 statuses; ``manual`` therefore calls the function and answers with the module's refusal it carries (``KiFehler.modul``)
-in the module's form (TODO ki 0.1.0, see ``einst-fragen``). nexmail has **no automatic task**; ``automatic`` skips by
-name (TODO ki 0.1.0). The network rules themselves are not bent: every request goes through ``nexki.ask``.
+in the module's form. ``old_codes`` of ki 0.1.1 does not reach this: the contract reads ``detail.code`` from an object,
+nexmail's old routes answer ``detail`` as a plain string (E55); rest kept on purpose (TODO ki 0.1.1, see
+``einst-fragen``). nexmail has **no automatic task**; ``automatic`` skips by name (the contract has no flag for it; TODO
+ki 0.1.1). The network rules themselves are not bent: every request goes through ``nexki.ask``.
 """
 
 from __future__ import annotations
@@ -149,7 +151,7 @@ class Adapter(StandardAdapter):
         return self._antwort(ausfuehren)
 
     def automatic(self, role: str, text: str) -> Any:
-        pytest.skip("nexmail has no automatic AI task; TODO ki 0.1.0")
+        pytest.skip("nexmail has no automatic AI task; TODO ki 0.1.1")
 
     def app_refused(self, role: str, text: str) -> Any:
         """nexmail's own check: received mail goes to the AI only with the person's tick for it (the operator's
