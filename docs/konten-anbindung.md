@@ -323,10 +323,16 @@ Antwort-Test schickt seine eigene Probe-Mail und läuft damit auch allein.
 Vorlagen von Hand nachgezogen (nur die Werte der App weichen ab). nexmail nutzt die neuen Plätze `newSignInMailHint`,
 `offAction`, `made` nicht.
 
+**E59 (3f8605c):** sprachen 1.0.2 (2a565f5): die Vorlage trägt nur Texte (`texts_only`, `textsOnly`). Der
+Adapter gibt mit `offered_template()` dieselben englischen Texte wie die Seite (en.json, Anmeldung, Kontenmodul,
+Mailmodul); der neue Vertragstest `test_nexsprachen_template.py` ist grün. In `nexsprachen.test.tsx` ist `ENGLISH`
+genau `englischeTexte()`, also das, was `Sprachen()` in `Verwaltung.tsx` an `LanguagesCard template` gibt. Einen
+Cast an `template` gab es in nexmail nicht.
+
 **Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 86a0cce, E45 bis E49 (ohne ruff, nexmail
-hat keins; pytest ohne xdist; zuletzt nach den Galerie-Funden): pytest 3305 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
+hat keins; pytest ohne xdist; zuletzt nach E59): pytest 3307 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
-schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 450
+schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 452
 grün in 47 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
 Schlüssel über den alten Weg, gesperrter Schlüssel über `/api/v1`, gelöschtes Konto ohne Post, fremder Browser nicht
 entfernbar, die Adressfrage beim Wiederherstellen (verschlüsselt und eigene Sicherung), die Rückkehradressen der
