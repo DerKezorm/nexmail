@@ -304,11 +304,15 @@ und `summary` aller 394 Wege des Stands `konten` fest (`openapi_namen_konten.jso
 (`openapi-namen/vergleichen.py`) zeigt nur Zusätze. Das Schema `Gefunden` (zwei gleichnamige Klassen in
 `routers/kalender.py` und `routers/adressbuecher.py`) heißt auf beiden Ständen `app__routers__adressbuecher__Gefunden`.
 
+**Galerie-Funde Endlauf:** `AccountButton` gibt die Größe aus konten-`BUTTONS` weiter (`buttonSize`, wie nexnotes;
+„Verwalten“ und die anderen kleinen Knöpfe `sm`, Test `components/AccountButton.test.tsx`); zwischen den Karten von
+Profil und Sicherheit 24 px wie überall (`gap-6`).
+
 **Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 86a0cce, E45 bis E49 (ohne ruff, nexmail
-hat keins; pytest ohne xdist; zuletzt nach E53, sicherung 6edff85): pytest 3305 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
+hat keins; pytest ohne xdist; zuletzt nach den Galerie-Funden): pytest 3305 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
-schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 443
-grün in 46 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
+schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 445
+grün in 47 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
 Schlüssel über den alten Weg, gesperrter Schlüssel über `/api/v1`, gelöschtes Konto ohne Post, fremder Browser nicht
 entfernbar, die Adressfrage beim Wiederherstellen (verschlüsselt und eigene Sicherung), die Rückkehradressen der
 Anbieter, kein Push und kein Abgleich für ein Konto, das draußen ist. Test „Bestand“ unverändert. **Playwright nicht
