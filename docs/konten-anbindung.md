@@ -349,7 +349,7 @@ Anbieter, kein Push und kein Abgleich für ein Konto, das draußen ist. Test „
 gelaufen** (hier kein Browser); die Specs unter `frontend/tests` sind auf den Bausatz umgestellt und nur mit `tsc`
 geprüft.
 
-## 0i. Durchgang „Module“ (`sicherung` 1.0.4, `ui` 1.1.1, `schluessel` 1.1.0, `updates` 0.1.2, `mcp` 1.1.1, `ki` 0.1.1, `verbinden` 0.1.3)
+## 0i. Durchgang „Module“ (`sicherung` 1.0.4, `ui` 1.1.1, `schluessel` 1.1.1, `updates` 0.1.2, `mcp` 1.1.2, `ki` 0.1.1, `verbinden` 0.1.4)
 
 Am 26.11.2026 auf dem Zweig `einst-module` (Worktree `nexmail-module`), Module aus `bauplaene-module` (`einst-module`,
 zuletzt `de70ac2`), je Modul `sync.py check` ok. Grundlage: Bauplan Einstellungen E61 bis E64, Entwurf Update-Prüfung
@@ -377,6 +377,11 @@ Nachzug 9bc9f73: updates 0.1.2 (`has_bell = False`, `UpdateSetupRow bell={false}
 Prüfsumme bei `approve`, `describe(arguments, caller)` mit Namen in der Sprache des Kontos, Mitteilung nur mit der Art
 des Werkzeugs), verbinden 0.1.3 (`people.read`, Hostregel; nexmail nutzt den Zweck nicht), ki 0.1.1 (keine Änderung an
 nexmails Wegen; `old_codes` greift nicht, siehe einst-fragen Nr. 14).
+
+Nachzug 80a3dd0: schluessel 1.1.1 (ein Wortlaut für Bereiche), mcp 1.1.2 (`key_defaults` mit den Postfächern im
+Vertrag, `sender` ohne `NEXMAIL_CLIENT_IP` leer, falsche Schlüssel dann je Schlüssel), verbinden 0.1.4
+(`on_disconnected` löst nextasks-, nextime-Verbindung und nexfolk-Bücher einer beendeten Klick-Verbindung,
+`set_local_allowed` für den Haken „Verbindungen ins eigene Netz“).
 
 ## 1. Bestand heute (0.33.0)
 
