@@ -31,6 +31,9 @@ from test_ki_nachdenken import (  # noqa: F401  (Fixtures)
 )
 from test_kidienst import TextDoppelgaenger
 
+#: Modul ki 0.1.0: eine Installation von vorher („Jedes Konto selbst“, Rechner auf der Liste, DNS der Tests).
+pytestmark = pytest.mark.usefixtures("ki_wie_vorher")
+
 #: Die Sätze, wie OpenAI sie schreibt.
 GRENZE = (
     "Unsupported parameter: 'max_tokens' is not supported with this model. "
@@ -93,10 +96,9 @@ def test_neues_modell_bekommt_die_grenze_unter_neuem_namen(db, person):
     # Dritte: die Temperatur fällt, wie bisher.
     assert "temperature" not in dritte
     assert {k: v for k, v in zweite.items() if k != "temperature"} == dritte
-    # In „Was hinausging" steht der Rumpf, der die Antwort gebracht hat.
+    # In „Was hinausging" stehen seit dem Modul ki Anweisungen und Text (K5), nicht die Felder der Anfrage.
     gemerkt = dienst.vorgaenge_lesen(db, person)[0]["rumpf"]
-    assert gemerkt["max_completion_tokens"] == dritte["max_completion_tokens"]
-    assert "max_tokens" not in gemerkt
+    assert gemerkt["messages"] == dritte["messages"]
 
 
 def test_auch_beim_zusammenfassen(db, person):

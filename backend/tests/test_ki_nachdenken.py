@@ -25,6 +25,9 @@ from app.services import kidienst as dienst
 from conftest import einrichten
 from test_kidienst import SCHLUESSEL, TextDoppelgaenger
 
+#: Modul ki 0.1.0: eine Installation von vorher („Jedes Konto selbst“, Rechner auf der Liste, DNS der Tests).
+pytestmark = pytest.mark.usefixtures("ki_wie_vorher")
+
 LOKAL = "http://10.0.0.20:11434/v1/"
 DRAUSSEN = "https://api.example.com/v1/"
 
@@ -49,6 +52,11 @@ def namen(monkeypatch):
         ]
 
     monkeypatch.setattr(dienst.socket, "getaddrinfo", aufloesen)
+    # Das Modul ki löst selbst auf (``nexki.client.resolver``), aus derselben Tabelle.
+    from app.vendor import nexki
+    from conftest import ki_aufloesen
+
+    monkeypatch.setattr(nexki.client, "resolver", ki_aufloesen(NAMEN))
 
 
 @pytest.fixture(autouse=True)
@@ -143,8 +151,8 @@ def test_ein_dienst_im_eigenen_netz_soll_nicht_nachdenken(db, person):
     server = TextDoppelgaenger()
     _bearbeiten(db, person, server.transport())
     assert server.anfragen[0][2]["reasoning_effort"] == "none"
-    # Und in „Was hinausging" steht es auch, denn es ging hinaus.
-    assert dienst.vorgaenge_lesen(db, person)[0]["rumpf"]["reasoning_effort"] == "none"
+    # In „Was hinausging" stehen seit dem Modul ki Anweisungen und Text (K5), nicht die Felder der Anfrage.
+    assert dienst.vorgaenge_lesen(db, person)[0]["rumpf"]["messages"] == server.anfragen[0][2]["messages"]
 
 
 def test_auch_beim_zusammenfassen(db, person):
@@ -213,7 +221,8 @@ def test_jedes_feld_hoechstens_einmal(db, person):
     with pytest.raises(dienst.KiFehler) as f:
         _bearbeiten(db, person, httpx.MockTransport(stur))
     assert len(anfragen) == 2
-    assert f.value.kennung == "ki_dienst_sagt"
+    # Modul ki: die eigenen Worte eines Dienstes nur aus dem Internet; im eigenen Netz bleibt es bei der Kennung.
+    assert f.value.kennung == "ki_dienst_antwortet_nicht"
 
 
 def test_eine_andere_400_geht_nicht_noch_einmal_hinaus(db, person):
@@ -295,4 +304,4 @@ def test_die_adresse_meldet_den_satz(klient, db, person, monkeypatch):
     assert antwort.json()["detail"] == "ki_antwort_aufgebraucht"
     zeile = klient.get("/api/ki/vorgaenge").json()[0]
     assert zeile["fehler"] == "ki_antwort_aufgebraucht"
-    assert zeile["rumpf"]["reasoning_effort"] == "none"
+    assert server.anfragen[0][2]["reasoning_effort"] == "none" and zeile["rumpf"]["messages"]

@@ -128,9 +128,10 @@ def modelle(
     wache = anmeldebremse.torwaechter(request, "ki-modelle", person.benutzername)
     wache.fehlgeschlagen()
 
-    schluessel = eingabe.schluessel.strip() or kidienst.schluessel_lesen(person)
+    # Seit dem Modul ki geht der gespeicherte Schlüssel nur an die gespeicherte Adresse; eine andere getippte Adresse
+    # bekommt nur einen mitgetippten.
     try:
-        gefunden = kidienst.modelle_holen(eingabe.url, schluessel)
+        gefunden = kidienst.modelle_holen(person, db, eingabe.url, eingabe.schluessel)
     except kidienst.KiFehler as fehler:
         raise MeldungHttp.aus(fehler, status.HTTP_400_BAD_REQUEST) from fehler
     return [Modell(**m) for m in gefunden]

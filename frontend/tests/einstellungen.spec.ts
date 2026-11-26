@@ -177,8 +177,9 @@ test('Jeder Bereich geht auf, mit Inhalt und ohne Fehler', async ({ page }, info
     ['Abwesenheit', [/beantwortet Post nur, solange/]],
     ['Schlagworte', [/Noch keine Schlagworte|Mails mit dieser Marke/]],
     // Der persönliche Teil bleibt unter Mein Konto, der Server-Teil heißt „KI-Anbieter“ (nur Betreiber).
-    ['KI', [/^Dienst$/]],
-    ['KI-Anbieter', [/KI-Dienste für alle Benutzer/, /Eingegangene Mails für alle Benutzer/]],
+    // Seit dem Modul ki 0.1.0 (E61): beide Bereiche aus dessen Karten, dazu nexmails Karte „Eingegangene Post“.
+    ['KI', [/^Was ging hinaus$/, /Meine eingegangenen Mails/]],
+    ['KI-Anbieter', [/^Wer KI nutzen darf$/, /KI auf diesem Server erlaubt/, /Eingegangene Mails für alle Benutzer/]],
     // Die öffentliche Adresse steht nur noch unter Anmeldung; die Zeitzone des Servers ist nexmails eigene Karte.
     ['Allgemein', [/Server im eigenen Netz/, /Text der Mail an Webhooks/, /Zeitzone des Servers/]],
     ['Anmeldung', [/authentik/i, /Öffentliche Adresse/]],

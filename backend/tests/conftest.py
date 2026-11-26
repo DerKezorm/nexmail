@@ -196,6 +196,65 @@ def anbieterbild_sofort(monkeypatch):
     monkeypatch.setattr(konten_store, "BILD_IM_FADEN", False)
 
 
+#: Ein Name „im Internet" für die KI-Tests: das DNS der Tests gibt ihn für ``*.example.com`` und ``*.example``.
+KI_OEFFENTLICH = "93.184.215.14"
+
+#: Rechner im eigenen Netz, die KI-Tests von vorher als eigenen Zugang nutzen; das Update setzt solche Rechner auf die
+#: Liste des Betreibers (Modul ki, K4), also stehen sie in einer Installation von vorher dort.
+KI_RECHNER = ["localhost:11434", "127.0.0.1:11434", "[::1]:11434", "10.0.0.20:11434", "[fd00::20]:11434",
+              "172.16.5.9:1234", "100.101.102.103:11434", "ollama:11434", "nas.local:11434", "ki.intern.example"]
+
+
+def ki_aufloesen(tabelle: dict[str, list[str]] | None = None):
+    """Das DNS der KI-Tests (``nexki.client.resolver``): Adressen bleiben, wie sie sind, ``localhost`` ist 127.0.0.1,
+    ``*.example(.com)`` liegt im Internet, sonst die ``tabelle``; Unbekanntes ist nicht auflösbar."""
+    import ipaddress
+
+    from app.vendor.nexki.net import Unreachable
+
+    def aufloesen(host: str, port: int) -> list[str]:
+        name = host.strip("[]")
+        if tabelle and name in tabelle:
+            return list(tabelle[name])
+        try:
+            return [str(ipaddress.ip_address(name))]
+        except ValueError:
+            pass
+        if name == "localhost":
+            return ["127.0.0.1"]
+        if tabelle is None and (name.endswith(".example.com") or name.endswith(".example")):
+            return [KI_OEFFENTLICH]
+        raise Unreachable(name)
+
+    return aufloesen
+
+
+def ohne_rahmen(text: str) -> str:
+    """Der Text zwischen den zwei Zeilen der Zufallsmarke, mit denen das Modul ki Material rahmt (``nexki.frame``)."""
+    zeilen = text.splitlines()
+    assert len(zeilen) >= 3 and zeilen[0] == zeilen[-1] and zeilen[0].startswith("TEXT-"), text[:80]
+    return "\n".join(zeilen[1:-1])
+
+
+@pytest.fixture
+def ki_wie_vorher(monkeypatch):
+    """KI-Tests aus der Zeit vor dem Modul ki 0.1.0: eine nexmail-Installation von vorher, also „Jedes Konto selbst"
+    (das Update schreibt das fest, K2), die bisher genutzten Rechner im eigenen Netz auf der Liste (K4), und ein DNS,
+    das keine Leitung braucht."""
+    import json
+
+    from app.db import SessionLocal, einstellung_schreiben
+    from app.vendor import nexki
+
+    monkeypatch.setattr(nexki.client, "resolver", ki_aufloesen())
+    nexki.brake.BRAKE.forget()
+    with SessionLocal() as sitzung:
+        einstellung_schreiben(sitzung, "ki_mode", json.dumps("own"))
+        einstellung_schreiben(sitzung, "ki_hosts", json.dumps(KI_RECHNER))
+    yield
+    nexki.brake.BRAKE.forget()
+
+
 @pytest.fixture
 def db():
     with SessionLocal() as sitzung:

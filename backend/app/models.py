@@ -211,6 +211,8 @@ class Benutzer(Base):
     #: Verschluesselt, Kontext ``benutzer:<id>:ki``. Er oeffnet ein fremdes
     #: Konto mit einer Rechnung daran — also ein Passwort.
     ki_schluessel: Mapped[str] = mapped_column(Text, default="")
+    #: Modul ki 0.1.0: die Schnittstelle des eigenen Zugangs, ``openai`` (wie bisher jeder) oder ``messages``.
+    ki_api: Mapped[str] = mapped_column(String(16), default="openai", server_default="openai")
 
     #: TOTP-Geheimnis, verschluesselt (Kontext ``benutzer:<id>:totp``).
     totp_geheimnis: Mapped[str] = mapped_column(Text, default="")
@@ -2210,6 +2212,12 @@ class KiVorgang(Base):
     #: rohem Platzhalter** („mit {{code}} geantwortet"). Verschlüsselt, weil
     #: ``gesagt`` fremder Text ist und Teile des Entwurfs wiederholen kann.
     fehler_werte: Mapped[str] = mapped_column(Text, default="")
+    #: Modul ki 0.1.0: ``modul`` fuer Zeilen, die das Modul schrieb (``rumpf`` dann System und Text als JSON,
+    #: versiegelt mit ``benutzer:<id>:ki:events``, leer bei einem automatischen Auftrag); leer fuer Zeilen von
+    #: vorher (Rumpf der Anfrage, Kontext ``benutzer:<id>:ki-vorgang``). Beide bleiben lesbar.
+    form: Mapped[str] = mapped_column(String(8), default="", server_default="")
+    #: Wohin es ging: der Rechner im Internet oder ``local`` (nur Zeilen des Moduls).
+    an: Mapped[str] = mapped_column(String(255), default="", server_default="")
 
 
 class PushAnmeldung(Base):

@@ -324,6 +324,16 @@ async def lebenslauf(_: FastAPI):
     nexsicherung.space.warn_at_start()
 
     init_db()
+    # Modul ki 0.1.0: was nie gespeichert war, einmal festschreiben (Weg „Jedes Konto selbst", wo Konten eigene Zugänge
+    # haben; Rechner dieser Zugänge im eigenen Netz auf die Liste des Betreibers, K2, K4). Ein zweiter Start ändert nichts.
+    from .services import ki_store
+    from .vendor import nexki
+
+    with SessionLocal() as db:
+        try:
+            nexki.settings.adopt(ki_store.store_fuer(db), ki_store.CONFIG)
+        except Exception:  # noqa: BLE001 - die KI ist Nebensache, der Start geht vor
+            logger.exception("Adopting the AI settings of before failed.")
     # Ohne Konto: der Einrichtungscode ins Protokoll, bei jedem Start (Kontenmodul).
     from .services import konten_store
     from .vendor import nexkonten
@@ -758,6 +768,26 @@ app.include_router(
         sender=lambda request: _adresse_von(request) or (request.client.host if request.client else ""),
         notify=_mcp_hinweis.melden,
     )
+)
+# KI-Anbieter (Modul ki 0.1.0): Server › KI-Anbieter unter ``/api/server/ai`` (Betreiber), Mein Konto › KI unter
+# ``/api/me/ai``. Die alten Wege ``/api/ki/…`` bleiben mit ihren Kennungen und rufen dieselben Funktionen.
+from .services import ki_store as _ki_store  # noqa: E402
+from .vendor.nexki import api as nexki_api  # noqa: E402
+
+
+def _ki_store_fuer(db: DbSession):
+    return _ki_store.store_fuer(db)
+
+
+app.include_router(
+    nexki_api.router(
+        config=_ki_store.CONFIG,
+        store=_ki_store_fuer,
+        account=angemeldet,
+        operator=nur_betreiber,
+        account_id=lambda person: person.id,
+    ),
+    dependencies=NUR_ANGEMELDET,
 )
 # Die Wege des Moduls sicherung (``/api/server/storage``), nur für Betreiber.
 app.include_router(sicherung.modul_router, dependencies=NUR_ANGEMELDET)

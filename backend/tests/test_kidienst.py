@@ -20,7 +20,10 @@ import pytest
 from app.models import Benutzer, KiVorgang, utcnow
 from app.services import anmeldebremse
 from app.services import kidienst as dienst
-from conftest import einrichten
+from conftest import ohne_rahmen, einrichten
+
+#: Modul ki 0.1.0: eine Installation von vorher („Jedes Konto selbst“, Rechner auf der Liste, DNS der Tests).
+pytestmark = pytest.mark.usefixtures("ki_wie_vorher")
 
 SCHLUESSEL = "sk-probe-XXXXXXXX"
 
@@ -103,9 +106,9 @@ def test_das_eigene_netz_ist_hier_erlaubt():
 # --- Die Modellliste ------------------------------------------------------ #
 
 
-def test_die_liste_kommt_mit_lesbaren_namen():
+def test_die_liste_kommt_mit_lesbaren_namen(person, db):
     server = Doppelgaenger()
-    raus = dienst.modelle_holen("https://api.example.com/v1/", SCHLUESSEL, server.transport())
+    raus = dienst.modelle_holen(person, db, "https://api.example.com/v1/", SCHLUESSEL, server.transport())
 
     assert [m["id"] for m in raus] == ["claude-opus-5", "gpt-4.1-mini"]
     # ⚠️ Wo der Dienst einen Namen liefert, wird er gezeigt; sonst die Kennung.
@@ -113,32 +116,33 @@ def test_die_liste_kommt_mit_lesbaren_namen():
     assert raus[1]["name"] == ""
 
 
-def test_gefragt_wird_unter_models():
+def test_gefragt_wird_unter_models(person, db):
     server = Doppelgaenger()
-    dienst.modelle_holen("https://api.example.com/v1/", SCHLUESSEL, server.transport())
-    assert server.anfragen[0][0] == "https://api.example.com/v1/models"
+    dienst.modelle_holen(person, db, "https://api.example.com/v1/", SCHLUESSEL, server.transport())
+    # Modul ki: verbunden wird mit der geprüften Adresse, der Name steht im Host-Kopf.
+    assert server.anfragen[0][0].endswith("/v1/models") and server.anfragen[0][1]["host"] == "api.example.com"
 
 
-def test_beide_kopfzeilen_gehen_mit():
-    """⚠️ **Bearer UND x-api-key.** Die Norm will das erste, Anthropic nimmt
-    daneben das zweite; beides zu schicken erspart eine Fallunterscheidung nach
-    Anbieter — und die wäre eine Anbieterliste im Server."""
+def test_der_schluessel_geht_als_bearer_mit(person, db):
+    """Bis zum Modul ki gingen Bearer UND x-api-key mit; seit dem Modul nur das, was die Form verlangt."""
     server = Doppelgaenger()
-    dienst.modelle_holen("https://api.example.com/v1/", SCHLUESSEL, server.transport())
+    dienst.modelle_holen(person, db, "https://api.example.com/v1/", SCHLUESSEL, server.transport())
 
     kopf = server.anfragen[0][1]
     assert kopf["authorization"] == f"Bearer {SCHLUESSEL}"
-    assert kopf["x-api-key"] == SCHLUESSEL
+    # Modul ki: die OpenAI-Form trägt den Schlüssel nur als Bearer (Anthropic hat dafür die eigene Form „messages“,
+    # und auch seine OpenAI-Tür nimmt Bearer); ``x-api-key`` geht nur mit der Form ``messages`` hinaus.
+    assert "x-api-key" not in kopf
 
 
-def test_ohne_schluessel_geht_keine_kopfzeile_mit():
+def test_ohne_schluessel_geht_keine_kopfzeile_mit(person, db):
     """Ollama verlangt keinen — eine leere Kopfzeile weisen manche Server ab."""
     server = Doppelgaenger()
-    dienst.modelle_holen("http://localhost:11434/v1/", "", server.transport())
+    dienst.modelle_holen(person, db, "http://localhost:11434/v1/", "", server.transport())
     assert "authorization" not in server.anfragen[0][1]
 
 
-def test_ein_falscher_schluessel_wird_benannt():
+def test_ein_falscher_schluessel_wird_benannt(person, db):
     """⚠️ **401 heißt Schlüssel, 404 heißt Adresse.** „Es hat nicht geklappt"
     schickt den Menschen an die falsche Stelle."""
     for code, kennung in (
@@ -148,42 +152,42 @@ def test_ein_falscher_schluessel_wird_benannt():
     ):
         server = Doppelgaenger(status=code)
         with pytest.raises(dienst.KiFehler) as f:
-            dienst.modelle_holen("https://api.example.com/v1/", SCHLUESSEL, server.transport())
+            dienst.modelle_holen(person, db, "https://api.example.com/v1/", SCHLUESSEL, server.transport())
         assert f.value.kennung == kennung
 
 
-def test_ein_dienst_ohne_liste_ist_keine_sackgasse():
+def test_ein_dienst_ohne_liste_ist_keine_sackgasse(person, db):
     """⚠️ Manche Vermittler können ``/models`` nicht. Dann trägt man den Namen
     von Hand ein — dafür braucht es eine eigene Kennung, nicht „ging nicht"."""
     server = Doppelgaenger(listet=False)
     with pytest.raises(dienst.KiFehler) as f:
-        dienst.modelle_holen("https://api.example.com/v1/", SCHLUESSEL, server.transport())
+        dienst.modelle_holen(person, db, "https://api.example.com/v1/", SCHLUESSEL, server.transport())
     assert f.value.kennung == "ki_kennt_keine_liste"
 
 
-def test_eine_unlesbare_antwort_wird_benannt():
+def test_eine_unlesbare_antwort_wird_benannt(person, db):
     for koerper in ({"modelle": []}, [], {"data": "nichts"}):
         server = Doppelgaenger(koerper=koerper)
         with pytest.raises(dienst.KiFehler) as f:
-            dienst.modelle_holen("https://api.example.com/v1/", SCHLUESSEL, server.transport())
+            dienst.modelle_holen(person, db, "https://api.example.com/v1/", SCHLUESSEL, server.transport())
         assert f.value.kennung == "ki_antwort_unlesbar"
 
 
-def test_eine_leere_liste_ist_kein_erfolg():
+def test_eine_leere_liste_ist_kein_erfolg(person, db):
     """Bei Ollama heisst das: Es wurde noch kein Modell geholt."""
     server = Doppelgaenger(koerper={"data": []})
     with pytest.raises(dienst.KiFehler) as f:
-        dienst.modelle_holen("https://api.example.com/v1/", SCHLUESSEL, server.transport())
+        dienst.modelle_holen(person, db, "https://api.example.com/v1/", SCHLUESSEL, server.transport())
     assert f.value.kennung == "ki_keine_modelle"
 
 
-def test_ein_stummer_dienst_wirft_keine_rohe_ausnahme():
+def test_ein_stummer_dienst_wirft_keine_rohe_ausnahme(person, db):
     def stumm(anfrage):
         raise httpx.ConnectError("nichts da")
 
     with pytest.raises(dienst.KiFehler) as f:
         dienst.modelle_holen(
-            "https://api.example.com/v1/", SCHLUESSEL, httpx.MockTransport(stumm)
+            person, db, "https://api.example.com/v1/", SCHLUESSEL, httpx.MockTransport(stumm)
         )
     assert f.value.kennung == "ki_nicht_erreichbar"
 
@@ -205,7 +209,8 @@ def test_ab_werk_ist_alles_aus(person):
 
 
 def test_der_schluessel_liegt_verschluesselt_da(db, person):
-    dienst.einstellung_schreiben(db, person, schluessel=SCHLUESSEL)
+    # Modul ki: ein Schlüssel gehört zu einer Adresse; ohne Adresse und Modell gibt es keinen Zugang.
+    dienst.einstellung_schreiben(db, person, url="https://api.example.com/v1/", modell="m-1", schluessel=SCHLUESSEL)
 
     assert person.ki_schluessel != SCHLUESSEL
     assert SCHLUESSEL not in person.ki_schluessel
@@ -213,7 +218,7 @@ def test_der_schluessel_liegt_verschluesselt_da(db, person):
 
 
 def test_der_schluessel_kommt_nie_zurueck(db, person):
-    dienst.einstellung_schreiben(db, person, schluessel=SCHLUESSEL)
+    dienst.einstellung_schreiben(db, person, url="https://api.example.com/v1/", modell="m-1", schluessel=SCHLUESSEL)
     stand = dienst.einstellung_lesen(person)
 
     assert stand["schluessel_da"] is True
@@ -234,7 +239,7 @@ def test_nicht_mitgeschickt_heisst_unveraendert(db, person):
 
 
 def test_eine_leere_zeichenkette_heisst_weg(db, person):
-    dienst.einstellung_schreiben(db, person, schluessel=SCHLUESSEL)
+    dienst.einstellung_schreiben(db, person, url="https://api.example.com/v1/", modell="a", schluessel=SCHLUESSEL)
     dienst.einstellung_schreiben(db, person, schluessel="")
     assert person.ki_schluessel == ""
 
@@ -307,21 +312,21 @@ def test_die_bremse_haengt_vor_dem_modellabruf(klient, db, person, monkeypatch):
     assert 429 in codes
 
 
-def test_der_gespeicherte_schluessel_wird_genommen(klient, db, person, monkeypatch):
+def test_der_gespeicherte_schluessel_wird_genommen(klient, db, person):
     """⚠️ Sonst müsste man ihn zum Modellwechsel neu eintippen — und wer ihn
-    nicht zur Hand hat, kommt nicht mehr an seine Liste."""
+    nicht zur Hand hat, kommt nicht mehr an seine Liste.
+
+    Seit dem Modul ki geht er dabei nur an die gespeicherte Adresse: Eine andere getippte Adresse bekommt keinen
+    Schlüssel (der Schlüssel folgt nicht der Adresse)."""
     dienst.erlauben(db, True)
-    klient.put("/api/ki", json={"url": "https://api.example.com/v1", "schluessel": SCHLUESSEL})
+    klient.put("/api/ki", json={"url": "https://api.example.com/v1", "modell": "m-1", "schluessel": SCHLUESSEL})
 
-    gesehen = []
-    monkeypatch.setattr(
-        dienst,
-        "modelle_holen",
-        lambda url, schluessel, *a, **k: gesehen.append(schluessel) or [{"id": "x", "name": ""}],
-    )
-    klient.post("/api/ki/modelle", json={"url": "https://api.example.com/v1"})
-
-    assert gesehen == [SCHLUESSEL]
+    server = Doppelgaenger()
+    with dienst.ersatz(server.transport()):
+        assert klient.post("/api/ki/modelle", json={"url": "https://api.example.com/v1"}).status_code == 200
+        assert klient.post("/api/ki/modelle", json={"url": "https://anderswo.example.com/v1"}).status_code == 200
+    assert server.anfragen[0][1]["authorization"] == f"Bearer {SCHLUESSEL}"
+    assert "authorization" not in server.anfragen[1][1]
 
 
 # --- Text bearbeiten ------------------------------------------------------- #
@@ -382,6 +387,9 @@ def bereit(db, person):
 def test_der_schalter_wird_im_server_geprueft(db, person):
     """⚠️ **Ein gesperrter Knopf ist keine Zusicherung.** Das ist die einzige
     Stelle, an der Text aus einer Mail das Haus verlässt."""
+    # Seit dem Modul ki prüft jede Anfrage die ganze Kette, auch den Riegel des Betreibers; er ist hier offen, damit
+    # der Schalter der Person geprüft wird.
+    dienst.erlauben(db, True)
     dienst.einstellung_schreiben(
         db, person, url="https://api.example.com/v1/", modell="m-1", schluessel=SCHLUESSEL
     )
@@ -399,8 +407,9 @@ def test_gefragt_wird_unter_chat_completions(bereit):
     dienst.text_bearbeiten(
         bereit, "<p>Hallo, hier steht Text</p>", auftrag="rechtschreibung", transport=server.transport()
     )
-    adresse, _, rumpf = server.anfragen[0]
-    assert adresse == "https://api.example.com/v1/chat/completions"
+    adresse, kopf, rumpf = server.anfragen[0]
+    # Modul ki: verbunden wird mit der geprüften Adresse, der Name steht im Host-Kopf.
+    assert adresse.endswith("/v1/chat/completions") and kopf["host"] == "api.example.com"
     assert rumpf["model"] == "m-1"
 
 
@@ -413,7 +422,8 @@ def test_der_text_geht_als_eigene_nachricht_hinaus(bereit):
     )
     _, _, rumpf = server.anfragen[0]
     rollen = {n["role"]: n["content"] for n in rumpf["messages"]}
-    assert rollen["user"] == "<p>Mein kurzer Entwurf</p>"
+    # Seit dem Modul ki zwischen zwei Zeilen einer Zufallsmarke (Material, nie Anweisung).
+    assert ohne_rahmen(rollen["user"]) == "<p>Mein kurzer Entwurf</p>"
     assert "Mein kurzer Entwurf" not in rollen["system"]
 
 
@@ -593,7 +603,8 @@ def test_eine_antwort_nur_aus_auszeichnung_ist_leer(bereit):
 
 def test_ein_stummer_dienst_wirft_keine_rohe_ausnahme(bereit):
     def platzen(anfrage):
-        raise httpx.ConnectTimeout("nichts")
+        # ConnectError: die Verbindung kam nie zustande. (Ein ConnectTimeout gilt im Modul ki als Zeitüberschreitung.)
+        raise httpx.ConnectError("nichts")
 
     with pytest.raises(dienst.KiFehler) as f:
         _mit(bereit, transport=httpx.MockTransport(platzen))
@@ -707,7 +718,7 @@ def test_der_satz_des_dienstes_kommt_mit_dem_fehler_zurueck(
     assert gesagt.startswith("temperature: not allowed xxx")
     assert len(gesagt) == dienst.MAX_GESAGT
     # Bodenschwelle: Das Protokoll kommt hier an, sonst prüfte die Zeile danach nichts.
-    assert "answered 400" in caplog.text
+    assert "outcome=http-400" in caplog.text
     assert "not allowed" not in caplog.text
     # Und die Liste „Was hinausging" bekommt dieselben Werte.
     zeile = klient.get("/api/ki/vorgaenge").json()[0]
@@ -781,11 +792,11 @@ def test_der_rumpf_steht_woertlich_darin(bereit, db):
     )
     rumpf = dienst.vorgaenge_lesen(db, bereit)[0]["rumpf"]
     rollen = {n["role"]: n["content"] for n in rumpf["messages"]}
-    assert rollen["user"] == "<p>Mein kurzer Entwurf</p>"
+    assert ohne_rahmen(rollen["user"]) == "<p>Mein kurzer Entwurf</p>"
     assert "Never invent, drop or alter a fact" in rollen["system"]
-    # Der Rumpf ist genau der, der hinausging.
+    # Modell und Nachrichten sind genau die, die hinausgingen (Modul ki, K5: Anweisungen und Text wörtlich).
     _, _, geschickt = server.anfragen[0]
-    assert rumpf == geschickt
+    assert rumpf["model"] == geschickt["model"] and rumpf["messages"] == geschickt["messages"]
 
 
 def test_der_rumpf_liegt_verschluesselt(bereit, db):
@@ -907,14 +918,14 @@ def test_was_gar_nicht_hinausging_steht_nicht_darin(bereit, db):
     assert dienst.vorgaenge_lesen(db, bereit) == []
 
 
-def test_ohne_db_wird_nichts_gemerkt(bereit, db):
-    """Die Liste haengt am Weg ueber die Adresse. So bleibt der Dienst in den
-    Tests ohne Datenbank benutzbar."""
+def test_auch_ohne_db_wird_gemerkt(bereit, db):
+    """Seit dem Modul ki schreibt jede Anfrage in „Was ging hinaus“ (K5), auch auf einem Weg ohne Sitzung; vorher
+    hing die Liste am Weg über die Adresse."""
     server = TextDoppelgaenger()
     dienst.text_bearbeiten(
         bereit, "<p>x y z</p>", auftrag="rechtschreibung", transport=server.transport()
     )
-    assert dienst.vorgaenge_lesen(db, bereit) == []
+    assert [v["auftrag"] for v in dienst.vorgaenge_lesen(db, bereit)] == ["rechtschreibung"]
 
 
 def test_die_neueste_steht_oben(bereit, db):
@@ -958,7 +969,7 @@ def test_ein_unerreichbarer_dienst_steht_trotzdem_in_der_liste(bereit, db):
     die diesen Fall verschweigt, behauptet, es sei nichts passiert."""
 
     def platzen(anfrage):
-        raise httpx.ConnectTimeout("nichts")
+        raise httpx.ConnectError("nichts")
 
     with pytest.raises(dienst.KiFehler) as f:
         dienst.text_bearbeiten(

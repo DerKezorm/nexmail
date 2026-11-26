@@ -29,10 +29,13 @@ import json
 import logging
 import re
 import socket
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import timedelta
 from urllib.parse import urljoin, urlparse
 
 import httpx
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .. import crypto
@@ -46,6 +49,8 @@ from . import bereinigen
 from .bildvermittler import _ist_erreichbar_von_aussen
 from ..meldung import Meldung
 from ..models import Benutzer, KiVorgang, utcnow
+from ..vendor import nexki
+from . import ki_store
 
 logger = logging.getLogger("nexmail.ki")
 
@@ -166,63 +171,30 @@ def _gesagt(antwort: httpx.Response) -> str:
 
 
 def modelle_holen(
-    url: str, schluessel: str, transport: object | None = None
+    person: Benutzer, db: Session, url: str, schluessel: str = "", transport: object | None = None
 ) -> list[dict[str, str]]:
-    """Die Modelle, die dieser Zugang hergibt.
+    """Die Modelle, die der eigene Zugang hergibt (Modul ki, ``client.list_models``).
 
-    ⚠️ **Das ist zugleich der Verbindungstest.** Kommt die Liste, stimmen
-    Adresse und Schlüssel — ein zweiter Knopf daneben prüfte dasselbe noch
-    einmal. Dieselbe Überlegung wie bei der Probemail des Postausgangs, nur
-    billiger zu haben.
+    ⚠️ **Das ist zugleich der Verbindungstest.** Kommt die Liste, stimmen Adresse und Schlüssel.
 
-    ⚠️ **Nicht jeder Dienst listet.** Manche Vermittler können ``/models``
-    nicht; dann bleibt das Feld von Hand zu füllen. Eine Sackgasse darf das
-    nicht sein — deshalb eine eigene Kennung statt „ging nicht".
+    ⚠️ **Der gespeicherte Schlüssel geht nur an die gespeicherte Adresse** (Modul ki): Wer eine andere Adresse
+    tippt, schickt nur einen mitgetippten Schlüssel dorthin. Seit dem Modul gelten dabei dieselben Netzregeln wie
+    beim Fragen: keine Weiterleitung, nie Metadaten oder Link-local, das eigene Netz nur von der Liste des Betreibers.
     """
-    url = adresse_pruefen(url)
-    ziel = urljoin(url, "models")
-    try:
-        with httpx.Client(
-            timeout=ZEITGRENZE, follow_redirects=True, transport=transport
-        ) as klient:
-            antwort = klient.get(ziel, headers=_kopfzeilen(schluessel))
-    except httpx.ReadTimeout as fehler:
-        logger.info("The AI service did not answer in time: %s", type(fehler).__name__)
-        raise KiFehler("ki_zeitueberschreitung", sekunden=int(ZEITGRENZE)) from fehler
-    except httpx.HTTPError as fehler:
-        logger.info("The AI service was unreachable: %s", type(fehler).__name__)
-        raise KiFehler("ki_nicht_erreichbar") from fehler
-
-    if antwort.status_code in (404, 405, 501):
-        raise KiFehler("ki_kennt_keine_liste")
-    _antwort_deuten(antwort)
-
-    try:
-        daten = antwort.json()
-    except ValueError as fehler:
-        raise KiFehler("ki_antwort_unlesbar") from fehler
-
-    # ⚠️ **Die Form ist bei allen dieselbe**, der Inhalt nicht: OpenAI und
-    # Ollama liefern nur ``id``, Anthropic zusaetzlich ``display_name``. Wo es
-    # einen lesbaren Namen gibt, wird er gezeigt — sonst die Kennung.
-    roh = daten.get("data") if isinstance(daten, dict) else None
-    if not isinstance(roh, list):
-        raise KiFehler("ki_antwort_unlesbar")
-
-    raus: list[dict[str, str]] = []
-    for eintrag in roh[:MAX_MODELLE]:
-        if not isinstance(eintrag, dict):
-            continue
-        kennung = str(eintrag.get("id") or "").strip()
-        if not kennung:
-            continue
-        raus.append(
-            {"id": kennung, "name": str(eintrag.get("display_name") or "").strip()}
-        )
-    if not raus:
-        raise KiFehler("ki_keine_modelle")
-    logger.info("An AI service listed %s model(s).", len(raus))
-    return raus
+    store = ki_store.store_fuer(db)
+    with ersatz(transport):
+        try:
+            return nexki.client.list_models(
+                store,
+                ki_store.CONFIG,
+                operator=False,
+                account_id=person.id,
+                api=None,
+                url=url,
+                key=schluessel.strip() or None,
+            )
+        except nexki.AiRefused as abgelehnt:
+            raise alt(abgelehnt) from abgelehnt
 
 
 def einstellung_lesen(person: Benutzer) -> dict:
@@ -251,40 +223,37 @@ def einstellung_schreiben(
     schluessel: str | None = None,
     fremde_post: bool | None = None,
 ) -> dict:
-    """Ändern, was mitgeschickt wurde.
+    """Ändern, was mitgeschickt wurde (alter Weg ``PUT /api/ki``), über das Modul ki.
 
-    ⚠️ **Nicht mitgeschickt heisst unverändert** — dieselbe Regel wie beim
-    Passwort, bei den Schlagworten und bei den Aliassen. Ohne sie verlöre
-    jeder seinen Schlüssel, der nur das Modell wechselt. Eine leere
-    Zeichenkette heisst dagegen ausdrücklich „weg".
+    ⚠️ **Nicht mitgeschickt heisst unverändert**; eine leere Zeichenkette heisst „weg". Der Zugang selbst geht durch
+    ``settings.save_own``: Netzregeln beim Speichern (das eigene Netz nur von der Liste des Betreibers, K4), und eine
+    neue Adresse ohne neuen Schlüssel vergisst den alten (der Schlüssel folgt nicht der Adresse).
     """
-    if url is not None:
-        person.ki_url = adresse_pruefen(url) if url.strip() else ""
-    if modell is not None:
-        person.ki_modell = modell.strip()[:200]
-    if schluessel is not None:
-        schluessel_schreiben(person, schluessel.strip())
+    store = ki_store.store_fuer(db)
+    try:
+        if url is not None or modell is not None or schluessel is not None:
+            nexki.settings.save_own(
+                store,
+                ki_store.CONFIG,
+                person.id,
+                resolver=nexki.client.resolver,
+                url=url,
+                model=modell,
+                key=schluessel,
+            )
+            db.refresh(person)
+    except nexki.AiRefused as abgelehnt:
+        db.rollback()
+        raise alt(abgelehnt) from abgelehnt
     if aktiv is not None:
-        # ⚠️ **Einschalten geht nur mit vollständigem Zugang.** Ein Schalter,
-        # der „an" steht und beim ersten Umformulieren scheitert, ist
-        # schlimmer als einer, der sich nicht umlegen lässt.
-        if aktiv and not (person.ki_url and person.ki_modell):
+        # ⚠️ **Einschalten geht nur mit vollständigem Zugang**, wo jedes Konto seinen eigenen hat. Ein Schalter, der
+        # „an" steht und beim ersten Umformulieren scheitert, ist schlimmer als einer, der sich nicht umlegen lässt.
+        eigen = nexki.settings.mode(store, ki_store.CONFIG) == "own"
+        if aktiv and eigen and not (person.ki_url and person.ki_modell):
             raise KiFehler("ki_zugang_unvollstaendig")
         person.ki_aktiv = aktiv
     if fremde_post is not None:
         person.ki_fremde_post = fremde_post
-
-    # ⚠️ **Ein Zugang, der unvollständig WIRD, schaltet sich ab.** Sonst gäbe es
-    # einen Zustand „an, aber nichts eingetragen" — erreichbar über das Trennen,
-    # das Adresse und Modell leert. Der Schalter stünde dann auf an, und der
-    # erste Handgriff im Editor scheiterte. Die Prüfung oben deckt das nicht ab:
-    # Sie greift nur, wenn jemand `aktiv` mitschickt.
-    if not (person.ki_url and person.ki_modell):
-        person.ki_aktiv = False
-        # ⚠️ **Und die Erlaubnis für eingegangene Post fällt mit.** Sie galt
-        # diesem Dienst. Wer später einen anderen einträgt, entscheidet neu.
-        person.ki_fremde_post = False
-
     db.commit()
     logger.info("A user changed their AI service settings (active=%s).", person.ki_aktiv)
     return einstellung_lesen(person)
@@ -654,12 +623,9 @@ def text_bearbeiten(
     # ⚠️ **Der Riegel des Betreibers zuerst.** Er steht ueber der Wahl des
     # Benutzers: Verantwortlich fuer die Installation ist der Betreiber, und
     # ein Riegel, den man nach dem eigenen Schalter prueft, waere keiner.
-    if db is not None and not erlaubt_fuer(db, person):
-        raise KiFehler("ki_vom_betreiber_gesperrt")
-    if not person.ki_aktiv:
-        raise KiFehler("ki_nicht_eingeschaltet")
-    if not (person.ki_url and person.ki_modell):
-        raise KiFehler("ki_zugang_unvollstaendig")
+    # Die Schalterkette des Moduls ki (Hauptschalter samt Dienst, „KI erlaubt", „KI für mich", Zugang), in derselben
+    # Reihenfolge wie vorher und vor jeder Prüfung des Textes.
+    _kette(person, db)
 
     text = (html or "").strip()
     if not text:
@@ -686,6 +652,140 @@ def text_bearbeiten(
     return sauber
 
 
+#: Die Kennungen von vorher zu den Absagen des Moduls ki, für die alten Wege (``/api/ki/…``, ``/api/nachrichten/…``),
+#: die ihre Kennungen behalten (E55). Was es vorher nicht gab (Netzregeln, Bremsen), behält die Kennung des Moduls.
+ALTE_KENNUNGEN = {
+    "ai_off": "ki_vom_betreiber_gesperrt",
+    "ai_not_allowed": "ki_vom_betreiber_gesperrt",
+    "ai_switched_off": "ki_nicht_eingeschaltet",
+    "ai_app_refused": "ki_nicht_eingeschaltet",
+    "ai_incomplete": "ki_zugang_unvollstaendig",
+    "ai_address_missing": "ki_adresse_fehlt",
+    "ai_address_invalid": "ki_adresse_ungueltig",
+    "ai_unreachable": "ki_nicht_erreichbar",
+    "ai_timeout": "ki_zeitueberschreitung",
+    "ai_key_refused": "ki_schluessel_abgewiesen",
+    "ai_address_not_found": "ki_adresse_nicht_gefunden",
+    "ai_service_busy": "ki_zu_viele_anfragen",
+    "ai_unreadable": "ki_antwort_unlesbar",
+    "ai_empty": "ki_antwort_leer",
+    "ai_used_up": "ki_antwort_aufgebraucht",
+    "ai_no_list": "ki_kennt_keine_liste",
+    "ai_no_models": "ki_keine_modelle",
+}
+
+
+def alt(abgelehnt: nexki.AiRefused) -> KiFehler:
+    """Eine Absage des Moduls als ``KiFehler`` mit der Kennung von vorher und ihren Werten; die Absage selbst hängt
+    als ``modul`` daran (Kennung und Status des Moduls)."""
+    fehler = _alt(abgelehnt)
+    fehler.modul = abgelehnt  # type: ignore[attr-defined]
+    return fehler
+
+
+def _alt(abgelehnt: nexki.AiRefused) -> KiFehler:
+    werte = dict(abgelehnt.values)
+    if abgelehnt.code == "ai_service_failed":
+        code = werte.get("answered")
+        if werte.get("said"):
+            return KiFehler("ki_dienst_sagt", code=code, gesagt=werte["said"])
+        return KiFehler("ki_dienst_antwortet_nicht", code=code)
+    if abgelehnt.code == "ai_timeout":
+        return KiFehler("ki_zeitueberschreitung", sekunden=int(werte.get("seconds") or ZEITGRENZE_TEXT))
+    return KiFehler(ALTE_KENNUNGEN.get(abgelehnt.code, abgelehnt.code), **werte)
+
+
+@contextmanager
+def ersatz(transport: object | None) -> Iterator[None]:
+    """Ein Ersatz für den Dienst in Tests (``httpx``-Transport), wie ihn das Modul kennt (``nexki.client.transport``).
+    In der App immer ``None``: dann geht die Anfrage über die Sockets des Moduls mit seinen Netzregeln."""
+    if transport is None:
+        yield
+        return
+    vorher = nexki.client.transport
+    nexki.client.transport = transport  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        nexki.client.transport = vorher
+
+
+@contextmanager
+def _sitzung(db: Session | None) -> Iterator[Session]:
+    if db is not None:
+        yield db
+        return
+    from ..db import SessionLocal
+
+    with SessionLocal() as eigene:
+        yield eigene
+
+
+def _kette(person: Benutzer, db: Session | None, *, app_ok: bool = True) -> None:
+    """Die Schalterkette des Moduls vorab, mit der Kennung von vorher (``chain.reason``)."""
+    with _sitzung(db) as sitzung:
+        grund = nexki.chain.reason(ki_store.store_fuer(sitzung), ki_store.CONFIG, person.id, app_ok=app_ok)
+    if grund is not None:
+        raise alt(nexki.AiRefused(grund))
+
+
+def _vorgang_ergaenzen(
+    db: Session,
+    person: Benutzer,
+    vorher: int,
+    *,
+    ziel: str,
+    fehler: KiFehler | None = None,
+    verbrauch: dict | None = None,
+    modulkennung: str = "",
+    gesendet: tuple[str, str, str, str] | None = None,
+) -> None:
+    """Die Zeile, die das Modul eben in „Was ging hinaus" schrieb, um nexmails Angaben von vorher ergänzen: Ton oder
+    Sprache, verbrauchte Einheiten, die Kennung von vorher samt ihren Werten (versiegelt wie bisher). So zeigt der alte
+    Weg ``GET /api/ki/vorgaenge`` eine neue Zeile wie eine von vorher. Darf den Auftrag nie kosten."""
+    try:
+        zeile = (
+            db.query(KiVorgang)
+            .filter(KiVorgang.benutzer_id == person.id, KiVorgang.id > vorher)
+            .order_by(KiVorgang.id.desc())
+            .first()
+        )
+        if zeile is None:
+            if fehler is None or gesendet is None:
+                return
+            # TODO ki 0.1.0: eine unlesbare Antwort (kein JSON) schreibt das Modul nicht in „Was ging hinaus"
+            # (``client.ask``), obwohl der Text draußen war (K5). Bis das Modul es tut, schreibt nexmail die Zeile.
+            modell, auftrag, system, user = gesendet
+            text = json.dumps({"system": system, "user": user}, ensure_ascii=False)
+            zeile = KiVorgang(
+                benutzer_id=person.id,
+                modell=modell[:200],
+                auftrag=auftrag[:40],
+                rumpf=ki_store.KiStore(db).seal(text, f"{ki_store.CONFIG.account_key_context(person.id)}:events"),
+                rein=len(user),
+                fehler=modulkennung or fehler.kennung,
+                form=ki_store.FORM_MODUL,
+            )
+            db.add(zeile)
+        if modulkennung:
+            zeile.fehler = modulkennung
+        zeile.ziel = (ziel or "")[:40]
+        if verbrauch:
+            zeile.rein = int(verbrauch.get("prompt_tokens") or zeile.rein or 0)
+            zeile.raus = int(verbrauch.get("completion_tokens") or 0)
+        if fehler is not None:
+            # ``fehler`` behält die Kennung des Moduls (dessen Liste zeigt sie); der alte Weg übersetzt sie beim Lesen.
+            zeile.fehler_werte = (
+                crypto.verschluesseln(json.dumps(fehler.werte, ensure_ascii=False), _vorgang_kontext(person))
+                if fehler.werte
+                else ""
+            )
+        db.commit()
+    except Exception as f:  # noqa: BLE001
+        db.rollback()
+        logger.warning("An AI request could not be completed in the list: %s", type(f).__name__)
+
+
 def _hinaus(
     person: Benutzer,
     rumpf: dict,
@@ -696,169 +796,60 @@ def _hinaus(
     db: Session | None,
     textgrenze: int | None = None,
 ) -> tuple[str, dict]:
-    """Den fertigen Rumpf schicken und den Vorgang merken.
+    """Die Anfrage über das Modul ki schicken (``nexki.ask``) und die gesäuberte Antwort zurückgeben.
 
-    Mit ``textgrenze`` kommt blosser Text bis zu dieser Länge zurück, sonst
-    gesäubertes HTML.
+    Mit ``textgrenze`` kommt blosser Text bis zu dieser Länge zurück, sonst gesäubertes HTML.
+
+    ⚠️ **Alles, was das Haus verlässt, geht durch das Modul**: Schalterkette bei jeder Anfrage, Netzregeln (keine
+    Weiterleitung, nie Metadaten oder Link-local, das eigene Netz nur von der Liste des Betreibers, kein Proxy aus der
+    Umgebung, eine Gesamtfrist, Antwort bis 2 MB), Besonderheiten der Modelle (``temperature`` weg, wenn abgelehnt,
+    ``max_completion_tokens`` mit Platz zum Nachdenken, im eigenen Netz ``reasoning_effort: "none"``), Bremse (20 je
+    Minute, einer zugleich) und „Was ging hinaus" (wörtlich, versiegelt, auch bei einem Fehlschlag). Damit ist die
+    offene Stelle von nexmail geschlossen (Entwurf KI-Anbieter, K1).
+
+    ⚠️ **Was zurückkommt, ist fremder Inhalt** und geht durch ``saeubern`` bzw. ``_nur_text``.
     """
-    ziel_adresse = urljoin(adresse_pruefen(person.ki_url), "chat/completions")
-    schluessel = schluessel_lesen(person)
-
-    # ⚠️ **Ein Modell im eigenen Netz soll nicht nachdenken.** Qwen3 oder
-    # DeepSeek-R1 über Ollama verbrauchen sonst die Tokens der Antwort mit
-    # ihren Gedanken (eine Zusammenfassung hat nur 1.000) und geben nichts
-    # zurück. Ollamas OpenAI-Tür nimmt ``think: false`` nicht, dieses Feld aber
-    # schon. Lehnt ein Server es ab, fragt ``_schicken`` einmal ohne.
-    if im_eigenen_netz(ziel_adresse):
-        rumpf["reasoning_effort"] = "none"
-
-    # ⚠️ **Ab hier ist der Text unterwegs.** Alles, was jetzt noch schiefgeht,
-    # aendert daran nichts mehr — deshalb wird der Vorgang von hier an in
-    # JEDEM Ausgang gemerkt, auch im Fehlerfall. Eine Liste, die nur die
-    # gelungenen zeigt, beantwortet „was hat mein Rechner verschickt" falsch.
-    def merken(rein: int = 0, hinaus: int = 0, fehler: KiFehler | None = None) -> None:
-        if db is not None:
-            vorgang_merken(
-                db,
-                person,
-                modell=person.ki_modell,
-                auftrag=auftrag,
-                ziel=ziel,
-                rumpf=rumpf,
-                rein=rein,
-                raus=hinaus,
-                fehler=fehler.kennung if fehler else "",
-                werte=fehler.werte if fehler else None,
+    # ⚠️ **Fremder und eigener Text ist Material, nie Anweisung** (Entwurf KI-Anbieter): zwischen zwei Zeilen einer
+    # Zufallsmarke, und die Regel dazu steht in den Anweisungen (``nexki.frame``).
+    material, regel = nexki.frame(rumpf["messages"][1]["content"])
+    system = f"{regel}\n\n{rumpf['messages'][0]['content']}"
+    user = material
+    with _sitzung(db) as sitzung, ersatz(transport):
+        vorher = sitzung.query(func.max(KiVorgang.id)).scalar() or 0
+        try:
+            antwort = nexki.ask(
+                ki_store.store_fuer(sitzung), ki_store.CONFIG, person.id, auftrag, system=system, user=user
             )
-
-    # ⚠️ **Jeder Fehler ab hier wird gemerkt, samt seinen Werten.** Vorher
-    # fehlten zwei Ausgänge ganz (unlesbare und leere Antwort, der Text war
-    # trotzdem draußen), und die Liste zeigte „mit {{code}} geantwortet“, weil
-    # nur die Kennung gespeichert wurde. Ein Fang um alles statt eines
-    # ``merken`` je Ausgang: Einen vergessenen Ausgang gibt es dann nicht.
-    try:
-        sauber, daten = _schicken(ziel_adresse, schluessel, rumpf, transport, textgrenze)
-    except KiFehler as fehler:
-        merken(fehler=fehler)
-        raise
-
-    # ⚠️ **Der Verbrauch gehört ins Protokoll.** Wer seinen eigenen Schlüssel
-    # bezahlt, will sehen können, was ihn ein Handgriff kostet — und ohne diese
-    # Zeile ist die einzige Auskunft die Rechnung des Anbieters am Monatsende.
-    # Was NICHT hineingeht, ist der Text selbst.
-    verbrauch = daten.get("usage") if isinstance(daten, dict) else None
-    merken(
-        rein=(verbrauch or {}).get("prompt_tokens", 0) or 0,
-        hinaus=(verbrauch or {}).get("completion_tokens", 0) or 0,
-    )
-    logger.info(
-        # ⚠️ **Nicht „tokens" schreiben.** Die Protokollzensur schwärzt alles
-        # nach diesem Wort — richtig für ein Zugriffstoken, und hier wird aus
-        # der Messung „806 token*** in". Am 04.09.2026 genau so passiert.
-        "An AI service handled a request (%s, in %s, out %s).",
-        auftrag,
-        (verbrauch or {}).get("prompt_tokens", "?"),
-        (verbrauch or {}).get("completion_tokens", "?"),
-    )
-    return sauber, daten
-
-
-def _schicken(
-    ziel_adresse: str,
-    schluessel: str,
-    rumpf: dict,
-    transport: object | None,
-    textgrenze: int | None = None,
-) -> tuple[str, dict]:
-    """Den Rumpf hinausschicken und die gesäuberte Antwort zurückgeben.
-
-    Jeder Fehlschlag ist eine ``KiFehler``; ``_hinaus`` merkt ihn.
-    ⚠️ **``rumpf`` kann sich dabei ändern** (``temperature`` oder
-    ``reasoning_effort`` fällt beim nächsten Versuch, ``max_tokens`` heißt
-    ``max_completion_tokens``), und gemerkt wird danach
-    genau dieser Rumpf.
-    """
-    try:
-        with httpx.Client(
-            timeout=ZEITGRENZE_TEXT, follow_redirects=True, transport=transport
-        ) as klient:
-            antwort = klient.post(
-                ziel_adresse, headers=_kopfzeilen(schluessel), json=rumpf
+        except nexki.AiRefused as abgelehnt:
+            fehler = alt(abgelehnt)
+            dienst = sitzung.get(Benutzer, person.id)
+            gesendet = (
+                (dienst.ki_modell if dienst else "", auftrag, system, user)
+                if abgelehnt.code == "ai_unreadable"
+                else None
             )
-            # ⚠️ **Neuere Modelle wählen die Temperatur selbst** und weisen
-            # eine Anfrage ab, die sie setzt („`temperature` is deprecated for
-            # this model", 400, am 29.09.2026 gemessen); ein lokaler Server
-            # kennt ``reasoning_effort`` vielleicht nicht. Dann ohne, jedes
-            # Feld aus ``WEGLASSBAR`` höchstens einmal; ältere Modelle und
-            # andere Dienste nehmen sie weiter. Verlangt die Absage
-            # ``max_completion_tokens``, geht die Grenze einmal unter diesem
-            # Namen hinaus (``_grenze_umbenennen``); eine 400, die nur
-            # ``max_tokens`` nennt („zu hoch"), ist dafür kein Grund. Jede
-            # andere 400 geht nicht noch einmal hinaus. In der Liste steht
-            # danach der letzte Rumpf, denn der hat die Antwort gebracht.
-            weggelassen: set[str] = set()
-            while antwort.status_code == 400:
-                gesagt = _gesagt(antwort).lower()
-                if "max_tokens" in rumpf and "max_completion_tokens" in gesagt:
-                    _grenze_umbenennen(rumpf, weggelassen)
-                else:
-                    feld = next(
-                        (
-                            name
-                            for name, woerter in WEGLASSBAR
-                            if name in rumpf and any(wort in gesagt for wort in woerter)
-                        ),
-                        None,
-                    )
-                    if feld is None:
-                        break
-                    del rumpf[feld]
-                    weggelassen.add(feld)
-                antwort = klient.post(
-                    ziel_adresse, headers=_kopfzeilen(schluessel), json=rumpf
-                )
-    # ⚠️ **Nur ReadTimeout, nicht TimeoutException.** Der Unterschied ist der
-    # ganze Punkt: Bei ConnectTimeout kam die Verbindung nie zustande, da ist
-    # "nicht erreichbar" richtig und der Blick gehört auf Adresse und Port. Bei
-    # ReadTimeout steht die Verbindung, der Dienst schreibt, nur zu langsam.
-    # Wer beides zusammenwirft, schickt den Benutzer im zweiten Fall zur
-    # Adresse, wo nichts zu finden ist. Und vor HTTPError, denn sie erbt davon.
-    except httpx.ReadTimeout as fehler:
-        logger.info("The AI service did not answer in time: %s", type(fehler).__name__)
-        raise KiFehler(
-            "ki_zeitueberschreitung", sekunden=int(ZEITGRENZE_TEXT)
-        ) from fehler
-    except httpx.HTTPError as fehler:
-        logger.info("The AI service was unreachable: %s", type(fehler).__name__)
-        raise KiFehler("ki_nicht_erreichbar") from fehler
-
-    _antwort_deuten(antwort)
-
-    try:
-        daten = antwort.json()
-        roh = daten["choices"][0]["message"]["content"]
-    except (ValueError, KeyError, IndexError, TypeError) as fehler:
-        raise KiFehler("ki_antwort_unlesbar") from fehler
-
-    # ⚠️ **Manche Dienste liefern den Inhalt als Liste von Blöcken.** Wer nur
-    # die Zeichenkette erwartet, schreibt dort deren Python-Darstellung in den
-    # Entwurf.
-    if isinstance(roh, list):
-        roh = "".join(teil.get("text", "") for teil in roh if isinstance(teil, dict))
-    if not isinstance(roh, str) or not roh.strip():
-        # ⚠️ **Leer, weil die Grenze erreicht war, ist ein eigener Fall.** Ein
-        # Modell, das erst nachdenkt, verbraucht die Tokens mit seinen
-        # Gedanken; „nichts zurückgegeben" schickte den Menschen zum Dienst
-        # statt zum Modell.
-        if _abgeschnitten(daten):
-            raise KiFehler("ki_antwort_aufgebraucht")
+            _vorgang_ergaenzen(
+                sitzung, person, vorher, ziel=ziel, fehler=fehler, modulkennung=abgelehnt.code, gesendet=gesendet
+            )
+            raise fehler from abgelehnt
+        verbrauch = antwort.raw.get("usage") if isinstance(antwort.raw, dict) else None
+        roh = antwort.text
+        sauber = bereinigen.saeubern(roh) if textgrenze is None else _nur_text(roh, textgrenze)
+        leer = not sauber.strip()
+        # Was nach dem Säubern leer ist (nur Auszeichnung), steht als leere Antwort in der Liste, wie vorher.
+        _vorgang_ergaenzen(
+            sitzung,
+            person,
+            vorher,
+            ziel=ziel,
+            verbrauch=verbrauch if isinstance(verbrauch, dict) else {},
+            fehler=KiFehler("ki_antwort_leer") if leer else None,
+            modulkennung="ai_empty" if leer else "",
+        )
+    if leer:
         raise KiFehler("ki_antwort_leer")
-
-    sauber = _zaun_abtragen(roh.strip())
-    sauber = bereinigen.saeubern(sauber) if textgrenze is None else _nur_text(sauber, textgrenze)
-    if not sauber.strip():
-        raise KiFehler("ki_antwort_leer")
-    return sauber, daten
+    logger.info("An AI service handled a request (%s).", auftrag)
+    return sauber, antwort.raw if isinstance(antwort.raw, dict) else {}
 
 
 def _nur_text(roh: str, grenze: int) -> str:
@@ -1022,12 +1013,11 @@ def _fremde_mail(
     kann man kürzen, eine fremde Mail bleibt, wie sie ist. Die Oberfläche sagt,
     dass nur der Anfang gelesen wurde.
     """
-    if not erlaubt_fuer(db, person) or not fremde_post_erlaubt(db):
+    # Erst der Riegel des Betreibers für eingegangene Post (Kennung von vorher), dann die Kette des Moduls mit dem
+    # Haken der Person für eingegangene Post als Prüfung der App (``app_ok``).
+    if not fremde_post_erlaubt(db):
         raise KiFehler("ki_vom_betreiber_gesperrt")
-    if not (person.ki_aktiv and person.ki_fremde_post):
-        raise KiFehler("ki_nicht_eingeschaltet")
-    if not (person.ki_url and person.ki_modell):
-        raise KiFehler("ki_zugang_unvollstaendig")
+    _kette(person, db, app_ok=bool(person.ki_fremde_post))
 
     sprachname = SPRACHEN.get(sprache)
     if sprachname is None:
@@ -1261,10 +1251,8 @@ def vorgaenge_lesen(db: Session, person: Benutzer) -> list[dict]:
     kontext = _vorgang_kontext(person)
     raus = []
     for zeile in zeilen:
-        try:
-            rumpf = json.loads(crypto.entschluesseln(zeile.rumpf, kontext))
-        except Exception:  # noqa: BLE001
-            rumpf = None
+        # Zeilen des Moduls ki (seit dem Durchgang „Module") und von vorher, beide im Rumpf von vorher.
+        rumpf = ki_store.entfaltet(db, zeile)
         # ⚠️ **Leer, wenn es keine gibt oder sie unlesbar sind**; die
         # Oberfläche zeigt dann einen Satz ohne Einzelheiten statt Platzhaltern.
         werte: dict = {}
@@ -1274,6 +1262,12 @@ def vorgaenge_lesen(db: Session, person: Benutzer) -> list[dict]:
                 werte = gelesen if isinstance(gelesen, dict) else {}
             except Exception:  # noqa: BLE001
                 werte = {}
+        fehler = zeile.fehler
+        if zeile.form == ki_store.FORM_MODUL and fehler.startswith("ai_"):
+            if fehler == "ai_service_failed":
+                fehler = "ki_dienst_sagt" if werte.get("gesagt") else "ki_dienst_antwortet_nicht"
+            else:
+                fehler = ALTE_KENNUNGEN.get(fehler, fehler)
         raus.append(
             {
                 "id": zeile.id,
@@ -1283,7 +1277,7 @@ def vorgaenge_lesen(db: Session, person: Benutzer) -> list[dict]:
                 "ziel": zeile.ziel,
                 "rein": zeile.rein,
                 "raus": zeile.raus,
-                "fehler": zeile.fehler,
+                "fehler": fehler,
                 "fehler_werte": werte,
                 "rumpf": rumpf,
             }

@@ -409,7 +409,6 @@ def test_der_schalter_laesst_den_anderen_stehen(klient, db, person):
 
 
 def test_die_schlanke_sicherung_laesst_den_zwischenspeicher_weg(db, tmp_path):
-    import shutil
     import sqlite3
 
     from app.db import engine
@@ -418,7 +417,10 @@ def test_die_schlanke_sicherung_laesst_den_zwischenspeicher_weg(db, tmp_path):
     db.add(Absenderlogo(domain="revolut.com", inhalt=SVG, typ="image/svg+xml"))
     db.commit()
     kopie = tmp_path / "kopie.db"
-    shutil.copy(engine.url.database, kopie)
+    # ⚠️ **Über die Sicherungs-API, nicht ``shutil.copy``.** Die Datenbank läuft im WAL-Modus; eine Dateikopie ohne
+    # Checkpoint enthielt je nach Lage des WAL nicht einmal die Tabellen (aufgefallen, als neue Tabellen dazukamen).
+    with sqlite3.connect(engine.url.database) as quelle, sqlite3.connect(kopie) as ziel:
+        quelle.backup(ziel)
 
     sicherung._schlank_machen(kopie)
 

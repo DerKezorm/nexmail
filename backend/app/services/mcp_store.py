@@ -41,10 +41,13 @@ logger = logging.getLogger("nexmail.mcp")
 
 
 def ki_erlaubt(db: Session, benutzer_id: str) -> bool:
-    """„KI erlaubt“ des Kontos (Server › Konten › Verwalten), auch fuer KI-Programme von aussen (MCP-Entscheidung 10).
-    Gesperrte und geloeschte Konten scheitern schon an ``holder.out``."""
-    person = db.get(Benutzer, benutzer_id)
-    return person is not None and bool(person.ki_erlaubt)
+    """„KI erlaubt“ des Kontos (Server › Konten › Verwalten), auch fuer KI-Programme von aussen (MCP-Entscheidung 10),
+    so wie das Modul ki es fuer Programme fragt (``nexki.chain.for_programs``, K8: nur „KI erlaubt“ und nicht gesperrt;
+    Hauptschalter und Dienst gelten fuer Programme nicht, dafuer gibt es „MCP-Zugang“)."""
+    from ..vendor import nexki
+    from . import ki_store
+
+    return nexki.chain.for_programs(ki_store.store_fuer(db), benutzer_id)
 
 
 def zugang_entfernen(db: Session, schluessel_id: str) -> None:
