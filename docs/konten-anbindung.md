@@ -349,7 +349,7 @@ Anbieter, kein Push und kein Abgleich für ein Konto, das draußen ist. Test „
 gelaufen** (hier kein Browser); die Specs unter `frontend/tests` sind auf den Bausatz umgestellt und nur mit `tsc`
 geprüft.
 
-## 0i. Durchgang „Module“ (`sicherung` 1.0.4, `ui` 1.1.1, `schluessel` 1.1.1, `updates` 0.1.2, `mcp` 1.1.2, `ki` 0.1.1, `verbinden` 0.1.4)
+## 0i. Durchgang „Module“ (`sicherung` 1.0.5, `ui` 1.1.3, `schluessel` 1.1.2, `updates` 0.1.2, `mcp` 1.1.4, `ki` 0.1.2, `verbinden` 0.1.6)
 
 Am 26.11.2026 auf dem Zweig `einst-module` (Worktree `nexmail-module`), Module aus `bauplaene-module` (`einst-module`,
 zuletzt `de70ac2`), je Modul `sync.py check` ok. Grundlage: Bauplan Einstellungen E61 bis E64, Entwurf Update-Prüfung
@@ -382,6 +382,11 @@ Nachzug 80a3dd0: schluessel 1.1.1 (ein Wortlaut für Bereiche), mcp 1.1.2 (`key_
 Vertrag, `sender` ohne `NEXMAIL_CLIENT_IP` leer, falsche Schlüssel dann je Schlüssel), verbinden 0.1.4
 (`on_disconnected` löst nextasks-, nextime-Verbindung und nexfolk-Bücher einer beendeten Klick-Verbindung,
 `set_local_allowed` für den Haken „Verbindungen ins eigene Netz“).
+
+Nachzug 7fb9279 und 84d152a: Datumsform aller Apps (E65) in der Zone des Kontos (`lib/format.zeitpunkt`, an jede
+Modulkarte als `when`), ki 0.1.2 (`ki_store.uebernehmen` mit `older_mode="own"` für eine Datenbank mit Konten, K2;
+neue Kennungen an den alten KI-Wegen mit dem Status des Moduls, `kidienst.als_antwort`; unlesbare Antwort schreibt das
+Modul), Server › Allgemein mit `parts` (nur die Karten, die nexmail dort hat).
 
 ## 1. Bestand heute (0.33.0)
 
