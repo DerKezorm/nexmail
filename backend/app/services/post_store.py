@@ -167,16 +167,23 @@ class PostStore:
 
     def recipient(self, account: object) -> Recipient | None:
         """Die bestaetigte Adresse des Kontos, seine Sprache (sonst die des Betreibers), Name und die Zeitzone des
-        Servers (nexmail kennt keine je Konto)."""
+        Servers (nexmail kennt keine je Konto).
+
+        ⚠️ **Ein geloeschtes Konto bekommt keine Post** (E33): in den 30 Tagen bis zum endgueltigen Loeschen bleibt es
+        stehen, damit es zurueckkommen kann, aber nichts schreibt ihm mehr."""
         from ..models import Benutzer
 
         kennung = getattr(account, "id", account)
         zeile = self.db.get(Benutzer, str(kennung))
-        if zeile is None or not zeile.kontaktadresse or not zeile.kontaktadresse_zaehlt:
+        if zeile is None or zeile.geloescht_am is not None or not zeile.kontaktadresse or not zeile.kontaktadresse_zaehlt:
             return None
         sprache = zeile.sprache or ""
         if not sprache:
-            betreiber = self.db.scalar(select(Benutzer.sprache).where(Benutzer.ist_betreiber.is_(True)).limit(1))
+            betreiber = self.db.scalar(
+                select(Benutzer.sprache)
+                .where(Benutzer.ist_betreiber.is_(True), Benutzer.geloescht_am.is_(None))
+                .limit(1)
+            )
             sprache = betreiber or ""
         return Recipient(
             address=zeile.kontaktadresse,

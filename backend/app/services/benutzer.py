@@ -173,7 +173,12 @@ def anlegen(
 
 
 def betreiber(db: Session) -> Benutzer | None:
-    return db.execute(select(Benutzer).where(Benutzer.ist_betreiber.is_(True))).scalars().first()
+    # Ein geloeschtes Konto (30 Tage bis zum endgueltigen Loeschen) spricht fuer niemanden mehr.
+    return (
+        db.execute(select(Benutzer).where(Benutzer.ist_betreiber.is_(True), Benutzer.geloescht_am.is_(None)))
+        .scalars()
+        .first()
+    )
 
 
 def umfang(db: Session, person: Benutzer) -> dict[str, int]:

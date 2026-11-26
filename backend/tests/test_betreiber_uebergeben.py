@@ -249,3 +249,22 @@ def test_ein_api_schluessel_eines_gesperrten_kontos_wirkt_nicht(klient, db, welt
     assert fremd.get("/api/v1/me", headers=kopf).status_code == 401
     assert klient.post(f"/api/benutzer/{anderer.id}/entsperren", json={"passwort": KENNWORT}).status_code == 200
     assert fremd.get("/api/v1/me", headers=kopf).status_code == vorher
+
+
+def test_ein_geloeschtes_konto_bekommt_keine_post_und_zurueckgeholt_wieder(klient, db, welt):
+    """E33: in den 30 Tagen bleibt das Konto stehen, aber das Mailmodul findet keine Adresse mehr dafuer."""
+    from app.services.post_store import PostStore
+
+    _ich, anderer = welt
+    anderer.kontaktadresse = "zweiter@example.com"
+    anderer.kontaktadresse_bewiesen = True
+    db.commit()
+    assert PostStore(db).recipient(anderer.id) is not None, "Ohne Loeschen bekommt das Konto Post."
+
+    assert klient.request("DELETE", f"/api/benutzer/{anderer.id}", json={"passwort": KENNWORT}).status_code == 204
+    db.expire_all()
+    assert PostStore(db).recipient(anderer.id) is None
+
+    assert klient.post(f"/api/benutzer/{anderer.id}/zurueckholen", json={"passwort": KENNWORT}).status_code == 200
+    db.expire_all()
+    assert PostStore(db).recipient(anderer.id) is not None
