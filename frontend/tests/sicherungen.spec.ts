@@ -32,12 +32,20 @@ async function namen(page: Page): Promise<string[]> {
   return ids.map((id) => id.replace(/^backup-/, ''))
 }
 
+/** sicherung 1.0.3 (E63): „Jetzt sichern" öffnet ein Fenster mit optionaler Notiz; erst „Sichern" legt an. */
+async function sichernBestaetigen(page: Page): Promise<void> {
+  const fenster = page.getByTestId('backup-confirm-make')
+  await expect(fenster.getByTestId('backup-note')).toBeVisible()
+  await fenster.getByRole('button', { name: 'Sichern', exact: true }).click()
+}
+
 test('Sicherung machen, wiederfinden, löschen', async ({ page }) => {
   const absagen = serverabsagen(page)
   await zurSicherung(page)
   const vorher = await namen(page)
 
   await page.getByTestId('backup-now').click()
+  await sichernBestaetigen(page)
   await expect(page.getByText('Sicherung erstellt.')).toBeVisible({ timeout: 20_000 })
   await absagen.pruefen()
 
@@ -61,6 +69,7 @@ test('Wiederherstellen fragt erst und fasst beim Abbrechen nichts an', async ({ 
   await zurSicherung(page)
   if (!(await namen(page)).length) {
     await page.getByTestId('backup-now').click()
+    await sichernBestaetigen(page)
     await expect(page.getByText('Sicherung erstellt.')).toBeVisible({ timeout: 20_000 })
   }
   const vorher = await namen(page)
