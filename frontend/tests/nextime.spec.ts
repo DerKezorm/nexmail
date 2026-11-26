@@ -67,7 +67,8 @@ test('Die Karte verbindet nextime mit Adresse und Schlüssel (AC-1, AC-2)', asyn
   await expect(karte.getByText('nicht verbunden')).toBeVisible()
   await karte.getByRole('button', { name: /nextime/ }).first().click()
   await karte.getByRole('textbox', { name: /^Adresse/ }).fill('https://zeit.example.com')
-  await karte.getByLabel('Schlüssel', { exact: true }).fill('probe-sch-1')
+  // Seit dem Bauplan „Einstellungen“ (E3) heißt das Feld „API-Schlüssel“.
+  await karte.getByLabel('API-Schlüssel', { exact: true }).fill('probe-sch-1')
   await karte.getByRole('button', { name: 'Verbinden' }).click()
 
   await expect.poll(() => geschickt.length).toBe(1)

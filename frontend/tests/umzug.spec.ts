@@ -46,7 +46,8 @@ test('Herunterladen nennt die Zahl und beide Formate', async ({ page }) => {
   /* ⚠️ **Die Zahl ist der Punkt.** Heruntergeladen wird, was nexmail kennt;
      ein nie abgeglichener Ordner gäbe eine fast leere Datei, und das sähe aus
      wie Datenverlust. */
-  await expect(fenster.getByText(/\d+ Nachricht/)).toBeVisible()
+  // Die Zahl allein („42 Nachrichten“); ein Hinweis „kennt erst X von Y Nachrichten“ darf daneben stehen.
+  await expect(fenster.getByText(/^\d+ Nachrichten?$/)).toBeVisible()
 
   const auswahl = fenster.getByRole('combobox')
   await expect(auswahl).toBeVisible()

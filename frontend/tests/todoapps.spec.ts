@@ -101,7 +101,8 @@ async function vorspielen(
  * Webhook haben gleich beschriftete Felder („API-Token“, „Adresse“) und je ein
  * „Verbinden“; ohne Eingrenzung griffe ein Test das falsche. */
 function abschnitt(page: Page, titel: string) {
-  return page.locator('section').filter({ has: page.getByRole('heading', { name: titel, exact: true }) })
+  // Der nächste Abschnitt um die Überschrift: Seit dem Bausatz steht er in der Karte „Aufgaben“, selbst eine `section`.
+  return page.getByRole('heading', { name: titel, exact: true }).locator('xpath=ancestor::section[1]')
 }
 
 async function mailMenue(page: Page) {

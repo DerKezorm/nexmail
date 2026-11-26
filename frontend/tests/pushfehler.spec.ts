@@ -46,7 +46,10 @@ test('ein abgelehnter Service Worker nennt seinen Grund', async ({ page }) => {
   const anmeldungen = anmeldungenZaehlen(page)
   await zumReiter(page)
 
-  await page.getByRole('button', { name: 'Anmeldung nachholen' }).click()
+  // Seit „Auf welchem Weg“ (Bausatz NotifyWays): die Lage steht im Satz, der Knopf heißt wie überall; bei erteilter
+  // Erlaubnis ohne Anmeldung holt er die Anmeldung nach (`nachholen`).
+  await expect(page.getByText(/Erlaubt, aber nicht angemeldet/)).toBeVisible()
+  await page.getByTestId('notify-browser-on').click()
 
   const kasten = page.getByText(/Service Worker von nexmail nicht starten/)
   await expect(kasten).toBeVisible()
@@ -64,7 +67,10 @@ test('ein abgelehnter Push-Dienst nennt seinen Grund', async ({ page }) => {
   const anmeldungen = anmeldungenZaehlen(page)
   await zumReiter(page)
 
-  await page.getByRole('button', { name: 'Anmeldung nachholen' }).click()
+  // Seit „Auf welchem Weg“ (Bausatz NotifyWays): die Lage steht im Satz, der Knopf heißt wie überall; bei erteilter
+  // Erlaubnis ohne Anmeldung holt er die Anmeldung nach (`nachholen`).
+  await expect(page.getByText(/Erlaubt, aber nicht angemeldet/)).toBeVisible()
+  await page.getByTestId('notify-browser-on').click()
 
   const kasten = page.getByText(/Push-Dienst des Browsers hat dieses Gerät nicht angenommen/)
   await expect(kasten).toBeVisible()

@@ -92,10 +92,13 @@ test('schon gesehen: kein Banner, aber unter „Über nexmail" wieder zu öffnen
   await expect(mailKnopf(page)).toBeVisible()
   await expect(page.getByTestId('wasneu-banner')).toHaveCount(0)
   await zuEinstellungen(page, 'Über nexmail')
-  await page.getByRole('button', { name: 'Was ist neu' }).click()
+  // Seit der Über-Seite des Bausatzes (AboutPage): „Neu in nexmail <Version>“, das Fenster `whats-new-window`.
+  await page.getByRole('button', { name: /^Neu in nexmail / }).click()
 
-  await expect(page.getByTestId('wasneu-fenster')).toContainText(de[VERSION].lead)
-  await page.getByRole('button', { name: 'Verstanden' }).click()
+  const fenster = page.getByTestId('whats-new-window')
+  await expect(fenster).toContainText(de[VERSION].lead)
+  await fenster.getByRole('button', { name: 'Schließen' }).click()
+  await expect(fenster).toHaveCount(0)
   expect(meldungen.zahl).toBe(0)
 })
 
@@ -114,5 +117,5 @@ test('eine Version ohne Text: kein Banner, kein Menüpunkt', async ({ page }) =>
   await zuEinstellungen(page, 'Über nexmail')
   // Erst warten, bis die Auskunft steht: Vorher fehlt der Knopf ohnehin.
   await expect(page.getByText('github.com/DerKezorm/nexmail')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Was ist neu' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^Neu in nexmail / })).toHaveCount(0)
 })

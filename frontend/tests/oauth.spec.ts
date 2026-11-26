@@ -24,8 +24,12 @@ test('Beide Anbieter stehen da, mit Rückkehr-Adresse zum Kopieren', async ({ pa
   /* ⚠️ **Ein Zeichen daneben, und Google antwortet mit
      `redirect_uri_mismatch`** — eine Meldung, die niemand mit dieser Zeile in
      Verbindung bringt. Deshalb steht sie wörtlich da. */
-  const adressen = page.getByText(/\/api\/mailoauth\/(google|microsoft)\/zurueck/)
-  expect(await adressen.count()).toBeGreaterThanOrEqual(2)
+  // Seit dem Bausatz in einer `CopyRow`: die Adresse steht im Feld (zum Kopieren), nicht als Text.
+  const felder = page.getByRole('textbox', { name: 'Rückkehr-Adresse (dort eintragen)', exact: true })
+  const werte = await felder.evaluateAll((es) => es.map((e) => (e as HTMLInputElement).value))
+  for (const anbieter of ['google', 'microsoft']) {
+    expect(werte.some((w) => new RegExp(`/api/mailoauth/${anbieter}/zurueck$`).test(w)), anbieter).toBe(true)
+  }
 })
 
 test('Der Satz zu „In production" steht da, bevor jemand anfängt', async ({ page }) => {

@@ -84,7 +84,8 @@ test('Schlüssel anlegen, damit lesen, widerrufen', async ({ page }, info) => {
     await expect(page.getByTestId('key-secret')).toHaveCount(0)
 
     // In der Liste: der Name; widerrufen wirkt sofort.
-    const zeile = page.getByTestId('key-row').filter({ hasText: NAME })
+    // Die Tabelle des Bausatzes hat Tisch- und Handyansicht zugleich im DOM, eine davon versteckt: die sichtbare Zeile.
+    const zeile = page.getByTestId('key-row').filter({ hasText: NAME }).filter({ visible: true })
     await expect(zeile).toBeVisible()
     await keinSeitlichesScrollen(page)
     await page.screenshot({ path: `test-results/apischluessel-liste-${info.project.name}.png` })
