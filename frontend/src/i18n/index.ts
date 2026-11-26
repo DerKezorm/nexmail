@@ -25,6 +25,8 @@ import { initReactI18next } from 'react-i18next'
 import { oidcVariables, oidcWording, type OidcWording } from '../vendor/nexoidc/oidc'
 import { kontenVariables } from '../vendor/nexkonten/konten'
 import { postVariables } from '../vendor/nexpost/post'
+import { ownLanguages } from '../vendor/nexsprachen/languages'
+import type { Texts } from '../vendor/nexsprachen/sprachen'
 
 export const SPRACHEN = [
   { code: 'de', name: 'Deutsch' },
@@ -34,6 +36,36 @@ export const SPRACHEN = [
 export type Sprachcode = (typeof SPRACHEN)[number]['code']
 
 const GEMERKT = 'nexmail.sprache'
+
+/** Ein Sprachcode wie `nl`, `pt-BR` (wie das Modul sprachen ihn prüft). */
+const CODE = /^[a-z]{2,3}(?:-(?:[A-Z]{2}|[A-Z][a-z]{3}))?$/
+
+function basis(): string {
+  // Wie `lib/basis` (BASIS), ohne den Import: diese Datei laden auch Tests ohne DOM.
+  const meta = typeof document !== 'undefined' ? document.querySelector('meta[name="nexmail-basis"]')?.getAttribute('content') : null
+  return (meta || import.meta.env.BASE_URL || '/').replace(/\/$/, '')
+}
+
+/** Die eigenen Sprachen des Betreibers (Modul sprachen, Server › Allgemein › Sprachen), mit nexmails Basis-Pfad. */
+export const eigeneSprachen = ownLanguages({
+  base: '/api/locales',
+  fetcher: (pfad, init) => fetch(`${basis()}${pfad}`, { credentials: 'include', ...init }),
+})
+
+/** Die eingebauten Sprachen in der Form des Moduls (`useLanguageOptions`). */
+export const EINGEBAUT = SPRACHEN.map((s) => ({ code: s.code, name: s.name }))
+
+/** Die englischen Texte, wie i18next sie hat: die Vorlage für eine neue Sprache (`LanguagesCard template`). */
+export async function englischeTexte(): Promise<Texts> {
+  return (await LADER.en()).default as Texts
+}
+
+/** Die Texte für `code`: eine eingebaute Sprache samt Datei des Betreibers darüber, eine hinzugefügte über dem
+ *  Englischen (was ihr fehlt, steht englisch da, nie als roher Schlüssel). Null, wenn nexmail die Sprache nicht kennt. */
+async function texteFuer(code: string): Promise<object | null> {
+  const eingebaut = SPRACHEN.some((s) => s.code === code) ? ((await LADER[code as Sprachcode]()).default as Texts) : null
+  return eigeneSprachen.merged(code, eingebaut, (await LADER.en()).default as Texts)
+}
 
 /* ⚠️ **Die Zweige müssen statisch dastehen.** Ein `import(`./${code}.json`)`
    lässt Vite jede passende Datei einzeln bündeln — das funktioniert, aber der
@@ -100,21 +132,37 @@ export const GRUNDEINSTELLUNG = {
   },
 }
 
-function startsprache(): Sprachcode {
+function startsprache(): string {
   const gemerkt = localStorage.getItem(GEMERKT)
   if (SPRACHEN.some((s) => s.code === gemerkt)) return gemerkt as Sprachcode
+  // Eine Sprache des Betreibers; gibt es sie nicht mehr, fällt `spracheHochfahren` auf die des Browsers.
+  if (gemerkt && CODE.test(gemerkt)) return gemerkt
   // Nur der Sprachteil zaehlt: "de-AT" ist Deutsch.
   const vomBrowser = navigator.language.slice(0, 2)
   return SPRACHEN.some((s) => s.code === vomBrowser) ? (vomBrowser as Sprachcode) : 'de'
 }
 
-const geladen = new Set<Sprachcode>()
+const geladen = new Set<string>()
 
-async function nachladen(code: Sprachcode): Promise<void> {
-  if (geladen.has(code)) return
-  const modul = await LADER[code]()
-  i18n.addResourceBundle(code, 'translation', modul.default, true, true)
+async function nachladen(code: string): Promise<boolean> {
+  if (geladen.has(code)) return true
+  const texte = await texteFuer(code)
+  if (!texte) return false
+  i18n.addResourceBundle(code, 'translation', texte, true, true)
   geladen.add(code)
+  return true
+}
+
+/** Nach dem Hinzufügen oder Entfernen einer Sprache (`LanguagesCard onChange`): Liste und Texte neu holen. */
+export function eigeneSprachenVergessen(): void {
+  eigeneSprachen.forget()
+  geladen.clear()
+  if (i18n.language) geladen.add(i18n.language)
+}
+
+function browsersprache(): Sprachcode {
+  const vomBrowser = navigator.language.slice(0, 2)
+  return SPRACHEN.some((s) => s.code === vomBrowser) ? (vomBrowser as Sprachcode) : 'de'
 }
 
 /** i18next mit **einer** Sprache hochfahren. Muss vor dem ersten Zeichnen laufen.
@@ -124,12 +172,16 @@ async function nachladen(code: Sprachcode): Promise<void> {
  * sieht aus wie eine kaputte Übersetzung, nicht wie eine langsame.
  */
 export async function spracheHochfahren(): Promise<void> {
-  const code = startsprache()
-  const modul = await LADER[code]()
+  let code = startsprache()
+  let texte = await texteFuer(code)
+  if (!texte) {
+    code = browsersprache()
+    texte = (await LADER[code as Sprachcode]()).default
+  }
   geladen.add(code)
 
   await i18n.use(initReactI18next).init({
-    resources: { [code]: { translation: modul.default } },
+    resources: { [code]: { translation: texte } },
     lng: code,
     ...GRUNDEINSTELLUNG,
   })
@@ -139,14 +191,16 @@ export async function spracheHochfahren(): Promise<void> {
 /** Die Sprache des Kontos (seit dem Kontenmodul am Konto, wie in nexnotes): nach der Anmeldung übernommen, wenn sie
  *  gesetzt ist und eine ist, die nexmail kann. */
 export async function kontoSprache(code: string | undefined): Promise<void> {
-  const kurz = (code ?? '').slice(0, 2)
-  if (!SPRACHEN.some((s) => s.code === kurz) || i18n.language === kurz) return
-  await spracheSetzen(kurz as Sprachcode)
+  const roh = code ?? ''
+  // Eine Sprache des Betreibers genau so, eine eingebaute am Sprachteil („de-AT“ ist Deutsch).
+  const ziel = (await eigeneSprachen.knows(roh, EINGEBAUT)) ? roh : roh.slice(0, 2)
+  if (!ziel || i18n.language === ziel || !(await eigeneSprachen.knows(ziel, EINGEBAUT))) return
+  await spracheSetzen(ziel)
 }
 
-export async function spracheSetzen(code: Sprachcode): Promise<void> {
+export async function spracheSetzen(code: string): Promise<void> {
+  if (!(await nachladen(code))) return
   localStorage.setItem(GEMERKT, code)
-  await nachladen(code)
   await i18n.changeLanguage(code)
   document.documentElement.lang = code
 }

@@ -13,6 +13,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, modulAnfrage } from '../api/client'
 import { InterfacesCard } from '../vendor/nexschluessel/InterfacesCard'
+import { LanguagesCard } from '../vendor/nexsprachen/LanguagesCard'
+import { eigeneSprachenVergessen, englischeTexte } from '../i18n'
+import { BASIS } from '../lib/basis'
 import { servermeldung } from '../lib/servermeldung'
 import { Button, Card, CheckboxRow, Field, Notice } from '../vendor/nexui'
 
@@ -24,9 +27,27 @@ export function ServerAllgemein({ dokuHref }: { dokuHref?: string }) {
           in der alten Karte „API-Schlüssel" und den in „iPhone verbinden"). */}
       <InterfacesCard request={modulAnfrage} docsHref={dokuHref} />
       {/* Bauplan Allgemein (E48): keine Karte „Grenzen“ (nexmail hat nichts zu begrenzen), kein „Web Push“ (nichts
-          einzustellen, E33); danach nexmails eigene Karte. */}
+          einzustellen, E33); „Sprachen“ aus dem Modul sprachen (E51); danach nexmails eigene Karte. */}
+      <Sprachen />
       <ZeitzoneDesServers />
     </>
+  )
+}
+
+/** Server › Allgemein › Sprachen (Modul sprachen 1.0.0): die Vorlage macht die Seite aus nexmails englischen Texten. */
+function Sprachen() {
+  const [vorlage, setVorlage] = useState<Awaited<ReturnType<typeof englischeTexte>> | undefined>(undefined)
+  useEffect(() => {
+    void englischeTexte().then(setVorlage)
+  }, [])
+  return (
+    <LanguagesCard
+      app="nexmail"
+      base="/api/locales"
+      template={vorlage}
+      onChange={eigeneSprachenVergessen}
+      fetcher={(pfad, init) => fetch(`${BASIS}${pfad}`, { credentials: 'include', ...init })}
+    />
   )
 }
 

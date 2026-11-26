@@ -14,8 +14,8 @@ import { Moon, Sun } from 'lucide-react'
 import { AuthCard } from '../vendor/nexui'
 import { Logo } from './Logo'
 import { Beschriftung } from '../ds/beschriftung'
-import { SPRACHEN, spracheSetzen } from '../i18n'
-import type { Sprachcode } from '../i18n'
+import { EINGEBAUT, eigeneSprachen, spracheSetzen } from '../i18n'
+import { useLanguageOptions } from '../vendor/nexsprachen/languages'
 
 interface Props {
   titel: string
@@ -38,6 +38,8 @@ export function Torbogen({
   aufModus,
 }: Props) {
   const { t, i18n } = useTranslation()
+  // Eingebaute und die Sprachen des Betreibers (Modul sprachen).
+  const sprachen = useLanguageOptions(eigeneSprachen, EINGEBAUT)
 
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-canvas">
@@ -53,12 +55,12 @@ export function Torbogen({
           >
             {modus === 'dark' ? <Sun /> : <Moon />}
           </button>
-          {SPRACHEN.map((s) => (
+          {sprachen.map((s) => (
             <button
               key={s.code}
               type="button"
               title={s.name}
-              onClick={() => void spracheSetzen(s.code as Sprachcode)}
+              onClick={() => void spracheSetzen(s.code)}
               className={
                 'rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase transition-colors duration-[var(--dur-fast)] ' +
                 (i18n.language === s.code
