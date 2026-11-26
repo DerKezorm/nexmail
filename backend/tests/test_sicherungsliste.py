@@ -332,3 +332,27 @@ def test_eine_fremde_frage_wird_abgewiesen(klient):
         f"/api/server/storage/backups/{name}/restore", json={"password": "sehr-geheim-123", "options": {"schluessel": True}}
     )
     assert antwort.status_code == 422
+
+
+# --- Anlegen über den alten Weg, wie der Vertragstest des Moduls (E53, 6edff85) ------------------------------------- #
+
+
+def test_alter_weg_notiz_ueber_200_zeichen_422_und_nichts_entsteht(klient):
+    einrichten(klient)
+    vorher = len(nexsicherung.archives.entries())
+    assert klient.post("/api/sicherung/liste", json={"kommentar": "x" * 201}).status_code == 422
+    assert len(nexsicherung.archives.entries()) == vorher
+    assert klient.post("/api/sicherung/liste", json={"kommentar": "x" * 200}).status_code == 201
+
+
+def test_alter_weg_ohne_sitzung_401_mit_und_ohne_rumpf(klient):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    einrichten(klient)
+    vorher = len(nexsicherung.archives.entries())
+    fremd = TestClient(app)
+    assert fremd.post("/api/sicherung/liste").status_code == 401
+    assert fremd.post("/api/sicherung/liste", json={"kommentar": "x"}).status_code == 401
+    assert len(nexsicherung.archives.entries()) == vorher
