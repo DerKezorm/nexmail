@@ -139,3 +139,18 @@ def test_ein_passkey_ist_der_zweite_schritt_wenn_der_betreiber_ihn_verlangt(klie
     assert browser.get("/api/auth/ich").status_code == 401
     assert _anmelden(browser, geraet).status_code == 200
     assert browser.get("/api/auth/ich").json()["benutzername"] == "betreiber"
+
+
+def test_passkey_hinzufuegen_zaehlt_eine_gesetzte_adresse_allein(klient):
+    """konten c0b07ab: Ist eine öffentliche Adresse gesetzt, entscheidet nur sie (und nur mit https); ohne Adresse geht
+    es nur auf localhost. Eine http-Adresse wird auch auf localhost nicht zum Knopf."""
+    einrichten(klient)
+    lokal = TestClient(app, base_url="http://localhost:8399", headers={"origin": "http://localhost:5173"})
+    assert lokal.post("/api/auth/anmelden", json={"benutzername": "betreiber", "passwort": PASSWORT}).status_code == 200
+    with SessionLocal() as db:
+        einstellung_schreiben(db, "oeffentliche_adresse", "http://mail.example.com")
+    assert lokal.get("/api/auth/passkeys").json()["passkeys_can_add"] is False
+    with SessionLocal() as db:
+        einstellung_schreiben(db, "oeffentliche_adresse", "https://mail.example.com")
+    assert lokal.get("/api/auth/passkeys").json()["passkeys_can_add"] is True
+    assert klient.get("/api/auth/passkeys").json()["passkeys_can_add"] is True
