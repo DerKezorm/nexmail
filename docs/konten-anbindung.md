@@ -214,8 +214,9 @@ Playwright.
 ## 0h. Durchgang „Einstellungen“ (`ui` 1.1.0, `konten` 1.1.0, `oidc` 1.2.0, `post` 1.1.0, `log` 1.0.0, `sicherung` 1.0.1, `schluessel` 1.0.0)
 
 Nach dem Bauplan „Einstellungen“ (nexlore, `Development/nexapps/Baupläne/Bauplan Einstellungen.md`, E1 bis E34) am
-25. und 26.11.2026, Zweig `einst-desktop`. Module aus `bauplaene-stand` (`bef0132`), `sync.py check` für alle sieben
-`ok`, jede Vorlage im Frontend mit ihrer Kopfzeile `// Vorlage <Paket> <Fassung>`.
+25. und 26.11.2026, Zweig `einst-desktop`. Module aus `bauplaene-stand` (zuerst `bef0132`, dann `7685875` mit E33
+bis E38, sicherung zuletzt aus `b0d3618`), `sync.py check` für alle sieben `ok`, jede Vorlage im Frontend mit ihrer
+Kopfzeile `// Vorlage <Paket> <Fassung der letzten Änderung>` und den Änderungen der Vorlagen seit `bef0132`.
 
 | Bereich (`/settings/<slug>`) | Woher | Was gewandert ist |
 |---|---|---|
@@ -244,22 +245,29 @@ Die alten Adressen (`/einstellungen/…`, deutsche Namen wie `/settings/postfaec
 `/api/app/1` unverändert. Kein Schlüssel wird neu gehasht; neu ist nur die Spalte `api_schluessel.gesperrt`
 (eine ältere Fassung liest sie nicht, Rückweg im README von schluessel).
 
-**Umwege mit TODO** (Fragen in `einst-fragen/nexmail.md`): `TODO ui 1.1.0` in `components/PostfachHinzufuegen.tsx`
-und `pages/TodoApps.tsx` (Fenster, das nur über seinen Knopf zugeht; bis dahin nexmails `ds/Dialog`). Der
-Vertragstest „Herunterladen bei `download_password`“ von sicherung ist rot (Modulfehler, Frage 2), ohne Umweg.
+**Mit 7685875 dazu:** `things`/`thingsDative` (Mails/Mails, englisch mail/mail); Sicherung mit `when` in der unter
+Darstellung eingestellten Zone und `restore_options = ("address",)`: das Fenster „Wiederherstellen“ fragt, ob die
+öffentliche Adresse aus der Sicherung gilt (ab Werk die jetzige, wie der alte Weg), der Befund nennt je Anbieter die
+Rückkehradresse mit beiden Adressen; „Postfach hinzufügen“ und das Webhook-Geheimnis im `Dialog` des Bausatzes mit
+`dismissable`; `Store.on_shut_out`/`on_back`: solange ein Konto gesperrt oder gelöscht ist, kein Web Push
+(`push.draussen`) und kein Abgleich von Postfächern, Kalendern, Adressbüchern und Todo-Apps (`models.konto_drin`), die
+Abos und Verbindungen bleiben; `push_ready` im Vertragsadapter.
+
+**Umwege mit TODO:** keine mehr. Die zwei `TODO ui 1.1.0` und das `exclude` in `frontend/tsconfig.json`
+(`TODO sicherung 1.0.1`) sind mit 7685875 und b0d3618 wieder heraus.
 
 **Nach Stufe 1:** `Kalenderfenster`, `Buchfenster` und `Nachfrage` bleiben auf `ds/Dialog`, weil die App sie auch
 außerhalb der Einstellungen nutzt (E33).
 
-**Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` (ohne ruff, nexmail hat keins; pytest ohne
-xdist): pytest 3204 bestanden, 6 übersprungen, 2 rot. Rot 1: `test_meldungen.py::test_der_katalog_traegt_keine_leichen`
-(drei Kennungen kamen nur noch über `KONFIGURATION.error_codes`), danach im Test als „über das Schlüsselmodul“
-genannt und grün (gegen eine Mutation geprüft, Rückgabecode 1). Rot 2: der Vertragstest von sicherung zum
-Herunterladen bei `download_password` (Modulfehler, ohne Umweg). `tsc --noEmit` sauber, vitest 388 grün in 43
-Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender Schlüssel über
-den alten Weg, gesperrter Schlüssel über `/api/v1`, gelöschtes Konto ohne Post, fremder Browser nicht entfernbar.
-Test „Bestand“ unverändert. **Playwright nicht gelaufen** (hier kein Browser); die Specs unter `frontend/tests` sind
-auf den Bausatz umgestellt (`settings-nav`, `settings-area-*`, Testkennungen der Module) und nur mit `tsc`
+**Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 7685875 und b0d3618 (ohne ruff, nexmail
+hat keins; pytest ohne xdist): pytest 3216 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
+Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
+schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 408
+grün in 43 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
+Schlüssel über den alten Weg, gesperrter Schlüssel über `/api/v1`, gelöschtes Konto ohne Post, fremder Browser nicht
+entfernbar, die Adressfrage beim Wiederherstellen (verschlüsselt und eigene Sicherung), die Rückkehradressen der
+Anbieter, kein Push und kein Abgleich für ein Konto, das draußen ist. Test „Bestand“ unverändert. **Playwright nicht
+gelaufen** (hier kein Browser); die Specs unter `frontend/tests` sind auf den Bausatz umgestellt und nur mit `tsc`
 geprüft.
 
 ## 1. Bestand heute (0.33.0)
