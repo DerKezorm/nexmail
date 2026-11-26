@@ -175,9 +175,14 @@ def test_ohne_postfach_entsteht_kein_schluessel(klient, ohne_netz):
 
 
 def test_die_obergrenze_nennt_ihre_zahl(klient, ohne_netz, monkeypatch):
-    from app.services import apischluessel
+    # Seit schluessel 1.0.0 steht die Grenze in nexmails Konfiguration des Moduls (``KeyKind.max_keys``).
+    import dataclasses
 
-    monkeypatch.setattr(apischluessel, "MAX_JE_BENUTZER", 2)
+    from app.services import schluessel_store
+
+    alt = schluessel_store.KONFIGURATION
+    art = dataclasses.replace(alt.kinds[0], max_keys=2)
+    monkeypatch.setattr(schluessel_store, "KONFIGURATION", dataclasses.replace(alt, kinds=(art,)))
     einrichten(klient)
     konto = _postfach(klient, "privat@example.com")
     _aufmachen(klient)
@@ -514,3 +519,41 @@ def test_der_schluessel_geht_mit_seinem_benutzer(klient, zweiter_klient, db, ohn
 
     assert klient.request("DELETE", f"/api/benutzer/{person.id}", json={"passwort": "sehr-geheim-123"}).status_code == 204
     assert klient.get("/api/v1/me", headers=_mit(klartext)).status_code == 401
+
+
+# --- Der alte Weg ruft das Modul (schluessel 1.0.0, E33) ------------------ #
+
+
+def test_der_alte_weg_legt_auch_bei_geschuldetem_faktor_an_und_der_schluessel_ruht(klient, ohne_netz):
+    """Verlangt der Betreiber einen zweiten Faktor und das Konto hat keinen, legt auch ``/api/apischluessel`` an (wie
+    die Seite unter ``/api/connections``), aber der Schluessel wirkt erst mit dem Faktor: 401
+    ``second_factor_required`` nach der Regel des Moduls."""
+    from app.db import einstellung_schreiben
+    from app.services import konten_store
+
+    einrichten(klient)
+    konto = _postfach(klient, "privat@example.com")
+    _aufmachen(klient)
+    with SessionLocal() as db:
+        einstellung_schreiben(db, konten_store.SCHALTER_FAKTOR_FUER_ALLE, "1")
+    antwort = klient.post("/api/apischluessel", json={"name": "Flur", "stufe": "anzahl", "konten": [konto]})
+    assert antwort.status_code == 201, antwort.text
+    klartext = antwort.json()["schluessel"]
+    abgewiesen = klient.get("/api/v1/me", headers=_mit(klartext))
+    assert abgewiesen.status_code == 401
+    assert abgewiesen.json()["detail"] == "second_factor_required"
+    with SessionLocal() as db:
+        einstellung_schreiben(db, konten_store.SCHALTER_FAKTOR_FUER_ALLE, "0")
+    assert klient.get("/api/v1/me", headers=_mit(klartext)).status_code == 200
+
+
+def test_ein_gesperrter_schluessel_wirkt_ueber_den_alten_weg_nicht_und_entsperrt_wieder(klient, ohne_netz):
+    """Gesperrt wird unter ``/api/connections`` (Betreiber); ``/api/v1`` fragt dasselbe Modul."""
+    einrichten(klient)
+    konto = _postfach(klient, "privat@example.com")
+    _aufmachen(klient)
+    neu = _schluessel(klient, [konto])
+    assert klient.post(f"/api/connections/admin/keys/{neu['id']}/block").status_code == 200
+    assert klient.get("/api/v1/me", headers=_mit(neu["schluessel"])).status_code == 401
+    assert klient.post(f"/api/connections/admin/keys/{neu['id']}/unblock").status_code == 200
+    assert klient.get("/api/v1/me", headers=_mit(neu["schluessel"])).status_code == 200

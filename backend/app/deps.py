@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 
 from .db import get_db
 from .models import ApiSchluessel, Benutzer, Sitzung
-from .services import apischluessel as apidienst
 from .services import app_kopplung
 from .services import sitzung as sitzungsdienst
 from .vendor import nexlog
@@ -155,29 +154,28 @@ def api_zugriff(request: Request, db: DbSession) -> ApiSchluessel:
             detail="api_schluessel_fehlt",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if not apidienst.erlaubt(db):
+    # schluessel 1.0.0: das Modul entscheidet (``keys.authenticate``): Schalter aus 403 ``api_schluessel_abgeschaltet``;
+    # unbekannt, gesperrt oder Konto gesperrt/geloescht 401 ``api_schluessel_ungueltig``; verlangt der Betreiber einen
+    # zweiten Faktor und das Konto hat keinen, ruhen seine Schluessel (401 ``second_factor_required``), Anlegen bleibt.
+    from .services import schluessel_store
+    from .vendor.nexschluessel import keys
+    from .vendor.nexschluessel.errors import KeyRefused
+
+    try:
+        gefunden = keys.authenticate(schluessel_store.store_fuer(db), schluessel_store.KONFIGURATION, wert.strip())
+    except KeyRefused as fehler:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="api_schluessel_abgeschaltet",
-        )
-    schluessel = apidienst.finden(db, wert.strip())
-    # konten 1.1.0: Der Schluessel eines gesperrten oder geloeschten Kontos bleibt stehen, wirkt aber nicht.
-    if schluessel is not None:
-        inhaber = db.get(Benutzer, schluessel.benutzer_id)
-        if inhaber is None or inhaber.gesperrt_seit is not None or inhaber.geloescht_am is not None:
-            schluessel = None
-    if schluessel is None:
+            status_code=fehler.status,
+            detail=fehler.public_code,
+            headers={"WWW-Authenticate": "Bearer"} if fehler.status == status.HTTP_401_UNAUTHORIZED else None,
+        ) from fehler
+    schluessel = db.get(ApiSchluessel, str(gefunden.key.id))
+    if schluessel is None:  # zwischen Pruefen und Lesen widerrufen
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="api_schluessel_ungueltig",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    # schluessel 1.0.0 (ruhende Schluessel, 24.11.2026): verlangt der Betreiber einen zweiten Faktor und das Konto hat
-    # keinen, wirken seine Schluessel erst, wenn es einen einrichtet. Anlegen bleibt, die Seite sagt es dazu.
-    from .services import schluessel_store
-
-    if schluessel_store.store_fuer(db).keys_wait(schluessel.benutzer_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="second_factor_required")
     return schluessel
 
 

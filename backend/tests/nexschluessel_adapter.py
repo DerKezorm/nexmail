@@ -66,6 +66,9 @@ class Adapter(StandardAdapter):
             db.commit()
             # nexmails Schalter steht ab Werk auf aus; die Tests beginnen dort, wo der Betreiber Schluessel erlaubt.
             einstellung_schreiben(db, apidienst.SCHALTER, "1")
+        self._angemeldet: dict[str, Any] = {}
+        for rolle in ("operator", "owner", "other"):
+            self.client(rolle)
 
     def stop(self) -> None:
         for client in self._clients:
@@ -77,37 +80,23 @@ class Adapter(StandardAdapter):
         return KONFIGURATION
 
     def client(self, role: str) -> Any:
-        """Eine bestaetigte Browser-Sitzung als Cookie, wie nach dem Anmelden. Direkt angelegt, damit sie auch dann
-        besteht, wenn der Betreiber danach einen zweiten Faktor verlangt (``owe_factor``): eine laufende Sitzung
-        bleibt, nur die Schluessel ruhen."""
-        import secrets
-        from datetime import timedelta
-
+        """Eine bestaetigte Browser-Sitzung, ueber nexmails echtes Anmelden (``/api/auth/anmelden``). Je Rolle einmal,
+        beim ersten Aufruf; ``start`` meldet alle drei gleich an. Verlangt der Betreiber danach einen zweiten Faktor
+        (``owe_factor``), bleibt die laufende Sitzung wie in der App, nur die Schluessel ruhen."""
         from fastapi.testclient import TestClient
 
-        from app.db import SessionLocal
         from app.main import app
-        from app.models import Sitzung, utcnow
-        from app.services import sitzung as sitzungsdienst
 
+        if role in self._angemeldet:
+            return self._angemeldet[role]
         client = TestClient(app)
         client.__enter__()
         self._clients.append(client)
         if role == "anonymous":
             return client
-        token = secrets.token_urlsafe(32)
-        with SessionLocal() as db:
-            db.add(
-                Sitzung(
-                    benutzer_id=self.ids[role],
-                    token_hash=sitzungsdienst._hash(token),
-                    bestaetigt=True,
-                    art="browser",
-                    gueltig_bis=utcnow() + timedelta(days=1),
-                )
-            )
-            db.commit()
-        client.cookies.set(sitzungsdienst.COOKIE_NAME, token)
+        answer = client.post("/api/auth/anmelden", json={"benutzername": role, "passwort": KENNWORT[role]})
+        assert answer.status_code == 200, answer.text
+        self._angemeldet[role] = client
         return client
 
     def legacy_keys(self) -> list[LegacyKey]:

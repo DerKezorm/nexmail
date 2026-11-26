@@ -15,9 +15,11 @@ aus), ``app`` = ``app_geraete_erlaubt`` (ab Werk an). Gekoppelte iPhones (``nxa_
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from ..db import einstellung_lesen, einstellung_schreiben
@@ -26,6 +28,8 @@ from ..vendor.nexschluessel import AppConfig, KeyKind
 from ..vendor.nexschluessel.model import ALL_AREAS, Area, Holder, Key, KeyChange, NewKey
 from . import apischluessel as apidienst
 from . import app_kopplung
+
+logger = logging.getLogger("nexmail.api")
 
 #: nexmails Rechte heissen in der Tabelle ``anzahl`` und ``betreff``, im Modul ``count`` und ``headers``.
 ZU_MODUL = {"anzahl": "count", "betreff": "headers"}
@@ -145,7 +149,16 @@ class SchluesselStore:
         self.db.execute(update(ApiSchluessel).where(ApiSchluessel.id == str(key_id)).values(gesperrt=when))
 
     def touch(self, key_id, when: datetime) -> None:
+        """⚠️ **Der Vermerk darf die Abfrage nicht kosten** (Issue #9). Haelt ein Abgleich die Datenbank laenger als
+        ``busy_timeout``, scheiterte sonst ein Dashboard mit 500, nur weil sich nicht notieren liess, wann es zuletzt
+        gefragt hat. Deshalb schreibt der Vermerk selbst und gibt bei einer Sperre auf; das ``commit`` des Moduls
+        danach hat nichts mehr zu tun. Dann eben beim naechsten Mal."""
         self.db.execute(update(ApiSchluessel).where(ApiSchluessel.id == str(key_id)).values(zuletzt_benutzt=when))
+        try:
+            self.db.commit()
+        except OperationalError as fehler:
+            self.db.rollback()
+            logger.info("The last use of an API key could not be recorded (%s); the request goes on.", fehler.orig)
 
     def holder(self, account_id) -> Holder | None:
         person = self.db.get(Benutzer, str(account_id))
