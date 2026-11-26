@@ -22,13 +22,12 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, ExternalLink, KeyRound, ListChecks, Send, Settings2, Unplug, Webhook } from 'lucide-react'
 import nextasksLogo from '../assets/nextasks.svg'
 import { api } from '../api/client'
-import { Checkbox, Dialog, Select } from '../ds'
-import { Button, CheckboxRow, Field } from '../vendor/nexui'
+import { Dialog } from '../ds'
+import { Button, Checkbox, CheckboxRow, CopyRow, Field, SelectField } from '../vendor/nexui'
 import { listeWaehlen, nextasksListen, type NtBereich } from '../api/nextasks'
 import { symbolFuer } from '../lib/nextasksSymbole'
 import { listenTon } from './AufgabenPage'
 import { useNachfrage } from '../components/Nachfrage'
-import { Klartext } from './ApiSchluessel'
 import { servermeldung } from '../lib/servermeldung'
 import { Abschnitt, Knopfreihe, Lage } from './einstellungen/Verbindungsteile'
 import {
@@ -171,6 +170,16 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
     teil === 'nextasks' ? v.art === 'nextasks' : teil === 'ohne-nextasks' ? v.art !== 'nextasks' : true,
   )
   const andere = alleVerbindungen.some((v) => v.art !== 'nextasks')
+  /* Die App in jeder Zeile, aus demselben Grund wie im Fenster „Zu Aufgabe machen": Geschlossen zeigt die Auswahl keine
+     Gruppe. Eine Wahl, deren Liste gerade nicht kam, bleibt sichtbar gewählt, statt still auf die eigene Liste zu
+     springen. */
+  const standardOptionen = (gewaehlt: string) => [
+    { value: '', label: t('todoapps.eigene_liste') },
+    ...(gruppen ?? []).flatMap((g) => g.listen.map((l) => ({ value: l.ziel, label: `${gruppenname(g)} › ${l.name}` }))),
+    ...(gewaehlt && !(gruppen ?? []).some((g) => g.listen.some((l) => l.ziel === gewaehlt))
+      ? [{ value: gewaehlt, label: t('todoapps.liste_unerreichbar') }]
+      : []),
+  ]
   const mitStandard =
     teil === 'alle' ||
     (teil === 'ohne-nextasks' && andere) ||
@@ -180,28 +189,13 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
      Statuszeile, Abschnitte mit Überschrift, die Knöpfe unten nebeneinander. */
   if (teil === 'nextasks') {
     const standardwahl = mitStandard && stand && (
-      <Abschnitt titel={t('todoapps.standard')} hinweis={t('todoapps.standard_hinweis')}>
-        <Select
-          aria-label={t('todoapps.standard')}
-          value={stand.standard}
-          onChange={(e) => void standardSetzen(e.target.value)}
-        >
-          <option value="" className="bg-surface-1 text-fg-1">
-            {t('todoapps.eigene_liste')}
-          </option>
-          {(gruppen ?? []).flatMap((g) =>
-            g.listen.map((l) => (
-              <option key={l.ziel} value={l.ziel} className="bg-surface-1 text-fg-1">
-                {`${gruppenname(g)} › ${l.name}`}
-              </option>
-            )),
-          )}
-          {stand.standard &&
-            !(gruppen ?? []).some((g) => g.listen.some((l) => l.ziel === stand.standard)) && (
-              <option value={stand.standard}>{t('todoapps.liste_unerreichbar')}</option>
-            )}
-        </Select>
-      </Abschnitt>
+      <SelectField
+        label={t('todoapps.standard')}
+        hints={[t('todoapps.standard_hinweis')]}
+        value={stand.standard}
+        onChange={(e) => void standardSetzen(e.target.value)}
+        options={standardOptionen(stand.standard)}
+      />
     )
     return (
       <div className="flex flex-col gap-4">
@@ -412,31 +406,13 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
           </ul>
 
           {mitStandard && (
-          <Select
+          <SelectField
             label={t('todoapps.standard')}
-            hint={t('todoapps.standard_hinweis')}
+            hints={[t('todoapps.standard_hinweis')]}
             value={stand.standard}
             onChange={(e) => void standardSetzen(e.target.value)}
-          >
-            <option value="" className="bg-surface-1 text-fg-1">
-              {t('todoapps.eigene_liste')}
-            </option>
-            {/* Die App in jeder Zeile, aus demselben Grund wie im Fenster
-                „Zu Aufgabe machen": Geschlossen zeigt die Auswahl keine Gruppe. */}
-            {(gruppen ?? []).flatMap((g) =>
-              g.listen.map((l) => (
-                <option key={l.ziel} value={l.ziel} className="bg-surface-1 text-fg-1">
-                  {`${gruppenname(g)} › ${l.name}`}
-                </option>
-              )),
-            )}
-            {/* Eine Wahl, deren Liste gerade nicht kam, bleibt sichtbar
-                gewählt, statt still auf die eigene Liste zu springen. */}
-            {stand.standard &&
-              !(gruppen ?? []).some((g) => g.listen.some((l) => l.ziel === stand.standard)) && (
-                <option value={stand.standard}>{t('todoapps.liste_unerreichbar')}</option>
-              )}
-          </Select>
+            options={standardOptionen(stand.standard)}
+          />
           )}
         </section>
       )}
@@ -484,6 +460,9 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
         }}
       />
 
+      {/* TODO ui 1.1.0: nexuis Dialog schliesst auch beim Klick daneben; dieses Geheimnis steht nur einmal da. Bis der
+          Bausatz ein Fenster kennt, das nur ueber seinen Knopf zugeht, bleibt hier nexmails eigenes (Frage in
+          einst-fragen/nexmail.md). */}
       <Dialog
         open={geheimnis !== null}
         width={520}
@@ -497,11 +476,10 @@ export function TodoApps({ teil = 'alle' }: { teil?: TodoTeil } = {}) {
         }
       >
         {geheimnis && (
-          <Klartext
-            schluessel={geheimnis}
-            hinweis={t('todoapps.webhook_geheimnis_einmal')}
-            mitAdresse={false}
-          />
+          <div className="flex flex-col gap-3">
+            <p className="m-0 text-sm">{t('todoapps.webhook_geheimnis_einmal')}</p>
+            <CopyRow value={geheimnis} label={t('todoapps.webhook_geheimnis')} testId="webhook-geheimnis" />
+          </div>
         )}
       </Dialog>
 
@@ -570,17 +548,17 @@ function WebhookVerbinden({ aufVerbunden }: { aufVerbunden: (geheimnis: string) 
         <Field label={t('todoapps.webhook_adresse')} hints={[t('todoapps.webhook_adresse_hinweis')]} placeholder="https://" type="url" mono value={url} maxLength={500} onChange={(e) => setUrl(e.target.value)} />
         <Field label={t('todoapps.name')} hints={[t('todoapps.webhook_name_hinweis')]} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
         <Field label={t('todoapps.webhook_geheimnis')} hints={[t('todoapps.webhook_geheimnis_hinweis')]} type="password" autoComplete="off" mono value={eigenes} maxLength={200} onChange={(e) => setEigenes(e.target.value)} />
-        <Checkbox
+        <CheckboxRow
           label={t('todoapps.webhook_nur_senden')}
-          description={t('todoapps.webhook_nur_senden_hinweis')}
+          hint={t('todoapps.webhook_nur_senden_hinweis')}
           checked={nurSenden}
-          onCheckedChange={setNurSenden}
+          onChange={setNurSenden}
         />
-        <Checkbox
+        <CheckboxRow
           label={t('todoapps.webhook_mit_text')}
-          description={t('todoapps.webhook_mit_text_hinweis')}
+          hint={t('todoapps.webhook_mit_text_hinweis')}
           checked={mitText}
-          onCheckedChange={setMitText}
+          onChange={setMitText}
         />
         {fehler && (
           <p role="alert" className="mb-0 text-[13px] text-danger">
@@ -675,23 +653,23 @@ function WebhookEinstellungen({
           <Field label={t('todoapps.webhook_adresse')} hints={[t('todoapps.webhook_adresse_hinweis')]} type="url" mono value={url} maxLength={500} onChange={(e) => setUrl(e.target.value)} />
           {/* Die Schalter speichern sofort, mit der gespeicherten Adresse:
               Eine halb getippte neue soll dabei nicht mitgehen. */}
-          <Checkbox
+          <CheckboxRow
             label={t('todoapps.webhook_nur_senden')}
-            description={t('todoapps.webhook_nur_senden_hinweis')}
+            hint={t('todoapps.webhook_nur_senden_hinweis')}
             checked={stand.nur_senden}
             disabled={laeuft}
-            onCheckedChange={(an) => void speichern({ ...stand, nur_senden: an })}
+            onChange={(an) => void speichern({ ...stand, nur_senden: an })}
           />
-          <Checkbox
+          <CheckboxRow
             label={t('todoapps.webhook_mit_text')}
-            description={
+            hint={
               stand.mailtext_erlaubt
                 ? t('todoapps.webhook_mit_text_hinweis')
                 : t('todoapps.webhook_mit_text_gesperrt')
             }
             checked={stand.mit_text}
             disabled={laeuft}
-            onCheckedChange={(an) => void speichern({ ...stand, mit_text: an })}
+            onChange={(an) => void speichern({ ...stand, mit_text: an })}
           />
           <div className="flex flex-wrap gap-2">
             <Button icon="Check" kind="secondary" type="submit" disabled={laeuft || !url.trim() || url === stand.url}>
@@ -768,7 +746,7 @@ function NextasksListenwahl() {
                 style: { color: listenTon(l.farbe) },
                 'aria-hidden': true,
               })}
-              <Checkbox label={l.name} checked={l.gewaehlt} onCheckedChange={(an) => void waehlen(l.id, an)} />
+              <Checkbox label={l.name} checked={l.gewaehlt} onChange={(an) => void waehlen(l.id, an)} />
             </span>
           ))}
         </div>

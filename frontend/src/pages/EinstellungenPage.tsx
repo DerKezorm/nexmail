@@ -11,7 +11,6 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FileText, Inbox, ListChecks, ListFilter, RefreshCw, Tag } from 'lucide-react'
-import { Dialog } from '../ds'
 import { Beschriftung } from '../ds/beschriftung'
 import type { Ich } from '../api/client'
 import { Postfachkacheln } from '../components/Postfachkacheln'
@@ -23,6 +22,7 @@ import { appPfad, ohneBasis } from '../lib/basis'
 import {
   Button,
   NEXUI_TEXTS,
+  Dialog,
   NexuiLanguage,
   SettingsLayout,
   SettingsNav,
@@ -412,11 +412,13 @@ export function EinstellungenPage({
         {/* ⚠️ **Ein Fenster, nicht eine zweite Seite.** Anlegen und Bearbeiten
             gehen durch dieselbe Maske; sie einmal als Seite und einmal als
             Fenster zu zeigen wären zwei Anwendungen. */}
+        {formularOffen && (
         <Dialog
-          open={formularOffen}
-          width={720}
+          wide
           title={bearbeitet ? t('konto.bearbeiten_titel') : t('konto.hinzufuegen')}
           onClose={() => void fensterZu()}
+          closeLabel={t('aktion.schliessen')}
+          testId="postfach-fenster"
         >
           <KontoFormular
             key={bearbeitet?.id ?? 'neu'}
@@ -437,6 +439,7 @@ export function EinstellungenPage({
             }}
           />
         </Dialog>
+        )}
 
         {rueckfrage}
 
