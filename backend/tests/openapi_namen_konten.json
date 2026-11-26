@@ -1,0 +1,1578 @@
+{
+ "DELETE /api/adressbuecher/{buch_id}": {
+  "operationId": "trennen_api_adressbuecher__buch_id__delete",
+  "summary": "Trennen"
+ },
+ "DELETE /api/apischluessel/{schluessel_id}": {
+  "operationId": "entfernen_api_apischluessel__schluessel_id__delete",
+  "summary": "Entfernen"
+ },
+ "DELETE /api/app-kopplung/{kennung}": {
+  "operationId": "zurueckziehen_api_app_kopplung__kennung__delete",
+  "summary": "Zurueckziehen"
+ },
+ "DELETE /api/app/1/device": {
+  "operationId": "selbst_trennen_api_app_1_device_delete",
+  "summary": "Disconnect this device"
+ },
+ "DELETE /api/app/1/drafts/{uid}": {
+  "operationId": "entwurf_wegwerfen_api_app_1_drafts__uid__delete",
+  "summary": "Discard a draft"
+ },
+ "DELETE /api/app/1/messages/labels/{atom}": {
+  "operationId": "schlagwort_nehmen_api_app_1_messages_labels__atom__delete",
+  "summary": "Remove a tag from messages"
+ },
+ "DELETE /api/app/1/push": {
+  "operationId": "push_vergessen_api_app_1_push_delete",
+  "summary": "Stop notifications for this device"
+ },
+ "DELETE /api/app/1/snoozes/{eintrag_id}": {
+  "operationId": "wiedervorlage_entfernen_api_app_1_snoozes__eintrag_id__delete",
+  "summary": "Wake a message early"
+ },
+ "DELETE /api/app/1/tasks/{aufgabe_id}": {
+  "operationId": "entfernen_api_app_1_tasks__aufgabe_id__delete",
+  "summary": "Remove a task from nexmail (it stays in the to-do app)"
+ },
+ "DELETE /api/aufgaben/{aufgabe_id}": {
+  "operationId": "entfernen_api_aufgaben__aufgabe_id__delete",
+  "summary": "Entfernen"
+ },
+ "DELETE /api/aufgabenziele/{verbindung_id}": {
+  "operationId": "trennen_api_aufgabenziele__verbindung_id__delete",
+  "summary": "Trennen"
+ },
+ "DELETE /api/auth/ich/angebotene-adresse": {
+  "operationId": "angebotene_adresse_ablehnen_api_auth_ich_angebotene_adresse_delete",
+  "summary": "Angebotene Adresse Ablehnen"
+ },
+ "DELETE /api/auth/ich/kontaktadresse/wartend": {
+  "operationId": "adresswechsel_zuruecknehmen_api_auth_ich_kontaktadresse_wartend_delete",
+  "summary": "Adresswechsel Zuruecknehmen"
+ },
+ "DELETE /api/auth/ich/profilbild": {
+  "operationId": "profilbild_entfernen_api_auth_ich_profilbild_delete",
+  "summary": "Profilbild Entfernen"
+ },
+ "DELETE /api/benutzer/einladungen/{einladung_id}": {
+  "operationId": "einladung_zuruecknehmen_api_benutzer_einladungen__einladung_id__delete",
+  "summary": "Einladung Zuruecknehmen"
+ },
+ "DELETE /api/benutzer/{benutzer_id}": {
+  "operationId": "entfernen_api_benutzer__benutzer_id__delete",
+  "summary": "Entfernen"
+ },
+ "DELETE /api/kalender/termine/{termin_id}": {
+  "operationId": "termin_entfernen_api_kalender_termine__termin_id__delete",
+  "summary": "Termin Entfernen"
+ },
+ "DELETE /api/kalender/{kalender_id}": {
+  "operationId": "entfernen_api_kalender__kalender_id__delete",
+  "summary": "Entfernen"
+ },
+ "DELETE /api/ki/vorgaenge": {
+  "operationId": "vorgaenge_leeren_api_ki_vorgaenge_delete",
+  "summary": "Vorgaenge Leeren"
+ },
+ "DELETE /api/kontakte/gesammelte": {
+  "operationId": "gesammelte_entfernen_api_kontakte_gesammelte_delete",
+  "summary": "Gesammelte Entfernen"
+ },
+ "DELETE /api/kontakte/gruppen/{gruppe_id}": {
+  "operationId": "gruppe_entfernen_api_kontakte_gruppen__gruppe_id__delete",
+  "summary": "Gruppe Entfernen"
+ },
+ "DELETE /api/kontakte/{kontakt_id}": {
+  "operationId": "entfernen_api_kontakte__kontakt_id__delete",
+  "summary": "Entfernen"
+ },
+ "DELETE /api/konten/{konto_id}": {
+  "operationId": "entfernen_api_konten__konto_id__delete",
+  "summary": "Entfernen"
+ },
+ "DELETE /api/konten/{konto_id}/ordner/{ordner_id}": {
+  "operationId": "ordner_entfernen_api_konten__konto_id__ordner__ordner_id__delete",
+  "summary": "Ordner Entfernen"
+ },
+ "DELETE /api/mailoauth/anbieter/{art}": {
+  "operationId": "anbieter_entfernen_api_mailoauth_anbieter__art__delete",
+  "summary": "Anbieter Entfernen"
+ },
+ "DELETE /api/mailoauth/zugaenge/{zugang_id}": {
+  "operationId": "zugang_entfernen_api_mailoauth_zugaenge__zugang_id__delete",
+  "summary": "Zugang Entfernen"
+ },
+ "DELETE /api/nachrichten/schlagworte/{atom}": {
+  "operationId": "schlagwort_nehmen_api_nachrichten_schlagworte__atom__delete",
+  "summary": "Schlagwort Nehmen"
+ },
+ "DELETE /api/nachrichten/wiedervorlage/{eintrag_id}": {
+  "operationId": "wiedervorlage_entfernen_api_nachrichten_wiedervorlage__eintrag_id__delete",
+  "summary": "Wiedervorlage Entfernen"
+ },
+ "DELETE /api/nextasks/aufgaben/{aufgabe_id}": {
+  "operationId": "loeschen_api_nextasks_aufgaben__aufgabe_id__delete",
+  "summary": "Loeschen"
+ },
+ "DELETE /api/nextime/termine/{event_id}": {
+  "operationId": "entfernen_api_nextime_termine__event_id__delete",
+  "summary": "Entfernen"
+ },
+ "DELETE /api/nextime/verbindung": {
+  "operationId": "trennen_api_nextime_verbindung_delete",
+  "summary": "Trennen"
+ },
+ "DELETE /api/oidc/admin/accounts/{account_id}/links/{provider_id}": {
+  "operationId": "betreiber_loest_api_oidc_admin_accounts__account_id__links__provider_id__delete",
+  "summary": "Remove an account's link, with the operator's own password"
+ },
+ "DELETE /api/oidc/admin/providers/{provider_id}": {
+  "operationId": "entfernen_api_oidc_admin_providers__provider_id__delete",
+  "summary": "Remove a sign-in provider and its links"
+ },
+ "DELETE /api/oidc/{slug}/link": {
+  "operationId": "loesen_api_oidc__slug__link_delete",
+  "summary": "Undo the link to a provider"
+ },
+ "DELETE /api/protokoll": {
+  "operationId": "leeren_api_protokoll_delete",
+  "summary": "Leeren"
+ },
+ "DELETE /api/push/geraete/{anmeldung_id}": {
+  "operationId": "abmelden_api_push_geraete__anmeldung_id__delete",
+  "summary": "Abmelden"
+ },
+ "DELETE /api/regeln/{regel_id}": {
+  "operationId": "regel_entfernen_api_regeln__regel_id__delete",
+  "summary": "Regel Entfernen"
+ },
+ "DELETE /api/schlagworte/{schlagwort_id}": {
+  "operationId": "loeschen_api_schlagworte__schlagwort_id__delete",
+  "summary": "Loeschen"
+ },
+ "DELETE /api/sicherung/liste/{name}": {
+  "operationId": "entfernen_api_sicherung_liste__name__delete",
+  "summary": "Entfernen"
+ },
+ "DELETE /api/signaturen/{signatur_id}": {
+  "operationId": "signatur_entfernen_api_signaturen__signatur_id__delete",
+  "summary": "Signatur Entfernen"
+ },
+ "DELETE /api/sitzungen/{sitzung_id}": {
+  "operationId": "beenden_api_sitzungen__sitzung_id__delete",
+  "summary": "Beenden"
+ },
+ "DELETE /api/textvorlagen/{vorlage_id}": {
+  "operationId": "textvorlage_entfernen_api_textvorlagen__vorlage_id__delete",
+  "summary": "Textvorlage Entfernen"
+ },
+ "DELETE /api/v1/tasks/{task_id}/tags/{tag_id}": {
+  "operationId": "tag_nehmen_api_v1_tasks__task_id__tags__tag_id__delete",
+  "summary": "Tag Nehmen"
+ },
+ "DELETE /api/verfassen/entwurf/{uid}": {
+  "operationId": "entwurf_wegwerfen_api_verfassen_entwurf__uid__delete",
+  "summary": "Entwurf Wegwerfen"
+ },
+ "GET /api/absenderbild": {
+  "operationId": "bild_api_absenderbild_get",
+  "summary": "Bild"
+ },
+ "GET /api/abwesenheit": {
+  "operationId": "alle_api_abwesenheit_get",
+  "summary": "Alle"
+ },
+ "GET /api/abwesenheit/antworten": {
+  "operationId": "antworten_api_abwesenheit_antworten_get",
+  "summary": "Antworten"
+ },
+ "GET /api/adressbuecher": {
+  "operationId": "liste_api_adressbuecher_get",
+  "summary": "Liste"
+ },
+ "GET /api/apischluessel": {
+  "operationId": "lesen_api_apischluessel_get",
+  "summary": "Lesen"
+ },
+ "GET /api/apischluessel/erlaubt": {
+  "operationId": "riegel_lesen_api_apischluessel_erlaubt_get",
+  "summary": "Riegel Lesen"
+ },
+ "GET /api/app-kopplung/erlaubt": {
+  "operationId": "riegel_lesen_api_app_kopplung_erlaubt_get",
+  "summary": "Riegel Lesen"
+ },
+ "GET /api/app-kopplung/{kennung}": {
+  "operationId": "stand_api_app_kopplung__kennung__get",
+  "summary": "Stand"
+ },
+ "GET /api/app/1/accounts": {
+  "operationId": "liste_api_app_1_accounts_get",
+  "summary": "The mailboxes"
+ },
+ "GET /api/app/1/accounts/{konto_id}/folders": {
+  "operationId": "ordner_api_app_1_accounts__konto_id__folders_get",
+  "summary": "Folder tree with counts"
+ },
+ "GET /api/app/1/changes": {
+  "operationId": "aenderungen_lesen_api_app_1_changes_get",
+  "summary": "What changed after a number"
+ },
+ "GET /api/app/1/compose/signature/{konto_id}": {
+  "operationId": "signatur_fuer_api_app_1_compose_signature__konto_id__get",
+  "summary": "The signature of a mailbox"
+ },
+ "GET /api/app/1/compose/template/{nachricht_id}": {
+  "operationId": "vorlage_api_app_1_compose_template__nachricht_id__get",
+  "summary": "Template for a reply or a forward"
+ },
+ "GET /api/app/1/contacts/suggest": {
+  "operationId": "vorschlag_api_app_1_contacts_suggest_get",
+  "summary": "Recipient suggestions"
+ },
+ "GET /api/app/1/events": {
+  "operationId": "ereignisse_api_app_1_events_get",
+  "summary": "Wait for a change"
+ },
+ "GET /api/app/1/labels": {
+  "operationId": "liste_api_app_1_labels_get",
+  "summary": "The tags"
+ },
+ "GET /api/app/1/me": {
+  "operationId": "selbstauskunft_api_app_1_me_get",
+  "summary": "Who am I, and what can this server do"
+ },
+ "GET /api/app/1/messages": {
+  "operationId": "liste_api_app_1_messages_get",
+  "summary": "The message list"
+ },
+ "GET /api/app/1/messages/thread/{schluessel}": {
+  "operationId": "strang_api_app_1_messages_thread__schluessel__get",
+  "summary": "All messages of a conversation"
+ },
+ "GET /api/app/1/messages/{nachricht_id}": {
+  "operationId": "eine_api_app_1_messages__nachricht_id__get",
+  "summary": "One message"
+ },
+ "GET /api/app/1/messages/{nachricht_id}/attachments/{anhang_id}": {
+  "operationId": "anhang_api_app_1_messages__nachricht_id__attachments__anhang_id__get",
+  "summary": "An attachment"
+ },
+ "GET /api/app/1/messages/{nachricht_id}/invitation": {
+  "operationId": "einladung_api_app_1_messages__nachricht_id__invitation_get",
+  "summary": "The invitation in a message"
+ },
+ "GET /api/app/1/outbox": {
+  "operationId": "ausgang_api_app_1_outbox_get",
+  "summary": "The outbox"
+ },
+ "GET /api/app/1/sender-image": {
+  "operationId": "bild_api_app_1_sender_image_get",
+  "summary": "A sender's picture"
+ },
+ "GET /api/app/1/snoozes": {
+  "operationId": "wiedervorlage_liste_api_app_1_snoozes_get",
+  "summary": "Snoozed messages"
+ },
+ "GET /api/app/1/task-apps": {
+  "operationId": "stand_api_app_1_task_apps_get",
+  "summary": "Connected to-do apps"
+ },
+ "GET /api/app/1/task-lists": {
+  "operationId": "listen_api_app_1_task_lists_get",
+  "summary": "The lists of every connected to-do app"
+ },
+ "GET /api/app/1/tasks": {
+  "operationId": "liste_api_app_1_tasks_get",
+  "summary": "The task list"
+ },
+ "GET /api/aufgaben": {
+  "operationId": "liste_api_aufgaben_get",
+  "summary": "Liste"
+ },
+ "GET /api/aufgaben/mail": {
+  "operationId": "mail_finden_api_aufgaben_mail_get",
+  "summary": "Mail Finden"
+ },
+ "GET /api/aufgabenziele": {
+  "operationId": "stand_api_aufgabenziele_get",
+  "summary": "Stand"
+ },
+ "GET /api/aufgabenziele/listen": {
+  "operationId": "listen_api_aufgabenziele_listen_get",
+  "summary": "Listen"
+ },
+ "GET /api/aufgabenziele/{verbindung_id}/nextasks": {
+  "operationId": "nextasks_lesen_api_aufgabenziele__verbindung_id__nextasks_get",
+  "summary": "Nextasks Lesen"
+ },
+ "GET /api/aufgabenziele/{verbindung_id}/webhook": {
+  "operationId": "webhook_lesen_api_aufgabenziele__verbindung_id__webhook_get",
+  "summary": "Webhook Lesen"
+ },
+ "GET /api/austausch/export/{ordner_id}": {
+  "operationId": "ausgeben_api_austausch_export__ordner_id__get",
+  "summary": "Ausgeben"
+ },
+ "GET /api/austausch/vorgang": {
+  "operationId": "laufender_api_austausch_vorgang_get",
+  "summary": "Laufender"
+ },
+ "GET /api/austausch/vorgang/{kennung}": {
+  "operationId": "vorgang_api_austausch_vorgang__kennung__get",
+  "summary": "Vorgang"
+ },
+ "GET /api/austausch/vorschau/{ordner_id}": {
+  "operationId": "vorschau_api_austausch_vorschau__ordner_id__get",
+  "summary": "Vorschau"
+ },
+ "GET /api/auth/adresse/{schluessel}": {
+  "operationId": "adresslink_stand_api_auth_adresse__schluessel__get",
+  "summary": "Adresslink Stand"
+ },
+ "GET /api/auth/einrichtung": {
+  "operationId": "einrichtung_holen_api_auth_einrichtung_get",
+  "summary": "Einrichtung Holen"
+ },
+ "GET /api/auth/ich": {
+  "operationId": "ich_holen_api_auth_ich_get",
+  "summary": "Ich Holen"
+ },
+ "GET /api/auth/kennwort-neu/{schluessel}": {
+  "operationId": "kennwort_neu_stand_api_auth_kennwort_neu__schluessel__get",
+  "summary": "Kennwort Neu Stand"
+ },
+ "GET /api/auth/kennwort-vergessen": {
+  "operationId": "kennwort_vergessen_stand_api_auth_kennwort_vergessen_get",
+  "summary": "Kennwort Vergessen Stand"
+ },
+ "GET /api/auth/passkey": {
+  "operationId": "passkey_stand_api_auth_passkey_get",
+  "summary": "Passkey Stand"
+ },
+ "GET /api/auth/passkeys": {
+  "operationId": "passkeys_liste_api_auth_passkeys_get",
+  "summary": "Passkeys Liste"
+ },
+ "GET /api/auth/profilbild/{benutzer_id}": {
+  "operationId": "profilbild_api_auth_profilbild__benutzer_id__get",
+  "summary": "Profilbild"
+ },
+ "GET /api/auth/zugaenge": {
+  "operationId": "zugaenge_api_auth_zugaenge_get",
+  "summary": "Zugaenge"
+ },
+ "GET /api/auth/zwei-faktor/einrichtung": {
+  "operationId": "zwei_faktor_wartend_api_auth_zwei_faktor_einrichtung_get",
+  "summary": "Zwei Faktor Wartend"
+ },
+ "GET /api/benutzer": {
+  "operationId": "liste_api_benutzer_get",
+  "summary": "Liste"
+ },
+ "GET /api/benutzer/{benutzer_id}/umfang": {
+  "operationId": "umfang_api_benutzer__benutzer_id__umfang_get",
+  "summary": "Umfang"
+ },
+ "GET /api/benutzer/{benutzer_id}/zweiter-faktor-ueberblick": {
+  "operationId": "zweiter_faktor_ueberblick_api_benutzer__benutzer_id__zweiter_faktor_ueberblick_get",
+  "summary": "Zweiter Faktor Ueberblick"
+ },
+ "GET /api/bilder/{marke}": {
+  "operationId": "bild_api_bilder__marke__get",
+  "summary": "Bild"
+ },
+ "GET /api/einladung/{schluessel}": {
+  "operationId": "ansehen_api_einladung__schluessel__get",
+  "summary": "Ansehen"
+ },
+ "GET /api/einstellungen": {
+  "operationId": "lesen_api_einstellungen_get",
+  "summary": "Lesen"
+ },
+ "GET /api/einstellungen/aufraeumen": {
+  "operationId": "aufraeumen_lesen_api_einstellungen_aufraeumen_get",
+  "summary": "Aufraeumen Lesen"
+ },
+ "GET /api/einstellungen/bilder": {
+  "operationId": "bilder_lesen_api_einstellungen_bilder_get",
+  "summary": "Bilder Lesen"
+ },
+ "GET /api/einstellungen/eigenes-netz": {
+  "operationId": "eigenes_netz_lesen_api_einstellungen_eigenes_netz_get",
+  "summary": "Eigenes Netz Lesen"
+ },
+ "GET /api/einstellungen/postausgang": {
+  "operationId": "postausgang_lesen_api_einstellungen_postausgang_get",
+  "summary": "Postausgang Lesen"
+ },
+ "GET /api/einstellungen/webhook-mailtext": {
+  "operationId": "webhook_mailtext_lesen_api_einstellungen_webhook_mailtext_get",
+  "summary": "Webhook Mailtext Lesen"
+ },
+ "GET /api/erinnerungen/faellig": {
+  "operationId": "faellig_api_erinnerungen_faellig_get",
+  "summary": "Faellig"
+ },
+ "GET /api/health": {
+  "operationId": "health_api_health_get",
+  "summary": "Health"
+ },
+ "GET /api/kalender": {
+  "operationId": "liste_api_kalender_get",
+  "summary": "Liste"
+ },
+ "GET /api/kalender/suche": {
+  "operationId": "suche_api_kalender_suche_get",
+  "summary": "Suche"
+ },
+ "GET /api/kalender/termine": {
+  "operationId": "fenster_api_kalender_termine_get",
+  "summary": "Fenster"
+ },
+ "GET /api/kalender/termine/{termin_id}/konflikt": {
+  "operationId": "konflikt_ansehen_api_kalender_termine__termin_id__konflikt_get",
+  "summary": "Konflikt Ansehen"
+ },
+ "GET /api/kalender/{kalender_id}/ics": {
+  "operationId": "herunterladen_api_kalender__kalender_id__ics_get",
+  "summary": "Herunterladen"
+ },
+ "GET /api/ki": {
+  "operationId": "stand_api_ki_get",
+  "summary": "Stand"
+ },
+ "GET /api/ki/erlaubt": {
+  "operationId": "riegel_lesen_api_ki_erlaubt_get",
+  "summary": "Riegel Lesen"
+ },
+ "GET /api/ki/fremde-post": {
+  "operationId": "fremde_post_lesen_api_ki_fremde_post_get",
+  "summary": "Fremde Post Lesen"
+ },
+ "GET /api/ki/vorgaenge": {
+  "operationId": "vorgaenge_api_ki_vorgaenge_get",
+  "summary": "Vorgaenge"
+ },
+ "GET /api/kontakte": {
+  "operationId": "liste_api_kontakte_get",
+  "summary": "Liste"
+ },
+ "GET /api/kontakte/gruppen": {
+  "operationId": "gruppen_api_kontakte_gruppen_get",
+  "summary": "Gruppen"
+ },
+ "GET /api/kontakte/vcard": {
+  "operationId": "ausfuehren_api_kontakte_vcard_get",
+  "summary": "Ausfuehren"
+ },
+ "GET /api/kontakte/vcard/vorgang": {
+  "operationId": "einlesen_laufend_api_kontakte_vcard_vorgang_get",
+  "summary": "Einlesen Laufend"
+ },
+ "GET /api/kontakte/vcard/vorgang/{kennung}": {
+  "operationId": "einlesen_stand_api_kontakte_vcard_vorgang__kennung__get",
+  "summary": "Einlesen Stand"
+ },
+ "GET /api/kontakte/vorschlag": {
+  "operationId": "vorschlag_api_kontakte_vorschlag_get",
+  "summary": "Vorschlag"
+ },
+ "GET /api/kontakte/{kontakt_id}/foto": {
+  "operationId": "foto_api_kontakte__kontakt_id__foto_get",
+  "summary": "Foto"
+ },
+ "GET /api/kontakte/{kontakt_id}/konflikt": {
+  "operationId": "konflikt_ansehen_api_kontakte__kontakt_id__konflikt_get",
+  "summary": "Konflikt Ansehen"
+ },
+ "GET /api/konten": {
+  "operationId": "liste_api_konten_get",
+  "summary": "Liste"
+ },
+ "GET /api/konten/{konto_id}/ordner": {
+  "operationId": "ordner_api_konten__konto_id__ordner_get",
+  "summary": "Ordner"
+ },
+ "GET /api/mailoauth/anbieter": {
+  "operationId": "anbieter_liste_api_mailoauth_anbieter_get",
+  "summary": "Anbieter Liste"
+ },
+ "GET /api/mailoauth/moeglich": {
+  "operationId": "moeglich_api_mailoauth_moeglich_get",
+  "summary": "Moeglich"
+ },
+ "GET /api/mailoauth/zugaenge": {
+  "operationId": "zugaenge_api_mailoauth_zugaenge_get",
+  "summary": "Zugaenge"
+ },
+ "GET /api/mailoauth/{art}/zurueck": {
+  "operationId": "zurueck_api_mailoauth__art__zurueck_get",
+  "summary": "Zurueck"
+ },
+ "GET /api/nachrichten": {
+  "operationId": "liste_api_nachrichten_get",
+  "summary": "Liste"
+ },
+ "GET /api/nachrichten/ereignisse": {
+  "operationId": "ereignisse_api_nachrichten_ereignisse_get",
+  "summary": "Ereignisse"
+ },
+ "GET /api/nachrichten/strang/{schluessel}": {
+  "operationId": "strang_api_nachrichten_strang__schluessel__get",
+  "summary": "Strang"
+ },
+ "GET /api/nachrichten/wiedervorlage": {
+  "operationId": "wiedervorlage_liste_api_nachrichten_wiedervorlage_get",
+  "summary": "Wiedervorlage Liste"
+ },
+ "GET /api/nachrichten/{nachricht_id}": {
+  "operationId": "eine_api_nachrichten__nachricht_id__get",
+  "summary": "Eine"
+ },
+ "GET /api/nachrichten/{nachricht_id}/anhang/{anhang_id}": {
+  "operationId": "anhang_api_nachrichten__nachricht_id__anhang__anhang_id__get",
+  "summary": "Anhang"
+ },
+ "GET /api/nachrichten/{nachricht_id}/druck": {
+  "operationId": "druck_api_nachrichten__nachricht_id__druck_get",
+  "summary": "Druck"
+ },
+ "GET /api/nachrichten/{nachricht_id}/inline/{anhang_id}": {
+  "operationId": "inline_bild_api_nachrichten__nachricht_id__inline__anhang_id__get",
+  "summary": "Inline Bild"
+ },
+ "GET /api/nachrichten/{nachricht_id}/roh": {
+  "operationId": "roh_api_nachrichten__nachricht_id__roh_get",
+  "summary": "Roh"
+ },
+ "GET /api/nextasks/aufgaben": {
+  "operationId": "aufgaben_api_nextasks_aufgaben_get",
+  "summary": "Aufgaben"
+ },
+ "GET /api/nextasks/aufgaben/{aufgabe_id}": {
+  "operationId": "eine_api_nextasks_aufgaben__aufgabe_id__get",
+  "summary": "Eine"
+ },
+ "GET /api/nextasks/bereiche/{bereich_id}/mitglieder": {
+  "operationId": "mitglieder_api_nextasks_bereiche__bereich_id__mitglieder_get",
+  "summary": "Mitglieder"
+ },
+ "GET /api/nextasks/lage": {
+  "operationId": "lage_api_nextasks_lage_get",
+  "summary": "Lage"
+ },
+ "GET /api/nextasks/listen": {
+  "operationId": "listen_api_nextasks_listen_get",
+  "summary": "Listen"
+ },
+ "GET /api/nextime/kalender": {
+  "operationId": "kalender_api_nextime_kalender_get",
+  "summary": "Kalender"
+ },
+ "GET /api/nextime/stand": {
+  "operationId": "aenderungsstand_api_nextime_stand_get",
+  "summary": "Aenderungsstand"
+ },
+ "GET /api/nextime/suche": {
+  "operationId": "suche_api_nextime_suche_get",
+  "summary": "Suche"
+ },
+ "GET /api/nextime/termine": {
+  "operationId": "fenster_api_nextime_termine_get",
+  "summary": "Fenster"
+ },
+ "GET /api/nextime/termine/{event_id}": {
+  "operationId": "einzeln_api_nextime_termine__event_id__get",
+  "summary": "Einzeln"
+ },
+ "GET /api/nextime/verbindung": {
+  "operationId": "stand_api_nextime_verbindung_get",
+  "summary": "Stand"
+ },
+ "GET /api/oidc/admin/anmeldung": {
+  "operationId": "anmeldung_lesen_api_oidc_admin_anmeldung_get",
+  "summary": "Card 1: whether people sign in with a password"
+ },
+ "GET /api/oidc/admin/providers": {
+  "operationId": "liste_api_oidc_admin_providers_get",
+  "summary": "The sign-in providers, never a secret"
+ },
+ "GET /api/oidc/admin/providers/{provider_id}/impact": {
+  "operationId": "folgen_api_oidc_admin_providers__provider_id__impact_get",
+  "summary": "Numbers for the two confirmations"
+ },
+ "GET /api/oidc/anmeldeseite": {
+  "operationId": "anmeldeseite_api_oidc_anmeldeseite_get",
+  "summary": "What the sign-in page shows: the buttons and the password form"
+ },
+ "GET /api/oidc/authentik/address": {
+  "operationId": "authentik_adresse_api_oidc_authentik_address_get",
+  "summary": "What the authentik card shows about the public address"
+ },
+ "GET /api/oidc/authentik/blueprint": {
+  "operationId": "authentik_blueprint_api_oidc_authentik_blueprint_get",
+  "summary": "A blueprint that creates the same objects in authentik"
+ },
+ "GET /api/oidc/callback": {
+  "operationId": "zurueck_oidc_api_oidc_callback_get",
+  "summary": "Return from the provider of the entry oidc"
+ },
+ "GET /api/oidc/me": {
+  "operationId": "meine_api_oidc_me_get",
+  "summary": "The active providers and whether this account is linked to each"
+ },
+ "GET /api/oidc/providers": {
+  "operationId": "oeffentliche_anbieter_api_oidc_providers_get",
+  "summary": "The active sign-in providers, for the sign-in and invitation pages"
+ },
+ "GET /api/oidc/{slug}/callback": {
+  "operationId": "zurueck_api_oidc__slug__callback_get",
+  "summary": "Return from the identity provider"
+ },
+ "GET /api/oidc/{slug}/start": {
+  "operationId": "start_api_oidc__slug__start_get",
+  "summary": "Start a sign-in at an identity provider"
+ },
+ "GET /api/oidc/{slug}/zurueck": {
+  "operationId": "zurueck_alt_api_oidc__slug__zurueck_get",
+  "summary": "Return from a provider set up in nexmail 0.21"
+ },
+ "GET /api/protokoll": {
+  "operationId": "lesen_api_protokoll_get",
+  "summary": "Lesen"
+ },
+ "GET /api/protokoll/download": {
+  "operationId": "herunterladen_api_protokoll_download_get",
+  "summary": "Herunterladen"
+ },
+ "GET /api/protokoll/stand": {
+  "operationId": "stand_api_protokoll_stand_get",
+  "summary": "Stand"
+ },
+ "GET /api/push/einstellungen": {
+  "operationId": "einstellungen_lesen_api_push_einstellungen_get",
+  "summary": "Einstellungen Lesen"
+ },
+ "GET /api/push/geraete": {
+  "operationId": "geraete_api_push_geraete_get",
+  "summary": "Geraete"
+ },
+ "GET /api/push/schluessel": {
+  "operationId": "schluessel_api_push_schluessel_get",
+  "summary": "Schluessel"
+ },
+ "GET /api/regeln": {
+  "operationId": "regeln_api_regeln_get",
+  "summary": "Regeln"
+ },
+ "GET /api/schlagworte": {
+  "operationId": "liste_api_schlagworte_get",
+  "summary": "Liste"
+ },
+ "GET /api/setup/status": {
+  "operationId": "status_lesen_api_setup_status_get",
+  "summary": "Status Lesen"
+ },
+ "GET /api/sicherung/liste": {
+  "operationId": "uebersicht_api_sicherung_liste_get",
+  "summary": "Uebersicht"
+ },
+ "GET /api/signaturen": {
+  "operationId": "signaturen_api_signaturen_get",
+  "summary": "Signaturen"
+ },
+ "GET /api/sitzungen": {
+  "operationId": "liste_api_sitzungen_get",
+  "summary": "Liste"
+ },
+ "GET /api/termine/{nachricht_id}": {
+  "operationId": "einladung_api_termine__nachricht_id__get",
+  "summary": "Einladung"
+ },
+ "GET /api/termine/{nachricht_id}/aus-mail": {
+  "operationId": "aus_mail_api_termine__nachricht_id__aus_mail_get",
+  "summary": "Aus Mail"
+ },
+ "GET /api/textvorlagen": {
+  "operationId": "textvorlagen_api_textvorlagen_get",
+  "summary": "Textvorlagen"
+ },
+ "GET /api/ueber": {
+  "operationId": "ueber_api_ueber_get",
+  "summary": "Ueber"
+ },
+ "GET /api/v1/me": {
+  "operationId": "me_api_v1_me_get",
+  "summary": "Me"
+ },
+ "GET /api/v1/messages/latest": {
+  "operationId": "latest_api_v1_messages_latest_get",
+  "summary": "Latest"
+ },
+ "GET /api/v1/summary": {
+  "operationId": "summary_api_v1_summary_get",
+  "summary": "Summary"
+ },
+ "GET /api/v1/tags": {
+  "operationId": "tags_api_v1_tags_get",
+  "summary": "Tags"
+ },
+ "GET /api/v1/tasks/{task_id}/tags": {
+  "operationId": "task_tags_api_v1_tasks__task_id__tags_get",
+  "summary": "Task Tags"
+ },
+ "GET /api/verfassen/ausgang": {
+  "operationId": "ausgang_api_verfassen_ausgang_get",
+  "summary": "Ausgang"
+ },
+ "GET /api/verfassen/signatur/{konto_id}": {
+  "operationId": "signatur_fuer_api_verfassen_signatur__konto_id__get",
+  "summary": "Signatur Fuer"
+ },
+ "GET /api/verfassen/vorlage/{nachricht_id}": {
+  "operationId": "vorlage_api_verfassen_vorlage__nachricht_id__get",
+  "summary": "Vorlage"
+ },
+ "PATCH /api/adressbuecher/{buch_id}": {
+  "operationId": "aendern_api_adressbuecher__buch_id__patch",
+  "summary": "Aendern"
+ },
+ "PATCH /api/app/1/tasks/{aufgabe_id}": {
+  "operationId": "aendern_api_app_1_tasks__aufgabe_id__patch",
+  "summary": "Tick a task or set its date"
+ },
+ "PATCH /api/aufgaben/{aufgabe_id}": {
+  "operationId": "aendern_api_aufgaben__aufgabe_id__patch",
+  "summary": "Aendern"
+ },
+ "PATCH /api/kalender/termine/{termin_id}": {
+  "operationId": "termin_aendern_api_kalender_termine__termin_id__patch",
+  "summary": "Termin Aendern"
+ },
+ "PATCH /api/kalender/{kalender_id}": {
+  "operationId": "aendern_api_kalender__kalender_id__patch",
+  "summary": "Aendern"
+ },
+ "PATCH /api/kontakte/gruppen/{gruppe_id}": {
+  "operationId": "gruppe_umbenennen_api_kontakte_gruppen__gruppe_id__patch",
+  "summary": "Gruppe Umbenennen"
+ },
+ "PATCH /api/kontakte/{kontakt_id}": {
+  "operationId": "aendern_api_kontakte__kontakt_id__patch",
+  "summary": "Aendern"
+ },
+ "PATCH /api/nextasks/aufgaben/{aufgabe_id}": {
+  "operationId": "aendern_api_nextasks_aufgaben__aufgabe_id__patch",
+  "summary": "Aendern"
+ },
+ "PATCH /api/nextasks/listen/{liste_id}": {
+  "operationId": "auswahl_api_nextasks_listen__liste_id__patch",
+  "summary": "Auswahl"
+ },
+ "PATCH /api/nextime/kalender/{kalender_id}": {
+  "operationId": "haken_api_nextime_kalender__kalender_id__patch",
+  "summary": "Haken"
+ },
+ "PATCH /api/nextime/termine/{event_id}": {
+  "operationId": "aendern_api_nextime_termine__event_id__patch",
+  "summary": "Aendern"
+ },
+ "PATCH /api/schlagworte/{schlagwort_id}": {
+  "operationId": "aendern_api_schlagworte__schlagwort_id__patch",
+  "summary": "Aendern"
+ },
+ "POST /api/adressbuecher/abgleichen": {
+  "operationId": "abgleichen_api_adressbuecher_abgleichen_post",
+  "summary": "Abgleichen"
+ },
+ "POST /api/adressbuecher/pruefen": {
+  "operationId": "pruefen_api_adressbuecher_pruefen_post",
+  "summary": "Pruefen"
+ },
+ "POST /api/adressbuecher/verbinden": {
+  "operationId": "verbinden_api_adressbuecher_verbinden_post",
+  "summary": "Verbinden"
+ },
+ "POST /api/apischluessel": {
+  "operationId": "anlegen_api_apischluessel_post",
+  "summary": "Anlegen"
+ },
+ "POST /api/app-kopplung": {
+  "operationId": "anlegen_api_app_kopplung_post",
+  "summary": "Anlegen"
+ },
+ "POST /api/app/1/ai/text": {
+  "operationId": "text_api_app_1_ai_text_post",
+  "summary": "Rephrase, correct or translate a draft"
+ },
+ "POST /api/app/1/compose/send": {
+  "operationId": "senden__api_app_1_compose_send_post",
+  "summary": "Send, now or later"
+ },
+ "POST /api/app/1/devices": {
+  "operationId": "weiteres_geraet_api_app_1_devices_post",
+  "summary": "A key of its own for another device of this account"
+ },
+ "POST /api/app/1/drafts": {
+  "operationId": "entwurf_ablegen_api_app_1_drafts_post",
+  "summary": "Save a draft"
+ },
+ "POST /api/app/1/folders/{ordner_id}/empty": {
+  "operationId": "leeren_api_app_1_folders__ordner_id__empty_post",
+  "summary": "Empty the trash or junk for good"
+ },
+ "POST /api/app/1/folders/{ordner_id}/read": {
+  "operationId": "ordner_gelesen_api_app_1_folders__ordner_id__read_post",
+  "summary": "Mark a folder as read"
+ },
+ "POST /api/app/1/messages/archive": {
+  "operationId": "archivieren_api_app_1_messages_archive_post",
+  "summary": "Archive messages"
+ },
+ "POST /api/app/1/messages/delete": {
+  "operationId": "loeschen_api_app_1_messages_delete_post",
+  "summary": "Move to the trash"
+ },
+ "POST /api/app/1/messages/delete-forever": {
+  "operationId": "endgueltig_api_app_1_messages_delete_forever_post",
+  "summary": "Delete messages for good, only from trash or junk"
+ },
+ "POST /api/app/1/messages/junk": {
+  "operationId": "junk_api_app_1_messages_junk_post",
+  "summary": "Move to junk"
+ },
+ "POST /api/app/1/messages/labels/{atom}": {
+  "operationId": "schlagwort_geben_api_app_1_messages_labels__atom__post",
+  "summary": "Add a tag to messages"
+ },
+ "POST /api/app/1/messages/move": {
+  "operationId": "verschieben_api_app_1_messages_move_post",
+  "summary": "Move messages"
+ },
+ "POST /api/app/1/messages/undo": {
+  "operationId": "zurueck_api_app_1_messages_undo_post",
+  "summary": "Undo a move"
+ },
+ "POST /api/app/1/messages/{nachricht_id}/flags": {
+  "operationId": "flags_setzen_api_app_1_messages__nachricht_id__flags_post",
+  "summary": "Set flags"
+ },
+ "POST /api/app/1/messages/{nachricht_id}/images": {
+  "operationId": "bilder_anzeigen_api_app_1_messages__nachricht_id__images_post",
+  "summary": "Load the blocked images"
+ },
+ "POST /api/app/1/messages/{nachricht_id}/invitation/answer": {
+  "operationId": "antworten_api_app_1_messages__nachricht_id__invitation_answer_post",
+  "summary": "Answer an invitation"
+ },
+ "POST /api/app/1/messages/{nachricht_id}/summary": {
+  "operationId": "zusammenfassung_api_app_1_messages__nachricht_id__summary_post",
+  "summary": "Summarise a received message"
+ },
+ "POST /api/app/1/messages/{nachricht_id}/unsubscribe": {
+  "operationId": "abbestellen_api_app_1_messages__nachricht_id__unsubscribe_post",
+  "summary": "Unsubscribe with one click"
+ },
+ "POST /api/app/1/outbox/{ausgang_id}/cancel": {
+  "operationId": "ausgang_abbrechen_api_app_1_outbox__ausgang_id__cancel_post",
+  "summary": "Cancel a message in the outbox"
+ },
+ "POST /api/app/1/pairing/code": {
+  "operationId": "mit_code_api_app_1_pairing_code_post",
+  "summary": "Fetch the key with the short code"
+ },
+ "POST /api/app/1/pairing/{pairing_id}/key": {
+  "operationId": "abholen_api_app_1_pairing__pairing_id__key_post",
+  "summary": "Fetch the key from a QR code"
+ },
+ "POST /api/app/1/search": {
+  "operationId": "suchen_api_app_1_search_post",
+  "summary": "Search through the server"
+ },
+ "POST /api/app/1/snoozes": {
+  "operationId": "wiedervorlage_anlegen_api_app_1_snoozes_post",
+  "summary": "Snooze a message"
+ },
+ "POST /api/app/1/sync": {
+  "operationId": "abgleichen_api_app_1_sync_post",
+  "summary": "Look for new mail"
+ },
+ "POST /api/app/1/tasks": {
+  "operationId": "anlegen_api_app_1_tasks_post",
+  "summary": "Make a task from a message"
+ },
+ "POST /api/app/1/tasks/sync": {
+  "operationId": "abgleichen_api_app_1_tasks_sync_post",
+  "summary": "Ask the connected to-do apps what changed"
+ },
+ "POST /api/app/1/tasks/with-target": {
+  "operationId": "mit_ziel_api_app_1_tasks_with_target_post",
+  "summary": "Make a task from a message in nexmail or a connected to-do app"
+ },
+ "POST /api/aufgaben": {
+  "operationId": "anlegen_api_aufgaben_post",
+  "summary": "Anlegen"
+ },
+ "POST /api/aufgaben/abgleichen": {
+  "operationId": "abgleichen_api_aufgaben_abgleichen_post",
+  "summary": "Abgleichen"
+ },
+ "POST /api/aufgaben/mit-ziel": {
+  "operationId": "mit_ziel_api_aufgaben_mit_ziel_post",
+  "summary": "Mit Ziel"
+ },
+ "POST /api/aufgabenziele": {
+  "operationId": "verbinden_api_aufgabenziele_post",
+  "summary": "Verbinden"
+ },
+ "POST /api/aufgabenziele/nextasks": {
+  "operationId": "nextasks_verbinden_api_aufgabenziele_nextasks_post",
+  "summary": "Nextasks Verbinden"
+ },
+ "POST /api/aufgabenziele/webhook": {
+  "operationId": "webhook_verbinden_api_aufgabenziele_webhook_post",
+  "summary": "Webhook Verbinden"
+ },
+ "POST /api/aufgabenziele/{verbindung_id}/test": {
+  "operationId": "webhook_testen_api_aufgabenziele__verbindung_id__test_post",
+  "summary": "Webhook Testen"
+ },
+ "POST /api/austausch/import": {
+  "operationId": "einspielen_api_austausch_import_post",
+  "summary": "Einspielen"
+ },
+ "POST /api/austausch/vorgang/{kennung}/abbrechen": {
+  "operationId": "abbrechen_api_austausch_vorgang__kennung__abbrechen_post",
+  "summary": "Abbrechen"
+ },
+ "POST /api/auth/abmelden": {
+  "operationId": "abmelden_api_auth_abmelden_post",
+  "summary": "Abmelden"
+ },
+ "POST /api/auth/adresse/{schluessel}": {
+  "operationId": "adresslink_einloesen_api_auth_adresse__schluessel__post",
+  "summary": "Adresslink Einloesen"
+ },
+ "POST /api/auth/anmelden": {
+  "operationId": "anmelden_api_auth_anmelden_post",
+  "summary": "Anmelden"
+ },
+ "POST /api/auth/code": {
+  "operationId": "code_pruefen_api_auth_code_post",
+  "summary": "Code Pruefen"
+ },
+ "POST /api/auth/ich/angebotene-adresse": {
+  "operationId": "angebotene_adresse_nehmen_api_auth_ich_angebotene_adresse_post",
+  "summary": "Angebotene Adresse Nehmen"
+ },
+ "POST /api/auth/ich/kontaktadresse/nochmal": {
+  "operationId": "adresslink_nochmal_api_auth_ich_kontaktadresse_nochmal_post",
+  "summary": "Adresslink Nochmal"
+ },
+ "POST /api/auth/ich/wasneu-gesehen": {
+  "operationId": "wasneu_gesehen_api_auth_ich_wasneu_gesehen_post",
+  "summary": "Wasneu Gesehen"
+ },
+ "POST /api/auth/kennwort-neu": {
+  "operationId": "kennwort_neu_api_auth_kennwort_neu_post",
+  "summary": "Kennwort Neu"
+ },
+ "POST /api/auth/kennwort-vergessen": {
+  "operationId": "kennwort_vergessen_api_auth_kennwort_vergessen_post",
+  "summary": "Kennwort Vergessen"
+ },
+ "POST /api/auth/passkey": {
+  "operationId": "passkey_anmelden_api_auth_passkey_post",
+  "summary": "Passkey Anmelden"
+ },
+ "POST /api/auth/passkey/start": {
+  "operationId": "passkey_anmelden_start_api_auth_passkey_start_post",
+  "summary": "Passkey Anmelden Start"
+ },
+ "POST /api/auth/passkeys": {
+  "operationId": "passkey_neu_api_auth_passkeys_post",
+  "summary": "Passkey Neu"
+ },
+ "POST /api/auth/passkeys/start": {
+  "operationId": "passkey_neu_start_api_auth_passkeys_start_post",
+  "summary": "Passkey Neu Start"
+ },
+ "POST /api/auth/passkeys/{uid}/entfernen": {
+  "operationId": "passkey_entfernen_api_auth_passkeys__uid__entfernen_post",
+  "summary": "Passkey Entfernen"
+ },
+ "POST /api/auth/wiederherstellung": {
+  "operationId": "wiederherstellung_api_auth_wiederherstellung_post",
+  "summary": "Wiederherstellung"
+ },
+ "POST /api/auth/zugaenge/gesehen": {
+  "operationId": "zugaenge_gesehen_api_auth_zugaenge_gesehen_post",
+  "summary": "Zugaenge Gesehen"
+ },
+ "POST /api/auth/zugaenge/trennen": {
+  "operationId": "zugaenge_trennen_api_auth_zugaenge_trennen_post",
+  "summary": "Zugaenge Trennen"
+ },
+ "POST /api/auth/zwei-faktor/aus": {
+  "operationId": "zwei_faktor_aus_api_auth_zwei_faktor_aus_post",
+  "summary": "Zwei Faktor Aus"
+ },
+ "POST /api/auth/zwei-faktor/bestaetigen": {
+  "operationId": "zwei_faktor_bestaetigen_api_auth_zwei_faktor_bestaetigen_post",
+  "summary": "Zwei Faktor Bestaetigen"
+ },
+ "POST /api/auth/zwei-faktor/codes": {
+  "operationId": "neue_codes_api_auth_zwei_faktor_codes_post",
+  "summary": "Neue Codes"
+ },
+ "POST /api/auth/zwei-faktor/starten": {
+  "operationId": "zwei_faktor_starten_api_auth_zwei_faktor_starten_post",
+  "summary": "Zwei Faktor Starten"
+ },
+ "POST /api/benutzer/einladungen": {
+  "operationId": "einladen_api_benutzer_einladungen_post",
+  "summary": "Einladen"
+ },
+ "POST /api/benutzer/{benutzer_id}/betreiber": {
+  "operationId": "betreiber_uebergeben_api_benutzer__benutzer_id__betreiber_post",
+  "summary": "Betreiber Uebergeben"
+ },
+ "POST /api/benutzer/{benutzer_id}/kontaktadresse-entfernen": {
+  "operationId": "adresse_entfernen_api_benutzer__benutzer_id__kontaktadresse_entfernen_post",
+  "summary": "Adresse Entfernen"
+ },
+ "POST /api/benutzer/{benutzer_id}/passwort-link": {
+  "operationId": "passwort_link_api_benutzer__benutzer_id__passwort_link_post",
+  "summary": "Passwort Link"
+ },
+ "POST /api/benutzer/{benutzer_id}/zweiter-faktor-zuruecksetzen": {
+  "operationId": "zweiten_faktor_zuruecksetzen_api_benutzer__benutzer_id__zweiter_faktor_zuruecksetzen_post",
+  "summary": "Zweiten Faktor Zuruecksetzen"
+ },
+ "POST /api/einladung/{schluessel}": {
+  "operationId": "annehmen_api_einladung__schluessel__post",
+  "summary": "Annehmen"
+ },
+ "POST /api/einstellungen/bilder/absender/entfernen": {
+  "operationId": "absender_entfernen_api_einstellungen_bilder_absender_entfernen_post",
+  "summary": "Absender Entfernen"
+ },
+ "POST /api/einstellungen/postausgang/probe": {
+  "operationId": "postausgang_proben_api_einstellungen_postausgang_probe_post",
+  "summary": "Postausgang Proben"
+ },
+ "POST /api/erinnerungen/{zustellung_id}/erledigt": {
+  "operationId": "erledigt_api_erinnerungen__zustellung_id__erledigt_post",
+  "summary": "Erledigt"
+ },
+ "POST /api/erinnerungen/{zustellung_id}/schlummern": {
+  "operationId": "schlummern_api_erinnerungen__zustellung_id__schlummern_post",
+  "summary": "Schlummern"
+ },
+ "POST /api/kalender": {
+  "operationId": "anlegen_api_kalender_post",
+  "summary": "Anlegen"
+ },
+ "POST /api/kalender/abgleichen": {
+  "operationId": "abgleichen_api_kalender_abgleichen_post",
+  "summary": "Abgleichen"
+ },
+ "POST /api/kalender/abo": {
+  "operationId": "abonnieren_api_kalender_abo_post",
+  "summary": "Abonnieren"
+ },
+ "POST /api/kalender/pruefen": {
+  "operationId": "pruefen_api_kalender_pruefen_post",
+  "summary": "Pruefen"
+ },
+ "POST /api/kalender/termine": {
+  "operationId": "termin_anlegen_api_kalender_termine_post",
+  "summary": "Termin Anlegen"
+ },
+ "POST /api/kalender/termine/{termin_id}/einladen": {
+  "operationId": "einladen_api_kalender_termine__termin_id__einladen_post",
+  "summary": "Einladen"
+ },
+ "POST /api/kalender/termine/{termin_id}/konflikt": {
+  "operationId": "konflikt_aufloesen_api_kalender_termine__termin_id__konflikt_post",
+  "summary": "Konflikt Aufloesen"
+ },
+ "POST /api/kalender/verbinden": {
+  "operationId": "verbinden_api_kalender_verbinden_post",
+  "summary": "Verbinden"
+ },
+ "POST /api/kalender/{kalender_id}/ics": {
+  "operationId": "einspielen_api_kalender__kalender_id__ics_post",
+  "summary": "Einspielen"
+ },
+ "POST /api/ki/modelle": {
+  "operationId": "modelle_api_ki_modelle_post",
+  "summary": "Modelle"
+ },
+ "POST /api/ki/text": {
+  "operationId": "text_api_ki_text_post",
+  "summary": "Text"
+ },
+ "POST /api/kontakte": {
+  "operationId": "anlegen_api_kontakte_post",
+  "summary": "Anlegen"
+ },
+ "POST /api/kontakte/einsammeln": {
+  "operationId": "einsammeln_api_kontakte_einsammeln_post",
+  "summary": "Einsammeln"
+ },
+ "POST /api/kontakte/gruppen": {
+  "operationId": "gruppe_anlegen_api_kontakte_gruppen_post",
+  "summary": "Gruppe Anlegen"
+ },
+ "POST /api/kontakte/vcard": {
+  "operationId": "einlesen_api_kontakte_vcard_post",
+  "summary": "Einlesen"
+ },
+ "POST /api/kontakte/vcard/vorgang/{kennung}/abbrechen": {
+  "operationId": "einlesen_abbrechen_api_kontakte_vcard_vorgang__kennung__abbrechen_post",
+  "summary": "Einlesen Abbrechen"
+ },
+ "POST /api/kontakte/{kontakt_id}/konflikt": {
+  "operationId": "konflikt_aufloesen_api_kontakte__kontakt_id__konflikt_post",
+  "summary": "Konflikt Aufloesen"
+ },
+ "POST /api/kontakte/{kontakt_id}/verschieben": {
+  "operationId": "verschieben_api_kontakte__kontakt_id__verschieben_post",
+  "summary": "Verschieben"
+ },
+ "POST /api/konten": {
+  "operationId": "anlegen_api_konten_post",
+  "summary": "Anlegen"
+ },
+ "POST /api/konten/pruefen": {
+  "operationId": "pruefen_api_konten_pruefen_post",
+  "summary": "Pruefen"
+ },
+ "POST /api/konten/vorschlag": {
+  "operationId": "vorschlag_api_konten_vorschlag_post",
+  "summary": "Vorschlag"
+ },
+ "POST /api/konten/{konto_id}/ordner": {
+  "operationId": "ordner_anlegen_api_konten__konto_id__ordner_post",
+  "summary": "Ordner Anlegen"
+ },
+ "POST /api/mailoauth/{art}/start": {
+  "operationId": "start_api_mailoauth__art__start_post",
+  "summary": "Start"
+ },
+ "POST /api/nachrichten/abgleichen": {
+  "operationId": "abgleichen_api_nachrichten_abgleichen_post",
+  "summary": "Abgleichen"
+ },
+ "POST /api/nachrichten/archivieren": {
+  "operationId": "archivieren_api_nachrichten_archivieren_post",
+  "summary": "Archivieren"
+ },
+ "POST /api/nachrichten/endgueltig": {
+  "operationId": "endgueltig_api_nachrichten_endgueltig_post",
+  "summary": "Endgueltig"
+ },
+ "POST /api/nachrichten/junk": {
+  "operationId": "junk_api_nachrichten_junk_post",
+  "summary": "Junk"
+ },
+ "POST /api/nachrichten/loeschen": {
+  "operationId": "loeschen_api_nachrichten_loeschen_post",
+  "summary": "Loeschen"
+ },
+ "POST /api/nachrichten/ordner/{ordner_id}/gelesen": {
+  "operationId": "ordner_gelesen_api_nachrichten_ordner__ordner_id__gelesen_post",
+  "summary": "Ordner Gelesen"
+ },
+ "POST /api/nachrichten/ordner/{ordner_id}/leeren": {
+  "operationId": "leeren_api_nachrichten_ordner__ordner_id__leeren_post",
+  "summary": "Leeren"
+ },
+ "POST /api/nachrichten/schlagworte/{atom}": {
+  "operationId": "schlagwort_geben_api_nachrichten_schlagworte__atom__post",
+  "summary": "Schlagwort Geben"
+ },
+ "POST /api/nachrichten/verschieben": {
+  "operationId": "verschieben_api_nachrichten_verschieben_post",
+  "summary": "Verschieben"
+ },
+ "POST /api/nachrichten/wiedervorlage": {
+  "operationId": "wiedervorlage_anlegen_api_nachrichten_wiedervorlage_post",
+  "summary": "Wiedervorlage Anlegen"
+ },
+ "POST /api/nachrichten/zurueck": {
+  "operationId": "zurueck_api_nachrichten_zurueck_post",
+  "summary": "Zurueck"
+ },
+ "POST /api/nachrichten/{nachricht_id}/abbestellen": {
+  "operationId": "abbestellen_api_nachrichten__nachricht_id__abbestellen_post",
+  "summary": "Abbestellen"
+ },
+ "POST /api/nachrichten/{nachricht_id}/antwortentwurf": {
+  "operationId": "antwortentwurf_api_nachrichten__nachricht_id__antwortentwurf_post",
+  "summary": "Antwortentwurf"
+ },
+ "POST /api/nachrichten/{nachricht_id}/bilder": {
+  "operationId": "bilder_anzeigen_api_nachrichten__nachricht_id__bilder_post",
+  "summary": "Bilder Anzeigen"
+ },
+ "POST /api/nachrichten/{nachricht_id}/flags": {
+  "operationId": "flags_setzen_api_nachrichten__nachricht_id__flags_post",
+  "summary": "Flags Setzen"
+ },
+ "POST /api/nachrichten/{nachricht_id}/frage": {
+  "operationId": "frage_api_nachrichten__nachricht_id__frage_post",
+  "summary": "Frage"
+ },
+ "POST /api/nachrichten/{nachricht_id}/uebersetzung": {
+  "operationId": "uebersetzung_api_nachrichten__nachricht_id__uebersetzung_post",
+  "summary": "Uebersetzung"
+ },
+ "POST /api/nachrichten/{nachricht_id}/zusammenfassung": {
+  "operationId": "zusammenfassung_api_nachrichten__nachricht_id__zusammenfassung_post",
+  "summary": "Zusammenfassung"
+ },
+ "POST /api/nextasks/aufgaben": {
+  "operationId": "anlegen_api_nextasks_aufgaben_post",
+  "summary": "Anlegen"
+ },
+ "POST /api/nextime/termine": {
+  "operationId": "anlegen_api_nextime_termine_post",
+  "summary": "Anlegen"
+ },
+ "POST /api/nextime/verbindung": {
+  "operationId": "verbinden_api_nextime_verbindung_post",
+  "summary": "Verbinden"
+ },
+ "POST /api/oidc/admin/providers": {
+  "operationId": "anlegen_api_oidc_admin_providers_post",
+  "summary": "Add a sign-in provider"
+ },
+ "POST /api/oidc/authentik/address": {
+  "operationId": "authentik_adresse_speichern_api_oidc_authentik_address_post",
+  "summary": "Save the public address the authentik card suggests"
+ },
+ "POST /api/oidc/authentik/setup": {
+  "operationId": "authentik_einrichten_api_oidc_authentik_setup_post",
+  "summary": "Set up provider and application in authentik with a token"
+ },
+ "POST /api/oidc/{slug}/einladung": {
+  "operationId": "einladung_starten_api_oidc__slug__einladung_post",
+  "summary": "Take an invitation to a provider (the key in the body)"
+ },
+ "POST /api/oidc/{slug}/link": {
+  "operationId": "verknuepfen_api_oidc__slug__link_post",
+  "summary": "Start linking this account; the password confirms it"
+ },
+ "POST /api/push/anmelden": {
+  "operationId": "anmelden_api_push_anmelden_post",
+  "summary": "Anmelden"
+ },
+ "POST /api/push/probe": {
+  "operationId": "probe_api_push_probe_post",
+  "summary": "Probe"
+ },
+ "POST /api/regeln": {
+  "operationId": "regel_anlegen_api_regeln_post",
+  "summary": "Regel Anlegen"
+ },
+ "POST /api/regeln/anwenden": {
+  "operationId": "rueckwirkend_api_regeln_anwenden_post",
+  "summary": "Rueckwirkend"
+ },
+ "POST /api/schlagworte": {
+  "operationId": "anlegen_api_schlagworte_post",
+  "summary": "Anlegen"
+ },
+ "POST /api/setup/konto": {
+  "operationId": "konto_anlegen_api_setup_konto_post",
+  "summary": "Konto Anlegen"
+ },
+ "POST /api/sicherung/einspielen": {
+  "operationId": "einspielen_angemeldet_api_sicherung_einspielen_post",
+  "summary": "Einspielen Angemeldet"
+ },
+ "POST /api/sicherung/einspielen-vor-einrichtung": {
+  "operationId": "einspielen_vor_einrichtung_api_sicherung_einspielen_vor_einrichtung_post",
+  "summary": "Einspielen Vor Einrichtung"
+ },
+ "POST /api/sicherung/erstellen": {
+  "operationId": "erstellen_api_sicherung_erstellen_post",
+  "summary": "Erstellen"
+ },
+ "POST /api/sicherung/liste": {
+  "operationId": "anlegen_api_sicherung_liste_post",
+  "summary": "Anlegen"
+ },
+ "POST /api/sicherung/liste/{name}/archiv": {
+  "operationId": "archiv_aus_punkt_api_sicherung_liste__name__archiv_post",
+  "summary": "Archiv Aus Punkt"
+ },
+ "POST /api/sicherung/pruefen": {
+  "operationId": "pruefen_angemeldet_api_sicherung_pruefen_post",
+  "summary": "Pruefen Angemeldet"
+ },
+ "POST /api/sicherung/pruefen-vor-einrichtung": {
+  "operationId": "pruefen_vor_einrichtung_api_sicherung_pruefen_vor_einrichtung_post",
+  "summary": "Pruefen Vor Einrichtung"
+ },
+ "POST /api/signaturen": {
+  "operationId": "signatur_anlegen_api_signaturen_post",
+  "summary": "Signatur Anlegen"
+ },
+ "POST /api/sitzungen/alle-beenden": {
+  "operationId": "alle_beenden_api_sitzungen_alle_beenden_post",
+  "summary": "Alle Beenden"
+ },
+ "POST /api/suche": {
+  "operationId": "suchen_api_suche_post",
+  "summary": "Suchen"
+ },
+ "POST /api/suche/index-neu-bauen": {
+  "operationId": "index_neu_bauen_api_suche_index_neu_bauen_post",
+  "summary": "Index Neu Bauen"
+ },
+ "POST /api/termine/{nachricht_id}/antwort": {
+  "operationId": "antworten_api_termine__nachricht_id__antwort_post",
+  "summary": "Antworten"
+ },
+ "POST /api/termine/{nachricht_id}/aus-mail": {
+  "operationId": "termin_aus_mail_api_termine__nachricht_id__aus_mail_post",
+  "summary": "Termin Aus Mail"
+ },
+ "POST /api/termine/{nachricht_id}/nextime-aktualisieren": {
+  "operationId": "nextime_aktualisieren_api_termine__nachricht_id__nextime_aktualisieren_post",
+  "summary": "Nextime Aktualisieren"
+ },
+ "POST /api/termine/{nachricht_id}/nextime-entfernen": {
+  "operationId": "nextime_entfernen_api_termine__nachricht_id__nextime_entfernen_post",
+  "summary": "Nextime Entfernen"
+ },
+ "POST /api/termine/{nachricht_id}/uebernehmen": {
+  "operationId": "uebernehmen_api_termine__nachricht_id__uebernehmen_post",
+  "summary": "Uebernehmen"
+ },
+ "POST /api/textvorlagen": {
+  "operationId": "textvorlage_anlegen_api_textvorlagen_post",
+  "summary": "Textvorlage Anlegen"
+ },
+ "POST /api/ueber/pruefen": {
+  "operationId": "jetzt_pruefen_api_ueber_pruefen_post",
+  "summary": "Jetzt Pruefen"
+ },
+ "POST /api/v1/tasks/{task_id}/complete": {
+  "operationId": "complete_api_v1_tasks__task_id__complete_post",
+  "summary": "Complete"
+ },
+ "POST /api/v1/tasks/{task_id}/reopen": {
+  "operationId": "reopen_api_v1_tasks__task_id__reopen_post",
+  "summary": "Reopen"
+ },
+ "POST /api/v1/tasks/{task_id}/tags/{tag_id}": {
+  "operationId": "tag_setzen_api_v1_tasks__task_id__tags__tag_id__post",
+  "summary": "Tag Setzen"
+ },
+ "POST /api/verfassen/ausgang/nachschieben": {
+  "operationId": "nachschieben_api_verfassen_ausgang_nachschieben_post",
+  "summary": "Nachschieben"
+ },
+ "POST /api/verfassen/ausgang/{ausgang_id}/abbrechen": {
+  "operationId": "ausgang_abbrechen_api_verfassen_ausgang__ausgang_id__abbrechen_post",
+  "summary": "Ausgang Abbrechen"
+ },
+ "POST /api/verfassen/entwurf": {
+  "operationId": "entwurf_ablegen_api_verfassen_entwurf_post",
+  "summary": "Entwurf Ablegen"
+ },
+ "POST /api/verfassen/senden": {
+  "operationId": "senden__api_verfassen_senden_post",
+  "summary": "Senden "
+ },
+ "PUT /api/abwesenheit/{konto_id}": {
+  "operationId": "stellen_api_abwesenheit__konto_id__put",
+  "summary": "Stellen"
+ },
+ "PUT /api/apischluessel/erlaubt": {
+  "operationId": "riegel_setzen_api_apischluessel_erlaubt_put",
+  "summary": "Riegel Setzen"
+ },
+ "PUT /api/apischluessel/{schluessel_id}": {
+  "operationId": "aendern_api_apischluessel__schluessel_id__put",
+  "summary": "Aendern"
+ },
+ "PUT /api/app-kopplung/erlaubt": {
+  "operationId": "riegel_setzen_api_app_kopplung_erlaubt_put",
+  "summary": "Riegel Setzen"
+ },
+ "PUT /api/app/1/push": {
+  "operationId": "push_merken_api_app_1_push_put",
+  "summary": "Where notifications for this device go"
+ },
+ "PUT /api/aufgaben/reihenfolge": {
+  "operationId": "ordnen_api_aufgaben_reihenfolge_put",
+  "summary": "Ordnen"
+ },
+ "PUT /api/aufgabenziele/eigene": {
+  "operationId": "eigene_api_aufgabenziele_eigene_put",
+  "summary": "Eigene"
+ },
+ "PUT /api/aufgabenziele/standard": {
+  "operationId": "standard_api_aufgabenziele_standard_put",
+  "summary": "Standard"
+ },
+ "PUT /api/aufgabenziele/{verbindung_id}/nextasks": {
+  "operationId": "nextasks_aendern_api_aufgabenziele__verbindung_id__nextasks_put",
+  "summary": "Nextasks Aendern"
+ },
+ "PUT /api/aufgabenziele/{verbindung_id}/webhook": {
+  "operationId": "webhook_aendern_api_aufgabenziele__verbindung_id__webhook_put",
+  "summary": "Webhook Aendern"
+ },
+ "PUT /api/auth/ich/benutzername": {
+  "operationId": "benutzername_aendern_api_auth_ich_benutzername_put",
+  "summary": "Benutzername Aendern"
+ },
+ "PUT /api/auth/ich/gruppen": {
+  "operationId": "gruppen_ordnen_api_auth_ich_gruppen_put",
+  "summary": "Gruppen Ordnen"
+ },
+ "PUT /api/auth/ich/kontaktadresse": {
+  "operationId": "kontaktadresse_setzen_api_auth_ich_kontaktadresse_put",
+  "summary": "Kontaktadresse Setzen"
+ },
+ "PUT /api/auth/ich/neue-anmeldung": {
+  "operationId": "neue_anmeldung_setzen_api_auth_ich_neue_anmeldung_put",
+  "summary": "Neue Anmeldung Setzen"
+ },
+ "PUT /api/auth/ich/profil": {
+  "operationId": "profil_setzen_api_auth_ich_profil_put",
+  "summary": "Profil Setzen"
+ },
+ "PUT /api/auth/ich/profilbild": {
+  "operationId": "profilbild_setzen_api_auth_ich_profilbild_put",
+  "summary": "Profilbild Setzen"
+ },
+ "PUT /api/auth/ich/sprache": {
+  "operationId": "sprache_setzen_api_auth_ich_sprache_put",
+  "summary": "Sprache Setzen"
+ },
+ "PUT /api/auth/passwort": {
+  "operationId": "passwort_aendern_api_auth_passwort_put",
+  "summary": "Passwort Aendern"
+ },
+ "PUT /api/benutzer/{benutzer_id}/anzeigename": {
+  "operationId": "anzeigename_aendern_api_benutzer__benutzer_id__anzeigename_put",
+  "summary": "Anzeigename Aendern"
+ },
+ "PUT /api/benutzer/{benutzer_id}/benutzername": {
+  "operationId": "benutzername_aendern_api_benutzer__benutzer_id__benutzername_put",
+  "summary": "Benutzername Aendern"
+ },
+ "PUT /api/benutzer/{benutzer_id}/ki": {
+  "operationId": "ki_erlaubnis_api_benutzer__benutzer_id__ki_put",
+  "summary": "Ki Erlaubnis"
+ },
+ "PUT /api/einstellungen": {
+  "operationId": "schreiben_api_einstellungen_put",
+  "summary": "Schreiben"
+ },
+ "PUT /api/einstellungen/aufraeumen": {
+  "operationId": "aufraeumen_schreiben_api_einstellungen_aufraeumen_put",
+  "summary": "Aufraeumen Schreiben"
+ },
+ "PUT /api/einstellungen/bilder": {
+  "operationId": "bilder_schreiben_api_einstellungen_bilder_put",
+  "summary": "Bilder Schreiben"
+ },
+ "PUT /api/einstellungen/eigenes-netz": {
+  "operationId": "eigenes_netz_setzen_api_einstellungen_eigenes_netz_put",
+  "summary": "Eigenes Netz Setzen"
+ },
+ "PUT /api/einstellungen/postausgang": {
+  "operationId": "postausgang_schreiben_api_einstellungen_postausgang_put",
+  "summary": "Postausgang Schreiben"
+ },
+ "PUT /api/einstellungen/webhook-mailtext": {
+  "operationId": "webhook_mailtext_setzen_api_einstellungen_webhook_mailtext_put",
+  "summary": "Webhook Mailtext Setzen"
+ },
+ "PUT /api/ki": {
+  "operationId": "aendern_api_ki_put",
+  "summary": "Aendern"
+ },
+ "PUT /api/ki/erlaubt": {
+  "operationId": "riegel_setzen_api_ki_erlaubt_put",
+  "summary": "Riegel Setzen"
+ },
+ "PUT /api/ki/fremde-post": {
+  "operationId": "fremde_post_setzen_api_ki_fremde_post_put",
+  "summary": "Fremde Post Setzen"
+ },
+ "PUT /api/kontakte/gruppen/{gruppe_id}/mitglieder": {
+  "operationId": "mitglieder_setzen_api_kontakte_gruppen__gruppe_id__mitglieder_put",
+  "summary": "Mitglieder Setzen"
+ },
+ "PUT /api/konten/{konto_id}": {
+  "operationId": "aendern_api_konten__konto_id__put",
+  "summary": "Aendern"
+ },
+ "PUT /api/konten/{konto_id}/ordner/{ordner_id}": {
+  "operationId": "ordner_umbenennen_api_konten__konto_id__ordner__ordner_id__put",
+  "summary": "Ordner Umbenennen"
+ },
+ "PUT /api/konten/{konto_id}/ordner/{ordner_id}/rolle": {
+  "operationId": "ordner_rolle_api_konten__konto_id__ordner__ordner_id__rolle_put",
+  "summary": "Ordner Rolle"
+ },
+ "PUT /api/mailoauth/anbieter/{art}": {
+  "operationId": "anbieter_setzen_api_mailoauth_anbieter__art__put",
+  "summary": "Anbieter Setzen"
+ },
+ "PUT /api/oidc/admin/anmeldung": {
+  "operationId": "anmeldung_setzen_api_oidc_admin_anmeldung_put",
+  "summary": "Card 1: switch password sign-in on or off"
+ },
+ "PUT /api/oidc/admin/providers/order": {
+  "operationId": "ordnen_api_oidc_admin_providers_order_put",
+  "summary": "Put the sign-in buttons in order"
+ },
+ "PUT /api/oidc/admin/providers/{provider_id}": {
+  "operationId": "speichern_api_oidc_admin_providers__provider_id__put",
+  "summary": "Save a sign-in provider"
+ },
+ "PUT /api/protokoll/stufe": {
+  "operationId": "stufe_setzen_api_protokoll_stufe_put",
+  "summary": "Stufe Setzen"
+ },
+ "PUT /api/push/einstellungen": {
+  "operationId": "einstellungen_setzen_api_push_einstellungen_put",
+  "summary": "Einstellungen Setzen"
+ },
+ "PUT /api/regeln/{regel_id}": {
+  "operationId": "regel_aendern_api_regeln__regel_id__put",
+  "summary": "Regel Aendern"
+ },
+ "PUT /api/sicherung/zeitplan": {
+  "operationId": "zeitplan_setzen_api_sicherung_zeitplan_put",
+  "summary": "Zeitplan Setzen"
+ },
+ "PUT /api/signaturen/{signatur_id}": {
+  "operationId": "signatur_aendern_api_signaturen__signatur_id__put",
+  "summary": "Signatur Aendern"
+ },
+ "PUT /api/textvorlagen/reihenfolge": {
+  "operationId": "textvorlagen_ordnen_api_textvorlagen_reihenfolge_put",
+  "summary": "Textvorlagen Ordnen"
+ },
+ "PUT /api/textvorlagen/{vorlage_id}": {
+  "operationId": "textvorlage_aendern_api_textvorlagen__vorlage_id__put",
+  "summary": "Textvorlage Aendern"
+ },
+ "PUT /api/ueber/pruefen": {
+  "operationId": "schalter_setzen_api_ueber_pruefen_put",
+  "summary": "Schalter Setzen"
+ }
+}
