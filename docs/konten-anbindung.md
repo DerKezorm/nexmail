@@ -319,6 +319,10 @@ Probe-Mail aus `anhang_erinnerung.spec.ts` im Lesebereich; Dateinamen tragen jet
 zeit.example.com“), nichts fehlte. oauth: je Anbieter ein Feld „Client-ID“, der Spec nimmt den Kasten „Google“. Der
 Antwort-Test schickt seine eigene Probe-Mail und läuft damit auch allein.
 
+**E57 (dcbd5d1):** sprachen 1.0.1 (Entfernen einer Sprache fragt erst), konten 1.1.1, schluessel 1.0.1; die drei
+Vorlagen von Hand nachgezogen (nur die Werte der App weichen ab). nexmail nutzt die neuen Plätze `newSignInMailHint`,
+`offAction`, `made` nicht.
+
 **Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 86a0cce, E45 bis E49 (ohne ruff, nexmail
 hat keins; pytest ohne xdist; zuletzt nach den Galerie-Funden): pytest 3305 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
