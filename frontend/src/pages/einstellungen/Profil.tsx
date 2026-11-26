@@ -23,7 +23,7 @@ import { api, type Ich } from '../../api/client'
 import { AccountButton } from '../../components/AccountButton'
 import { useAccountQuestion } from '../../components/AccountQuestion'
 import { Profilbild } from '../../components/Profilbild'
-import { SPRACHEN, sprachauswahl, spracheSetzen } from '../../i18n'
+import { SPRACHEN, spracheSetzen, type Sprachcode } from '../../i18n'
 import { confirmOf } from '../../lib/accountButton'
 import { servermeldung } from '../../lib/servermeldung'
 import {
@@ -56,10 +56,6 @@ export function Profil({
   aufAbmelden: () => void
 }) {
   const { t, i18n } = useTranslation()
-  const [sprachen, setSprachen] = useState<{ code: string; name: string }[]>(() => SPRACHEN.map((s) => ({ code: s.code, name: s.name })))
-  useEffect(() => {
-    void sprachauswahl().then(setSprachen)
-  }, [])
   const { ask, dialog } = useAccountQuestion()
   const [name, setName] = useState(ich?.anzeigename ?? '')
   const [benutzername, setBenutzername] = useState(ich?.benutzername ?? '')
@@ -270,13 +266,12 @@ export function Profil({
         label={t(teil('language').title)}
         value={i18n.language}
         onChange={(e) => {
-          const code = e.target.value
+          const code = e.target.value as Sprachcode
           void spracheSetzen(code)
           // Am Konto gemerkt, damit sie auf jedem Gerät gilt; scheitert das, bleibt sie in diesem Browser.
           void api.aendern('/api/auth/ich/sprache', { sprache: code }).then(() => ichNeuLaden?.(), () => undefined)
         }}
-        // Eingebaute und die Sprachen des Betreibers (Server › Allgemein › Sprachen), nach Namen.
-        options={sprachen.map((s) => ({ value: s.code, label: s.name }))}
+        options={SPRACHEN.map((s) => ({ value: s.code, label: s.name }))}
       />
     ),
     role: () => (

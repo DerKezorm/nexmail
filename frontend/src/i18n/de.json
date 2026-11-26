@@ -1760,10 +1760,7 @@
     "unbekannte_stufe": "Diese Stufe gibt es nicht.",
     "wrong_password": "Das Passwort stimmt nicht.",
     "fresh_sign_in_needed": "Melde dich zuerst noch einmal bei deinem Anbieter an.",
-    "second_factor_required": "Dieser Schlüssel wirkt erst, wenn sein Konto einen zweiten Faktor einrichtet.",
-    "sprachdatei_unbrauchbar": "Diese Sprachdatei lässt sich nicht verwenden. Sie muss JSON mit Texten sein, wie die Vorlage.",
-    "sprachdatei_zu_gross": "Die Sprachdatei ist größer als {{max_kb}} KB.",
-    "sprache_unbekannt": "Diese Sprache gibt es hier nicht."
+    "second_factor_required": "Dieser Schlüssel wirkt erst, wenn sein Konto einen zweiten Faktor einrichtet."
   },
   "sicherheit": {
     "alle_beenden": "Alle anderen Geräte abmelden",
@@ -2129,17 +2126,5 @@
     "trennen": "Trennen",
     "keine": "Noch kein iPhone oder iPad verbunden.",
     "verbinden": "iPhone oder iPad verbinden"
-  },
-  "sprachen": {
-    "titel": "Sprachen",
-    "text": "Eingebaut sind Deutsch und Englisch. Weitere Sprachen lädt der Betreiber als JSON-Datei hoch; was einer Datei fehlt, steht auf Englisch da.",
-    "eingebaut": "eingebaut",
-    "texte_one": "{{count}} Text",
-    "texte_other": "{{count}} Texte",
-    "vorlage": "Vorlage herunterladen",
-    "code": "Sprachcode",
-    "code_hinweis": "Etwa nl, es oder pt-BR. Eine Datei für de oder en legt sich über die eingebauten Texte.",
-    "hochladen": "Sprache hochladen",
-    "hochgeladen": "Hochgeladen."
   }
 }
