@@ -26,7 +26,7 @@ test('Ein falsches bisheriges Passwort wird benannt abgewiesen', async ({ page }
 
   const knopf = fenster.getByRole('button', { name: 'Passwort ändern' })
   await fenster.getByLabel('Aktuelles Passwort').fill('sicher-nicht-das-kennwort-1')
-  await fenster.getByLabel('Passwort', { exact: true }).fill('ein-neues-kennwort-42')
+  await fenster.getByLabel('Neues Passwort', { exact: true }).fill('ein-neues-kennwort-42')
   await fenster.getByLabel('Passwort wiederholen').fill('ein-anderes-kennwort-42')
 
   // Zwei verschiedene neue Passwörter: Der Knopf bleibt zu, und der Grund steht da.

@@ -15,7 +15,7 @@ import { AccountButton } from '../components/AccountButton'
 import { Button, Field, Notice } from '../vendor/nexui'
 import { servermeldung } from '../lib/servermeldung'
 import { Torbogen } from '../components/Torbogen'
-import { EMAIL_MAX, PASSWORD_MIN } from '../vendor/nexkonten/konten'
+import { EMAIL_MAX, PASSWORD_MIN, fieldLabel } from '../vendor/nexkonten/konten'
 
 /** Schritt 1: den Link anfordern. */
 export function VergessenPage({
@@ -171,7 +171,7 @@ export function KennwortNeuPage({
       >
         <Field
           type="password"
-          label={t('account.newPassword')}
+          label={t(fieldLabel('reset', 'newPassword'))}
           hints={[t('account.passwordRules', { minimum: mindestens })]}
           value={passwort}
           autoFocus

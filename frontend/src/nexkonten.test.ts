@@ -12,7 +12,7 @@
  * (APP_RENDER) and checks that every field is found by exactly its label and that the profile saves with one button;
  * this needs `@testing-library/dom` among the app's devDependencies and vitest's `environment: 'jsdom'`.
  */
-import { fireEvent, getAllByRole, getByLabelText, queryByRole, waitFor } from '@testing-library/dom'
+import { fireEvent, getAllByRole, getByLabelText, getByRole, queryByLabelText, queryByRole, waitFor } from '@testing-library/dom'
 import i18next from 'i18next'
 import { createElement, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -31,6 +31,7 @@ import {
   PAGES,
   pageOrder,
   passwordChanged,
+  PASSWORD_MIN,
   SCREENS,
   screenFields,
   sessionExpiredParts,
@@ -534,6 +535,45 @@ describe('the account list and its dialog "Manage" (since 0.3.9)', () => {
       expect(shown.length, 'the dialog shows its groups').toBeGreaterThan(0)
       expect(shown, 'groups in their order').toEqual(titles.filter((text) => shown.includes(text)))
       expect(queryByRole(dialog, 'menu'), 'no menu in the dialog').toBeNull()
+    } finally {
+      unmount()
+    }
+  })
+})
+
+// --- nexmail (since konten 1.1.2): the dialog "Passwort ändern" ----------------------------------------------------
+// The page "Sicherheit" with its dialog "Passwort ändern" open. The dialog stands in a
+// portal outside the page; the tests look into the dialog alone (the page's own buttons are the block "security").
+async function passwortFenster(): Promise<Shown> {
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  const react = createRoot(root)
+  react.render(createElement(I18nextProvider, { i18n }, createElement(Sicherheit, { ich: { ...KIM, zwei_faktor_aktiv: false, offene_codes: 0 } as Ich })))
+  const open = await waitFor(() => getAllByRole(root, 'button', { name: i18n.t('account.passwordChange') }))
+  fireEvent.click(open[0] as HTMLElement)
+  const dialog = await waitFor(() => getByRole(document.body, 'dialog'))
+  await waitFor(() => getByLabelText(dialog, i18n.t('account.currentPassword')))
+  return {
+    root: dialog,
+    unmount: () => {
+      react.unmount()
+      root.remove()
+    },
+  }
+}
+
+describe('the dialog "Passwort ändern" says "Neues Passwort" (nexmail, since konten 1.1.2)', () => {
+  it('finds every field of the screen "change" by exactly its label, the rules under the new one', async () => {
+    await i18n.changeLanguage('de')
+    const { root, unmount } = await passwortFenster()
+    try {
+      expect(screenFields('change').map((spec) => i18n.t(spec.label))).toEqual(['Aktuelles Passwort', 'Neues Passwort', 'Passwort wiederholen'])
+      for (const spec of screenFields('change')) {
+        const field = getByLabelText(root, i18n.t(spec.label))
+        expect(field.getAttribute('type'), spec.field).toBe('password')
+        for (const hint of spec.hints) expect(description(field), `${spec.field}: ${hint}`).toContain(i18n.t(hint, { minimum: PASSWORD_MIN }))
+      }
+      expect(queryByLabelText(root, i18n.t(FIELDS.newPassword.label), { exact: true }), 'a field called only "Passwort"').toBeNull()
     } finally {
       unmount()
     }

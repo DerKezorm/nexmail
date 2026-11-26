@@ -26,7 +26,7 @@ import { useAccountQuestion } from '../components/AccountQuestion'
 import { Oauthzugaenge } from '../components/Oauthzugaenge'
 import { Anmeldeanbieter } from '../components/Anmeldeanbieter'
 import { CodesZeigen, ZweiterFaktor } from '../components/ZweiterFaktor'
-import { PASSWORD_MIN } from '../vendor/nexkonten/konten'
+import { PASSWORD_MIN, fieldLabel } from '../vendor/nexkonten/konten'
 import { PasskeyAddition } from '../vendor/nexkonten/AccountCards'
 import { appPfad } from '../lib/basis'
 import { pfadVon } from './einstellungen/bereiche'
@@ -437,7 +437,7 @@ export function Sicherheit({
         >
           <Field label={t('account.currentPassword')} type="password" autoComplete="current-password" value={altes} onChange={(e) => setAltes(e.target.value)} />
           <Field
-            label={t('account.newPassword')}
+            label={t(fieldLabel('change', 'newPassword'))}
             type="password"
             autoComplete="new-password"
             hints={[t('account.passwordRules', { minimum: PASSWORD_MIN })]}
