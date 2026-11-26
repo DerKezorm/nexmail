@@ -329,10 +329,19 @@ Mailmodul); der neue Vertragstest `test_nexsprachen_template.py` ist grün. In `
 genau `englischeTexte()`, also das, was `Sprachen()` in `Verwaltung.tsx` an `LanguagesCard template` gibt. Einen
 Cast an `template` gab es in nexmail nicht.
 
+**E59 A6 (da4f220):** konten 1.1.2 (6e13836). Wo ein Passwort ein altes ersetzt, heißt das Feld jetzt „Neues Passwort“:
+im Fenster „Passwort ändern“ (`Sicherheit.tsx`, `fieldLabel('change', 'newPassword')`) und nach „Passwort vergessen?“
+(`KennwortPage.tsx`, `fieldLabel('reset', 'newPassword')`). Einrichtung und Einladung bleiben bei „Passwort“. Der
+neue Vertragstest zur Anmeldung (eine Passwortprüfung je Weg, Zeit paarweise) ist ohne Änderung grün; nexmails Speicher
+rechnet schon für unbekannte Namen. `change` steht nicht in `APP_SCREENS`: Der Knopf im Fenster heißt wie der Knopf
+auf der Seite („Passwort ändern“), das Wortverzeichnis des Knopfblocks hielte ihn für `secondary`. Deshalb prüft ein
+eigener Block in `nexkonten.test.ts` das offene Fenster. `kennwort.spec.ts` sucht jetzt „Neues Passwort“ (nur mit
+`tsc` geprüft).
+
 **Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 86a0cce, E45 bis E49 (ohne ruff, nexmail
-hat keins; pytest ohne xdist; zuletzt nach E59): pytest 3307 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
+hat keins; pytest ohne xdist; zuletzt nach E59 A6): pytest 3308 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
-schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 452
+schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 455
 grün in 47 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
 Schlüssel über den alten Weg, gesperrter Schlüssel über `/api/v1`, gelöschtes Konto ohne Post, fremder Browser nicht
 entfernbar, die Adressfrage beim Wiederherstellen (verschlüsselt und eigene Sicherung), die Rückkehradressen der
