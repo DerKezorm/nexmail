@@ -1,13 +1,12 @@
-"""nexmcp contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of mcp 1.1.1).
+"""nexmcp contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of mcp 1.1.2).
 
 nexmail is new to MCP (decision 1): no older keys, no connected programs, MCP was never on, so ``legacy_keys`` and
 ``legacy_program`` stay empty and ``start_older`` is a fresh start (the older version had nothing of MCP to leave).
 The operator can take AI from an account ("KI erlaubt"), so ``has_ai``.
 
 ⚠️ **Mailboxes are required on an MCP key made by hand** (plan: "Bereiche = Postfächer (Pflicht wie heute)",
-``KeyKind.areas_required``), while the contract's ``mcp_key`` sends none. The clients here add the account's mailboxes
-to a new MCP key that names none, the way nexmail's page makes one (TODO mcp 1.1.1, open since 1.1.0, see ``einst-fragen``). Every other
-request goes to the real routes unchanged.
+``KeyKind.areas_required``); ``key_defaults`` (mcp 1.1.2) gives a new MCP key the account's mailboxes, as nexmail's page
+does.
 """
 
 from __future__ import annotations
@@ -15,31 +14,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from fastapi.testclient import TestClient
 from mcp_contract import LegacyKey, LegacyProgram, StandardAdapter
 
 KENNWORT = {"owner": "eigen-geheim-123", "other": "anders-geheim-456", "operator": "betreib-geheim-789"}
-
-
-def _klient_klasse():
-    from fastapi.testclient import TestClient
-
-    class Klient(TestClient):
-        """nexmail's browser for one account: a new MCP key gets the account's mailboxes when it names none."""
-
-        postfaecher: list[str] = []
-
-        def post(self, url: Any, *args: Any, **kwargs: Any) -> Any:
-            body = kwargs.get("json")
-            if (
-                str(url).endswith("/api/connections/keys")
-                and isinstance(body, dict)
-                and body.get("kind") == "mcp"
-                and "areas" not in body
-            ):
-                kwargs["json"] = {**body, "areas": list(self.postfaecher)}
-            return super().post(url, *args, **kwargs)
-
-    return Klient
 
 
 class Adapter(StandardAdapter):
@@ -142,12 +120,11 @@ class Adapter(StandardAdapter):
 
         if role in self._angemeldet:
             return self._angemeldet[role]
-        client = _klient_klasse()(app)
+        client = TestClient(app)
         client.__enter__()
         self._clients.append(client)
         if role == "anonymous":
             return client
-        client.postfaecher = [self.postfach[role]]
         answer = client.post("/api/auth/anmelden", json={"benutzername": role, "passwort": KENNWORT[role]})
         assert answer.status_code == 200, answer.text
         self._angemeldet[role] = client
@@ -173,6 +150,9 @@ class Adapter(StandardAdapter):
 
     def notified(self) -> list[tuple[str, Any]]:
         return list(self._gemeldet)
+
+    def key_defaults(self, role: str) -> dict[str, Any]:
+        return {"areas": [self.postfach[role]]}
 
     def read_call(self) -> tuple[str, dict[str, Any]]:
         return "search_messages", {"subject": "Einkaufsliste", "limit": 5}

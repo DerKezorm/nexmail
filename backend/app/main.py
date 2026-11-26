@@ -780,9 +780,9 @@ app.include_router(
         account_id=lambda person: person.id,
         account_name=lambda person: person.benutzername,
         address=_adresse_fuer_programme,
-        # Ohne ``NEXMAIL_CLIENT_IP`` kennt nexmail den Absender nicht; dann zählt die Bremse falscher Schlüssel nach der
-        # Adresse der Verbindung, wie in den anderen Apps (TODO mcp 1.1.1, offen seit 1.1.0, siehe einst-fragen).
-        sender=lambda request: _adresse_von(request) or (request.client.host if request.client else ""),
+        # Ohne ``NEXMAIL_CLIENT_IP`` kennt nexmail den Absender nicht (hinter einem Proxy sähen alle gleich aus) und
+        # sagt ``""``; dann zählt die Bremse falscher Schlüssel je vorgelegtem Schlüssel (mcp 1.1.2, M-18).
+        sender=_adresse_von,
         # Über den Namen gerufen, damit die Vertragstests mithören können (``notified``).
         notify=lambda ereignis, anfrage: _mcp_hinweis.melden(ereignis, anfrage),
     )
