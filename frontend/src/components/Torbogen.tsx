@@ -8,14 +8,13 @@
  * wenigen Dingen, die man **vor** der Anmeldung braucht: Wer die Oberfläche
  * nicht lesen kann, kommt sonst nicht einmal bis zum Kennwortfeld.
  */
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Moon, Sun } from 'lucide-react'
 import { AuthCard } from '../vendor/nexui'
 import { Logo } from './Logo'
 import { Beschriftung } from '../ds/beschriftung'
-import { SPRACHEN, spracheSetzen } from '../i18n'
-import type { Sprachcode } from '../i18n'
+import { SPRACHEN, sprachauswahl, spracheSetzen } from '../i18n'
 
 interface Props {
   titel: string
@@ -38,6 +37,11 @@ export function Torbogen({
   aufModus,
 }: Props) {
   const { t, i18n } = useTranslation()
+  // Eingebaute und die Sprachen des Betreibers (Server › Allgemein › Sprachen).
+  const [sprachen, setSprachen] = useState<{ code: string; name: string }[]>(() => SPRACHEN.map((s) => ({ code: s.code, name: s.name })))
+  useEffect(() => {
+    void sprachauswahl().then(setSprachen)
+  }, [])
 
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-canvas">
@@ -53,12 +57,12 @@ export function Torbogen({
           >
             {modus === 'dark' ? <Sun /> : <Moon />}
           </button>
-          {SPRACHEN.map((s) => (
+          {sprachen.map((s) => (
             <button
               key={s.code}
               type="button"
               title={s.name}
-              onClick={() => void spracheSetzen(s.code as Sprachcode)}
+              onClick={() => void spracheSetzen(s.code)}
               className={
                 'rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase transition-colors duration-[var(--dur-fast)] ' +
                 (i18n.language === s.code

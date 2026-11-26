@@ -135,6 +135,14 @@ nexoidc.configure(
 #: einen nennen zu können, hat wahrscheinlich vergessen, die Abhängigkeit zu
 #: setzen.
 OEFFENTLICHE_PFADE: dict[str, str] = {
+    "/api/locales": (
+        "Die Sprachen des Betreibers (Server › Allgemein › Sprachen) für die Sprachauswahl, auch auf der "
+        "Anmeldeseite; sie sind für alle gleich und tragen nichts Persönliches."
+    ),
+    "/api/locales/{code}": (
+        "Lesen ohne Anmeldung wie die Liste, aus demselben Grund. Hochladen (PUT) und Entfernen (DELETE) "
+        "verlangen den Betreiber (``Betreiber`` in ``routers/sprachen.py``)."
+    ),
     "/api/app/1/pairing/{pairing_id}/key": (
         "Hier holt sich die iPhone-App ihren Schlüssel, also hat sie noch keinen. Das "
         "Geheimnis aus dem QR-Code steht in der Kopfzeile, davor die Anmeldebremse."
@@ -689,6 +697,11 @@ app.include_router(sicherung.modul_router, dependencies=NUR_ANGEMELDET)
 # Begruendung steht oben in OEFFENTLICHE_PFADE und ausfuehrlich in
 # routers/bilder.py.
 app.include_router(bilder_router.router)
+
+# Allgemein › Sprachen (Bauplan „Einstellungen“, wie nexnotes): eigene Sprachdateien des Betreibers.
+from .routers import sprachen as sprachen_router  # noqa: E402
+
+app.include_router(sprachen_router.router)
 
 
 # --- Die gebaute Oberfläche ausliefern ---------------------------------- #
