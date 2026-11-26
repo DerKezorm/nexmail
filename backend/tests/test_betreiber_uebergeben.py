@@ -290,6 +290,10 @@ def test_gesperrt_oder_geloescht_ruhen_die_abgleiche_und_laufen_danach_wieder(kl
     monkeypatch.setattr(abgleich, "konto_abgleichen", lambda _db, k, **_kw: postfaecher.append(k.id) or {})
     monkeypatch.setattr(kalenderabgleich, "alle_abgleichen", lambda _db, p: kalender.append(p.id) or {})
     monkeypatch.setattr(adressbuchabgleich, "alle_abgleichen", lambda _db, p: {})
+    # Ein frisches Halt-Zeichen: ``anhalten`` eines frueheren Tests liesse ``einmal`` sonst gleich aufhoeren.
+    import threading
+
+    monkeypatch.setattr(takt, "_halt", threading.Event())
 
     def runde() -> tuple[bool, bool]:
         postfaecher.clear()
