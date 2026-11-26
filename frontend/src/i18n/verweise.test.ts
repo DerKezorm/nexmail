@@ -77,3 +77,18 @@ describe('Ortsangaben (E46)', () => {
     })
   }
 })
+
+/* E49: In „Was ist neu“ zeigt jedes „wo“ auf den heutigen Ort, mit „›“; die Texte älterer Einträge bleiben. */
+import wasneuDe from './wasneu/de.json'
+import wasneuEn from './wasneu/en.json'
+
+describe('Was ist neu: wo (E49)', () => {
+  for (const [sprache, eintraege] of [['de', wasneuDe], ['en', wasneuEn]] as const) {
+    it(`${sprache}: kein „wo“ mit Pfeil, Reiter oder altem Ort`, () => {
+      const alt = sprache === 'de' ? /→|Reiter|Verwaltung|Benutzermenü|Zahnrad|^Einstellungen ›/ : /→|the “[^”]*” tab|Administration|user menu|gear|^Settings ›/
+      const wo = Object.values(eintraege as Record<string, { sections?: { where?: string }[] }>).flatMap((e) => (e.sections ?? []).map((s) => s.where ?? ''))
+      expect(wo.length).toBeGreaterThan(20)
+      expect(wo.filter((w) => alt.test(w))).toEqual([])
+    })
+  }
+})

@@ -9,27 +9,27 @@
       },
       {
         "title": "Name, Benutzername und Adresse selbst ändern",
-        "where": "Einstellungen → Profil",
+        "where": "Mein Konto › Profil",
         "body": "Anzeigename, Benutzername und E-Mail änderst du selbst und speicherst alles mit einem Knopf; für Benutzername und Adresse fragt nexmail nach deinem Passwort. Gibt es einen Postausgang, gilt eine neue Adresse, sobald du den Link in der Bestätigungsmail geöffnet hast. Die Sprache gehört jetzt zum Konto und gilt auf jedem Gerät. Ohne Profilbild steht ein Buchstabe auf einer Farbe."
       },
       {
         "title": "Passwort vergessen",
-        "where": "Anmeldeseite; Einstellungen → Server → Konten",
+        "where": "Anmeldeseite; Server › Konten",
         "body": "Den Link für ein neues Passwort forderst du mit Benutzername oder E-Mail an; er kommt an die Adresse deines Kontos und gilt eine Stunde. Geht das nicht, erstellt der Betreiber unter „Konten“ einen Link und schickt ihn per Mail oder gibt ihn dir weiter. Ein neues Passwort meldet alle Browser ab; danach zeigt nexmail, welche Geräte noch Zugriff haben, und trennt sie auf Wunsch."
       },
       {
         "title": "Passkeys und zweiter Faktor",
-        "where": "Einstellungen → Sicherheit",
+        "where": "Mein Konto › Sicherheit",
         "body": "Passwort, zweiter Faktor, Passkeys und angemeldete Geräte stehen jetzt je in einem eigenen Kasten. Mit einem Passkey meldest du dich ohne Passwort und Code an (nur über https). Neue Wiederherstellungscodes erzeugst du dort selbst. Meldet sich jemand aus einem Browser an, den nexmail noch nicht kennt, bekommst du eine Mail; das lässt sich abschalten."
       },
       {
         "title": "Einladen ohne vorgegebenen Namen",
-        "where": "Einstellungen → Server → Konten",
+        "where": "Server › Konten",
         "body": "Beim Einladen genügen E-Mail und Name, beide frei, und du wählst, wie lange der Link gilt (1, 7 oder 30 Tage). Den Benutzernamen sucht sich die eingeladene Person selbst aus. Ohne eigenen Postausgang zeigt nexmail den Link zum Weitergeben."
       },
       {
         "title": "Für den Betreiber",
-        "where": "Einstellungen → Server → Anmeldung, Konten und Mail",
+        "where": "Server › Anmeldung, Server › Konten und Server › Mail",
         "body": "Unter „Anmeldung“ verlangst du auf Wunsch einen zweiten Faktor von allen und schaltest Passkeys ab. Hat jemand sein Handy verloren, setzt du unter „Konten“ seinen zweiten Faktor zurück. Systemmails versucht nexmail bei einem Fehler später noch einmal; unter „Mail“ siehst du den letzten Versand, den letzten Fehler und was noch wartet."
       }
     ],
@@ -48,7 +48,7 @@
     "sections": [
       {
         "title": "nextime verbinden",
-        "where": "Einstellungen → Verbindungen → nextime",
+        "where": "Mein Konto › Verbindungen › nextime",
         "body": "Statt jeden Kalender einzeln einzubinden, verbindest du einmal nextime mit Adresse und Schlüssel. Alle Kalender erscheinen im Kalender von nexmail, in den Gruppen und Farben von nextime; welche nexmail nimmt, hakst du in der Karte an. Termine änderst, legst an und löschst du direkt dort. Unter „Kalender hinzufügen“ steht nextime ganz oben."
       },
       {
@@ -58,17 +58,17 @@
       },
       {
         "title": "nextasks direkt in den Aufgaben",
-        "where": "Aufgaben; Einstellungen → Verbindungen → nextasks",
+        "where": "Aufgaben; Mein Konto › Verbindungen › nextasks",
         "body": "Mit verbundenem nextasks stehen seine Bereiche und Listen mit ihren Symbolen in der Seitenleiste. Du hakst ab, änderst Datum, Uhrzeit, Priorität und Zuständige, legst neue Aufgaben an, auch ohne Mail, und suchst darin. Welche Listen nexmail zeigt, wählst du in der Karte. Die eigene Aufgabenliste von nexmail lässt sich abschalten; ihre offenen Aufgaben ziehen dabei auf Wunsch in deine Standardliste um."
       },
       {
         "title": "Farbe und Symbol für Postfächer",
-        "where": "Einstellungen → Postfächer → Bearbeiten",
+        "where": "Mail › Postfächer › Bearbeiten",
         "body": "Jedes Postfach bekommt auf Wunsch ein Symbol und eine Farbe wie in nextasks, auch eine eigene. Das Symbol steht dann überall, wo bisher der farbige Punkt war. Ohne Symbol bleibt es beim Punkt."
       },
       {
         "title": "Hell, dunkel oder wie das System",
-        "where": "Einstellungen → Darstellung",
+        "where": "Mein Konto › Darstellung",
         "body": "Mit „Wie das System“ folgt nexmail der Einstellung deines Geräts und schaltet mit ihm um."
       }
     ],
@@ -83,7 +83,7 @@
     "sections": [
       {
         "title": "Was ist neu, gleich nach dem Update",
-        "where": "Banner unter der Kopfleiste, später im Benutzermenü oben rechts unter „Was ist neu“",
+        "where": "Banner unter der Kopfleiste, später unter Über nexmail › Was ist neu",
         "body": "Bringt ein Update etwas Neues mit, steht oben ein Banner. Ein Klick zeigt diesen Text, das Kreuz räumt den Banner weg. Gemerkt wird das je Konto auf dem Server, also auf allen Geräten zugleich."
       }
     ],
@@ -118,7 +118,7 @@
       },
       {
         "title": "KI für eingegangene Mails",
-        "where": "Seite KI in der Leiste, Schalter „Meine eingegangenen Mails“, danach im Lesebereich und beim Antworten",
+        "where": "Mein Konto › KI, Schalter „Meine eingegangenen Mails“, danach im Lesebereich und beim Antworten",
         "body": "Mit einem eingerichteten KI-Dienst fasst nexmail eine Mail zusammen, übersetzt sie, beantwortet eine Frage dazu oder entwirft eine Antwort. Das ist ab Werk aus, weil die Mail dabei an deinen Dienst geht, und der Betreiber muss es zusätzlich freigeben. Alle Einstellungen zur KI stehen jetzt auf der Seite KI."
       },
       {
@@ -159,7 +159,7 @@
     "sections": [
       {
         "title": "Todoist verbinden",
-        "where": "Einstellungen, Reiter „Aufgaben“",
+        "where": "Mein Konto › Verbindungen › Aufgaben",
         "body": "Trag den API-Token aus Todoist ein, nexmail prüft ihn und merkt ihn sich verschlüsselt. Das gilt nur für dich, jeder verbindet seine eigene App. Dort wählst du auch die Standardliste: deine Todoist-Liste oder wie bisher nexmails eigene."
       },
       {
@@ -184,17 +184,17 @@
     "sections": [
       {
         "title": "Webhook verbinden",
-        "where": "Einstellungen, Reiter „Aufgaben“",
+        "where": "Mein Konto › Verbindungen › Aufgaben",
         "body": "Neben Todoist steht jetzt „Webhook verbinden“. nexmail schickt jede Aufgabe als JSON an deine Adresse, unterschrieben mit einem Geheimnis, das nur einmal angezeigt wird. Gespeichert wird die Adresse erst, wenn sie auf eine Probe antwortet; „Test senden“ prüft sie später noch einmal und nennt den Status, wenn etwas nicht stimmt."
       },
       {
         "title": "Nur senden, oder zurückmelden",
-        "where": "Einstellungen eines Webhooks und „API-Schlüssel“",
+        "where": "Mein Konto › Verbindungen › Aufgaben und Mein Konto › Verbindungen › API-Schlüssel",
         "body": "Mit „Nur senden“ führt nexmail die Aufgabe nicht in der eigenen Liste, weil sie im anderen Programm erledigt wird. Oder das Programm meldet zurück: Ein API-Schlüssel mit „Darf Aufgaben abhaken“ hakt Aufgaben über die Schnittstelle ab und öffnet sie wieder."
       },
       {
         "title": "Text der Mail nur mit Freigabe",
-        "where": "Verwaltung, Reiter „Server“",
+        "where": "Server › Allgemein › Funktionen für alle Konten",
         "body": "Ein Webhook kann den Text der Mail mitschicken, wenn sein Benutzer es einschaltet und der Betreiber es erlaubt. Ab Werk ist das aus. Adressen im eigenen Netz gehen wie bei Kalendern erst, wenn der Betreiber sie freigibt."
       }
     ],
@@ -209,7 +209,7 @@
     "sections": [
       {
         "title": "Schlagworte über die Schnittstelle",
-        "where": "Einstellungen, Reiter „API-Schlüssel“",
+        "where": "Mein Konto › Verbindungen › API-Schlüssel",
         "body": "Ein API-Schlüssel kann jetzt „Darf Schlagworte setzen“. Damit hängt ein anderes Programm ein Schlagwort an die Mail einer Aufgabe und nimmt es wieder ab, etwa „Erledigt“, wenn die Aufgabe dort abgehakt wird. Das Schlagwort landet auf dem Mailserver, wie wenn du es selbst setzt, und steht damit auch in Thunderbird und am Telefon. Das Recht ist getrennt vom Abhaken."
       },
       {
@@ -229,7 +229,7 @@
     "sections": [
       {
         "title": "nextasks als Todo-App",
-        "where": "Einstellungen, Reiter „Aufgaben“",
+        "where": "Mein Konto › Verbindungen › Aufgaben",
         "body": "Trag die Adresse deines nextasks und ein API-Token mit „Lesen und schreiben“ ein. Danach wählst du beim „Zu Aufgabe machen“ eine Liste samt Bereich und Abschnitt. Wie bei Todoist gilt: eine Mail, eine Aufgabe, auch wenn du sie zweimal umwandelst. Hinaus gehen Titel, Datum, Absender und ein Link zurück zur Mail, nie der Text der Mail."
       },
       {
@@ -264,12 +264,12 @@
     "sections": [
       {
         "title": "Eine Einstellungsseite für alles",
-        "where": "Benutzermenü oben rechts → Einstellungen, oder das Zahnrad unten links",
+        "where": "Unten in der Seitenleiste: Name · Einstellungen",
         "body": "Links steht dein Konto, darunter „Mein Konto“, „Mail“ und für den Betreiber „Server“, ganz unten „Über nexmail“. Die Verwaltung, die KI-Seite und die Über-Seite sind keine eigenen Punkte der Leiste mehr, sondern Bereiche darin. Was wo stand, steht jetzt hier: Verwaltung unter „Server“, Todo-Apps, iPhone-App und API-Schlüssel unter „Verbindungen“, die KI unter „Mail“. „Über nexmail“ sieht jetzt jeder."
       },
       {
         "title": "Profil mit Bild und Name",
-        "where": "Einstellungen → Profil",
+        "where": "Mein Konto › Profil",
         "body": "Du kannst ein Profilbild hochladen und deinen Namen ändern. Die Mailadresse für Kontosachen steht jetzt hier statt unter Sicherheit, dazu die Sprache und „Abmelden“. Hell und Dunkel stehen unter „Darstellung“; oben rechts sind die beiden Schalter weg."
       },
       {
@@ -310,7 +310,7 @@
       },
       {
         "title": "Nachfrage vor dem Verwerfen",
-        "where": "Einstellungen → Postfächer → Bearbeiten",
+        "where": "Mail › Postfächer › Bearbeiten",
         "body": "Hast du im Postfach-Fenster etwas geändert und nicht gespeichert, fragt nexmail vor dem Schließen nach, egal ob per Kreuz, Escape oder Klick daneben."
       }
     ],
@@ -330,7 +330,7 @@
       },
       {
         "title": "Dein Profil unten in der Seitenleiste",
-        "where": "Unten in der Seitenleiste: Bild, Name, Zahnrad",
+        "where": "Unten in der Seitenleiste: Name · Einstellungen",
         "body": "Ein Klick öffnet die Einstellungen beim Profil, neben der Seitenleiste der Ansicht, aus der du kommst. Das Menü oben rechts gibt es nicht mehr: „Was ist neu“ steht unter „Über nexmail“, der zweite Faktor unter „Sicherheit“, „Abmelden“ im Profil. Ein Postfach legst du unter „Postfächer“ an."
       },
       {
@@ -340,7 +340,7 @@
       },
       {
         "title": "Kalender und Adressbücher in den Einstellungen",
-        "where": "Einstellungen → Kalender und Adressbücher",
+        "where": "Mein Konto › Kalender und Adressbücher",
         "body": "Kalender anlegen, umbenennen und trennen, Adressbücher verbinden und trennen, alles an einer Stelle. Im Kalender selbst steht dafür ein „+“ an der Überschrift „Kalender“."
       },
       {

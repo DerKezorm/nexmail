@@ -9,27 +9,27 @@
       },
       {
         "title": "Change your name, username and address",
-        "where": "Settings → Profile",
+        "where": "My account › Profile",
         "body": "You change your display name, username and email yourself and save them with one button; for the username and the address nexmail asks for your password. With an outgoing mail server, a new address counts once you have opened the link in the confirmation mail. Your language now belongs to the account and applies on every device. Without a profile picture, a letter on a colour stands in."
       },
       {
         "title": "Forgot your password",
-        "where": "Sign-in page; Settings → Server → Accounts",
+        "where": "Sign-in page; Server › Accounts",
         "body": "You ask for a link to a new password with your username or email; it goes to your account's address and lasts one hour. If that is not possible, the operator makes a link under “Accounts” and sends it by mail or passes it on to you. A new password signs out every browser; afterwards nexmail shows which devices still have access and disconnects them if you want."
       },
       {
         "title": "Passkeys and second factor",
-        "where": "Settings → Security",
+        "where": "My account › Security",
         "body": "Password, second factor, passkeys and signed-in devices now each have a box of their own. With a passkey you sign in without password or code (over https only). You make new recovery codes there yourself. When somebody signs in from a browser nexmail does not know yet, you get a mail; you can switch that off."
       },
       {
         "title": "Invitations without a set name",
-        "where": "Settings → Server → Accounts",
+        "where": "Server › Accounts",
         "body": "An invitation needs only an email address and a name, both optional, and you choose how long the link lasts (1, 7 or 30 days). The person invited picks their own username. Without an outgoing mail server of its own, nexmail shows the link for you to pass on."
       },
       {
         "title": "For the operator",
-        "where": "Settings → Server → Sign-in, Accounts and Mail",
+        "where": "Server › Sign-in, Server › Accounts and Server › Mail",
         "body": "Under “Sign-in” you can require a second factor of everybody and switch passkeys off. If somebody lost their phone, you reset their second factor under “Accounts”. nexmail tries system mails again later after an error; under “Mail” you see the last mail sent, the last error and what is still waiting."
       }
     ],
@@ -48,7 +48,7 @@
     "sections": [
       {
         "title": "Connect nextime",
-        "where": "Settings → Connections → nextime",
+        "where": "My account › Connections › nextime",
         "body": "Instead of adding each calendar on its own, you connect nextime once with its address and key. All calendars show up in nexmail's calendar, in nextime's groups and colours; you tick in the card which ones nexmail uses. You change, add and delete events right there. “Add calendar” lists nextime first."
       },
       {
@@ -58,17 +58,17 @@
       },
       {
         "title": "nextasks right in Tasks",
-        "where": "Tasks; Settings → Connections → nextasks",
+        "where": "Tasks; My account › Connections › nextasks",
         "body": "With nextasks connected, its spaces and lists appear in the sidebar with their symbols. Tick tasks off, change date, time, priority and assignees, add new tasks, also without a mail, and search them. You pick in the card which lists nexmail shows. nexmail's own task list can be switched off; its open tasks can move to your default list when you do."
       },
       {
         "title": "Colour and symbol for mailboxes",
-        "where": "Settings → Mailboxes → Edit",
+        "where": "Mail › Mailboxes › Edit",
         "body": "Each mailbox can get a symbol and a colour as in nextasks, an own colour too. The symbol then shows wherever the coloured dot was. Without a symbol the dot stays."
       },
       {
         "title": "Light, dark or like the system",
-        "where": "Settings → Appearance",
+        "where": "My account › Appearance",
         "body": "With “Like the system”, nexmail follows your device's setting and switches with it."
       }
     ],
@@ -83,7 +83,7 @@
     "sections": [
       {
         "title": "What's new, right after the update",
-        "where": "Banner below the top bar, later in the user menu at the top right under “What's new”",
+        "where": "Banner below the top bar, later under About nexmail › What's new",
         "body": "When an update brings something new, a banner shows at the top. One click opens this text, the cross puts the banner away. It is remembered per account on the server, so on all your devices at once."
       }
     ],
@@ -118,7 +118,7 @@
       },
       {
         "title": "AI for mail you receive",
-        "where": "The AI page in the sidebar, switch “My received mail”, then in the reading pane and when replying",
+        "where": "My account › AI, switch “My received mail”, then in the reading pane and when replying",
         "body": "With an AI service set up, nexmail summarises a mail, translates it, answers a question about it or drafts a reply. This is off by default because the mail goes to your service, and the operator has to allow it as well. All AI settings now live on the AI page."
       },
       {
@@ -159,7 +159,7 @@
     "sections": [
       {
         "title": "Connect Todoist",
-        "where": "Settings, the “Tasks” tab",
+        "where": "My account › Connections › Tasks",
         "body": "Paste the API token from Todoist. nexmail checks it and keeps it encrypted. It is yours alone, everyone connects their own app. This is also where you pick the default list: your Todoist list, or nexmail's own list as before."
       },
       {
@@ -184,17 +184,17 @@
     "sections": [
       {
         "title": "Connect a webhook",
-        "where": "Settings, the “Tasks” tab",
+        "where": "My account › Connections › Tasks",
         "body": "Next to Todoist there is now “Connect a webhook”. nexmail sends every task as JSON to your address, signed with a secret that is shown only once. The address is saved only after it answers a probe; “Send test” checks it again later and names the status if something is wrong."
       },
       {
         "title": "Send only, or report back",
-        "where": "A webhook's settings and “API keys”",
+        "where": "My account › Connections › Tasks and My account › Connections › API keys",
         "body": "With “Send only”, nexmail does not keep the task in its own list, because it gets done in the other tool. Or the tool reports back: an API key with “May tick off tasks” completes and reopens tasks through the API."
       },
       {
         "title": "Message text only when allowed",
-        "where": "Administration, the “Server” tab",
+        "where": "Server › General › Features for every account",
         "body": "A webhook can include the text of the message if its user turns it on and the operator allows it. It is off by default. Addresses on the local network work, as with calendars, only once the operator allows them."
       }
     ],
@@ -209,7 +209,7 @@
     "sections": [
       {
         "title": "Tags through the API",
-        "where": "Settings, the “API keys” tab",
+        "where": "My account › Connections › API keys",
         "body": "An API key can now have “May tag messages”. With it, another tool adds a tag to the message of a task and removes it again, for example “Done” when the task is ticked off there. The tag goes to the mail server, just as when you set it yourself, so it also shows up in Thunderbird and on your phone. The option is separate from ticking off tasks."
       },
       {
@@ -229,7 +229,7 @@
     "sections": [
       {
         "title": "nextasks as a to-do app",
-        "where": "Settings, the “Tasks” tab",
+        "where": "My account › Connections › Tasks",
         "body": "Enter the address of your nextasks and an API token that may “Read and write”. Then “Turn into task” lets you pick a list, with its space and section. As with Todoist: one message, one task, even if you turn it into a task twice. What goes out is the title, the date, the sender and a link back to the message, never the message text."
       },
       {
@@ -264,12 +264,12 @@
     "sections": [
       {
         "title": "One settings page for everything",
-        "where": "User menu at the top right → Settings, or the gear at the bottom left",
+        "where": "Bottom of the sidebar: name · Settings",
         "body": "Your account is at the top left, then “My account”, “Mail” and, for the operator, “Server”, with “About nexmail” at the end. Administration, the AI page and the About page are no longer entries of their own in the rail but sections in there. Administration is now “Server”, to-do apps, the iPhone app and API keys are under “Connections”, and AI is under “Mail”. Everyone can see “About nexmail” now."
       },
       {
         "title": "Profile with picture and name",
-        "where": "Settings → Profile",
+        "where": "My account › Profile",
         "body": "You can upload a profile picture and change your name. The email address for account matters is here now instead of under Security, along with the language and “Sign out”. Light and dark are under “Appearance”; the two switches at the top right are gone."
       },
       {
@@ -310,7 +310,7 @@
       },
       {
         "title": "Asked before discarding",
-        "where": "Settings → Mailboxes → Edit",
+        "where": "Mail › Mailboxes › Edit",
         "body": "If you changed something in the mailbox window and did not save it, nexmail asks before closing, whether by the cross, Escape or a click beside it."
       }
     ],
@@ -330,7 +330,7 @@
       },
       {
         "title": "Your profile at the bottom of the sidebar",
-        "where": "Bottom of the sidebar: picture, name, gear",
+        "where": "Bottom of the sidebar: name · Settings",
         "body": "One click opens the settings at your profile, beside the sidebar of the view you came from. The menu at the top right is gone: “What's new” is under “About nexmail”, the second factor under “Security”, “Sign out” in the profile. Add a mailbox under “Mailboxes”."
       },
       {
@@ -340,7 +340,7 @@
       },
       {
         "title": "Calendars and address books in the settings",
-        "where": "Settings → Calendars and address books",
+        "where": "My account › Calendars and address books",
         "body": "Add, rename and disconnect calendars, connect and disconnect address books, all in one place. The calendar itself has a “+” next to the “Calendars” heading for the same."
       },
       {
