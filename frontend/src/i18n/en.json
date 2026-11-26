@@ -130,7 +130,7 @@
     "gespeichert": "Saved.",
     "nextasks_verbinden": "Connect nextasks",
     "nextasks_hinweis": "You need the address of your nextasks and an API key that may “Read and write”, made in nextasks under Settings → My account → Connections → API keys.",
-    "nextasks_adresse": "Address",
+    "nextasks_adresse": "Address of nextasks",
     "nextasks_adresse_hinweis": "As in the browser, for example https://tasks.example.com. The operator has to allow addresses on the local network.",
     "nextasks_name_hinweis": "Only needed when you connect two nextasks.",
     "nextasks_token_neu": "Change key",
@@ -1760,7 +1760,10 @@
     "unbekannte_stufe": "There is no such level.",
     "wrong_password": "The password is wrong.",
     "fresh_sign_in_needed": "Sign in again with your provider first.",
-    "second_factor_required": "This key works once its account sets up a second factor."
+    "second_factor_required": "This key works once its account sets up a second factor.",
+    "sprachdatei_unbrauchbar": "This language file cannot be used. It has to be JSON with texts, like the template.",
+    "sprachdatei_zu_gross": "The language file is larger than {{max_kb}} KB.",
+    "sprache_unbekannt": "There is no such language here."
   },
   "sicherheit": {
     "alle_beenden": "Sign out all other devices",
@@ -1988,7 +1991,8 @@
     "ki_karte_text": "Applies to every account. Whether a single account may use AI is set under “Accounts”.",
     "funktionen_titel": "Features for every account",
     "zeitzone_titel": "Time zone of the server",
-    "was_du_siehst": "As an operator you see the name, sign-in, role and number of mailboxes of every account, but never the content of its mail, contacts, events or tasks, and never its passwords."
+    "was_du_siehst": "As an operator you see the name, sign-in, role and number of mailboxes of every account, but never the content of its mail, contacts, events or tasks, and never its passwords.",
+    "funktionen_text": "What every account on this server may use."
   },
   "wiedervorlage": {
     "menue": "Snooze",
@@ -2125,5 +2129,17 @@
     "trennen": "Disconnect",
     "keine": "No iPhone or iPad connected yet.",
     "verbinden": "Connect an iPhone or iPad"
+  },
+  "sprachen": {
+    "titel": "Languages",
+    "text": "German and English are built in. The operator uploads further languages as a JSON file; whatever a file leaves out appears in English.",
+    "eingebaut": "built in",
+    "texte_one": "{{count}} text",
+    "texte_other": "{{count}} texts",
+    "vorlage": "Download the template",
+    "code": "Language code",
+    "code_hinweis": "Such as nl, es or pt-BR. A file for de or en is laid over the built-in texts.",
+    "hochladen": "Upload language",
+    "hochgeladen": "Uploaded."
   }
 }

@@ -97,6 +97,11 @@ def test_ohne_https_adresse_keine_passkeys(klient):
     assert TestClient(app).get("/api/auth/passkey").json()["an"] is False
     liste = klient.get("/api/auth/passkeys").json()
     assert liste["erlaubt"] is False and liste["grund"] == "passkeys_off"
+    # E39, wie nexnotes: der Kasten steht trotzdem, weil der Betreiber Passkeys erlaubt; nur das Anlegen scheitert.
+    assert liste["eingeschaltet"] is True
+    with SessionLocal() as db:
+        einstellung_schreiben(db, "passkeys_erlaubt", "0")
+    assert klient.get("/api/auth/passkeys").json()["eingeschaltet"] is False
 
 
 def test_auf_localhost_gehoert_der_passkey_zur_seite_selbst(klient):

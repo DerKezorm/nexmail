@@ -690,6 +690,11 @@ app.include_router(sicherung.modul_router, dependencies=NUR_ANGEMELDET)
 # routers/bilder.py.
 app.include_router(bilder_router.router)
 
+# Allgemein › Sprachen (Bauplan „Einstellungen“, wie nexnotes): eigene Sprachdateien des Betreibers.
+from .routers import sprachen as sprachen_router  # noqa: E402
+
+app.include_router(sprachen_router.router)
+
 
 # --- Die gebaute Oberfläche ausliefern ---------------------------------- #
 

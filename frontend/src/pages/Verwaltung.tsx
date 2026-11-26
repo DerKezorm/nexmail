@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, modulAnfrage } from '../api/client'
 import { InterfacesCard } from '../vendor/nexschluessel/InterfacesCard'
+import { SprachenKarte } from './einstellungen/Sprachen'
 import { servermeldung } from '../lib/servermeldung'
 import { Button, Card, CheckboxRow, Field, Notice } from '../vendor/nexui'
 
@@ -23,6 +24,9 @@ export function ServerAllgemein({ dokuHref }: { dokuHref?: string }) {
       {/* Modul schluessel: „Programmschnittstelle (API) für Mitglieder" und „iPhone-App erlauben" (ersetzt den Schalter
           in der alten Karte „API-Schlüssel" und den in „iPhone verbinden"). */}
       <InterfacesCard request={modulAnfrage} docsHref={dokuHref} />
+      {/* Bauplan Allgemein 5 (E48): keine Karte „Grenzen“ (nexmail hat nichts zu begrenzen), kein „Web Push“ (nichts
+          einzustellen, E33); danach nexmails eigene Karte. */}
+      <SprachenKarte />
       <ZeitzoneDesServers />
     </>
   )
@@ -31,7 +35,8 @@ export function ServerAllgemein({ dokuHref }: { dokuHref?: string }) {
 function FunktionenFuerAlle() {
   const { t } = useTranslation()
   return (
-    <Card id="general-features" icon="SlidersHorizontal" title={t('verwaltung.funktionen_titel')}>
+    // E48: die gemeinsame Karte „Funktionen für alle Konten“ (Bauplan Allgemein 2), überall mit demselben Satz.
+    <Card id="features" icon="SlidersHorizontal" title={t('verwaltung.funktionen_titel')} subtitle={t('verwaltung.funktionen_text')}>
       <EigenesNetz />
       <WebhookMailtext />
     </Card>

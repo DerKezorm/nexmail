@@ -52,6 +52,8 @@ interface Passkey {
 }
 
 interface Passkeys {
+  /** Der Betreiber erlaubt Passkeys (ältere Server schicken das Feld nicht; dann gilt ``erlaubt``). */
+  eingeschaltet?: boolean
   erlaubt: boolean
   grund: string
   passkeys: Passkey[]
@@ -278,14 +280,18 @@ export function Sicherheit({
     /* Nur, wenn der Betreiber sie erlaubt und nexmail unter https läuft; vorhandene stehen auch sonst da, damit man
        sie entfernen kann. */
     passkeys: () => {
-      if (!passkeys || !(passkeys.erlaubt || passkeys.passkeys.length > 0)) return null
+      // E39, wie nexnotes: der Kasten steht, sobald der Betreiber Passkeys erlaubt; „Passkey hinzufügen“, wo der Browser
+      // es kann. Taugt die Adresse nicht (kein https, keine öffentliche Adresse), lehnt der Server das Anlegen ab, und
+      // das Fenster sagt warum.
+      const an = passkeys ? (passkeys.eingeschaltet ?? passkeys.erlaubt) : false
+      if (!passkeys || !(an || passkeys.passkeys.length > 0)) return null
       const p = teil('passkeys')
       return (
         <Box
           title={t(p.title)}
           hint={t(p.hint)}
           testId="passkeys"
-          actions={passkeys.erlaubt && passkeyMoeglich() && <AccountButton name="account.passkeyAdd" onClick={() => void passkeyHinzufuegen()} />}
+          actions={an && passkeyMoeglich() && <AccountButton name="account.passkeyAdd" onClick={() => void passkeyHinzufuegen()} />}
         >
           {passkeys.passkeys.length > 0 && (
             <Rows label={t(p.title)}>

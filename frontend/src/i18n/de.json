@@ -130,7 +130,7 @@
     "gespeichert": "Gespeichert.",
     "nextasks_verbinden": "nextasks verbinden",
     "nextasks_hinweis": "Dafür brauchst du die Adresse deines nextasks und einen API-Schlüssel mit „Lesen und schreiben“, angelegt in nextasks unter Einstellungen → Mein Konto → Verbindungen → API-Schlüssel.",
-    "nextasks_adresse": "Adresse",
+    "nextasks_adresse": "Adresse von nextasks",
     "nextasks_adresse_hinweis": "So wie im Browser, etwa https://tasks.example.com. Adressen im eigenen Netz muss der Betreiber erlauben.",
     "nextasks_name_hinweis": "Zum Wiedererkennen, wenn du zwei nextasks verbindest.",
     "nextasks_token_neu": "Schlüssel ändern",
@@ -1760,7 +1760,10 @@
     "unbekannte_stufe": "Diese Stufe gibt es nicht.",
     "wrong_password": "Das Passwort stimmt nicht.",
     "fresh_sign_in_needed": "Melde dich zuerst noch einmal bei deinem Anbieter an.",
-    "second_factor_required": "Dieser Schlüssel wirkt erst, wenn sein Konto einen zweiten Faktor einrichtet."
+    "second_factor_required": "Dieser Schlüssel wirkt erst, wenn sein Konto einen zweiten Faktor einrichtet.",
+    "sprachdatei_unbrauchbar": "Diese Sprachdatei lässt sich nicht verwenden. Sie muss JSON mit Texten sein, wie die Vorlage.",
+    "sprachdatei_zu_gross": "Die Sprachdatei ist größer als {{max_kb}} KB.",
+    "sprache_unbekannt": "Diese Sprache gibt es hier nicht."
   },
   "sicherheit": {
     "alle_beenden": "Alle anderen Geräte abmelden",
@@ -1988,7 +1991,8 @@
     "ki_karte_text": "Gilt für alle Konten. Ob ein einzelnes Konto KI nutzen darf, steht unter „Konten“.",
     "funktionen_titel": "Funktionen für alle Konten",
     "zeitzone_titel": "Zeitzone des Servers",
-    "was_du_siehst": "Als Betreiber siehst du Namen, Anmeldung, Rolle und die Zahl der Postfächer jedes Kontos, aber nie den Inhalt seiner Mails, Kontakte, Termine oder Aufgaben und nie seine Passwörter."
+    "was_du_siehst": "Als Betreiber siehst du Namen, Anmeldung, Rolle und die Zahl der Postfächer jedes Kontos, aber nie den Inhalt seiner Mails, Kontakte, Termine oder Aufgaben und nie seine Passwörter.",
+    "funktionen_text": "Was jedes Konto auf diesem Server nutzen darf."
   },
   "wiedervorlage": {
     "menue": "Wiedervorlage",
@@ -2125,5 +2129,17 @@
     "trennen": "Trennen",
     "keine": "Noch kein iPhone oder iPad verbunden.",
     "verbinden": "iPhone oder iPad verbinden"
+  },
+  "sprachen": {
+    "titel": "Sprachen",
+    "text": "Eingebaut sind Deutsch und Englisch. Weitere Sprachen lädt der Betreiber als JSON-Datei hoch; was einer Datei fehlt, steht auf Englisch da.",
+    "eingebaut": "eingebaut",
+    "texte_one": "{{count}} Text",
+    "texte_other": "{{count}} Texte",
+    "vorlage": "Vorlage herunterladen",
+    "code": "Sprachcode",
+    "code_hinweis": "Etwa nl, es oder pt-BR. Eine Datei für de oder en legt sich über die eingebauten Texte.",
+    "hochladen": "Sprache hochladen",
+    "hochgeladen": "Hochgeladen."
   }
 }
