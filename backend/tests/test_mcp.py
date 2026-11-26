@@ -342,3 +342,19 @@ def test_die_zeile_der_rueckfrage_spricht_die_sprache_des_kontos_und_nennt_namen
     with SessionLocal() as db:
         zeile = db.query(McpAnfrage).order_by(McpAnfrage.id.desc()).first().zusammenfassung
     assert zeile == f"Aufgabe „#{fremd_id}“ abhaken"
+
+
+def test_fremde_falsche_schluessel_halten_einen_richtigen_nicht_auf(app, monkeypatch):
+    """mcp 1.1.2 (M-18, Frage 4): ohne ``NEXMAIL_CLIENT_IP`` rät nexmail den Absender nicht (hinter einem Proxy sähen
+    alle gleich aus); falsche Schlüssel zählen dann je vorgelegtem Schlüssel. Ein Fremder mit vielen falschen
+    Schlüsseln lässt einen richtigen nicht warten; derselbe falsche Schlüssel wird gebremst."""
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "client_ip", "")
+    richtig = _schluessel(app, "read")
+    for nummer in range(25):
+        assert rpc(app, f"nxk_falsch{nummer:02d}" + "x" * 30, "tools/list").status_code == 401
+    assert rpc(app, richtig, "tools/list").status_code == 200
+    immer = "nxk_immerderselbe" + "y" * 30
+    antworten = [rpc(app, immer, "tools/list").status_code for _ in range(25)]
+    assert antworten[0] == 401 and antworten[-1] == 429
