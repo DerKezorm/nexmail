@@ -259,11 +259,29 @@ Abos und Verbindungen bleiben; `push_ready` im Vertragsadapter.
 **Nach Stufe 1:** `Kalenderfenster`, `Buchfenster` und `Nachfrage` bleiben auf `ds/Dialog`, weil die App sie auch
 außerhalb der Einstellungen nutzt (E33).
 
-**Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 7685875 und b0d3618 (ohne ruff, nexmail
-hat keins; pytest ohne xdist): pytest 3216 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
+**Mit a374e3c dazu:** post `catch_mail` mit Wächter gegen echtes SMTP (kein App-Test war betroffen), log lässt nach
+„Bearer“ die Vorsilbe stehen (`Bearer nxm_…`, neuer Test), konten sagt „Gespeichert.“ erst nach dem Speichern (Vorlage
+`nexkonten.cards.test.tsx` von Hand nachgezogen).
+
+**Verweise (E39)**, alt → neu (DE; EN entsprechend):
+- nextasks: „API-Token … unter Mein Konto → Verbindungen“ → „API-Schlüssel … unter Einstellungen → Mein Konto →
+  Verbindungen → API-Schlüssel“; „Server → API“ → „Server → Allgemein → Schnittstellen“; „Token“ → „Schlüssel“;
+  Feld „API-Token“ → „API-Schlüssel“; „Token erneuern“ → „Schlüssel ändern“.
+- nextime: „Einstellungen → Verbindungen → Schlüssel für Programme“ → „Einstellungen → Mein Konto → Verbindungen →
+  API-Schlüssel“; „Server → Allgemein“ → „Server → Allgemein → Schnittstellen“; Feld „Schlüssel“ → „API-Schlüssel“.
+- nexmail selbst: API-Schalter „Einstellungen → Verbindungen“ → „Server → Allgemein → Schnittstellen“; Adresse für
+  den QR-Code „Server → Allgemein“ → „Server → Anmeldung“; Vorlagen „Einstellungen → Signaturen“ → „Einstellungen →
+  Mail → Signaturen“; Todoist „in den Einstellungen unter Aufgaben“ → „Einstellungen → Verbindungen → Aufgaben“;
+  „siehe Protokoll“ → „siehe Log“; „Rücksetzpunkt“ → „Sicherung“.
+- README: nextasks-Schlüssel, „Change key“, „Settings → Mail → Mailboxes“, Schalter unter „Settings → Server →
+  General → Interfaces“, der Abschnitt „Backup and restore“ nach dem Modul (eine Liste, Adressfrage im Fenster).
+- Test `src/i18n/verweise.test.ts` hält die neuen Orte fest (gegen eine Mutation geprüft).
+
+**Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach a374e3c und E39 (ohne ruff, nexmail
+hat keins; pytest ohne xdist): pytest 3218 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
-schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 408
-grün in 43 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
+schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 414
+grün in 44 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
 Schlüssel über den alten Weg, gesperrter Schlüssel über `/api/v1`, gelöschtes Konto ohne Post, fremder Browser nicht
 entfernbar, die Adressfrage beim Wiederherstellen (verschlüsselt und eigene Sicherung), die Rückkehradressen der
 Anbieter, kein Push und kein Abgleich für ein Konto, das draußen ist. Test „Bestand“ unverändert. **Playwright nicht
