@@ -26,7 +26,9 @@ class Adapter(StandardAdapter):
     public_read = True
     #: nexmail: die Seite macht die Vorlage aus ihren englischen Texten; der Server kennt sie nicht.
     has_template = False
-    # nexmail hatte vor dem Modul keine eigenen Sprach-Wege, also keine alten Namen in einer Beschreibung.
+    # nexmail hatte vor dem Modul keine eigenen Sprach-Wege, also keine alten Namen in einer Beschreibung. Es
+    # veroeffentlicht keine Beschreibung (``openapi_url=None``, ``test_waechter``); die Vertragstests lesen sie ueber
+    # ``description()``.
     openapi_path = "/openapi.json"
     operation_ids: dict[str, str] = {}
     summaries: dict[str, str] = {}
@@ -102,3 +104,10 @@ class Adapter(StandardAdapter):
             self._clients.append(client)
             return client
         return self._rollen[role]
+
+    def description(self) -> dict[str, Any]:
+        """nexmail veroeffentlicht keine Beschreibung (``openapi_url=None`` seit 11.10.2026); die Vertragstests
+        bekommen die eigene der App, nie ueber einen Weg nur fuer die Tests."""
+        from app.main import app
+
+        return app.openapi()
