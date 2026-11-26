@@ -277,11 +277,19 @@ außerhalb der Einstellungen nutzt (E33).
   General → Interfaces“, der Abschnitt „Backup and restore“ nach dem Modul (eine Liste, Adressfrage im Fenster).
 - Test `src/i18n/verweise.test.ts` hält die neuen Orte fest (gegen eine Mutation geprüft).
 
-**Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach a374e3c und E39 (ohne ruff, nexmail
-hat keins; pytest ohne xdist): pytest 3218 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
+**Gemeinsame Runde (86a0cce, E45 bis E48):** neue Konten beginnen mit „Wie das System“, Konten von vorher ohne Wahl
+behalten nexmails Dunkel, außer ihr Browser hielt wirklich einen Wert (`theme_default_before="dark"`,
+`lib/browserwahl.ts`); Kasten „Passkeys“ immer, wenn der Betreiber sie erlaubt; Server › Allgemein in der Reihenfolge
+des Bauplans: „Funktionen für alle Konten“ (`features`), „Schnittstellen“, neu „Sprachen“ (wie nexnotes, `/api/locales`,
+`services/sprachen.py`), „Zeitzone des Servers“; „Postfach hinzufügen“ als Bausatz-Knopf; Abwesenheit aus Karten;
+Ortsangaben nach E46 (Mein Konto › Verbindungen › API-Schlüssel, Server › Allgemein › Schnittstellen), Test
+`src/i18n/verweise.test.ts` mit der Regel; E49: jedes „wo“ in „Was ist neu“ zeigt auf den heutigen Ort.
+
+**Geprüft am 26.11.2026** mit `einst-werkzeug/reihe.sh nexmail ende` nach 86a0cce, E45 bis E49 (ohne ruff, nexmail
+hat keins; pytest ohne xdist): pytest 3229 bestanden, 0 rot, 6 übersprungen (2 im Schlüssel-Vertrag: nexmails
 Schlüssel haben kein Ablaufdatum; 3 im oidc-Vertrag: Einladungen tragen keine Rechte; 1 in nexmails eigenen Tests,
-schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 414
-grün in 44 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
+schon vorher). Der Vertragstest von sicherung zum Herunterladen ist jetzt grün. `tsc --noEmit` sauber, vitest 428
+grün in 46 Dateien, `npm run build` grün. Neue Tests je gegen eine Mutation geprüft (Rückgabecode 1): ruhender
 Schlüssel über den alten Weg, gesperrter Schlüssel über `/api/v1`, gelöschtes Konto ohne Post, fremder Browser nicht
 entfernbar, die Adressfrage beim Wiederherstellen (verschlüsselt und eigene Sicherung), die Rückkehradressen der
 Anbieter, kein Push und kein Abgleich für ein Konto, das draußen ist. Test „Bestand“ unverändert. **Playwright nicht
