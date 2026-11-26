@@ -1760,10 +1760,7 @@
     "unbekannte_stufe": "There is no such level.",
     "wrong_password": "The password is wrong.",
     "fresh_sign_in_needed": "Sign in again with your provider first.",
-    "second_factor_required": "This key works once its account sets up a second factor.",
-    "sprachdatei_unbrauchbar": "This language file cannot be used. It has to be JSON with texts, like the template.",
-    "sprachdatei_zu_gross": "The language file is larger than {{max_kb}} KB.",
-    "sprache_unbekannt": "There is no such language here."
+    "second_factor_required": "This key works once its account sets up a second factor."
   },
   "sicherheit": {
     "alle_beenden": "Sign out all other devices",
@@ -2129,17 +2126,5 @@
     "trennen": "Disconnect",
     "keine": "No iPhone or iPad connected yet.",
     "verbinden": "Connect an iPhone or iPad"
-  },
-  "sprachen": {
-    "titel": "Languages",
-    "text": "German and English are built in. The operator uploads further languages as a JSON file; whatever a file leaves out appears in English.",
-    "eingebaut": "built in",
-    "texte_one": "{{count}} text",
-    "texte_other": "{{count}} texts",
-    "vorlage": "Download the template",
-    "code": "Language code",
-    "code_hinweis": "Such as nl, es or pt-BR. A file for de or en is laid over the built-in texts.",
-    "hochladen": "Upload language",
-    "hochgeladen": "Uploaded."
   }
 }
