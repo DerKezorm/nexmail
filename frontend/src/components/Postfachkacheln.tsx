@@ -13,7 +13,7 @@ import { Postfachzeichen } from './Postfachzeichen'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Folder, Pencil, Plus, Trash2 } from 'lucide-react'
-import { Badge, Button } from '../vendor/nexui'
+import { Badge, Button, Buttons } from '../vendor/nexui'
 import { useNachfrage } from './Nachfrage'
 import { api } from '../api/client'
 import type { KontoZeile } from '../api/client'
@@ -143,14 +143,15 @@ export function Postfachkacheln({ konten, aufHinzufuegen, aufBearbeiten, aufNeuL
         </section>
       ))}
 
-      <button
-        type="button"
-        onClick={aufHinzufuegen}
-        className="flex min-h-[132px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-surface-1/40 px-4 py-3 text-center text-fg-3 transition-colors duration-[var(--dur-fast)] hover:border-accent hover:text-fg-1"
-      >
-        <Plus aria-hidden className="size-6" />
-        <span className="text-[13px] font-medium">{t('konto.hinzufuegen')}</span>
-      </button>
+      {/* Aus dem Bausatz, wie „Anbieter hinzufügen“: primary mit Plus, unter den Kacheln (vorher eine gestrichelte
+          Kachel ohne Bausatz-Knopf). */}
+      <div className="col-span-full">
+        <Buttons>
+          <Button kind="primary" icon={Plus} onClick={aufHinzufuegen} testId="postfach-hinzufuegen">
+            {t('konto.hinzufuegen')}
+          </Button>
+        </Buttons>
+      </div>
 
       {nachfrage}
     </div>

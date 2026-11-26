@@ -33,13 +33,47 @@ describe('Verweise auf Orte (E39)', () => {
   }
 
   it('nennt die neuen Orte in nextasks, nextime und nexmail', () => {
-    expect(de.serverfehler.nextasks_api_aus).toContain('Einstellungen → Server → Allgemein → Schnittstellen')
-    expect(de.serverfehler.nextasks_zugang_ungueltig).toContain('Einstellungen → Mein Konto → Verbindungen → API-Schlüssel')
-    expect(de.nextime.hinweis).toContain('Einstellungen → Mein Konto → Verbindungen → API-Schlüssel')
-    expect(de.serverfehler.api_schluessel_abgeschaltet).toContain('Einstellungen → Server → Allgemein → Schnittstellen')
-    expect(de.serverfehler.app_adresse_fehlt).toContain('Einstellungen → Server → Anmeldung')
-    expect(en.serverfehler.nextime_api_aus).toContain('Settings → Server → General → Interfaces')
-    expect(en.todoapps.nextasks_hinweis).toContain('Settings → My account → Connections → API keys')
-    expect(en.verfassen.vorlagen_leer).toContain('Settings → Mail → Signatures')
+    expect(de.serverfehler.nextasks_api_aus).toContain('Server › Allgemein › Schnittstellen')
+    expect(de.serverfehler.nextasks_zugang_ungueltig).toContain('Mein Konto › Verbindungen › API-Schlüssel')
+    expect(de.nextime.hinweis).toContain('Mein Konto › Verbindungen › API-Schlüssel')
+    expect(de.serverfehler.api_schluessel_abgeschaltet).toContain('Server › Allgemein › Schnittstellen')
+    expect(de.serverfehler.app_adresse_fehlt).toContain('Server › Anmeldung')
+    expect(de.regeln.schlagwort_keins).toContain('Mail › Schlagworte')
+    expect(en.serverfehler.nextime_api_aus).toContain('Server › General › Interfaces')
+    expect(en.todoapps.nextasks_hinweis).toContain('My account › Connections › API keys')
+    expect(en.verfassen.vorlagen_leer).toContain('Mail › Signatures')
   })
+})
+
+/* E46: Ortsangaben mit „›“, vorn die Gruppe; nie Pfeile oder Kommas als Trenner. Die Schritte in fremden Programmen
+ * (Google Cloud Console, Entra) behalten deren Schreibweise. */
+const FREMD = new Set([
+  'oauth.anleitung_google',
+  'oauth.anleitung_microsoft',
+  'oauth.g2_text',
+  'oauth.g3_titel',
+  'oauth.g4_titel',
+  'oauth.g5_titel',
+  'oauth.g6_titel',
+  'kalender.fehler_caldav_google_api_aus',
+  'kontakte.buch_fehler_carddav_google_api_aus',
+])
+const BEREICHE: Record<'de' | 'en', string> = {
+  de: '(?:Einstellungen|Mein Konto|Server|Mail|Profil|Sicherheit|Darstellung|Benachrichtigungen|Verbindungen|Allgemein|Anmeldung|Konten|Log)',
+  en: '(?:Settings|My account|Server|Mail|Profile|Security|Appearance|Notifications|Connections|General|Sign-in|Accounts|Log)',
+}
+
+describe('Ortsangaben (E46)', () => {
+  for (const [sprache, baum] of [['de', de], ['en', en]] as const) {
+    it(`${sprache}: Trenner „›“, kein Pfeil und kein Komma`, () => {
+      const pfeil = new RegExp(`${BEREICHE[sprache]}\\s*(?:→|->|>|,)\\s*${BEREICHE[sprache]}`)
+      const treffer = blaetter(baum as Baum).filter(([schluessel, text]) => !FREMD.has(schluessel) && (text.includes('→') || pfeil.test(text)))
+      expect(treffer).toEqual([])
+    })
+
+    it(`${sprache}: eine Ortsangabe beginnt mit der Gruppe, nicht mit „${sprache === 'de' ? 'Einstellungen' : 'Settings'} ›“`, () => {
+      const vorn = sprache === 'de' ? /Einstellungen ›/ : /Settings ›/
+      expect(blaetter(baum as Baum).filter(([, text]) => vorn.test(text))).toEqual([])
+    })
+  }
 })

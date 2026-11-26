@@ -106,19 +106,19 @@ reach lets you conclude a message does not exist.
 **Tasks.** Turn a message into a task, tick it off, drag it into order, give it
 a due date. The task survives its message: if the mail is moved from your phone,
 the task follows it by `Message-ID`; if the mail is deleted, the task stays and
-says so. Each user can connect their own Todoist account under *Settings → Connections*
+says so. Each user can connect their own Todoist account under *Settings › My account › Connections*
 and send tasks to a Todoist list instead. Only the title, the due date, the
 sender and a link back to the mail go there, never the text of the mail. Ticking
 a task in nexmail closes it in Todoist, and what you complete, reschedule or
 delete in Todoist comes back within a few minutes. The same works with a
 self-hosted nextasks: enter its address
-and an API key that may read and write (made in nextasks under *Settings → My account →
-Connections → API keys*), then pick a list, with its space and
+and an API key that may read and write (made in nextasks under *Settings › My account ›
+Connections › API keys*), then pick a list, with its space and
 section. nexmail checks the key against `/api/v1/me` before it saves anything,
 sends each message at most once (nextasks' `external_ref`), and sees completed,
 reopened, rescheduled and binned tasks within a few minutes; when the key is
 replaced, *Change key* keeps your tasks connected. A nextasks on your local network
-needs the operator's permission under *Settings → Server → General*, as webhooks and
+needs the operator's permission under *Settings › Server › General › Features for every account*, as webhooks and
 calendars do. With nextasks connected, the task view goes further: its spaces and
 lists appear in the sidebar with their symbols, read live from nextasks (nothing is
 copied), and you can tick off, edit, move and add tasks there, also without a mail;
@@ -188,11 +188,11 @@ would stay in their calendars and they would turn up.
 **Calendar.** Month, week and day, with your own calendars in nexmail or
 connected over CalDAV to iCloud, Nextcloud or anything else that speaks it.
 With a self-hosted [nextime](https://github.com/DerKezorm/nextime) (0.2.0 or
-later) one connection under *Settings → Connections* brings all its calendars,
+later) one connection under *Settings › My account › Connections* brings all its calendars,
 in its groups and colours, read live; invitations are accepted into a nextime
 calendar in one step, and *Turn into event* makes an event from any mail.
 A server on your own network or VPN is refused until the operator allows it
-under *Settings → Server → General*; the same switch covers address books and
+under *Settings › Server › General › Features for every account*; the same switch covers address books and
 subscribed calendars.
 Google works too, through the same consent you gave for the mailbox. Recurring
 events are stored once and worked out for the window on screen, so a *every
@@ -230,7 +230,7 @@ each operator registers their own. The Server section of the settings says so pl
 rather than letting you guess why nothing works.
 
 **Rephrasing with AI, if you want it.** Every user can connect their own AI
-service under *Settings → AI*: an address, a key and a model. nexmail knows no
+service under *Settings › My account › AI*: an address, a key and a model. nexmail knows no
 provider; anything that speaks the common chat completions interface works,
 from Claude, Gemini or OpenAI to Ollama on a machine in your own network. A
 service in your own network is asked not to think (`reasoning_effort: "none"`),
@@ -357,7 +357,7 @@ The full compose file with every option and the reasoning behind each one is
 ### Your mailbox credentials
 
 nexmail asks for them **in its own interface and nowhere else**. You add
-mailboxes under *Settings → Mail → Mailboxes*. They are stored encrypted and never
+mailboxes under *Settings › Mail › Mailboxes*. They are stored encrypted and never
 leave your server.
 
 ![The mailbox list under Settings](docs/screenshots/postfaecher-en.webp)
@@ -382,7 +382,7 @@ Everything is under `/data`:
 
 ### Backup and restore
 
-Under *Settings → Server → Storage and backups*. At the top you see how much
+Under *Settings › Server › Storage and backups*. At the top you see how much
 space nexmail takes; below is one list of backups.
 
 **Backups in the list** are complete copies next to the database: on a schedule
@@ -444,7 +444,7 @@ offers no notifications.
 
 nexmail speaks OpenID Connect: authentik, Microsoft Entra ID, Keycloak,
 Authelia, Pocket ID and anything else that follows the spec. Everything lives
-under *Settings → Server → Sign-in*, in three cards:
+under *Settings › Server › Sign-in*, in three cards:
 
 1. **Sign-in.** *Sign-in with a password* can be switched off once a provider is
    active; then the sign-in page shows only the provider buttons. You as the
@@ -484,8 +484,8 @@ nexmail does not need one.
 
 **Who comes in:**
 
-1. **An existing link.** You create it while signed in, under *Settings →
-   Security → Sign-in providers*; your password confirms it. The operator sees
+1. **An existing link.** You create it while signed in, under *Settings ›
+   My account › Security › Sign-in providers*; your password confirms it. The operator sees
    the links in the account list and can remove one, with their own password.
 2. **An invitation.** On the invitation page, *Continue with …* takes the
    invitation key along (in the request body, never in an address). The new
@@ -514,10 +514,10 @@ nexmail does not need one.
 
 ## Several people
 
-Invite them under *Settings → Server → Accounts*: an email address and a display
+Invite them under *Settings › Server › Accounts*: an email address and a display
 name, both optional, and how long the link holds (1, 7 or 30 days). The person
 invited picks their own username. With an outgoing mail server of its own under
-*Settings → Server → Mail* nexmail sends the invitation itself — deliberately not
+*Settings › Server › Mail* nexmail sends the invitation itself — deliberately not
 the operator's mailbox, so that removing that mailbox does not take the
 invitations with it. Without one, nexmail shows the link for you to pass on.
 
@@ -549,11 +549,11 @@ authentication and none hands out another user's data.
 A dashboard such as nexdeck can show how many unread messages are waiting and,
 if you allow it, sender and subject of the latest ones. It reads them with an
 API key that each user creates for their own mailboxes under
-*Settings → Connections*.
+*Settings › My account › Connections*.
 
 **Off by default.** API keys are a way out of nexmail, so the operator decides
 whether they exist on an installation at all, with a switch under
-*Settings → Server → General → Interfaces*.
+*Settings › Server › General › Interfaces*.
 Turning it off stops every key immediately; no key is deleted.
 
 **Each key has two limits, set when it is created.** It sees only the
@@ -591,7 +591,7 @@ nexmail's last sync with the mail server.
 
 ## Webhooks for tasks
 
-Under *Settings → Connections* each user can connect a webhook next to Todoist. It
+Under *Settings › My account › Connections* each user can connect a webhook next to Todoist. It
 then shows up as a list in *Turn into task*, and nexmail sends the task as a
 `POST` with a JSON body to your address. Before it saves the webhook, nexmail
 sends a `ping` and keeps the address only if it answers with 2xx; *Send test*
@@ -634,7 +634,7 @@ to the task in nexmail.
 
 **The text of the message** (`text`, `html`, `text_truncated` under `message`)
 is only sent if the user turns it on for the webhook *and* the operator allows
-it under *Settings → Server → General*. It is off by default, because on a shared
+it under *Settings › Server › General › Features for every account*. It is off by default, because on a shared
 installation any user can enter any address. `html` is the cleaned HTML nexmail
 shows itself, without scripts; very long messages are cut, and `text_truncated`
 says so.
@@ -689,7 +689,7 @@ without the option gets `403`. Tag changes send no event to the webhook.
 
 **Addresses.** Only `http` and `https`, no credentials in the URL, and
 redirects are not followed. Addresses on the local network work only after the
-operator allows them under *Settings → Server → General* (the same switch as for
+operator allows them under *Settings › Server › General › Features for every account* (the same switch as for
 calendar servers). `localhost` never works: inside the container it is nexmail
 itself. If your tool runs on the same host as the nexmail container, use the
 host's address on your network, for example `http://10.0.0.20:8080/hook`.
@@ -700,7 +700,7 @@ host's address on your network, for example `http://10.0.0.20:8080/hook`.
 single-use recovery codes, and a per-user switch — including for the operator.
 On a purely local network it is reasonable to leave it off; reachable from the
 internet it is not, and nexmail says so where you make the choice. The operator
-can require a second factor of everybody under *Settings → Server → Sign-in*;
+can require a second factor of everybody under *Settings › Server › Sign-in*;
 whoever has none sets it up at the next sign-in. Passkeys (over https) sign in
 without password or code and count as a second factor; the operator can switch
 them off. A lost phone is handled by the operator, who resets that account's

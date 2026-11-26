@@ -492,7 +492,7 @@ def zugriffstoken_fuer_konto(db, konto) -> str:
             raise Verbindungsfehler(
                 Fehlerart.ANMELDUNG,
                 "Die Zustimmung zu diesem Konto gilt nicht mehr. Unter "
-                "Einstellungen → Sicherheit neu verbinden.",
+                "Mein Konto › Sicherheit neu verbinden.",
                 str(f),
             ) from f
     return ""

@@ -10,12 +10,11 @@
  * Fehlerquelle ohne Gewinn. Signaturen haben den vollen Editor, das hier
  * bewusst nicht.
  */
-import { Postfachzeichen } from '../components/Postfachzeichen'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Check } from 'lucide-react'
+import { Check, Plane } from 'lucide-react'
 import { api, ApiFehler } from '../api/client'
-import { Button, CheckboxRow, Field } from '../vendor/nexui'
+import { Badge, Box, Button, Card, CheckboxRow, Field, Notice } from '../vendor/nexui'
 import { BESCHRIFTUNG_NORMAL } from '../ds/beschriftung'
 
 interface Stand {
@@ -90,13 +89,13 @@ export function Abwesenheit() {
 
   if (liste === null) return <div className="h-24" />
 
+  /* Bauplan „Einstellungen“ (E39): auch ein app-eigener Bereich besteht nur aus Karten. Karte „Abwesenheit“ mit einem
+     Kasten je Postfach, danach „Beantwortet“. */
   return (
-    <div className="flex max-w-[720px] flex-col gap-5">
+    <>
+    <Card id="out-of-office" icon={Plane} title={t('einstellungen.bereiche.out-of-office.titel')}>
       {/* Der Satz, der die Grenze nennt. Er steht hier, nicht in einer README. */}
-      <div className="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning-soft px-4 py-3">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-        <p className="mb-0 text-[12px] leading-relaxed text-fg-2">{t('abwesenheit.nur_wenn_es_laeuft')}</p>
-      </div>
+      <Notice tone="warn">{t('abwesenheit.nur_wenn_es_laeuft')}</Notice>
 
       {fehler && <p className="mb-0 text-[13px] text-danger">{fehler}</p>}
 
@@ -116,36 +115,26 @@ export function Abwesenheit() {
           setEntwurf((alle) => ({ ...alle, [s.konto_id]: { ...e, ...teil } }))
 
         return (
-          <section
+          <Box
             key={s.konto_id}
-            className={
-              'flex flex-col gap-4 rounded-lg border p-4 ' +
-              (e.aktiv ? 'border-line bg-surface-1' : 'border-line-subtle bg-surface-1/60')
-            }
-          >
-            <div className="flex flex-wrap items-center gap-3">
-              <Postfachzeichen konto={s} />
-              <span className="font-mono text-[13px] font-medium text-fg-1">{s.adresse}</span>
-              <span className="flex-1" />
-              {/* ⚠️ **„Läuft" ist nicht dasselbe wie „an".** Der Zeitraum kann
-                  noch nicht begonnen haben oder schon vorbei sein — und dann
-                  ist der Schalter an, ohne dass etwas passiert. */}
-              {s.aktiv && (
-                <span
-                  className={
-                    'rounded-pill px-2.5 py-0.5 text-[11px] font-medium ' +
-                    (s.laeuft ? 'bg-accent text-on-accent' : 'border border-line text-fg-3')
-                  }
-                >
+            title={s.adresse}
+            testId={`abwesenheit-${s.konto_id}`}
+            /* ⚠️ **„Läuft" ist nicht dasselbe wie „an".** Der Zeitraum kann
+               noch nicht begonnen haben oder schon vorbei sein — und dann
+               ist der Schalter an, ohne dass etwas passiert. */
+            badge={
+              s.aktiv ? (
+                <Badge tone={s.laeuft ? 'on' : 'off'}>
                   {s.laeuft
                     ? s.bis
                       ? t('abwesenheit.laeuft_bis', { datum: s.bis })
                       : t('abwesenheit.laeuft')
                     : t('abwesenheit.ruht')}
-                </span>
-              )}
-              <CheckboxRow checked={e.aktiv} label={t('abwesenheit.einschalten')} onChange={(an) => setzen({ aktiv: an })} />
-            </div>
+                </Badge>
+              ) : undefined
+            }
+          >
+            <CheckboxRow checked={e.aktiv} label={t('abwesenheit.einschalten')} onChange={(an) => setzen({ aktiv: an })} />
 
             {e.aktiv && (
               <>
@@ -189,17 +178,12 @@ export function Abwesenheit() {
                 </Button>
               </div>
             )}
-          </section>
+          </Box>
         )
       })}
+    </Card>
 
-      <section className="mt-2 flex flex-col gap-3 border-t border-line-subtle pt-5">
-        <div className="flex flex-col gap-1">
-          <h2 className="mb-0 text-[13px] font-semibold text-fg-1">
-            {t('abwesenheit.antworten_titel')}
-          </h2>
-          <p className="mb-0 text-[12px] text-fg-4">{t('abwesenheit.antworten_hinweis')}</p>
-        </div>
+    <Card id="out-of-office-replies" icon="History" title={t('abwesenheit.antworten_titel')} subtitle={t('abwesenheit.antworten_hinweis')}>
 
         {antworten.length === 0 ? (
           <p className="mb-0 text-[12px] text-fg-4">{t('abwesenheit.antworten_leer')}</p>
@@ -224,7 +208,7 @@ export function Abwesenheit() {
             ))}
           </ul>
         )}
-      </section>
-    </div>
+    </Card>
+    </>
   )
 }
