@@ -334,8 +334,10 @@ def test_die_zeile_der_rueckfrage_spricht_die_sprache_des_kontos_und_nennt_namen
     assert zeile == "Aufgabe „Einkaufsliste von owner“ abhaken"
 
     with SessionLocal() as db:
-        fremd = db.query(Aufgabe).filter(Aufgabe.benutzer_id == app.ids["other"]).first()
-    fremd_id = fremd.id if fremd is not None else 999_999
+        fremd = Aufgabe(benutzer_id=app.ids["other"], betreff="Geheimes von other")
+        db.add(fremd)
+        db.commit()
+        fremd_id = fremd.id
     assert call(app, made["secret"], name, {"task_id": fremd_id})["structuredContent"]["status"] == "waiting"
     with SessionLocal() as db:
         zeile = db.query(McpAnfrage).order_by(McpAnfrage.id.desc()).first().zusammenfassung
