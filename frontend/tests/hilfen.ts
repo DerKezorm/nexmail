@@ -132,7 +132,9 @@ export async function bereich(seite: Page, titel: string) {
     if (await zurueck.isVisible()) await zurueck.click()
   }
   await expect(navigation).toBeVisible()
-  await navigation.getByRole('link', { name: titel, exact: true }).click()
+  // Seit E67 heißen zwei Einträge „Verbindungen“ (Mein Konto und Server); gemeint ist der erste, der des Kontos.
+  // Server › Verbindungen über `settings-nav-server-connections`.
+  await navigation.getByRole('link', { name: titel, exact: true }).first().click()
   await expect(seite.getByRole('heading', { level: 1, name: titel, exact: true })).toBeVisible()
 }
 

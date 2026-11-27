@@ -36,6 +36,8 @@ test('Schlüssel anlegen, damit lesen, widerrufen', async ({ page }, info) => {
 
     // Der Riegel steht seit dem Bauplan „Einstellungen“ unter Server › Verbindungen › Schnittstellen (Modul schluessel).
     await zuEinstellungen(page, 'Allgemein')
+    await page.getByTestId('settings-nav-server-connections').click()
+    await expect(page).toHaveURL(/\/settings\/server-connections/)
     const riegel = page.getByTestId('interfaces-api')
     await expect(riegel, 'Der Betreiber sieht den Riegel nicht.').toBeVisible()
     if (!(await riegel.isChecked())) {
