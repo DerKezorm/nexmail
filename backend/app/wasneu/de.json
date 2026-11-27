@@ -63,7 +63,7 @@
     "small": [
       "Eigene Sprachen: Unter Server › Allgemein › Sprachen fügt der Betreiber weitere Sprachen als JSON-Datei hinzu. Eine Vorlage zum Übersetzen liegt dort zum Herunterladen, fehlende Texte fallen auf Englisch zurück.",
       "Das Log unter Server › Log sieht aus wie in den anderen nex-Apps und lässt sich als Text herunterladen.",
-      "Nach neuen Versionen sieht nur der Betreiber; Mitglieder sehen ihre Version und sonst nichts davon. Die Einrichtung fragt einmal, ob nexmail nachsehen darf. Ist „Einmal am Tag nachsehen“ an, sieht nexmail auch im Hintergrund nach, damit die Geräte der Betreiber von einer neuen Version hören.",
+      "Nach neuen Versionen sieht nur der Betreiber; Mitglieder sehen ihre Version und sonst nichts davon. Die Einrichtung fragt einmal, ob nexmail nachsehen darf. Im Hintergrund sieht nexmail höchstens einmal am Tag nach, und nur, wenn „Einmal am Tag nachsehen“ an ist und ein Gerät eines Betreibers Hinweise auf neue Versionen will; dieses Gerät hört dann einmal von jeder neuen Version.",
       "Ein iPhone oder iPad, das ein Jahr lang nicht benutzt wurde, trennt nexmail von selbst.",
       "Ein Kontextmenü wird nie höher als das Fenster, und ein Untermenü bleibt ganz sichtbar.",
       "Ohne öffentliche https-Adresse sagt der Kasten „Passkeys“, was fehlt, statt einen Knopf zu zeigen, der scheitern muss.",

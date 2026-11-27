@@ -7,6 +7,9 @@
  * fragt nur nach Version und Lizenz. Der Satz, was hinausgeht, kommt aus dem Modul (`whatGoesOut`): eine Frage an
  * GitHub, sonst ruft nexmail von sich aus niemanden an (Postfächer, Kalender und alles andere gehören zu etwas, das
  * jemand eingerichtet hat). Keine Projektseite, solange die Seiten abgeschaltet sind (U18).
+ *
+ * nexmail hat keine Glocke, aber gekoppelte Geräte (updates 0.1.3, U24): der Hinweis unter „Einmal am Tag nachsehen“
+ * sagt, dass der Hintergrund nur nachsieht, solange ein Gerät eines Betreibers Hinweise auf neue Versionen will.
  */
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -16,7 +19,7 @@ import { appPfad } from '../lib/basis'
 import { zeitpunkt } from '../lib/format'
 import { serverAbruf } from '../lib/serverAbruf'
 import { AboutPage, Notice, type BuiltWith } from '../vendor/nexui'
-import { useUpdates, useUpdatesTexts, whatGoesOut } from '../vendor/nexupdates/updates'
+import { dailyHint, useUpdates, useUpdatesTexts, whatGoesOut } from '../vendor/nexupdates/updates'
 import { useAboutWhatsNew } from '../vendor/nexwasneu/useWhatsNew'
 
 const BAUSTEINE: BuiltWith[] = [
@@ -65,7 +68,11 @@ export function UeberPage({ ich }: { ich: Ich | null }) {
         checking={stand.checking}
         builtWith={BAUSTEINE}
         problem={stand.problem}
-        texts={{ updatesWhatGoesOut: whatGoesOut(worte, 'nexmail') }}
+        texts={{
+          updatesWhatGoesOut: whatGoesOut(worte, 'nexmail'),
+          // updates 0.1.3 (U24): keine Glocke, aber Geräte; der Hinweis sagt, wann der Hintergrund nachsieht.
+          updatesDailyHint: dailyHint(worte, { bell: false, devices: true }),
+        }}
         {...news.about}
       />
       {news.window}

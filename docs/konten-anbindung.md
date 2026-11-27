@@ -413,6 +413,23 @@ Entwürfen und Werbung, dieselbe Message-ID einmal; der Name allein zählt nicht
 nexmails eigener Stand. Adapter: `about_purpose`, `about_seed`, zwei Postfächer des Eigentümers, `probe` für
 `mails.about`; eigene Tests `test_post_mit_person.py`. Vorlage `nexverbinden.test.tsx` neu genommen.
 
+Nachzug geraete 0.1.1 und updates 0.1.3 (U24, G50 bis G59): `sync.py check` für beide ok. **updates:** nexmail hat
+keine Glocke (`on_newer=None`, Adapter `has_bell = False`); ein Gerät eines Betreibers, das „Neue Version“ versteht und
+will, zählt wie eine Glocke (`devices_want` = `geraete_store.update_gewollt` über `nexgeraete.notices.update_wanted`,
+`on_devices` = `geraete_store.neue_version` über `notices.newer`, Adapter `has_devices = True`). Zurückgebaut: `on_newer`
+an die Geräte und `has_bell = True` nur wegen der Geräte; der Hintergrund (stündlich `look_once` im Aufräumfaden) fragt
+jetzt nur, solange so ein Gerät da ist. Einrichtung `UpdateSetupRow bell={false} devices`, Über-Seite `dailyHint`.
+**geraete:** Mail bei neuem Gerät über `notices.letter` (`kontenpost.geraet_senden`, nennt das Gerät), Adapter mit
+`running()` und `update_wanted()` ohne die Umgehung „1.2.1“, ein zweiter Betreiber sperrt den ersten im Adapter. G55
+(nexmail hat keinen eigenen Push-Ausgang), G57 (`open_pairings` 5 ab Werk; die alten Wege beendeten nie eine Kopplung),
+G58 (`connect`) brauchen nichts. G59: die Körper des Moduls heißen jetzt `Nexgeraete…`, oidcs `AddressIn` hat dadurch
+seinen Namen zurück (vorher `app__routers__oidc__AddressIn`), sonst sind Namen und Wege der Beschreibung gleich;
+nexmail hatte an Modulwegen kein `include_in_schema=False` (das eine an `DELETE /api/app/1/devices/{id}` ist nexmails
+eigenes, 204 ohne Körper). **Der neue Namenswächter `test_the_module_s_bodies_keep_their_names_beside_the_app_s` ist
+rot**, aber nicht wegen des Moduls: nexmail hat 66 eigene doppelte Klassennamen (`app__routers__…`) und einen von
+FastAPI erzeugten `Body_einspielen_api_kalender__kalender_id__ics_post`; Umbenennen hieße die Beschreibung ändern
+(gemeldet als Modulfehler).
+
 ## 1. Bestand heute (0.33.0)
 
 ### Datenmodell

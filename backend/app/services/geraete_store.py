@@ -1,4 +1,4 @@
-"""Die Anbindung des gemeinsamen Gerätemoduls ``geraete`` 0.1.0 (``app.vendor.nexgeraete``) an nexmails Tabellen.
+"""Die Anbindung des gemeinsamen Gerätemoduls ``geraete`` 0.1.1 (``app.vendor.nexgeraete``) an nexmails Tabellen.
 
 ⚠️ **Keine Zeile wandert, kein Schlüssel wird neu gehasht.** Ein gekoppeltes iPhone, iPad oder ein Mac ist wie seit
 jeher eine Zeile von ``sitzung`` mit ``art = 'geraet'`` (Vorsilbe ``nxa_``, 48 Zufallsbyte, ``sha256`` als Hex); das
@@ -511,13 +511,25 @@ def nach_kopplung(inhaber: Holder, geraet: Device) -> None:
         )
         if bescheid is None or not kontenpost.mail_moeglich(db):
             return
-        kontenpost.senden(db, bescheid, where=nexgeraete.describe(geraet))
+        # geraete 0.1.1 (G50): der Brief des Moduls nennt das Gerät; ``from_account_mail(where=…)`` läse einen
+        # User-Agent und nennte nur Browser und Systeme.
+        kontenpost.geraet_senden(db, bescheid, geraet)
         db.commit()
 
 
+def update_gewollt() -> bool:
+    """``updates.devices_want`` (updates 0.1.3, U24, G56): ob ein Gerät eines Betreibers „Neue Version“ versteht und
+    will (``nexgeraete.notices.update_wanted``). Nur dann sieht der Hintergrund höchstens einmal am Tag nach; die
+    veröffentlichte App nennt ``update`` nicht und zählt nicht. Ein Fehler zählt als nein (das Modul fängt ihn)."""
+    from ..db import SessionLocal
+
+    with SessionLocal() as db:
+        return nexgeraete.notices.update_wanted(store_fuer(db), KONFIGURATION)
+
+
 def neue_version(fassung: str) -> None:
-    """``updates.on_newer`` (G18): „Neue Version“ an die Geräte der Betreiber, die es an haben und verstehen (die
-    veröffentlichte App nicht). Ein Fehler hält nichts auf."""
+    """``updates.on_devices`` (updates 0.1.3, U24, G56): „Neue Version“ an die Geräte der Betreiber, die es an haben
+    und verstehen (die veröffentlichte App nicht). Ein Fehler hält nichts auf."""
     from .. import __version__
     from ..db import SessionLocal
 
@@ -564,4 +576,5 @@ __all__ = [
     "store_der_anfrage",
     "store_fuer",
     "taeglich",
+    "update_gewollt",
 ]

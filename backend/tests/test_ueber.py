@@ -254,20 +254,32 @@ def test_ein_mitglied_erfaehrt_nichts_und_fragt_nie(klient, db, monkeypatch):
     assert gerufen == []
 
 
-def test_der_hintergrund_fragt_hoechstens_einmal_am_tag_und_sagt_es_den_geraeten(klient, monkeypatch):
-    """U19 seit geraete 0.1.0 (G18): nexmail hat keine Glocke, aber gekoppelte Geräte. Eine neue Version geht als
-    „Neue Version“ an die Geräte der Betreiber (``on_newer``), einmal je Version; gefragt wird im Hintergrund höchstens
-    einmal am Tag und nur mit eingeschaltetem Schalter."""
+def test_der_hintergrund_fragt_nur_fuer_ein_geraet_das_es_will_hoechstens_einmal_am_tag(klient, monkeypatch):
+    """U19, U24 (updates 0.1.3, geraete G56): nexmail hat keine Glocke (``on_newer`` fehlt), aber gekoppelte Geräte.
+    Der Hintergrund fragt nur, solange „Einmal am Tag nachsehen“ an ist **und** ein Gerät eines Betreibers „Neue
+    Version“ will (``devices_want``), höchstens einmal am Tag; die neue Version geht einmal an diese Geräte
+    (``on_devices``)."""
     from app.services import geraete_store
 
     gemeldet: list[str] = []
+    will = [False]
     monkeypatch.setattr(geraete_store, "neue_version", gemeldet.append)
+    monkeypatch.setattr(geraete_store, "update_gewollt", lambda: will[0])
     gerufen = _zaehler(monkeypatch)
     einrichten(klient)
+    konfiguration = nexupdates.current()
+    assert konfiguration.on_newer is None, "keine Glocke"
+    assert konfiguration.devices_want is not None and konfiguration.on_devices is not None
+    klient.put("/api/ueber/pruefen", json={"update_pruefen": True})
+    gerufen.clear()
+    nexupdates.forget()
+    for _ in range(2):
+        nexupdates.look_once()
+    assert gerufen == [] and gemeldet == [], "kein Gerät will es: der Hintergrund fragt nie (U19)"
+    will[0] = True
     klient.put("/api/ueber/pruefen", json={"update_pruefen": False})
     gerufen.clear()
     nexupdates.forget()
-    assert nexupdates.current().on_newer is not None
     assert nexupdates.look_once() is None
     assert gerufen == [], "Aus heißt: nie nach außen"
     klient.put("/api/ueber/pruefen", json={"update_pruefen": True})
@@ -276,7 +288,7 @@ def test_der_hintergrund_fragt_hoechstens_einmal_am_tag_und_sagt_es_den_geraeten
     for _ in range(3):
         nexupdates.look_once()
     assert len(gerufen) == 1, "höchstens einmal am Tag"
-    assert gemeldet == ["v99.0.0"] or gemeldet == ["99.0.0"], "einmal je Version an die Geräte"
+    assert gemeldet == ["99.0.0"], "einmal je Version an die Geräte, ohne das v des Tags"
 
 
 def test_alte_und_neue_wege_teilen_den_schalter(klient, db, monkeypatch):

@@ -11,6 +11,8 @@ Outbox mit Wiederholung (``services/post_store``); nur „Passwort vergessen“ 
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -20,6 +22,9 @@ from ..vendor.nexkonten import MAIL_CONFIRM_EMAIL, MAIL_NEW_SIGN_IN, MAIL_RESET,
 from ..vendor import nexpost
 from . import post_store, systempost
 from .adresse import fuer_modul
+
+if TYPE_CHECKING:
+    from ..vendor.nexgeraete import Device
 
 SCHLUESSEL_OEFFENTLICHE_ADRESSE = "oeffentliche_adresse"
 
@@ -84,6 +89,25 @@ def senden(db: Session, mail: Mail, *, where: str = "") -> None:
     """Eine Mail des Kontenmoduls: als Brief des Mailmoduls (Logo, Text und HTML, Sprache des Kontos) in die Outbox.
     Der erste Versuch laeuft gleich, weitere holt der Takt nach (``services/post_store``)."""
     post_store.einreihen(db, _brief(db, mail, where))
+
+
+def geraet_senden(db: Session, mail: Mail, geraet: Device) -> None:
+    """Die Mail „Neue Anmeldung“ für ein neues iPhone, iPad oder einen Mac (geraete 0.1.1, G50): der Brief des
+    Gerätemoduls (``nexgeraete.notices.letter``), der das Gerät nennt („„Kims iPhone“ (iPhone 16 Pro)“) statt einen
+    User-Agent zu lesen, der nur Browser und Systeme kennt. Knopf, Sprache und Zeitzone wie bei einem neuen Browser;
+    hinaus über die Outbox."""
+    from ..vendor import nexgeraete
+
+    brief = nexgeraete.notices.letter(
+        nexpost.letters,
+        mail,
+        geraet,
+        language=_sprache(db, mail.account_id),
+        link=link(db, SEITE_SICHERHEIT),
+        time_zone=zeitzone(db) or None,
+    )
+    if brief is not None:
+        post_store.einreihen(db, brief)
 
 
 def sofort_senden(db: Session, mail: Mail) -> None:

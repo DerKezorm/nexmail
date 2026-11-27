@@ -1,4 +1,4 @@
-"""Nachsehen, ob es eine neuere Version von nexmail gibt: das gemeinsame Modul updates 0.1.1 (``vendor/nexupdates``).
+"""Nachsehen, ob es eine neuere Version von nexmail gibt: das gemeinsame Modul updates 0.1.3 (``vendor/nexupdates``).
 
 Bis zum Durchgang „Module“ (26.11.2026) stand hier nexmails eigene, ältere Fassung. Das Modul behebt ihre drei
 Schwächen: Ein Fehlschlag überschreibt den letzten guten Stand nicht mehr (und wird nach einer Stunde wiederholt, nicht
@@ -9,11 +9,13 @@ nexmail bleibt bei seinem Schalter ``update_pruefen`` (``"0"`` aus, ``"1"`` an, 
 also an) und bei seinen alten Wegen ``/api/ueber`` (dünne Hülle in ``routers/ueber.py``). Die Wege des Moduls liegen
 unter ``/api/about``.
 
-⚠️ **Keine Glocke, aber Geräte** (U19, geraete 0.1.0 G18): nexmail hat keine Glocke; seit 0.35.0 geht eine neue
-Version als Mitteilung „Neue Version“ an die gekoppelten Geräte der Betreiber, die sie an haben und verstehen
-(``geraete_store.neue_version``). Dafür sieht der Aufräumfaden höchstens einmal am Tag nach (``im_hintergrund``), nur
-solange „Einmal am Tag nachsehen“ an ist. Gefragt wird außerdem, wenn ein Betreiber „Über nexmail“ öffnet oder
-„Jetzt nachsehen“ klickt. Ein Mitglied löst nie eine Frage aus und erfährt nichts über den Stand (U2, U15).
+⚠️ **Keine Glocke, aber Geräte** (U19, U24; geraete G56): nexmail hat keine Glocke (``on_newer`` fehlt). Ein Gerät
+eines Betreibers, das „Neue Version“ versteht und will, zählt wie eine Glocke (``devices_want`` =
+``geraete_store.update_gewollt``): nur dann, und nur solange „Einmal am Tag nachsehen“ an ist, sieht der Aufräumfaden
+höchstens einmal am Tag nach (``im_hintergrund``) und sagt es einmal je Version diesen Geräten (``on_devices`` =
+``geraete_store.neue_version``). Die veröffentlichte iPhone-App nennt ``update`` nicht, ohne ein solches Gerät fragt
+der Hintergrund also nie. Gefragt wird außerdem, wenn ein Betreiber „Über nexmail“ öffnet oder „Jetzt nachsehen“
+klickt. Ein Mitglied löst nie eine Frage aus und erfährt nichts über den Stand (U2, U15).
 
 ⚠️ **Die Prüfung ist Beiwerk.** Fällt GitHub aus, fehlt das Netz oder antwortet die Schnittstelle mit einem Fehler,
 geht davon nichts in der Oberfläche kaputt; dann steht dort einfach kein Stand.
@@ -68,16 +70,23 @@ def _gemeldet_schreiben(fassung: str) -> None:
         einstellung_schreiben(db, SCHLUESSEL_UPDATE_GEMELDET, fassung)
 
 
+def _geraete_wollen() -> bool:
+    """``devices_want`` (U24): ob ein Gerät eines Betreibers „Neue Version“ will."""
+    from . import geraete_store
+
+    return geraete_store.update_gewollt()
+
+
 def _neue_version(fassung: str) -> None:
-    """``on_newer``: die Version ohne das ``v`` des Tags an die Geräte der Betreiber."""
+    """``on_devices`` (U24): die Version ohne das ``v`` des Tags an die Geräte der Betreiber."""
     from . import geraete_store
 
     geraete_store.neue_version(fassung.removeprefix("v"))
 
 
 def im_hintergrund() -> str | None:
-    """Ein Blick im Hintergrund (``look_once``): fragt das Netz höchstens einmal am Tag und nur bei „an“; findet er
-    eine neuere Version, geht sie einmal an die Geräte der Betreiber."""
+    """Ein Blick im Hintergrund (``look_once``): fragt das Netz höchstens einmal am Tag, nur bei „an“ und nur, solange
+    ein Gerät eines Betreibers es will; findet er eine neuere Version, geht sie einmal an diese Geräte."""
     return nexupdates.check.look_once()
 
 
@@ -92,8 +101,10 @@ def konfigurieren() -> None:
             update_url=lambda: get_settings().update_url,
             read_switch=_lesen,
             write_switch=_schreiben,
-            # G18: statt einer Glocke die Geräte der Betreiber (einmal je Version).
-            on_newer=_neue_version,
+            # Keine Glocke (U19); die Geräte der Betreiber über den Modulweg (U24, geraete G56), einmal je Version.
+            on_newer=None,
+            devices_want=_geraete_wollen,
+            on_devices=_neue_version,
             read_told=_gemeldet_lesen,
             write_told=_gemeldet_schreiben,
         )

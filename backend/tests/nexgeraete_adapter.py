@@ -163,14 +163,37 @@ class Adapter(StandardAdapter):
 
     # --- Konten, über nexmails Kontenmodul ---------------------------------------------------------------------
 
+    def _zweiter_betreiber(self) -> str:
+        """Ein zweiter Betreiber, der den ersten sperrt (G56): niemand sperrt sich selbst, und der letzte Betreiber
+        bleibt (konten ``_not_self``, ``_keep_an_operator``)."""
+        from app.db import SessionLocal
+        from app.models import Benutzer
+        from app.services import benutzer as benutzerdienst
+
+        if "zweiter" not in self.ids:
+            with SessionLocal() as db:
+                person = Benutzer(
+                    benutzername="ria",
+                    anzeigename="Ria Example",
+                    passwort_hash=benutzerdienst.hashen(self.passwort),
+                    ist_betreiber=True,
+                    kontaktadresse="ria@example.com",
+                    sprache="de",
+                )
+                db.add(person)
+                db.commit()
+                self.ids["zweiter"] = person.id
+        return self.ids["zweiter"]
+
     def _manage(self, aktion: str, account: str) -> None:
         from app.db import SessionLocal
         from app.services import konten_store
         from app.vendor import nexkonten
 
+        handelnd = self._zweiter_betreiber() if account == "operator" else self.ids["operator"]
         with SessionLocal() as db:
             getattr(nexkonten.manage, aktion)(
-                konten_store.store_fuer(db), self.ids[account], actor_id=self.ids["operator"], password=self.passwort
+                konten_store.store_fuer(db), self.ids[account], actor_id=handelnd, password=self.passwort
             )
         # Sperren und Löschen beenden die Browser-Sitzungen des Kontos (``shut_out``): danach meldet sich der
         # Browser neu an, wenn der Test ihn wieder braucht.
@@ -249,17 +272,21 @@ class Adapter(StandardAdapter):
             )
 
     def announce(self, version: str) -> None:
-        """Der Weg von ``updates.on_newer`` (``aktualisierung._neue_version``), mit nexmail 1.2.1 als laufender
-        Fassung."""
-        import app as paket
+        """Der Weg von ``updates.on_devices`` (``aktualisierung._neue_version``) mit der laufenden Fassung."""
         from app.services import aktualisierung
 
-        vorher = paket.__version__
-        paket.__version__ = "1.2.1"
-        try:
-            aktualisierung._neue_version(version)
-        finally:
-            paket.__version__ = vorher
+        aktualisierung._neue_version(version)
+
+    def update_wanted(self) -> bool:
+        """Was nexmail ``nexupdates`` als ``devices_want`` gibt (``geraete_store.update_gewollt``), G56."""
+        from app.services import geraete_store
+
+        return geraete_store.update_gewollt()
+
+    def running(self) -> str:
+        from app import __version__
+
+        return __version__
 
     def sweep(self) -> int:
         from app.services import geraete_store

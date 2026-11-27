@@ -63,7 +63,7 @@
     "small": [
       "Languages of your own: under Server › General › Languages the operator adds more languages as a JSON file. A template to translate can be downloaded there, and missing texts fall back to English.",
       "The log under Server › Log looks like in the other nex apps and can be downloaded as text.",
-      "Only the operator looks for new versions; members see their version and nothing of the check. The setup asks once whether nexmail may look. With Check once a day on, nexmail also looks in the background, so that the operators' devices hear of a new version.",
+      "Only the operator looks for new versions; members see their version and nothing of the check. The setup asks once whether nexmail may look. In the background nexmail looks at most once a day, and only while Check once a day is on and a device of an operator wants notices of new versions; that device then hears of each new version once.",
       "An iPhone or iPad not used for a year is disconnected by nexmail on its own.",
       "A context menu is never taller than the window, and a submenu stays wholly visible.",
       "Without a public https address, the Passkeys box says what is missing instead of showing a button that cannot work.",

@@ -169,8 +169,9 @@ def _aufraeumschleife() -> None:
 
 
 def geraete_runde() -> None:
-    """geraete 0.1.0: Geräte, die 365 Tage nicht genutzt wurden, trennen (G27), und höchstens einmal am Tag nach
-    einer neuen Version sehen, die an die Geräte der Betreiber geht (G18). Jedes für sich abgesichert."""
+    """geraete 0.1.1: Geräte, die 365 Tage nicht genutzt wurden, trennen (G27), und der stündliche Blick des Moduls
+    updates (``look_once``, wie ``run_forever``): er fragt höchstens einmal am Tag und nur, solange ein Gerät eines
+    Betreibers neue Versionen will (U24, G56). Jedes für sich abgesichert."""
     from . import aktualisierung, geraete_store
 
     try:
