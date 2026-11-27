@@ -349,7 +349,7 @@ Anbieter, kein Push und kein Abgleich für ein Konto, das draußen ist. Test „
 gelaufen** (hier kein Browser); die Specs unter `frontend/tests` sind auf den Bausatz umgestellt und nur mit `tsc`
 geprüft.
 
-## 0i. Durchgang „Module“ (`sicherung` 1.0.5, `ui` 1.1.3, `schluessel` 1.1.2, `updates` 0.1.2, `mcp` 1.1.4, `ki` 0.1.2, `verbinden` 0.1.8)
+## 0i. Durchgang „Module“ (`sicherung` 1.0.5, `ui` 1.1.3, `schluessel` 1.1.2, `updates` 0.1.2, `mcp` 1.1.4, `ki` 0.1.2, `verbinden` 0.1.9)
 
 Am 26.11.2026 auf dem Zweig `einst-module` (Worktree `nexmail-module`), Module aus `bauplaene-module` (`einst-module`,
 zuletzt `de70ac2`), je Modul `sync.py check` ok. Grundlage: Bauplan Einstellungen E61 bis E64, Entwurf Update-Prüfung
@@ -388,7 +388,7 @@ Modulkarte als `when`), ki 0.1.2 (`ki_store.uebernehmen` mit `older_mode="own"` 
 neue Kennungen an den alten KI-Wegen mit dem Status des Moduls, `kidienst.als_antwort`; unlesbare Antwort schreibt das
 Modul), Server › Allgemein mit `parts` (nur die Karten, die nexmail dort hat).
 
-Nachzug verbinden 0.1.8 (mit 0.1.7): Modul kopiert, `sync.py check` ok. 0.1.7 (Bereichswahl beim Schreiben, V41)
+Nachzug verbinden 0.1.8 (mit 0.1.7, danach 0.1.9: Zustimmungsseite fragt einmal, nexmail gibt ihr kein `navigate`): Modul kopiert, `sync.py check` ok. 0.1.7 (Bereichswahl beim Schreiben, V41)
 braucht nichts: nexmail gewährt keinem Partner einen Zweck, also kein `write_into`. 0.1.8: `VerbindenStore.account_card`
 (Anzeigename, Benutzername, Profilbild unter `<Vorbau>/api/auth/profilbild/<id>?v=<Stand>` wie `profilbildAdresse`,
 keine Farbe der Person; B1, V43), im Adapter `shown_names`; die Karte der anderen nex-Apps steht in
