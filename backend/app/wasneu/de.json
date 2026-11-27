@@ -1,11 +1,11 @@
 {
   "0.35.0": {
-    "lead": "nexmail verbindet sich jetzt mit einem Klick mit nextasks, nextime und nexpaper, und Anhänge legst du direkt in nexpaper ab. Dazu kommen KI-Werkzeuge (MCP), ein KI-Anbieter für alle, Sicherungen in einer Liste und Einstellungen, die aussehen wie in allen nex-Apps.",
+    "lead": "nexmail verbindet sich jetzt mit einem Klick mit nextasks, nextime und nexpaper, und Anhänge legst du direkt in nexpaper ab. Dazu kommen eine Geräteliste für iPhone und iPad, KI-Werkzeuge (MCP), ein KI-Anbieter für alle, Sicherungen in einer Liste und Einstellungen, die aussehen wie in allen nex-Apps.",
     "sections": [
       {
         "title": "Andere nex-Apps mit einem Klick verbinden",
-        "where": "Mein Konto › Verbindungen › Andere nex-Apps",
-        "body": "Statt in der anderen App einen API-Schlüssel anzulegen und hier abzutippen, klickst du auf „Verbinden“. Die andere App öffnet sich und zeigt, als wer du angemeldet bist und was beide Apps voneinander bekommen, in Worten wie „Aufgaben anlegen und ändern“. Einmal zustimmen, und du bist wieder hier. Jede Verbindung darf nur, was sie braucht: In nextasks wählst du die Bereiche, in nexpaper die Tresore. Die Karte zeigt, seit wann du verbunden bist, wann die Verbindung zuletzt genutzt wurde und was sie darf, dazu „Jetzt prüfen“ und „Trennen“, das beide Seiten trennt. Klappt etwas nicht, steht der Grund in der Karte."
+        "where": "Mein Konto › Verbindungen",
+        "body": "Statt in der anderen App einen API-Schlüssel anzulegen und hier abzutippen, klickst du auf „Mit nextasks verbinden“, „Mit nextime verbinden“ oder „Mit nexpaper verbinden“; jede App hat ihre eigene Karte. Die andere App öffnet sich und zeigt, als wer du angemeldet bist und was beide Apps voneinander bekommen, in Worten wie „Aufgaben anlegen und ändern“. Einmal zustimmen, und du bist wieder hier. Jede Verbindung darf nur, was sie braucht: In nextasks wählst du die Bereiche, in nexpaper die Tresore. Die Karte zeigt, seit wann du verbunden bist, wann die Verbindung zuletzt genutzt wurde und was sie darf, dazu „Erneuern“ und „Trennen“, das beide Seiten trennt. Ist die andere App gerade nicht erreichbar, steht dort „Jetzt prüfen“, und klappt etwas nicht, steht der Grund in der Karte."
       },
       {
         "title": "nextasks und nextime: jetzt mit einem Klick verbunden",
@@ -18,9 +18,20 @@
         "body": "Neu: Ist nexpaper verbunden, steht neben jedem Anhang einer Mail „Als Dokument an nexpaper“. Ein Klick legt die Datei in den Eingang von nexpaper, etwa eine Rechnung oder einen Vertrag. Darf nexmail in mehrere Tresore ablegen, fragt ein kleines Fenster, in welchen; der zuletzt genutzte ist vorgewählt."
       },
       {
-        "title": "Für den Betreiber: andere nex-Apps einrichten",
-        "where": "Server › Verbindungen › Andere nex-Apps",
-        "body": "Du trägst die Adresse von nextasks, nextime und nexpaper einmal ein, danach verbindet jedes Konto mit einem Klick. Ist eine App noch nicht eingerichtet, sagt die Karte das, dir mit einem Link hierher. Läuft eine der Apps im eigenen Netz (LAN, VPN), erlaubst du das mit „Verbindungen ins eigene Netz“. Mit dem Schalter oben schaltest du Verbindungen ganz ab; bestehende ruhen dann, gelöscht wird nichts."
+        "title": "iPhone und iPad an einem Ort",
+        "where": "Mein Konto › Verbindungen › Geräte",
+        "body": "Alle gekoppelten iPhones und iPads stehen jetzt in der Karte „Geräte“ ganz oben, mit dem Zeitpunkt, an dem sie zuletzt da waren, und ob sie Mitteilungen bekommen. Du benennst ein Gerät um, trennst es oder trennst alle auf einmal. „iPhone oder iPad verbinden“ zeigt wie bisher einen QR-Code und darunter einen Code zum Abtippen. Kommt ein neues Gerät dazu, bekommst du die Mail „Neue Anmeldung“ wie bei einem neuen Browser, wenn „Mail bei neuer Anmeldung“ an ist. Die iPhone-App selbst ändert sich mit diesem Update nicht: Sie verbindet sich wie bisher, und jedes schon gekoppelte Gerät läuft ohne neues Koppeln weiter."
+      },
+      {
+        "title": "Mitteilungen je Gerät",
+        "where": "Mein Konto › Benachrichtigungen",
+        "body": "Unter „Mitteilungen auf deinen Geräten“ stellst du für jedes iPhone und iPad einzeln ein, ob es neue Mails und Terminerinnerungen meldet. „Auf welchem Weg“ sagt, wie viele Geräte verbunden sind und auf wie vielen Mitteilungen erlaubt sind. In der Liste stehen auch „Neues Gerät verbunden“ und für Betreiber „Neue Version von nexmail“; diese beiden zeigt erst eine kommende Fassung der iPhone-App an."
+      },
+      {
+        "title": "Für den Betreiber: Server › Verbindungen",
+        "where": "Server › Verbindungen",
+        "body": "Alles, was nexmail mit anderen Programmen verbindet, hat jetzt eine eigene Seite, das Gegenstück zu Mein Konto › Verbindungen. In „Andere nex-Apps“ trägst du die Adresse von nextasks, nextime und nexpaper einmal ein, danach verbindet jedes Konto mit einem Klick. Ist eine App noch nicht eingerichtet, sagt die Karte das, dir mit einem Link hierher. Läuft eine der Apps im eigenen Netz (LAN, VPN), erlaubst du das mit „Verbindungen ins eigene Netz“; mit dem Schalter oben schaltest du Verbindungen ganz ab, bestehende ruhen dann, gelöscht wird nichts. In „Schnittstellen“ schaltest du die API für Mitglieder, die KI-Werkzeuge (MCP) und die iPhone-App ein oder aus.",
+        "operator": true
       },
       {
         "title": "KI-Werkzeuge (MCP)",
@@ -40,19 +51,20 @@
       {
         "title": "Konten verwalten",
         "where": "Server › Konten",
-        "body": "Es kann jetzt mehrere Betreiber geben. Ein Konto sperrst du und gibst es wieder frei; solange es gesperrt ist, holt nexmail keine Post dafür ab und schickt keine Mitteilungen. Ein gelöschtes Konto lässt sich 30 Tage lang zurückholen, und zum Löschen fragt nexmail nach deinem Passwort. Ob ein Konto die KI nutzen darf, stellst du unter „Verwalten“ ein."
+        "body": "Es kann jetzt mehrere Betreiber geben. Ein Konto sperrst du und gibst es wieder frei; solange es gesperrt ist, holt nexmail keine Post dafür ab und schickt keine Mitteilungen. Ein gelöschtes Konto lässt sich 30 Tage lang zurückholen, und zum Löschen fragt nexmail nach deinem Passwort. Gekoppelte iPhones und iPads ruhen, solange ein Konto gesperrt oder gelöscht ist, und laufen danach ohne neues Koppeln weiter; erst das endgültige Löschen trennt sie. Unter „Verwalten“ siehst du, wie viele Geräte ein Konto hat, welche Art und wann zuletzt, nie ihre Namen, trennst sie mit „Geräte trennen“ und stellst ein, ob das Konto die KI nutzen darf."
       },
       {
         "title": "Einstellungen wie in allen nex-Apps",
         "where": "Unten in der Seitenleiste: Name · Einstellungen",
-        "body": "Die Einstellungen haben jetzt denselben Aufbau, dieselben Knöpfe und dieselben Fenster wie die anderen nex-Apps. Datum und Uhrzeit stehen überall in einer Form und in der Zeitzone deines Kontos. Hell, Dunkel oder „Wie das System“ gehört jetzt zu deinem Konto und gilt auf jedem Gerät; neue Konten beginnen mit „Wie das System“. Unter Server › Verbindungen stehen für den Betreiber „Andere nex-Apps“ und „Schnittstellen“. Ältere Links auf eine Einstellungsseite führen weiter an die richtige Stelle."
+        "body": "Die Einstellungen haben jetzt denselben Aufbau, dieselben Knöpfe und dieselben Fenster wie die anderen nex-Apps. Datum und Uhrzeit stehen überall in einer Form und in der Zeitzone deines Kontos. Hell, Dunkel oder „Wie das System“ gehört jetzt zu deinem Konto und gilt auf jedem Gerät; neue Konten beginnen mit „Wie das System“. Ältere Links auf eine Einstellungsseite führen weiter an die richtige Stelle."
       }
     ],
     "smallTitle": "Außerdem",
     "small": [
       "Eigene Sprachen: Unter Server › Allgemein › Sprachen fügt der Betreiber weitere Sprachen als JSON-Datei hinzu. Eine Vorlage zum Übersetzen liegt dort zum Herunterladen, fehlende Texte fallen auf Englisch zurück.",
       "Das Log unter Server › Log sieht aus wie in den anderen nex-Apps und lässt sich als Text herunterladen.",
-      "Nach neuen Versionen sieht nur der Betreiber; Mitglieder sehen ihre Version und sonst nichts davon. Die Einrichtung fragt einmal, ob nexmail nachsehen darf.",
+      "Nach neuen Versionen sieht nur der Betreiber; Mitglieder sehen ihre Version und sonst nichts davon. Die Einrichtung fragt einmal, ob nexmail nachsehen darf. Ist „Einmal am Tag nachsehen“ an, sieht nexmail auch im Hintergrund nach, damit die Geräte der Betreiber von einer neuen Version hören.",
+      "Ein iPhone oder iPad, das ein Jahr lang nicht benutzt wurde, trennt nexmail von selbst.",
       "Ein Kontextmenü wird nie höher als das Fenster, und ein Untermenü bleibt ganz sichtbar.",
       "Ohne öffentliche https-Adresse sagt der Kasten „Passkeys“, was fehlt, statt einen Knopf zu zeigen, der scheitern muss.",
       "Nach dem Update läuft alles weiter: Verbindungen mit Schlüssel, API-Schlüssel, gekoppelte iPhones und deine KI-Einstellungen. Neue Tabellen kommen beim Start dazu, vorher legt nexmail eine Sicherung an; umbenannt oder gelöscht wird nichts.",

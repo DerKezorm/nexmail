@@ -48,8 +48,8 @@ import {
 } from 'lucide-react'
 import { IconButton } from './ds'
 import { Kopfbanner } from './components/Kopfbanner'
-import { WasNeuBanner, WasNeuFenster, gesehenMelden } from './components/WasNeu'
-import { useWasNeu } from './lib/wasneu'
+import { WhatsNewAfterUpdate } from './vendor/nexwasneu/WhatsNew'
+import { serverAbruf } from './lib/serverAbruf'
 import { Ansichtswahl } from './components/Ansichtswahl'
 import type { Ansicht } from './components/Ansichtswahl'
 import { Ansichtsleiste } from './components/Ansichtsleiste'
@@ -227,15 +227,6 @@ interface Menuelage {
 
 export default function App({ modus, aufModus, darstellung, aufDarstellung, ich, ichNeuLaden, aufAbmelden }: AppProps) {
   const { t, i18n } = useTranslation()
-  /* „Was ist neu“ zur laufenden Version: der Text, ob das Fenster offen ist,
-     und ob der Banner in dieser Sitzung schon weg ist. */
-  const wasNeu = useWasNeu(ich?.version, i18n.language)
-  const [wasNeuOffen, setWasNeuOffen] = useState(false)
-  const [wasNeuWeg, setWasNeuWeg] = useState(false)
-  function wasNeuGelesen() {
-    setWasNeuWeg(true)
-    if (ich && ich.wasneu_gesehen !== ich.version) gesehenMelden(ichNeuLaden)
-  }
   const schmal = useSchmal()
 
   /** Aus welcher Ansicht die Einstellungen geöffnet wurden; deren Seitenspalte
@@ -2393,7 +2384,6 @@ export default function App({ modus, aufModus, darstellung, aufDarstellung, ich,
            Definitionen; listeLaden die Marken an den Zeilen. */
         regelvorlage={regelvorlage}
         aufRegelvorlageGenommen={regelvorlageGenommen}
-        aufWasNeu={wasNeu ? () => setWasNeuOffen(true) : undefined}
         aufSchlagworteGeaendert={() => {
           void stammLaden()
           void listeLaden()
@@ -2558,21 +2548,15 @@ export default function App({ modus, aufModus, darstellung, aufDarstellung, ich,
         ohnePostfach={stammGeladen && konten.length === 0}
       />
 
-      <WasNeuBanner
-        ich={ich}
-        eintrag={wasNeu}
-        weg={wasNeuWeg}
-        aufZeigen={() => setWasNeuOffen(true)}
-        aufWeg={wasNeuGelesen}
-      />
-      {wasNeuOffen && wasNeu && ich && (
-        <WasNeuFenster
-          version={ich.version}
-          eintrag={wasNeu}
-          onClose={() => {
-            setWasNeuOffen(false)
-            wasNeuGelesen()
-          }}
+      {/* „Was ist neu“ nach einem Update (Modul wasneu 0.1.0): der Banner unter dem Kopf, das Fenster erst auf Klick;
+          Wegklicken und „Verstanden“ merken die laufende Version am Konto, ohne auf den Server zu warten. */}
+      {ich && (
+        <WhatsNewAfterUpdate
+          app="nexmail"
+          logo={appPfad('/favicon.svg?v=2')}
+          fetcher={serverAbruf}
+          language={i18n.language}
+          onSeen={ichNeuLaden}
         />
       )}
 

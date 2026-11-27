@@ -29,11 +29,12 @@ from ..services import profilbild as profilbilddienst
 from ..services import konten_store as kontenstore
 from ..services import kontenpost
 from ..services import systempost
+from ..services import wasneu as wasneudienst
 from ..services import sitzung as sitzungsdienst
 from ..services import zwei_faktor
 from ..meldung import MeldungHttp
 from ..models import Benutzer, utcnow
-from ..vendor import nexkonten
+from ..vendor import nexkonten, nexwasneu
 
 logger = logging.getLogger("nexmail.auth")
 
@@ -766,14 +767,13 @@ def _reihenfolge_lesen(roh: str) -> list[str]:
 
 @router.post("/ich/wasneu-gesehen", response_model=Ich)
 def wasneu_gesehen(person: AngemeldeterBenutzer, db: DbSession) -> Ich:
-    """„Was ist neu“ zur laufenden Version ist gesehen oder weggeklickt.
+    """„Was ist neu“ zur laufenden Version ist gesehen oder weggeklickt. Der Weg von vorher (Modul wasneu W10): die
+    Oberfläche nimmt seit 0.35.0 ``POST /api/whats-new/seen``, diese Antwort bleibt dieselbe.
 
-    ⚠️ **Die laufende Version kommt aus dem Server, nicht aus der Anfrage.**
-    Ein Browser mit einer alten Oberfläche im Speicher könnte sonst eine
-    Version melden, die gar nicht läuft, und der Banner käme nie.
+    ⚠️ **Die laufende Version kommt aus dem Server, nicht aus der Anfrage** (``nexwasneu.mark_seen``). Ein Browser mit
+    einer alten Oberfläche im Speicher könnte sonst eine Version melden, die gar nicht läuft, und der Banner käme nie.
     """
-    person.wasneu_gesehen = __version__
-    db.commit()
+    nexwasneu.mark_seen(wasneudienst.betrachter(person, db))
     return ich(person, db)
 
 

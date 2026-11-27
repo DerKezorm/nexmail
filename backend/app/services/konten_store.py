@@ -26,7 +26,6 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import __version__
 from ..config import get_settings
 from ..meldung import MeldungHttp
 from ..models import (
@@ -43,7 +42,7 @@ from ..models import (
     Wiederherstellungscode,
     utcnow,
 )
-from ..vendor import nexkonten
+from ..vendor import nexkonten, nexwasneu
 from ..vendor.nexkonten import (
     Access,
     Account,
@@ -174,13 +173,13 @@ SPERRE_MINUTEN = 15
 #: Ob das Bild vom Anbieter in einem eigenen Faden geholt wird. Tests schalten das ab und warten nicht.
 BILD_IM_FADEN = True
 
+
 def _geraetename(zeile: Sitzung) -> str:
     """Ein gekoppeltes Geraet in „Angemeldete Geraete“ (konten ``device_label``): Name, dazu das Modell, wo es mehr
     sagt (``nexgeraete.describe``)."""
     from .geraete_store import beschreiben
 
     return beschreiben(zeile)
-
 
 
 class KontenStore:
@@ -288,8 +287,8 @@ class KontenStore:
             sprache=new.language,
             # E45: ein neues Konto hat seine Wahl von Anfang an („system“), nie die eines Browsers.
             theme=new.theme,
-            # Neue Konten starten auf der laufenden Version (siehe ``models.Benutzer.wasneu_gesehen``).
-            wasneu_gesehen=__version__,
+            # Neue Konten starten auf der laufenden Version (Modul wasneu, ``seen_for_new_account``).
+            wasneu_gesehen=nexwasneu.seen_for_new_account(),
         )
         self.db.add(zeile)
         self._schreiben()

@@ -22,9 +22,9 @@ from argon2.low_level import Type
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import __version__
 from ..models import Benutzer, utcnow
 from ..meldung import Meldung
+from ..vendor import nexwasneu
 
 logger = logging.getLogger("nexmail.benutzer")
 
@@ -164,7 +164,7 @@ def anlegen(
         passwort_hash="" if ohne_passwort else hashen(passwort),
         passwort_geaendert=None if ohne_passwort else utcnow(),
         ist_betreiber=ist_betreiber,
-        wasneu_gesehen=__version__,
+        wasneu_gesehen=nexwasneu.seen_for_new_account(),
     )
     db.add(benutzer)
     db.commit()

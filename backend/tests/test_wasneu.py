@@ -1,45 +1,16 @@
-"""„Was ist neu“: wer es sieht, wann es verschwindet, und dass es zum Release da ist.
+"""„Was ist neu“ in nexmail: wer es sieht und wann es verschwindet.
 
-⚠️ **Der Release-Stopper steht hier, nicht in der Oberfläche.** Die Version
-kennt nur der Server (``app.__version__``); die ``package.json`` der Oberfläche
-steht seit jeher auf 0.1.0. Eine Version mit ``.0`` am Ende bringt Neues mit
-und muss einen Text haben, in beiden Sprachen, mit allen vier Feldern. Fehlt
-einer, stünde nach dem Update kein Banner da, und niemand merkte es.
+Seit 0.35.0 über das Modul wasneu 0.1.0. Die Form der Texte, der Release-Stopper (eine x.y.0 bringt ihren Text in
+beiden Sprachen mit) und das Einfrieren veröffentlichter Texte prüft der Wächter
+``tests/nexwasneu/test_nexwasneu_texts.py``, die neuen Wege die Vertragstests daneben. Hier bleibt, was nur nexmail hat:
+das Feld ``wasneu_gesehen`` in ``/api/auth/ich``, der Weg von vorher und die Konten über einen Anbieter.
 """
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-import pytest
-
 from app import __version__
 from app.models import Benutzer
 from conftest import einrichten
-
-WASNEU = Path(__file__).resolve().parents[2] / "frontend" / "src" / "i18n" / "wasneu"
-
-
-def _eintrag_vollstaendig(e: object) -> bool:
-    """Dieselbe Prüfung wie ``istEintrag`` in ``lib/wasneu.ts``."""
-    if not isinstance(e, dict):
-        return False
-    text = lambda w: isinstance(w, str) and w.strip() != ""  # noqa: E731
-    abschnitte = e.get("sections")
-    klein = e.get("small")
-    return (
-        text(e.get("lead"))
-        and isinstance(abschnitte, list)
-        and len(abschnitte) > 0
-        and all(
-            isinstance(a, dict) and text(a.get("title")) and text(a.get("where")) and text(a.get("body"))
-            for a in abschnitte
-        )
-        and text(e.get("smallTitle"))
-        and isinstance(klein, list)
-        and all(text(k) for k in klein)
-    )
 
 
 def test_ein_neues_konto_hat_die_laufende_version_schon_gesehen(klient):
@@ -84,19 +55,15 @@ def test_ein_konto_ueber_einen_anbieter_startet_ebenso_auf_der_laufenden_version
     assert person.wasneu_gesehen == __version__
 
 
-@pytest.mark.parametrize("sprache", ["de", "en"])
-def test_jeder_eintrag_hat_alle_vier_felder(sprache):
-    eintraege = json.loads((WASNEU / f"{sprache}.json").read_text(encoding="utf-8"))
-    assert eintraege, "Die Datei ist leer; dann zeigt das Fenster nie etwas."
-    kaputt = [v for v, e in eintraege.items() if not _eintrag_vollstaendig(e)]
-    assert not kaputt, f"Unvollständig, wird lautlos weggelassen: {kaputt}"
+def test_der_neue_weg_und_der_alte_merken_dasselbe(klient, db):
+    """Die Oberfläche fragt seit 0.35.0 ``/api/whats-new``; beide Wege setzen dasselbe Feld."""
+    einrichten(klient)
+    person = db.query(Benutzer).one()
+    person.wasneu_gesehen = "0.0.1"
+    db.commit()
 
+    stand = klient.get("/api/whats-new").json()
+    assert (stand["version"], stand["seen"]) == (__version__, "0.0.1")
 
-def test_eine_version_mit_neuem_bringt_ihren_text_mit():
-    """Der Release-Stopper: X.Y.0 braucht einen Eintrag in beiden Sprachen."""
-    if not __version__.endswith(".0"):
-        pytest.skip(f"{__version__} ist eine Bugfix-Version; dort ist ein Text freiwillig.")
-    for sprache in ("de", "en"):
-        eintraege = json.loads((WASNEU / f"{sprache}.json").read_text(encoding="utf-8"))
-        assert __version__ in eintraege, f"Kein Text für {__version__} in {sprache}.json"
-        assert _eintrag_vollstaendig(eintraege[__version__])
+    assert klient.post("/api/whats-new/seen").json() == {"seen": __version__}
+    assert klient.get("/api/auth/ich").json()["wasneu_gesehen"] == __version__

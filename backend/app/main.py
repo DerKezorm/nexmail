@@ -708,6 +708,13 @@ app.include_router(
         is_operator=lambda person: bool(person.ist_betreiber),
     )
 )
+# „Was ist neu“ (Modul wasneu 0.1.0) unter ``/api/whats-new``: die Texte aus ``app/wasneu/``, gesehen am Konto
+# (``benutzer.wasneu_gesehen``). Der Weg von vorher ``POST /api/auth/ich/wasneu-gesehen`` bleibt (``routers/auth.py``).
+from .services import wasneu as _wasneu  # noqa: E402
+from .vendor.nexwasneu import api as nexwasneu_api  # noqa: E402
+
+_wasneu.konfigurieren()
+app.include_router(nexwasneu_api.router(viewer=_wasneu.betrachter), dependencies=NUR_ANGEMELDET)
 # ⚠️ **Ohne ``NUR_ANGEMELDET``.** Hinweg und Rueckweg gehoeren zur
 # Anmeldung; die Verwaltungs-Adressen darin haengen einzeln am Betreiber.
 app.include_router(oidc_router.router)

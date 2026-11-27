@@ -1084,7 +1084,6 @@
     "sprache": "Language",
     "ueber": "About nexmail",
     "verwaltung": "Administration",
-    "wasneu": "What's new",
     "ansichten": "Views",
     "ansicht": "View: {{name}}",
     "seitenleiste_zu": "Collapse sidebar",
@@ -1587,8 +1586,8 @@
     "nachricht_unbekannt": "There is no such message.",
     "nachricht_weg": "The server no longer knows that message.",
     "name_unbekannt": "There is no such name here.",
-    "nicht_gefunden": "This does not exist or no longer exists.",
     "nicht_angemeldet": "You are not signed in.",
+    "nicht_gefunden": "This does not exist or no longer exists.",
     "nichts_ausgewaehlt": "Nothing selected.",
     "nichts_zu_holen": "None of the messages could be fetched.",
     "nur_betreiber": "Only the operator manages that.",
@@ -2005,14 +2004,6 @@
     "fehler_kennung_unbrauchbar": "This message's Message-ID contains characters that cannot be searched reliably, so it cannot be snoozed.",
     "fehler_ordner": "The snooze folder could not be created on the server.",
     "aufheben": "Cancel snooze"
-  },
-  "wasneu": {
-    "titel": "New in nexmail {{version}}",
-    "banner": "nexmail {{version}} is here.",
-    "zeigen": "What's new?",
-    "wegklicken": "Dismiss",
-    "wo": "Where:",
-    "verstanden": "Got it"
   },
   "profil": {
     "name": "Name",

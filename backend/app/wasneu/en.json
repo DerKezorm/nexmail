@@ -1,11 +1,11 @@
 {
   "0.35.0": {
-    "lead": "nexmail now connects with nextasks, nextime and nexpaper in one click, and attachments go straight into nexpaper. Also new: AI tools (MCP), one AI provider for everybody, backups in one list, and settings that look like those of every nex app.",
+    "lead": "nexmail now connects with nextasks, nextime and nexpaper in one click, and attachments go straight into nexpaper. Also new: a list of your iPhones and iPads, AI tools (MCP), one AI provider for everybody, backups in one list, and settings that look like those of every nex app.",
     "sections": [
       {
         "title": "Connect other nex apps in one click",
-        "where": "My account › Connections › Other nex apps",
-        "body": "Instead of making an API key in the other app and typing it in here, you click Connect. The other app opens and shows who you are signed in as and what each app gets from the other, in plain words such as “Create and change tasks”. Agree once and you are back here. Each connection may do only what it needs: in nextasks you pick the spaces, in nexpaper the vaults. The card shows since when you are connected, when the connection was last used and what it may do, with Check now and Disconnect, which ends both sides. If something goes wrong, the reason is in the card."
+        "where": "My account › Connections",
+        "body": "Instead of making an API key in the other app and typing it in here, you click Connect with nextasks, Connect with nextime or Connect with nexpaper; each app has a card of its own. The other app opens and shows who you are signed in as and what each app gets from the other, in plain words such as “Create and change tasks”. Agree once and you are back here. Each connection may do only what it needs: in nextasks you pick the spaces, in nexpaper the vaults. The card shows since when you are connected, when the connection was last used and what it may do, with Renew and Disconnect, which ends both sides. If the other app cannot be reached right now, the card offers Check now, and if something goes wrong, the reason is in the card."
       },
       {
         "title": "nextasks and nextime: now connected in one click",
@@ -18,9 +18,20 @@
         "body": "New: with nexpaper connected, every attachment of a message has Send to nexpaper as a document next to it. One click puts the file into nexpaper's inbox, a bill or a contract for example. If nexmail may store into more than one vault, a small window asks which one; the one you used last is chosen."
       },
       {
-        "title": "For the operator: set up the other nex apps",
-        "where": "Server › Connections › Other nex apps",
-        "body": "You enter the address of nextasks, nextime and nexpaper once, and from then on every account connects in one click. If an app is not set up yet, the card says so, and shows you a link to this place. If one of the apps runs in your own network (LAN, VPN), allow it with Connections into the local network. The switch at the top turns connections off altogether; existing ones then rest, and nothing is deleted."
+        "title": "iPhone and iPad in one place",
+        "where": "My account › Connections › Devices",
+        "body": "All paired iPhones and iPads now stand in the card Devices at the top, with when each was last seen and whether it gets notifications. You rename a device, disconnect it or disconnect them all at once. Connect iPhone or iPad shows a QR code as before, with a code to type below it. When a new device comes in, you get the mail about a new sign-in as for a new browser, if Mail me about a new sign-in is on. The iPhone app itself does not change with this update: it connects as before, and every device already paired keeps working without pairing again."
+      },
+      {
+        "title": "Notifications per device",
+        "where": "My account › Notifications",
+        "body": "Under Notifications on your devices you choose for each iPhone and iPad whether it tells you about new mail and event reminders. Which way says how many devices are connected and on how many notifications are allowed. The list also has “New device connected” and, for operators, “New version of nexmail”; a coming version of the iPhone app will be the first to show these two."
+      },
+      {
+        "title": "For the operator: Server › Connections",
+        "where": "Server › Connections",
+        "body": "Everything that connects nexmail with other programs now has a page of its own, the counterpart of My account › Connections. In Other nex apps you enter the address of nextasks, nextime and nexpaper once, and from then on every account connects in one click. If an app is not set up yet, the card says so, and shows you a link to this place. If one of the apps runs in your own network (LAN, VPN), allow it with Connections into the local network; the switch at the top turns connections off altogether, existing ones then rest, and nothing is deleted. In Interfaces you switch the API for members, the AI tools (MCP) and the iPhone app on or off.",
+        "operator": true
       },
       {
         "title": "AI tools (MCP)",
@@ -40,19 +51,20 @@
       {
         "title": "Managing accounts",
         "where": "Server › Accounts",
-        "body": "There can now be several operators. You block an account and unblock it; while it is blocked, nexmail fetches no mail for it and sends it no notifications. A deleted account can be brought back for 30 days, and deleting asks for your own password. Whether an account may use the AI you set under Manage."
+        "body": "There can now be several operators. You block an account and unblock it; while it is blocked, nexmail fetches no mail for it and sends it no notifications. A deleted account can be brought back for 30 days, and deleting asks for your own password. Paired iPhones and iPads rest while an account is blocked or deleted and work again afterwards without pairing anew; only deleting for good disconnects them. Under Manage you see how many devices an account has, of which kind and when last seen, never their names, disconnect them with Disconnect devices, and set whether the account may use the AI."
       },
       {
         "title": "Settings like in every nex app",
         "where": "Bottom of the sidebar: name · Settings",
-        "body": "The settings now have the same layout, buttons and windows as the other nex apps. Dates and times look the same everywhere and follow your account's time zone. Light, Dark or As the system now belongs to your account and applies on every device; new accounts start with As the system. Under Server › Connections the operator finds “Other nex apps” and “Interfaces”. Older links to a settings page still lead to the right place."
+        "body": "The settings now have the same layout, buttons and windows as the other nex apps. Dates and times look the same everywhere and follow your account's time zone. Light, Dark or As the system now belongs to your account and applies on every device; new accounts start with As the system. Older links to a settings page still lead to the right place."
       }
     ],
     "smallTitle": "Also",
     "small": [
       "Languages of your own: under Server › General › Languages the operator adds more languages as a JSON file. A template to translate can be downloaded there, and missing texts fall back to English.",
       "The log under Server › Log looks like in the other nex apps and can be downloaded as text.",
-      "Only the operator looks for new versions; members see their version and nothing of the check. The setup asks once whether nexmail may look.",
+      "Only the operator looks for new versions; members see their version and nothing of the check. The setup asks once whether nexmail may look. With Check once a day on, nexmail also looks in the background, so that the operators' devices hear of a new version.",
+      "An iPhone or iPad not used for a year is disconnected by nexmail on its own.",
       "A context menu is never taller than the window, and a submenu stays wholly visible.",
       "Without a public https address, the Passkeys box says what is missing instead of showing a button that cannot work.",
       "After the update everything keeps working: connections made with a key, API keys, paired iPhones and your AI settings. New tables are added on start, and nexmail makes a backup first; nothing is renamed or removed.",

@@ -19,7 +19,7 @@ from __future__ import annotations
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from .. import __version__, crypto
+from .. import crypto
 from ..models import Benutzer, Einladung, OidcAnbieter, OidcVerknuepfung, utcnow
 from ..vendor.nexoidc import protocol
 from ..vendor.nexoidc.errors import OidcError
@@ -31,7 +31,7 @@ from ..vendor.nexoidc.model import (
     ProviderValues,
     secret_context,
 )
-from ..vendor import nexkonten
+from ..vendor import nexkonten, nexwasneu
 from . import einladung as einladungsdienst
 from .konten_store import KontenStore, bild_vom_anbieter
 
@@ -353,7 +353,7 @@ class SqlStore:
             kontaktadresse_zaehlt=True,
             # Gemailt und hier eingeloest: Wer den Link hatte, hat die Adresse bewiesen.
             kontaktadresse_bewiesen=bool(adresse and einladung is not None and einladung.gemailt),
-            wasneu_gesehen=__version__,
+            wasneu_gesehen=nexwasneu.seen_for_new_account(),
             # E45: ein neues Konto, auch über einen Anbieter, beginnt mit „Wie das System“.
             theme="system",
         )

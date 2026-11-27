@@ -1,5 +1,5 @@
 /* Über nexmail: die `AboutPage` des Bausatzes ui (Bauplan „Einstellungen", „Über"): Version mit „Version x ist
- * erschienen", „Was ist neu", Lizenz, Quelltext, Veröffentlichungen, „Einen Fehler gefunden?", die Karte
+ * erschienen", „Was ist neu" (Modul wasneu 0.1.0: „Neu in nexmail x“ und „Frühere Versionen“), Lizenz, Quelltext, Veröffentlichungen, „Einen Fehler gefunden?", die Karte
  * „Aktualisierungen" und „Gebaut mit".
  *
  * Die Karte „Aktualisierungen" kommt seit dem Durchgang „Module" aus dem Modul updates 0.1.1 (`useUpdates`, Wege unter
@@ -12,13 +12,12 @@ import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { Ich } from '../api/client'
-import { appPfad, BASIS } from '../lib/basis'
+import { appPfad } from '../lib/basis'
 import { zeitpunkt } from '../lib/format'
-import { useWasNeu } from '../lib/wasneu'
+import { serverAbruf } from '../lib/serverAbruf'
 import { AboutPage, Notice, type BuiltWith } from '../vendor/nexui'
-import { useUpdates, useUpdatesTexts, whatGoesOut, type Fetcher } from '../vendor/nexupdates/updates'
-
-const holen: Fetcher = (pfad, init) => fetch(`${BASIS}${pfad}`, { credentials: 'include', ...init })
+import { useUpdates, useUpdatesTexts, whatGoesOut } from '../vendor/nexupdates/updates'
+import { useAboutWhatsNew } from '../vendor/nexwasneu/useWhatsNew'
 
 const BAUSTEINE: BuiltWith[] = [
   { name: 'FastAPI', url: 'https://fastapi.tiangolo.com', licence: 'MIT' },
@@ -37,34 +36,39 @@ const BAUSTEINE: BuiltWith[] = [
   { name: 'Inter', url: 'https://github.com/rsms/inter', licence: 'OFL-1.1' },
 ]
 
+const LOGO = appPfad('/favicon.svg?v=2')
+
 export function UeberPage({ ich }: { ich: Ich | null }) {
   const { t, i18n } = useTranslation()
-  const wasNeu = useWasNeu(ich?.version, i18n.language)
+  const news = useAboutWhatsNew({ app: 'nexmail', logo: LOGO, fetcher: serverAbruf, language: i18n.language })
   const wann = useCallback((iso: string) => zeitpunkt(iso, i18n.language), [i18n.language])
-  const stand = useUpdates({ fetcher: holen, operator: Boolean(ich?.ist_betreiber), when: wann, language: i18n.language })
+  const stand = useUpdates({ fetcher: serverAbruf, operator: Boolean(ich?.ist_betreiber), when: wann, language: i18n.language })
   const worte = useUpdatesTexts(i18n.language)
 
   if (!stand.about) return stand.problem ? <Notice tone="danger">{stand.problem}</Notice> : null
   return (
-    <AboutPage
-      app="nexmail"
-      logo={appPfad('/favicon.svg?v=2')}
-      tagline={t('ueber.untertitel')}
-      version={stand.about.version}
-      licence={{ name: stand.about.license, href: 'https://www.gnu.org/licenses/agpl-3.0.html' }}
-      source={stand.about.repo_url}
-      releases={stand.about.releases_url}
-      project={stand.about.project_url || null}
-      whatsNew={wasNeu}
-      updates={stand.updates}
-      showUpdates={stand.showUpdates}
-      operator={Boolean(ich?.ist_betreiber)}
-      onDaily={stand.onDaily}
-      onCheck={stand.onCheck}
-      checking={stand.checking}
-      builtWith={BAUSTEINE}
-      problem={stand.problem}
-      texts={{ updatesWhatGoesOut: whatGoesOut(worte, 'nexmail') }}
-    />
+    <>
+      <AboutPage
+        app="nexmail"
+        logo={LOGO}
+        tagline={t('ueber.untertitel')}
+        version={stand.about.version}
+        licence={{ name: stand.about.license, href: 'https://www.gnu.org/licenses/agpl-3.0.html' }}
+        source={stand.about.repo_url}
+        releases={stand.about.releases_url}
+        project={stand.about.project_url || null}
+        updates={stand.updates}
+        showUpdates={stand.showUpdates}
+        operator={Boolean(ich?.ist_betreiber)}
+        onDaily={stand.onDaily}
+        onCheck={stand.onCheck}
+        checking={stand.checking}
+        builtWith={BAUSTEINE}
+        problem={stand.problem}
+        texts={{ updatesWhatGoesOut: whatGoesOut(worte, 'nexmail') }}
+        {...news.about}
+      />
+      {news.window}
+    </>
   )
 }

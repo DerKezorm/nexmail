@@ -126,8 +126,6 @@ interface Props {
   /** „Regel erstellen …" aus dem Rechtsklick auf eine Mail. */
   regelvorlage?: RegelVorlage | null
   aufRegelvorlageGenommen?: () => void
-  /** „Was ist neu“ noch einmal öffnen. Seit dem Bausatz ui 1.1.0 öffnet die Über-Seite ihr eigenes Fenster. */
-  aufWasNeu?: () => void
 }
 
 export function EinstellungenPage({

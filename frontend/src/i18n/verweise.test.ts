@@ -78,9 +78,15 @@ describe('Ortsangaben (E46)', () => {
   }
 })
 
-/* E49: In „Was ist neu“ zeigt jedes „wo“ auf den heutigen Ort, mit „›“; die Texte älterer Einträge bleiben. */
-import wasneuDe from './wasneu/de.json'
-import wasneuEn from './wasneu/en.json'
+/* E49: In „Was ist neu“ zeigt jedes „wo“ auf den heutigen Ort, mit „›“; die Texte älterer Einträge bleiben. Die Texte
+   liegen seit dem Modul wasneu 0.1.0 beim Server (`backend/app/wasneu/`) und werden hier gelesen, nicht gebaut. */
+type Fs = { readFileSync: (file: string, encoding: string) => string }
+// Zur Laufzeit beim Namen geladen: das TypeScript der Oberfläche kennt keine Node-Typen. vitest läuft in frontend/.
+const fsName = 'node:fs'
+const fs = (await import(/* @vite-ignore */ fsName)) as Fs
+const wasneu = (sprache: string): unknown => JSON.parse(fs.readFileSync(`../backend/app/wasneu/${sprache}.json`, 'utf-8'))
+const wasneuDe = wasneu('de')
+const wasneuEn = wasneu('en')
 
 describe('Was ist neu: wo (E49)', () => {
   for (const [sprache, eintraege] of [['de', wasneuDe], ['en', wasneuEn]] as const) {
