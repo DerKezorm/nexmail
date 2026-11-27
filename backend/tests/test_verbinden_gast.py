@@ -490,6 +490,80 @@ def test_forget_legacy_nimmt_nur_das_eigene_konto_und_nur_von_hand(welt):
         assert db.get(Aufgabenverbindung, klick_id) is not None
 
 
+def _klick_zeile_wieder_von_hand(url: str) -> tuple[str, int]:
+    """Nach dem Klick: die Zeile wieder ein Schlüssel von Hand für ``url``, mit abgewählter Liste, Standard und einer
+    verknüpften Aufgabe (so, als stünde die Verbindung von Hand vor einer Klick-Verbindung von der anderen Seite)."""
+    from app import crypto
+    from app.models import Aufgabe
+
+    with SessionLocal() as db:
+        v = db.query(Aufgabenverbindung).filter_by(art="nextasks").one()
+        person = db.get(Benutzer, v.benutzer_id)
+        zugang = nextasks.Zugang(url=url, token="ntk_" + "h" * 40)
+        v.zugang = crypto.verschluesseln(nextasks.zugang_schreiben(zugang), f"aufgabenverbindung:{v.id}:zugang")
+        v.ohne = '["l9"]'
+        aufgabe = Aufgabe(benutzer_id=person.id, betreff="Rechnung zahlen", verbindung_id=v.id, fern_art="nextasks")
+        db.add(aufgabe)
+        person.aufgaben_standard = f"{v.id}:l1"
+        db.commit()
+        return v.id, aufgabe.id
+
+
+def test_eine_klick_verbindung_zu_einem_anderen_nextasks_nimmt_die_abzuege_des_alten_nicht_mit(welt):
+    """Befundsuche 28.11.2026: Stand von Hand eine Verbindung zu nextasks A und kommt die Klick-Verbindung von einem
+    nextasks B (andere Adresse), gehören Aufgaben-Abzüge, Standardliste und Listenwahl A. Die Zeile geht über, aber
+    frisch, wie nextime bei der Kalenderwahl; sonst fragte der Abgleich B nach den Kennungen aus A."""
+    from app.models import Aufgabe
+
+    gefunden, _ = welt
+    assert gefunden.connect("app").status_code == 200
+    hand_id, aufgabe_id = _klick_zeile_wieder_von_hand("https://altes-nextasks.example.com")
+    store = gefunden.app.store
+    konto = gefunden.app.account_id("owner")
+    store.forget_legacy(konto, "nextasks")
+    store.commit()
+    with SessionLocal() as db:
+        v = db.get(Aufgabenverbindung, hand_id)
+        assert v is not None and v.ohne == "[]"
+        zugang = aufgabenziele._nextasks_zugang(v)  # noqa: SLF001
+        assert zugang.ueber == konto and zugang.url == "https://nextasks.example.com"
+        assert db.get(Aufgabe, aufgabe_id).verbindung_id is None
+        assert db.get(Benutzer, konto).aufgaben_standard == ""
+
+
+def test_dieselbe_adresse_anders_geschrieben_behaelt_die_abzuege(welt):
+    from app.models import Aufgabe
+
+    gefunden, _ = welt
+    assert gefunden.connect("app").status_code == 200
+    hand_id, aufgabe_id = _klick_zeile_wieder_von_hand("HTTPS://Nextasks.Example.com:443/")
+    store = gefunden.app.store
+    konto = gefunden.app.account_id("owner")
+    store.forget_legacy(konto, "nextasks")
+    store.commit()
+    with SessionLocal() as db:
+        assert db.get(Aufgabenverbindung, hand_id).ohne == '["l9"]'
+        assert db.get(Aufgabe, aufgabe_id).verbindung_id == hand_id
+        assert db.get(Benutzer, konto).aufgaben_standard == f"{hand_id}:l1"
+
+
+def test_neu_verbinden_per_klick_zu_einer_anderen_adresse_loest_die_abzuege(welt, monkeypatch):
+    """Derselbe Fall über ``on_connected`` (``nextasks_ueber_klick``)."""
+    from app.models import Aufgabe
+
+    gefunden, _ = welt
+    assert gefunden.connect("app").status_code == 200
+    hand_id, aufgabe_id = _klick_zeile_wieder_von_hand("https://altes-nextasks.example.com")
+    monkeypatch.setattr(nextasks, "pruefen", lambda zugang: None)
+    with SessionLocal() as db:
+        person = db.get(Benutzer, gefunden.app.account_id("owner"))
+        aufgabenziele.nextasks_ueber_klick(db, person, "https://nextasks.example.com/")
+    with SessionLocal() as db:
+        assert db.get(Aufgabenverbindung, hand_id).ohne == "[]"
+        assert db.get(Aufgabe, aufgabe_id).verbindung_id is None
+        assert db.get(Benutzer, gefunden.app.account_id("owner")).aufgaben_standard == ""
+
+
 def test_beendet_nextasks_die_verbindung_loest_nexmail_sie_auch(welt):
     gefunden, _ = welt
     assert gefunden.connect("app").status_code == 200

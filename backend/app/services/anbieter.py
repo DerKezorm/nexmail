@@ -31,11 +31,20 @@ from xml.etree import ElementTree
 
 import httpx
 
+from . import netzfreigabe
+from .bildvermittler import Abgelehnt, adresse_pruefen
+
 logger = logging.getLogger("nexmail.anbieter")
 
 #: Kurz. Wer ein Postfach anlegt, wartet davor - und ein Anbieter, der nach
 #: fuenf Sekunden nicht geantwortet hat, antwortet auch nach dreissig nicht.
 ZEITGRENZE = 5.0
+
+#: Wie vielen Weiterleitungen ``_holen`` folgt (jede geprueft wie die Adresse selbst).
+MAX_SPRUENGE = 3
+
+#: Nur fuer Tests: ein eigener Transport statt eines echten Netzes.
+TRANSPORT: httpx.BaseTransport | None = None
 
 
 @dataclass
@@ -150,20 +159,53 @@ def _holen(adresse_url: str) -> bytes | None:
     """Ein Dokument holen. Eigene Funktion, damit die Tests sie ersetzen koennen.
 
     ⚠️ Tests duerfen nicht ins Netz. Sie tauschen diese Funktion aus - und
-    genau deshalb macht sie **nur** das Holen und keine Auswertung.
+    genau deshalb macht sie **nur** das Holen und keine Auswertung. Die
+    Adresspruefung steht deshalb auch hier und nicht davor.
+
+    ⚠️ **Vor jedem Abruf und jedem Sprung dieselbe Wache wie bei Kalendern**
+    (Befundsuche 28.11.2026). Die Adressen entstehen aus der Domaene einer
+    eingetippten Mailadresse; eine Adresse bei ``evil.example`` leitete sonst per 302 auf
+    ``127.0.0.1`` oder ``169.254.169.254`` um, und nexmails Server fragte dort
+    nach. Weiterleitungen werden deshalb von Hand verfolgt, jede geprueft.
     """
+    ziel = adresse_url
+    with httpx.Client(
+        timeout=ZEITGRENZE,
+        follow_redirects=False,
+        transport=TRANSPORT,
+        headers={"user-agent": "nexmail-autoconfig"},
+    ) as klient:
+        for _ in range(MAX_SPRUENGE + 1):
+            if not _darf(ziel):
+                return None
+            try:
+                antwort = klient.get(ziel)
+            except httpx.HTTPError:
+                return None
+            weiter = antwort.headers.get("location")
+            if antwort.is_redirect and weiter:
+                ziel = str(httpx.URL(ziel).join(weiter))
+                continue
+            if antwort.status_code != 200:
+                return None
+            return antwort.content
+    return None
+
+
+def _darf(url: str) -> bool:
+    """Wie ``caldav._pruefen``: nur ``http(s)`` und nichts im eigenen Netz, ausser der Betreiber gibt es frei
+    (dann LAN und VPN, nie der eigene Rechner oder ``169.254.…``)."""
     try:
-        antwort = httpx.get(
-            adresse_url,
-            timeout=ZEITGRENZE,
-            follow_redirects=True,
-            headers={"user-agent": "nexmail-autoconfig"},
-        )
-    except httpx.HTTPError:
-        return None
-    if antwort.status_code != 200:
-        return None
-    return antwort.content
+        adresse_pruefen(url)
+        return True
+    except Abgelehnt as f:
+        if str(f) != "bild_adresse_im_eigenen_netz" or not netzfreigabe.erlaubt_jetzt():
+            return False
+    try:
+        adresse_pruefen(url, eigenes_netz=True)
+        return True
+    except Abgelehnt:
+        return False
 
 
 def autoconfig(adresse: str) -> Vorschlag | None:

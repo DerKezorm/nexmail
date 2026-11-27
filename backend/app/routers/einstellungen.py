@@ -41,7 +41,13 @@ class Einstellungen(BaseModel):
     zeitzone: str = Field(default="", max_length=80)
 
 
-class EinstellungenEingabe(Einstellungen):
+class EinstellungenEingabe(BaseModel):
+    #: ⚠️ **Fehlt ein Feld, bleibt sein Wert** (Befundsuche 28.11.2026). Die Karte „Zeitzone des Servers“ schickte
+    #: die beim Öffnen gemerkte Adresse mit; war sie nicht geladen oder inzwischen anderswo geändert, leerte oder
+    #: überschrieb das Speichern der Zeitzone still die öffentliche Adresse. Wer beide schickt, schreibt beide wie
+    #: bisher (auch ``""`` zum Leeren).
+    oeffentliche_adresse: str | None = Field(default=None, max_length=300)
+    zeitzone: str | None = Field(default=None, max_length=80)
     #: Die Antwort auf die Rückfrage, wenn die neue Adresse die Rückleitadresse
     #: eines Anmeldeanbieters ändert (409 ``public_url_change``).
     adresse_bestaetigt: bool = False
@@ -66,7 +72,20 @@ def schreiben(
     # Anmeldung. Aus der oeffentlichen Adresse entsteht der Link in der Mail
     # „Passwort vergessen"; wer sie umbiegen darf, schickt dem Betreiber einen
     # Ruecksetz-Link auf einen fremden Server und liest dort den Schluessel ab.
-    adresse = eingabe.oeffentliche_adresse.strip().rstrip("/")
+    # Erst alles prüfen, dann schreiben: Eine abgewiesene Zone lässt auch die Adresse, wie sie war.
+    zone = None if eingabe.zeitzone is None else _zeitzone_geprueft(eingabe.zeitzone)
+    if eingabe.oeffentliche_adresse is not None:
+        _adresse_schreiben(eingabe.oeffentliche_adresse, eingabe.adresse_bestaetigt, request, db)
+    if zone is not None:
+        einstellung_schreiben(db, SCHLUESSEL_ZEITZONE, zone)
+    return Einstellungen(
+        oeffentliche_adresse=einstellung_lesen(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE),
+        zeitzone=einstellung_lesen(db, SCHLUESSEL_ZEITZONE),
+    )
+
+
+def _adresse_schreiben(roh: str, bestaetigt: bool, request: Request, db: DbSession) -> None:
+    adresse = roh.strip().rstrip("/")
     if adresse:
         teile = urlsplit(adresse)
         if teile.scheme not in ("http", "https") or not teile.netloc:
@@ -83,7 +102,21 @@ def schreiben(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="oeffentliche_adresse_ungueltig"
             ) from fehler
-    zone = eingabe.zeitzone.strip()
+    # ⚠️ **Erst fragen, dann speichern** (auch beim Leeren): Ändert die neue
+    # Adresse die Rückleitadresse eines Anmeldeanbieters, kommt die Rückfrage
+    # des Moduls (409 ``public_url_change``), und nichts wird gespeichert.
+    # Das Modul kennt die Adresse samt Vorbau (``fuer_modul``); gespeichert wird sie wie in 0.21 ohne ihn.
+    vorbau = get_settings().url_base
+    frage = authentik.public_url_guard(
+        SqlStore(db), fuer_modul(adresse, vorbau), oidc_router.basis(request), confirm=bestaetigt
+    )
+    if frage is not None:
+        raise oidc_router.abgelehnt(status.HTTP_409_CONFLICT, "public_url_change", **frage)
+    einstellung_schreiben(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE, ohne_vorbau(adresse, vorbau))
+
+
+def _zeitzone_geprueft(roh: str) -> str:
+    zone = roh.strip()
     if zone:
         # ⚠️ **Prüfen, nicht glauben.** Eine erfundene Zone bringt die
         # Oberfläche zum Stolpern, und der Fehler taucht erst beim Anzeigen
@@ -94,22 +127,7 @@ def schreiben(
             raise MeldungHttp(
                 status.HTTP_400_BAD_REQUEST, "zeitzone_unbekannt", {"zone": zone}
             ) from fehler
-
-    # ⚠️ **Erst fragen, dann speichern** (auch beim Leeren): Ändert die neue
-    # Adresse die Rückleitadresse eines Anmeldeanbieters, kommt die Rückfrage
-    # des Moduls (409 ``public_url_change``), und nichts wird gespeichert.
-    # Das Modul kennt die Adresse samt Vorbau (``fuer_modul``); gespeichert wird sie wie in 0.21 ohne ihn.
-    vorbau = get_settings().url_base
-    frage = authentik.public_url_guard(
-        SqlStore(db), fuer_modul(adresse, vorbau), oidc_router.basis(request), confirm=eingabe.adresse_bestaetigt
-    )
-    if frage is not None:
-        raise oidc_router.abgelehnt(status.HTTP_409_CONFLICT, "public_url_change", **frage)
-
-    adresse = ohne_vorbau(adresse, vorbau)
-    einstellung_schreiben(db, SCHLUESSEL_OEFFENTLICHE_ADRESSE, adresse)
-    einstellung_schreiben(db, SCHLUESSEL_ZEITZONE, zone)
-    return Einstellungen(oeffentliche_adresse=adresse, zeitzone=zone)
+    return zone
 
 
 # --- Kalender- und Adressbuchserver im eigenen Netz ---------------------- #

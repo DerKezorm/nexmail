@@ -160,6 +160,45 @@ def test_unverschluesselt_wird_abgelehnt(monkeypatch):
     assert anbieter._aus_xml(nur_plain) is None
 
 
+def _autoconfig_server(ziel: str, gesehen: list[str]):
+    """Ein öffentlicher Anbieter (feste öffentliche IP, damit nichts aufgelöst wird), der auf ``ziel`` weiterleitet;
+    jeder andere Host antwortet mit dem Dokument."""
+    import httpx
+
+    def antworten(anfrage: httpx.Request) -> httpx.Response:
+        gesehen.append(str(anfrage.url))
+        if anfrage.url.host == "93.184.215.14":
+            return httpx.Response(302, headers={"location": ziel})
+        return httpx.Response(200, content=ICLOUD_XML)
+
+    return httpx.MockTransport(antworten)
+
+
+@pytest.mark.parametrize("ziel", ["http://127.0.0.1:8123/", "http://169.254.169.254/latest/", "http://10.0.0.5/x"])
+def test_autoconfig_folgt_keiner_weiterleitung_ins_eigene_netz(monkeypatch, ziel):
+    """⚠️ Befundsuche 28.11.2026: eine Mailadresse bei ``evil.example`` leitete per 302 ins eigene Netz um, und
+    nexmails Server fragte dort nach. Die Weiterleitung wird geprüft wie die Adresse selbst; ins eigene Netz geht keine
+    Anfrage."""
+    gesehen: list[str] = []
+    monkeypatch.setattr(anbieter, "TRANSPORT", _autoconfig_server(ziel, gesehen))
+    assert anbieter._holen("https://93.184.215.14/mail/config-v1.1.xml") is None
+    assert gesehen == ["https://93.184.215.14/mail/config-v1.1.xml"]
+
+
+def test_autoconfig_folgt_einer_weiterleitung_nach_draussen(monkeypatch):
+    gesehen: list[str] = []
+    monkeypatch.setattr(anbieter, "TRANSPORT", _autoconfig_server("https://17.253.144.10/c.xml", gesehen))
+    assert anbieter._holen("https://93.184.215.14/mail/config-v1.1.xml") == ICLOUD_XML
+    assert gesehen[-1] == "https://17.253.144.10/c.xml"
+
+
+def test_autoconfig_fragt_keine_adresse_im_eigenen_netz(monkeypatch):
+    gesehen: list[str] = []
+    monkeypatch.setattr(anbieter, "TRANSPORT", _autoconfig_server("https://17.253.144.10/c.xml", gesehen))
+    assert anbieter._holen("https://127.0.0.1/mail/config-v1.1.xml") is None
+    assert gesehen == []
+
+
 # --- Ordnerrollen -------------------------------------------------------- #
 
 

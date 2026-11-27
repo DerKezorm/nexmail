@@ -455,6 +455,29 @@ def test_saving_or_clearing_the_public_address_asks_while_a_provider_knows_it(be
     assert betreiber.put("/api/einstellungen", json={"oeffentliche_adresse": "", "zeitzone": "UTC"}).status_code == 200
 
 
+def test_the_time_zone_alone_leaves_the_public_address(betreiber, sso):
+    """Befundsuche 28.11.2026: die Karte „Zeitzone des Servers“ schickte die beim Öffnen gemerkte Adresse mit; war sie
+    nicht geladen, leerte das Speichern der Zeitzone die öffentliche Adresse still. Ein fehlendes Feld bleibt jetzt,
+    wie es ist (auch ohne Rückfrage eines Anmeldeanbieters), und eine abgewiesene Zone schreibt auch die Adresse nicht."""
+    einstellung_setzen("oeffentliche_adresse", "https://mail.example.org")
+    anbieter_anlegen(betreiber, sso)
+    antwort = betreiber.put("/api/einstellungen", json={"zeitzone": "Europe/Berlin"})
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json() == {"oeffentliche_adresse": "https://mail.example.org", "zeitzone": "Europe/Berlin"}
+    assert einstellung_holen("oeffentliche_adresse") == "https://mail.example.org"
+    assert einstellung_holen("zeitzone") == "Europe/Berlin"
+    # Nur die Adresse: die Zone bleibt.
+    assert betreiber.put(
+        "/api/einstellungen", json={"oeffentliche_adresse": "https://mail.example.org"}
+    ).status_code == 200
+    assert einstellung_holen("zeitzone") == "Europe/Berlin"
+    falsch = betreiber.put(
+        "/api/einstellungen", json={"oeffentliche_adresse": "", "zeitzone": "Mars/Olymp", "adresse_bestaetigt": True}
+    )
+    assert falsch.status_code == 400
+    assert einstellung_holen("oeffentliche_adresse") == "https://mail.example.org"
+
+
 @pytest.mark.parametrize(
     "adresse", ["https://exa mple.org", "https://app.example.org/../x", "https://bücher.example.org", "https://a.example.org/?x=1"]
 )

@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 import { modulAnfrage } from '../api/client'
 import { mcpWorte } from '../lib/mcpWorte'
 import { appPfad, ohneBasis } from '../lib/basis'
+import { pfadteil } from '../lib/pfadteil'
 import { zeitpunkt } from '../lib/format'
 import { ConsentPage, RequestPage } from '../vendor/nexmcp'
 import { ConsentPage as VerbindenZustimmung, ReturnPage as VerbindenZurueck } from '../vendor/nexverbinden'
@@ -30,7 +31,7 @@ export function mcpSeiteVon(
   if (ohne === '/connect/app') return { art: 'verbinden' }
   if (ohne === '/connect/return') return { art: 'zurueck' }
   const treffer = /^\/mcp\/requests\/([^/]+)$/.exec(ohne)
-  return treffer ? { art: 'rueckfrage', nummer: decodeURIComponent(treffer[1]) } : null
+  return treffer ? { art: 'rueckfrage', nummer: pfadteil(treffer[1]) ?? treffer[1] } : null
 }
 
 export function McpSeite({ seite }: { seite: NonNullable<ReturnType<typeof mcpSeiteVon>> }) {

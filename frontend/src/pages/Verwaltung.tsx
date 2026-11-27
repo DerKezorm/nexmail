@@ -88,29 +88,33 @@ function FunktionenFuerAlle() {
 }
 
 /** „Zeitzone des Servers" (nexmail): in ihr stehen Zeiten in Mails, Plänen und Sicherungen. Ein Feld mit eigenem
- *  Speichern, der Knopf auf Höhe des Felds. Die öffentliche Adresse bleibt dabei, wie sie ist. */
-function ZeitzoneDesServers() {
+ *  Speichern, der Knopf auf Höhe des Felds. Die öffentliche Adresse bleibt dabei, wie sie ist.
+ *
+ *  ⚠️ **Nur die Zeitzone geht hinaus** (Befundsuche 28.11.2026). Bis dahin fuhr die beim Öffnen gemerkte Adresse mit;
+ *  war sie nicht geladen oder inzwischen unter Server › Anmeldung geändert, leerte oder überschrieb dieses Speichern
+ *  sie still. Ein Ladefehler steht in der Karte, und gespeichert wird erst nach dem Laden. */
+export function ZeitzoneDesServers() {
   const { t } = useTranslation()
   const [zeitzone, setZeitzone] = useState('')
-  const [adresse, setAdresse] = useState('')
+  const [geladen, setGeladen] = useState(false)
   const [fehler, setFehler] = useState('')
   const [gespeichert, setGespeichert] = useState(false)
 
   const laden = useCallback(async () => {
     const e = await api.holen<{ oeffentliche_adresse: string; zeitzone: string }>('/api/einstellungen')
-    setAdresse(e.oeffentliche_adresse ?? '')
     setZeitzone(e.zeitzone ?? '')
+    setGeladen(true)
   }, [])
 
   useEffect(() => {
-    void laden().catch(() => undefined)
-  }, [laden])
+    laden().catch((f) => setFehler(servermeldung(f, t('anmeldung.fehler_allgemein'))))
+  }, [laden, t])
 
   async function speichern() {
     setFehler('')
     setGespeichert(false)
     try {
-      await api.aendern('/api/einstellungen', { oeffentliche_adresse: adresse, zeitzone: zeitzone.trim() })
+      await api.aendern('/api/einstellungen', { zeitzone: zeitzone.trim() })
       setGespeichert(true)
     } catch (f) {
       setFehler(servermeldung(f, t('anmeldung.fehler_allgemein')))
@@ -126,7 +130,7 @@ function ZeitzoneDesServers() {
         value={zeitzone}
         onChange={(e) => setZeitzone(e.target.value)}
         action={
-          <Button kind="primary" icon="Check" onClick={() => void speichern()}>
+          <Button kind="primary" icon="Check" disabled={!geladen} onClick={() => void speichern()}>
             {t('aktion.speichern')}
           </Button>
         }

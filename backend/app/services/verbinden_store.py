@@ -254,7 +254,8 @@ class VerbindenStore:
         Klick-Verbindung, nach „Trennen“, nach „Ablehnen“), so dass ``legacy`` sie nicht mehr nennt.
 
         Steht eine Klick-Verbindung, über die nexmail den Partner nutzt, geht die Zeile auf sie über (``ueber`` statt
-        Schlüssel, wie ``ueber_klick``): Listen, Kalenderwahl und Aufgaben mit Abzug bleiben. Sonst löst nexmail sie
+        Schlüssel, wie ``ueber_klick``): Listen, Kalenderwahl und Aufgaben mit Abzug bleiben, solange die Adresse dieselbe
+        ist (eine andere fängt bei beiden frisch an, ``aufgabenziele.auf_neue_adresse``). Sonst löst nexmail sie
         wie beim Trennen von Hand. Zeilen, die schon über die Klick-Verbindung laufen, bleiben. Nie committen (das
         Modul committet), nie die eigenen API-Schlüssel anfassen (``retire_key``)."""
         from ..models import Aufgabe
@@ -279,6 +280,8 @@ class VerbindenStore:
                     continue
                 if uebernehmen:
                     zugang = nextasks.Zugang(url=klick.partner_base.rstrip("/"), token="", ueber=person.id)
+                    # Ein anderes nextasks (andere Adresse): Abzüge, Standard und Listenwahl gehören dem alten.
+                    aufgabenziele.auf_neue_adresse(self.db, person, v, zugang.url)
                     v.zugang = crypto.verschluesseln(
                         nextasks.zugang_schreiben(zugang), aufgabenziele._kontext(v.id)  # noqa: SLF001
                     )

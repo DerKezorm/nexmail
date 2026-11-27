@@ -18,6 +18,7 @@ import { CalendarDays, Inbox, ListFilter, PenLine, Plane, Tag } from 'lucide-rea
 
 import type { GeneralPart, IconLike } from '../../vendor/nexui'
 import type { Ich } from '../../api/client'
+import { pfadteil } from '../../lib/pfadteil'
 
 export type Bereich =
   | 'profile'
@@ -169,7 +170,9 @@ export function bereichAusPfad(pfad: string, anker = ''): { liste: true } | { be
   if (!treffer) return null
   const [, wurzel, name] = treffer
   if (!name) return wurzel === 'settings' ? { liste: true } : { bereich: 'profile', ersetzen: true }
-  const bereich = bereichVon(decodeURIComponent(name))
+  // Eine kaputte Kodierung (`/settings/%`) führt wie ein unbekannter Name zum Profil, statt die App zu stürzen.
+  const entschluesselt = pfadteil(name)
+  const bereich = entschluesselt === null ? null : bereichVon(entschluesselt)
   if (!bereich) return { bereich: 'profile', ersetzen: true }
   if (bereich === 'general' && AUS_ALLGEMEIN.has(anker)) return { bereich: 'server-connections', ersetzen: true }
   return { bereich, ersetzen: wurzel !== 'settings' || name !== bereich }

@@ -88,6 +88,13 @@ describe('Adressen', () => {
     expect(bereichAusPfad('/settings/about')).toEqual({ bereich: 'about', ersetzen: false })
   })
 
+  it('eine kaputte Prozentkodierung führt zum Profil, statt die App beim Laden zu stürzen', () => {
+    // Befundsuche 28.11.2026: `decodeURIComponent('%')` wirft, und `App` liest die Adresse beim Laden des Moduls.
+    for (const pfad of ['/settings/%', '/settings/%E0%A4%A', '/einstellungen/%']) {
+      expect(bereichAusPfad(pfad)).toEqual({ bereich: 'profile', ersetzen: true })
+    }
+  })
+
   it('jeder alte deutsche Name führt dauerhaft auf seinen Bereich', () => {
     expect(Object.keys(ALTE_NAMEN).sort()).toEqual([
       'abwesenheit', 'allgemein', 'anmeldung', 'benachrichtigungen', 'darstellung', 'kalender', 'ki', 'konten',

@@ -371,11 +371,55 @@ def nextasks_ueber_klick(db: Session, person: Benutzer, adresse: str) -> Aufgabe
     if v is None:
         v = Aufgabenverbindung(id=neue_id(), benutzer_id=person.id, art="nextasks", name="")
         db.add(v)
+    else:
+        auf_neue_adresse(db, person, v, zugang.url)
     v.zugang = crypto.verschluesseln(nextasks.zugang_schreiben(zugang), _kontext(v.id))
     v.letzter_fehler = ""
     db.commit()
     logger.info("nextasks was connected by a click.")
     return v
+
+
+def _adresse_vergleichbar(url: str) -> str:
+    """Schema und Host klein, ohne Standard-Port und ohne Schrägstrich am Ende: dieselbe Adresse, anders geschrieben,
+    ist keine andere."""
+    teile = urlsplit(url.strip())
+    schema = teile.scheme.lower()
+    host = (teile.hostname or "").lower()
+    try:
+        port = teile.port
+    except ValueError:
+        port = None
+    if port is not None and (schema, port) not in (("https", 443), ("http", 80)):
+        host = f"{host}:{port}"
+    return f"{schema}://{host}{teile.path.rstrip('/')}"
+
+
+def auf_neue_adresse(db: Session, person: Benutzer, v: Aufgabenverbindung, neue_url: str) -> bool:
+    """Eine bestehende nextasks-Zeile bekommt einen Zugang zu ``neue_url`` (Klick-Verbindung, ``forget_legacy``).
+    Zeigt der auf ein anderes nextasks als bisher, gehören Abzüge, Standardliste und abgewählte Listen dem alten:
+    Die Aufgaben verlieren ihren Abzug wie beim Trennen, Standard und Listenwahl fallen. Wie
+    ``nextimeverbindung._verbinden_mit`` bei der Kalenderwahl. True, wenn so gelöst wurde.
+
+    ⚠️ **Sonst fragt der Abgleich das neue nextasks nach den Kennungen des alten** (Befundsuche 28.11.2026), bekommt
+    „gone“ und nimmt den Aufgaben den Abzug zum alten für immer; das Anlegen in der alten Standardliste scheitert.
+
+    ⚠️ **Verglichen wird die Adresse, nicht die Instanz**: nextasks nennt keine Kennung seiner selbst. Erreicht ein
+    Konto dasselbe nextasks unter zwei Adressen (Heimnetz und öffentlich), gilt der Wechsel als neues nextasks; die
+    Aufgaben bleiben dann in beiden Apps stehen, nur ohne Abgleich, wie nach „Trennen“."""
+    try:
+        alt = _nextasks_zugang(v).url
+    except Exception:  # noqa: BLE001 - unlesbar: nichts, woran sich etwas vergleichen ließe
+        return False
+    if _adresse_vergleichbar(alt) == _adresse_vergleichbar(neue_url):
+        return False
+    for aufgabe in db.scalars(select(Aufgabe).where(Aufgabe.verbindung_id == v.id)):
+        aufgabe.verbindung_id = None
+    if person.aufgaben_standard.split(":", 1)[0] == v.id:
+        person.aufgaben_standard = ""
+    v.ohne = "[]"
+    logger.info("A nextasks connection moved to another address; its tasks no longer sync with the old one.")
+    return True
 
 
 def nextasks_alter_schluessel(db: Session, person: Benutzer) -> str | None:

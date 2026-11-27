@@ -15,6 +15,7 @@ import App from './App'
 import { AnmeldePage } from './pages/AnmeldePage'
 import { SitzungAbgelaufen } from './components/SitzungAbgelaufen'
 import { appPfad, ohneBasis } from './lib/basis'
+import { pfadteil } from './lib/pfadteil'
 import { EinladungPage } from './pages/EinladungPage'
 import { KennwortNeuPage, VergessenPage } from './pages/KennwortPage'
 import { EinrichtungPage } from './pages/EinrichtungPage'
@@ -66,7 +67,7 @@ export default function Start() {
        Eingeladene sah eine Maske, in die er nichts eintragen kann. */
     const pfad = ohneBasis(window.location.pathname)
     const treffer = pfad ? /^\/einladung\/(.+)$/.exec(pfad) : null
-    return treffer ? decodeURIComponent(treffer[1]) : ''
+    return treffer ? (pfadteil(treffer[1]) ?? treffer[1]) : ''
   })
 
   /* Der Rücksetz-Schlüssel, genauso gelesen — und aus demselben Grund vor der
@@ -74,7 +75,7 @@ export default function Start() {
   const [kennwortschluessel, setKennwortschluessel] = useState(() => {
     const pfad = ohneBasis(window.location.pathname)
     const treffer = pfad ? /^\/kennwort\/(.+)$/.exec(pfad) : null
-    return treffer ? decodeURIComponent(treffer[1]) : ''
+    return treffer ? (pfadteil(treffer[1]) ?? treffer[1]) : ''
   })
   const [vergessen, setVergessen] = useState(false)
 
@@ -82,7 +83,7 @@ export default function Start() {
   const [adressschluessel, setAdressschluessel] = useState(() => {
     const pfad = ohneBasis(window.location.pathname)
     const treffer = pfad ? /^\/adresse\/(.+)$/.exec(pfad) : null
-    return treffer ? decodeURIComponent(treffer[1]) : ''
+    return treffer ? (pfadteil(treffer[1]) ?? treffer[1]) : ''
   })
 
   /* Die Sprache hängt seit dem Kontenmodul am Konto: nach der Anmeldung übernehmen. */

@@ -447,6 +447,74 @@ def test_ein_abo_im_eigenen_netz_wird_abgewiesen():
     assert str(f.value) == "caldav_adresse_im_eigenen_netz"
 
 
+# --- Weiterleitungen und fremde Adressen (Befundsuche 28.11.2026) ---------- #
+
+
+def _leitet_um(ziel: str, gesehen: list[str]) -> httpx.MockTransport:
+    """Ein öffentlicher Server, der jede Anfrage auf ``ziel`` weiterleitet (und dort antworten würde)."""
+
+    def antworten(anfrage: httpx.Request) -> httpx.Response:
+        gesehen.append(str(anfrage.url))
+        if anfrage.url.host == "evil.example":
+            return httpx.Response(302, headers={"location": ziel})
+        return httpx.Response(200, content=ABO_ICS)
+
+    return httpx.MockTransport(antworten)
+
+
+@pytest.mark.parametrize(
+    "ziel", ["http://127.0.0.1:8123/api/", "http://169.254.169.254/latest/meta-data/", "http://10.0.0.5/f.ics"]
+)
+def test_ein_abo_folgt_keiner_weiterleitung_ins_eigene_netz(ziel):
+    """⚠️ Geprüft war nur die eingetragene Adresse: Ein Abo bei einem öffentlichen Server, der mit 302 ins eigene Netz
+    weiterleitet, holte die interne Adresse. Die Anfrage dorthin geht gar nicht erst hinaus."""
+    gesehen: list[str] = []
+    with pytest.raises(caldav.CaldavFehler) as f:
+        caldav.abo_holen("https://evil.example/f.ics", transport=_leitet_um(ziel, gesehen))
+    assert str(f.value) == "caldav_adresse_im_eigenen_netz"
+    assert gesehen == ["https://evil.example/f.ics"]
+
+
+def test_eine_weiterleitung_zu_einem_oeffentlichen_server_geht_weiter():
+    """iCloud und webcal-Abos wechseln den Host: eine öffentliche Adresse nach der Weiterleitung bleibt erlaubt."""
+    gesehen: list[str] = []
+    abo = caldav.abo_holen("https://evil.example/f.ics", transport=_leitet_um("https://17.253.144.10/f.ics", gesehen))
+    assert abo.roh.startswith("BEGIN:VCALENDAR")
+    assert gesehen == ["https://evil.example/f.ics", "https://17.253.144.10/f.ics"]
+
+
+def test_die_kalendersuche_folgt_keiner_weiterleitung_ins_eigene_netz():
+    """Dasselbe beim Finden: PROPFIND auf einen Server, der ins eigene Netz weiterleitet."""
+    gesehen: list[str] = []
+    zugang = caldav.Zugang(
+        "https://evil.example/dav", "a", "b", transport=_leitet_um("http://127.0.0.1:8123/", gesehen)
+    )
+    with pytest.raises(caldav.CaldavFehler) as f:
+        caldav.kalender_finden(zugang)
+    assert str(f.value) == "caldav_adresse_im_eigenen_netz"
+    assert all(url.startswith("https://evil.example/") for url in gesehen)
+
+
+def test_eine_absolute_adresse_in_der_antwort_wird_geprueft():
+    """Ohne Weiterleitung: Der Server nennt als Kalender-Heim eine Adresse im eigenen Netz. Auch dorthin geht nichts."""
+    gesehen: list[str] = []
+
+    def antworten(anfrage: httpx.Request) -> httpx.Response:
+        gesehen.append(str(anfrage.url))
+        return _xml(
+            '<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:" '
+            'xmlns:c="urn:ietf:params:xml:ns:caldav"><d:response><d:href>/</d:href><d:propstat><d:prop>'
+            "<c:calendar-home-set><d:href>http://169.254.169.254/kalender/</d:href></c:calendar-home-set>"
+            "</d:prop></d:propstat></d:response></d:multistatus>"
+        )
+
+    zugang = caldav.Zugang("https://evil.example/dav", "a", "b", transport=httpx.MockTransport(antworten))
+    with pytest.raises(caldav.CaldavFehler) as f:
+        caldav.kalender_finden(zugang)
+    assert str(f.value) == "caldav_adresse_im_eigenen_netz"
+    assert gesehen == ["https://evil.example/dav"]
+
+
 # --- Prozentkodierte Adressen --------------------------------------------- #
 
 

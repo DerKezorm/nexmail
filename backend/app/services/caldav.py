@@ -25,7 +25,10 @@ hängt.
 ⚠️ **Nur https, und keine Adressen im eigenen Netz.** Ein Kalender-Server ist
 etwas, das der Betreiber einträgt — aber ein Tippfehler oder eine übernommene
 Konfiguration machten nexmail sonst zur Fernbedienung fürs Heimnetz. Dieselbe
-Prüfung wie beim Bildvermittler, und aus demselben Grund.
+Prüfung wie beim Bildvermittler, und aus demselben Grund. ⚠️ **Sie gilt für
+jede Anfrage, nicht nur für die eingetragene Adresse** (``_jede_anfrage``):
+Weiterleitungen und absolute Adressen aus einer PROPFIND-Antwort führen sonst
+an ihr vorbei.
 """
 
 from __future__ import annotations
@@ -147,6 +150,43 @@ def _pruefen(url: str) -> None:
     raise CaldavFehler(_GRUENDE.get(str(grund), "caldav_nicht_erreichbar")) from grund
 
 
+def _ort(url: str) -> tuple[str, str, int | None]:
+    """Schema, Host und Port: was ``_pruefen`` an einer Adresse ansieht. Der Pfad spielt dafür keine Rolle."""
+    teile = urlparse(url)
+    try:
+        port = teile.port
+    except ValueError:
+        port = -1
+    return teile.scheme.lower(), (teile.hostname or "").lower(), port
+
+
+def _jede_anfrage(start: str):
+    """Ein ``request``-Haken für httpx: jede Anfrage an einen anderen Ort als ``start`` wird geprüft, bevor sie
+    hinausgeht.
+
+    ⚠️ **Eine geprüfte Startadresse genügt nicht** (Befundsuche 28.11.2026). Folgt der Klient Weiterleitungen, steht
+    nach einem ``302`` auf ``http://127.0.0.1:…`` oder ``169.254.169.254`` die nächste Anfrage im eigenen Netz, und
+    ein Abo oder ein Kalenderserver eines beliebigen Kontos hebelte die Sperre des Betreibers aus. Dasselbe gilt für
+    absolute Adressen, die der Server in einer PROPFIND- oder REPORT-Antwort nennt. httpx ruft den Haken vor **jeder**
+    Anfrage, auch vor jedem Sprung einer Weiterleitung; was er wirft, kommt beim Aufrufer an, ohne dass die Anfrage
+    gestellt wurde.
+
+    Weiterleitungen bleiben erlaubt: ``/.well-known/caldav`` leitet bei iCloud, Nextcloud und den meisten anderen
+    Servern weiter, und iCloud wechselt dabei den Host. Geprüft wird jeder Ort einmal je Sitzung; die Startadresse hat
+    ``_klient`` schon geprüft (oder die Tests geben sie mit ihrem Transport frei)."""
+    geprueft = {_ort(start)}
+
+    def haken(anfrage: httpx.Request) -> None:
+        url = str(anfrage.url)
+        ort = _ort(url)
+        if ort in geprueft:
+            return
+        _pruefen(url)
+        geprueft.add(ort)
+
+    return haken
+
+
 class _BasicOderDigest(httpx.Auth):
     """Erst Basic, bei Bedarf Digest.
 
@@ -211,6 +251,7 @@ def _klient(zugang: Zugang) -> httpx.Client:
         follow_redirects=True,
         transport=zugang.transport,  # type: ignore[arg-type]
         headers=kopf,
+        event_hooks={"request": [_jede_anfrage(zugang.url)]},
     )
 
 
@@ -667,8 +708,12 @@ def abo_holen(url: str, transport: object | None = None, marke: str = "") -> Abo
         else:
             kopf["if-none-match"] = marke
     try:
+        # ⚠️ Jede Weiterleitung wird geprüft wie die Adresse selbst (``_jede_anfrage``).
         with httpx.Client(
-            timeout=ZEITGRENZE, follow_redirects=True, transport=transport  # type: ignore[arg-type]
+            timeout=ZEITGRENZE,
+            follow_redirects=True,
+            transport=transport,  # type: ignore[arg-type]
+            event_hooks={"request": [_jede_anfrage(url)]},
         ) as klient:
             with klient.stream("GET", url, headers=kopf) as antwort:
                 if antwort.status_code == 304:
