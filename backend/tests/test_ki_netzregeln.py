@@ -65,7 +65,7 @@ def konto(klient, monkeypatch):
     monkeypatch.setattr(
         nexki.client,
         "resolver",
-        ki_aufloesen({"metadaten.example.com": ["169.254.169.254"], "nas.example.com": ["192.168.1.20"]}),
+        ki_aufloesen({"metadaten.example.com": ["169.254.169.254"], "nas.example.com": ["172.16.0.20"]}),
     )
     einrichten(klient)
     with SessionLocal() as db:
@@ -91,7 +91,7 @@ def _zugang(klient, url: str, modell: str = "plain"):
 def test_ein_ziel_im_eigenen_netz_braucht_die_liste_des_betreibers(konto, dienst):
     """Regel 1, beim Speichern und bei jeder Anfrage: von der Liste genommen, scheitert derselbe Zugang beim nächsten
     Mal, ohne dass etwas hinausgeht."""
-    for url in (dienst.base, "http://192.168.1.20:11434/v1/", "http://nas.example.com:11434/v1/", "http://[fd00::20]/v1/"):
+    for url in (dienst.base, "http://172.16.0.20:11434/v1/", "http://nas.example.com:11434/v1/", "http://[fd00::20]/v1/"):
         abgelehnt = _zugang(konto, url)
         assert abgelehnt.status_code == nexki.errors.CODES["ai_address_private"][0] and abgelehnt.json()["detail"] == "ai_address_private", url
     assert dienst.seen == []

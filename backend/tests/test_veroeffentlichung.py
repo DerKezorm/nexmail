@@ -65,7 +65,9 @@ TABU_DATEI = WURZEL / ".veroeffentlichung-tabu"
 
 #: Was sich ohne Namensliste pruefen laesst: Formen, keine Woerter.
 FORMEN = {
-    "ein Rechner aus dem Heimnetz": re.compile(r"\b(10\.10\.10|192\.168)\.\d{1,3}\.\d{1,3}\b"),
+    # Eine Netzangabe mit Praefix (``192.168.0.0/16``) ist kein Rechner, sondern eine Regel (das Modul verbinden nennt
+    # die Netze, die als eigenes Netz gelten); nur sie ist ausgenommen (entschieden 27.11.2026).
+    "ein Rechner aus dem Heimnetz": re.compile(r"\b(10\.10\.10|192\.168)\.\d{1,3}\.\d{1,3}\b(?!/\d)"),
     "ein Pfad vom Rechner des Betreibers": re.compile(r"[Cc]:[\\/]Users[\\/]", re.IGNORECASE),
     "ein OneDrive-Pfad": re.compile(r"OneDrive[\\/]", re.IGNORECASE),
 }
@@ -168,3 +170,14 @@ def test_keine_geheimnisse_im_repo():
             if m.search(inhalt):
                 treffer.append(f"{datei.relative_to(WURZEL).as_posix()}: {was}")
     assert treffer == [], "Geheimnisse im Repo:\n  " + "\n  ".join(treffer)
+
+
+def test_das_heimnetz_muster_laesst_nur_netzangaben_mit_praefix_aus():
+    """Ein Rechner im Heimnetz faellt auf, eine Netzangabe mit Praefix nicht (Regel im Modul verbinden). Die Beispiele
+    entstehen erst hier, damit keine Adresse dieser Form im Repo steht (der Waechter liest diese Datei mit)."""
+    muster = FORMEN["ein Rechner aus dem Heimnetz"]
+    heim = ".".join(("192", "168"))
+    for rechner in (f"{heim}.7.7", f"http://{heim}.7.7:8080/", f"{heim}.0.0 und mehr", f"{heim}.0.0/x"):
+        assert muster.search(rechner), rechner
+    for netz in (f"{heim}.0.0/16", f'"{heim}.7.0/24"', "172.16.0.20", "10.0.0.5"):
+        assert not muster.search(netz), netz
