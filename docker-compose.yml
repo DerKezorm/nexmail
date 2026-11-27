@@ -116,3 +116,7 @@ services:
       # interface to reach. Otherwise leave it empty: the deep levels switch
       # themselves back off when set in the interface, but not here.
       NEXMAIL_LOG_STUFE: ${NEXMAIL_LOG_STUFE:-}
+
+      # Where nexmail asks whether a newer version is out (only when the operator
+      # allowed it on the About page). Empty: GitHub's latest release.
+      NEXMAIL_UPDATE_URL: ${NEXMAIL_UPDATE_URL:-}
