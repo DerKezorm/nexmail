@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
@@ -191,8 +192,20 @@ class VerbindenStore:
     # --- Konto und App ----------------------------------------------------------------------------------------------
 
     def account_may(self, account_id: Any) -> bool:
+        """E41: ``False``, solange das Konto gesperrt oder gelöscht ist, und seit verbinden 0.2.1 (BS5) auch, solange es
+        nach Fehlversuchen zeitweise gesperrt ist (``gesperrt_bis``) oder den zweiten Faktor, den der Betreiber
+        verlangt, noch einrichten muss (dieselbe Regel wie ``keys_wait`` der Schlüssel). Die Verbindungen ruhen dann,
+        keine endet."""
+        from ..vendor import nexkonten
+        from . import konten_store
+
         person = self.db.get(Benutzer, str(account_id))
-        return person is not None and person.gesperrt_seit is None and person.geloescht_am is None
+        if person is None or person.gesperrt_seit is not None or person.geloescht_am is not None:
+            return False
+        konten = konten_store.store_fuer(self.db)
+        if konten.is_locked(person.id):
+            return False
+        return konten.second_factor(person.id) != nexkonten.SECOND_FACTOR_REQUIRED
 
     def account_name(self, account_id: Any) -> str:
         person = self.db.get(Benutzer, str(account_id))
@@ -411,16 +424,20 @@ class Abgelehnt(Exception):
         self.code = code
 
 
-def zugriff(partner: str, konto_id: str, *, neu: bool = False) -> nexverbinden.Access:
+def zugriff(partner: str, konto_id: str, *, neu: bool = False, abgewiesen: str | None = None) -> nexverbinden.Access:
     """V18 (verbinden 0.1.2): Adresse und frisches Token der Klick-Verbindung für nexmails eigene Anfragen, wo
     ``call`` nicht passt, weil kein JSON hin- und zurückgeht: CardDAV mit nexfolk, eine Datei an nexpaper. ``neu``
-    nach einem 401 des Partners. Danach sagt ``gelaufen`` dem Modul, wie die Anfrage ausging."""
+    nach einem 401 des Partners, mit ``abgewiesen`` = dem Token, das der Partner abwies (verbinden 0.2.1, BS1): dann
+    erneuert das Modul nur, wenn es noch das gehaltene ist, sonst nimmt es das, was eine andere Anfrage inzwischen
+    holte. Danach sagt ``gelaufen`` dem Modul, wie die Anfrage ausging."""
     from ..db import SessionLocal
 
     with SessionLocal() as db:
         store = store_fuer(db)
         try:
-            zugang = nexverbinden.access(store, CONFIG, konto_id, partner, datetime.now(UTC), force=neu)
+            zugang = nexverbinden.access(
+                store, CONFIG, konto_id, partner, datetime.now(UTC), force=neu, failed=abgewiesen if neu else None
+            )
         except nexverbinden.Refused as abgelehnt:
             store.commit()
             if abgelehnt.code == "unreachable":
@@ -451,29 +468,83 @@ def gelaufen(partner: str, konto_id: str, problem: str | None = None) -> None:
         store.commit()
 
 
+#: verbinden 0.2.1 (BS6): wie lange ``ueber_klick`` wartet, bevor es den Partner noch einmal fragt, ob er die neue
+#: Verbindung schon kennt (Sekunden, je Versuch). Startet der Partner die Verbindung, läuft der Haken im Hintergrund
+#: der Antwort auf dessen Token-Anfrage, oft bevor der Partner seine Seite gespeichert hat.
+NACH_ABSAGE: tuple[float, ...] = (0.5, 1.0, 2.0, 4.0)
+
+
+def _partner_kennt_sie(store: Any, konto_id: Any, partner: str) -> bool:
+    """Ob der Partner die Verbindung schon annimmt: sein ``hello`` mit dem Token der Verbindung, **ohne** dass die Karte
+    etwas davon merkt (``reach.ask`` statt ``call``). Ein 401 heißt hier „noch nicht gespeichert“; ``call`` hielte es
+    für eine Absage und zeigte „abgewiesen“. Nicht erreichbar zählt als „ja“: dann sagt es die Einrichtung wie
+    bisher."""
+    try:
+        zugang = nexverbinden.access(store, CONFIG, konto_id, partner, datetime.now(UTC))
+        antwort = nexverbinden.reach.ask(
+            zugang.base,
+            "GET",
+            f"{nexverbinden.PREFIX}/hello",
+            local_allowed=bool(store.local_allowed()),
+            agent=CONFIG.user_agent,
+            seconds=CONFIG.seconds,
+            connect_seconds=min(CONFIG.connect_seconds, CONFIG.seconds),
+            limit=CONFIG.max_answer,
+            bearer=zugang.token,
+        )
+    except nexverbinden.Refused:
+        return False
+    except nexverbinden.reach.Unreachable:
+        return True
+    finally:
+        store.commit()
+    return antwort.status != 401
+
+
 def ueber_klick(partner: str, store: Any, konto_id: Any) -> None:
     """``on_connected``: nach dem Verbinden per Klick legt nexmail die Zeile an, die das Verbinden von Hand anlegt
     (nextasks: ``aufgabenverbindung``, nextime: ``nextime_verbindung``), mit ``ueber`` statt eines Schlüssels. Gibt es
-    schon eine von Hand, bleibt sie (alte Verbindungen merken nichts); „Neu verbinden“ ersetzt ihren Zugang."""
+    schon eine von Hand, bleibt sie (alte Verbindungen merken nichts); „Neu verbinden“ ersetzt ihren Zugang.
+
+    ⚠️ **Darf mehrfach laufen und verträgt den Partner, der noch speichert** (verbinden 0.2.1, BS6): Jeder Weg darunter
+    behält eine vorhandene Zeile und legt nichts doppelt an. Startet die andere App die Verbindung, läuft der Haken im
+    Hintergrund der Antwort auf ihre Token-Anfrage, und die andere App speichert ihre Seite vielleicht noch. Darum
+    fragt nexmail erst still, ob der Partner die Verbindung kennt (``_partner_kennt_sie``), und wartet sonst
+    ``NACH_ABSAGE``; die eigentliche Einrichtung geht über ``call`` und zeigte ein 401 als „abgewiesen“ in der Karte.
+    Kennt er sie danach noch immer nicht, bleibt es bei der Verbindung ohne Zeile, bis „Erneuern“ den Haken wieder
+    laufen lässt."""
     from . import aufgabenziele, nextimeverbindung
 
+    if partner not in ("nextasks", "nextime", "nexfolk"):
+        return  # nexpaper: keine Zeile, „Als Dokument an nexpaper“ fragt die Verbindung bei jedem Anhang selbst.
     db: Session = store.db
     person = db.get(Benutzer, str(konto_id))
     verbindung = store.connection(konto_id, partner)
     if person is None or verbindung is None:
         return
     store.commit()
+    for versuch, warten in enumerate((*NACH_ABSAGE, None)):
+        if versuch:
+            verbindung = store.connection(konto_id, partner)
+            if verbindung is None:
+                return  # inzwischen getrennt
+        if _partner_kennt_sie(store, konto_id, partner):
+            break
+        if warten is None:
+            logger.warning("The partner does not know the new connection yet, its use waits partner=%s", partner)
+            return
+        time.sleep(warten)
     try:
         if partner == "nextasks":
             aufgabenziele.nextasks_ueber_klick(db, person, verbindung.partner_base)
         elif partner == "nextime":
             nextimeverbindung.ueber_klick(db, person, verbindung.partner_base)
-        elif partner == "nexfolk":
+        else:
             from . import adressbuchabgleich
 
             adressbuchabgleich.nexfolk_ueber_klick(db, person, verbindung.partner_base)
-        # nexpaper: keine Zeile, „Als Dokument an nexpaper“ fragt die Verbindung bei jedem Anhang selbst.
     except Exception:  # noqa: BLE001 - die Verbindung steht; die Karte zeigt, wenn die erste Anfrage scheitert
+        db.rollback()
         logger.warning("Setting up the use of a connection failed partner=%s", partner, exc_info=True)
 
 

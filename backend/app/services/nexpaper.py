@@ -56,9 +56,10 @@ def _pruefen(url: str) -> None:
 def _anfrage(konto_id: str, methode: str, pfad: str, **mit: Any) -> httpx.Response:
     """Eine Anfrage an ``<nexpaper>/api/v1/<pfad>`` mit dem Token der Klick-Verbindung; nach einem 401 einmal mit
     frischem Token. Sagt der Karte der Verbindung, wie es ausging."""
+    abgewiesen: str | None = None
     for versuch in (1, 2):
         try:
-            zugang = verbinden_store.zugriff("nexpaper", konto_id, neu=versuch == 2)
+            zugang = verbinden_store.zugriff("nexpaper", konto_id, neu=versuch == 2, abgewiesen=abgewiesen)
         except verbinden_store.Unerreichbar as fehler:
             raise NexpaperFehler("nexpaper_nicht_erreichbar") from fehler
         except verbinden_store.Abgelehnt as fehler:
@@ -82,6 +83,7 @@ def _anfrage(konto_id: str, methode: str, pfad: str, **mit: Any) -> httpx.Respon
             _gelaufen(konto_id, "unreachable")
             raise NexpaperFehler("nexpaper_nicht_erreichbar") from fehler
         if antwort.status_code == 401 and versuch == 1:
+            abgewiesen = zugang.token  # verbinden 0.2.1 (BS1): erneuert wird nur, wenn es noch das gehaltene ist
             continue
         if antwort.status_code == 401:
             _gelaufen(konto_id, "token_invalid")

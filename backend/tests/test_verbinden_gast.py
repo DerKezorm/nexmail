@@ -640,3 +640,55 @@ def test_nexpaper_im_eigenen_netz_mit_dem_haken_der_verbindung(nexpaper_welt, mo
     nexpaper._pruefen(adresse)
     with pytest.raises(nexpaper.NexpaperFehler):
         nexpaper._pruefen("http://127.0.0.1:8560")
+
+
+
+def test_on_connected_wartet_auf_den_partner_und_legt_nichts_doppelt_an(welt, monkeypatch):
+    """verbinden 0.2.1 (BS6): Startet der Partner, läuft ``on_connected`` oft, bevor er seine Seite gespeichert hat.
+    nexmail fragt erst still, ob er die Verbindung kennt, wartet sonst und richtet dann ein; ein zweiter Lauf des Hakens
+    legt keine zweite Zeile an."""
+    from app.services import verbinden_store
+
+    gefunden, _ = welt
+    assert gefunden.connect("app").status_code == 200
+    antworten = iter([False, True, True])
+    gefragt: list[int] = []
+
+    def kennt_sie(store, konto_id, partner):
+        gefragt.append(1)
+        return next(antworten)
+
+    monkeypatch.setattr(verbinden_store, "_partner_kennt_sie", kennt_sie)
+    monkeypatch.setattr(verbinden_store, "NACH_ABSAGE", (0.0,))
+    konto = gefunden.app.account_id("owner")
+    for _ in range(2):
+        with SessionLocal() as db:
+            verbinden_store.ueber_klick("nextasks", verbinden_store.store_fuer(db), konto)
+    assert len(gefragt) == 3
+    with SessionLocal() as db:
+        zeilen = db.query(Aufgabenverbindung).filter_by(benutzer_id=konto, art="nextasks").all()
+        assert len(zeilen) == 1 and aufgabenziele._nextasks_zugang(zeilen[0]).ueber  # noqa: SLF001
+    assert gefunden.card("app")["state"] == "connected"
+
+
+def test_kennt_der_partner_die_verbindung_noch_nicht_bleibt_die_karte_verbunden(welt):
+    """Der Partner kennt das Token (noch) nicht: die stille Frage sagt „nein“, die Karte zeigt nicht „abgewiesen“, und
+    eingerichtet wird nichts (sonst stünde eine Zeile ohne funktionierenden Zugang da)."""
+    from app.services import verbinden_store
+
+    gefunden, _ = welt
+    assert gefunden.connect("app").status_code == 200
+    konto = gefunden.app.account_id("owner")
+    with SessionLocal() as db:
+        db.query(Aufgabenverbindung).filter_by(benutzer_id=konto).delete()
+        db.commit()
+    gefunden.partner.db.execute("DELETE FROM vb_connections")
+    gefunden.partner.db.commit()
+    with SessionLocal() as db:
+        store = verbinden_store.store_fuer(db)
+        assert verbinden_store._partner_kennt_sie(store, konto, "nextasks") is False  # noqa: SLF001
+        verbinden_store.ueber_klick("nextasks", store, konto)
+    with SessionLocal() as db:
+        assert db.query(Aufgabenverbindung).filter_by(benutzer_id=konto).count() == 0
+    assert gefunden.card("app")["state"] == "connected"
+

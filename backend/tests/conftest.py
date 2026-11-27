@@ -189,6 +189,15 @@ def post_bruecke():
 
 
 @pytest.fixture(autouse=True)
+def verbinden_ohne_warten(monkeypatch):
+    """verbinden 0.2.1 (BS6): ``ueber_klick`` wartet auf einen Partner, der die neue Verbindung noch speichert. Im
+    ``TestClient`` speichert er erst, wenn der Haken fertig ist; Warten brächte nichts als Zeit."""
+    from app.services import verbinden_store
+
+    monkeypatch.setattr(verbinden_store, "NACH_ABSAGE", ())
+
+
+@pytest.fixture(autouse=True)
 def anbieterbild_sofort(monkeypatch):
     """Das Bild vom Anmeldeanbieter holt der Server in einem eigenen Faden; in Tests sofort und in derselben Runde."""
     from app.services import konten_store

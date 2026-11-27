@@ -586,6 +586,18 @@ class AppCode(Base):
     used_at: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None, nullable=True)
 
 
+class AppGoneSibling(Base):
+    """geraete 0.1.5 (G33 neu): wann ein getrenntes Gerät angelegt wurde, das über iCloud kam (``weg = icloud``),
+    damit die Grenze „Geschwister je Stunde“ es weiter zählt (``Store.sibling_times``), auch nach einem Neustart. Nur
+    Konto und Zeitpunkt; ``geraete_store.aufraeumen`` nimmt Zeilen nach einem Tag. Vorlage ``app_gone_siblings``."""
+
+    __tablename__ = "app_gone_siblings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[str] = mapped_column(String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
 class Aenderung(Base):
     """Was sich geändert hat, für den Offline-Speicher der App.
 

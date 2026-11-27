@@ -68,7 +68,13 @@ def beenden(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="sitzung_ist_aktuell",
                 )
-            db.delete(s)
+            if s.art == "geraet":
+                # geraete 0.1.5 (G33 neu): über den Store, damit ein getrenntes Geschwister die Stunde weiter zählt.
+                from ..services import geraete_store
+
+                geraete_store.store_fuer(db).remove_device(s.id)
+            else:
+                db.delete(s)
             db.commit()
             return
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)

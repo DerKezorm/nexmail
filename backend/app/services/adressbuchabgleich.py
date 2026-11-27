@@ -116,14 +116,16 @@ NEXFOLK_DAV = "/dav/"
 NEXFOLK_TRANSPORT: object | None = None
 
 
-def _nexfolk_zugang(url: str, konto_id: str, *, neu: bool = False) -> carddav.Zugang:
+def _nexfolk_zugang(url: str, konto_id: str, *, neu: bool | str = False) -> carddav.Zugang:
     """V18 (verbinden 0.1.2): ein Buch von nexfolk über die Klick-Verbindung, mit ihrem frischen Token als ``Bearer``
     (nexfolk öffnet CardDAV dafür mit ``contacts.read``, Ändern mit ``contacts.write``). Absagen in der Form des
     CardDAV-Abgleichs, damit die Karte des Buchs dasselbe sagt wie bei einem Gerätepasswort."""
     from . import verbinden_store
 
     try:
-        verbindung = verbinden_store.zugriff("nexfolk", konto_id, neu=neu)
+        verbindung = verbinden_store.zugriff(
+            "nexfolk", konto_id, neu=bool(neu), abgewiesen=neu if isinstance(neu, str) else None
+        )
     except verbinden_store.Unerreichbar as f:
         raise caldav.CaldavFehler("caldav_nicht_erreichbar") from f
     except verbinden_store.Abgelehnt as f:
@@ -160,14 +162,15 @@ def nexfolk_ueber_klick(db: Session, person: Benutzer, adresse: str) -> list[Adr
     return raus
 
 
-def zugang(buch: Adressbuch, db: Session | None = None, *, neu: bool = False) -> carddav.Zugang:
+def zugang(buch: Adressbuch, db: Session | None = None, *, neu: bool | str = False) -> carddav.Zugang:
     """Wie sich nexmail bei diesem Buch ausweist.
 
     ⚠️ **Token schlägt Passwort.** Google lässt an seinen DAV-Endpunkten nur
     ``Bearer`` zu; Basic Auth wird abgewiesen, und die Meldung sieht aus wie
     ein falsches Passwort. Derselbe Zugang wie beim Kalender.
 
-    Ein Buch von nexfolk per Klick (``ueber``) weist sich mit dem Token der Verbindung aus; ``neu`` nach einem 401.
+    Ein Buch von nexfolk per Klick (``ueber``) weist sich mit dem Token der Verbindung aus; ``neu`` nach einem 401,
+    am besten als das abgewiesene Token (verbinden 0.2.1, BS1: erneuert wird nur, wenn es noch das gehaltene ist).
     """
     if buch.ueber:
         return _nexfolk_zugang(buch.url, buch.ueber, neu=neu)
@@ -335,7 +338,7 @@ def _ueber_klick_abgleichen(db: Session, buch: Adressbuch, erzwingen: bool) -> R
         except caldav.CaldavFehler as f:
             if str(f) != "caldav_abgewiesen":
                 raise
-            runde = _carddav_abgleichen(db, buch, erzwingen, neu=True)
+            runde = _carddav_abgleichen(db, buch, erzwingen, neu=getattr(f, "abgewiesen", None) or True)
     except caldav.CaldavFehler as f:
         if str(f) == "caldav_nicht_erreichbar":
             verbinden_store.gelaufen("nexfolk", buch.ueber, "unreachable")
@@ -346,7 +349,7 @@ def _ueber_klick_abgleichen(db: Session, buch: Adressbuch, erzwingen: bool) -> R
     return runde
 
 
-def _carddav_abgleichen(db: Session, buch: Adressbuch, erzwingen: bool, *, neu: bool = False) -> Runde:
+def _carddav_abgleichen(db: Session, buch: Adressbuch, erzwingen: bool, *, neu: bool | str = False) -> Runde:
     """Ein Buch abgleichen, über **eine** Verbindung.
 
     ⚠️ **Die Sitzung umschliesst den ganzen Abgleich.** iCloud lässt je Konto
@@ -362,17 +365,22 @@ def _carddav_abgleichen(db: Session, buch: Adressbuch, erzwingen: bool, *, neu: 
     """
     runde = Runde()
     # ``neu`` nur, wenn gefragt: Tests schieben ``zugang`` mit der alten Unterschrift unter.
-    verbindung = zugang(buch, db, neu=True) if neu else zugang(buch, db)
+    verbindung = zugang(buch, db, neu=neu) if neu else zugang(buch, db)
     wartende = db.scalar(
         select(Kontakt.id)
         .where(Kontakt.adressbuch_id == buch.id, Kontakt.schmutzig.is_(True))
         .limit(1)
     )
-    with carddav.sitzung(verbindung) as klient:
-        runde = _holen(db, buch, verbindung, klient, runde, erzwingen or wartende is not None)
-        # Was danach noch wartet, hat drüben keine Karte: hinaus damit.
-        _wartende_hinaus(db, buch, klient, runde)
-        return runde
+    try:
+        with carddav.sitzung(verbindung) as klient:
+            runde = _holen(db, buch, verbindung, klient, runde, erzwingen or wartende is not None)
+            # Was danach noch wartet, hat drüben keine Karte: hinaus damit.
+            _wartende_hinaus(db, buch, klient, runde)
+            return runde
+    except caldav.CaldavFehler as f:
+        # verbinden 0.2.1 (BS1): welches Token abgewiesen wurde, für ``zugang(..., neu=<Token>)`` beim zweiten Versuch.
+        f.abgewiesen = verbindung.token  # type: ignore[attr-defined]
+        raise
 
 
 def _holen(db, buch, verbindung, klient, runde: Runde, erzwingen: bool) -> Runde:

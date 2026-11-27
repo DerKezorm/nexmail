@@ -34,7 +34,15 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
-from ..models import AppCode, AppKopplung, Benutzer, Sitzung, neue_id, utcnow
+from ..models import (
+    AppCode,
+    AppGoneSibling,
+    AppKopplung,
+    Benutzer,
+    Sitzung,
+    neue_id,
+    utcnow,
+)
 from ..vendor import nexgeraete
 from ..vendor.nexgeraete.config import LANGUAGES
 from ..vendor.nexgeraete.devices import Caller
@@ -248,8 +256,26 @@ class GeraeteStore:
     def remove_device(self, device_id: Any) -> None:
         zeile = self.db.get(Sitzung, str(device_id))
         if zeile is not None and zeile.art == "geraet":
+            if zeile.weg == "icloud" and zeile.angelegt is not None:
+                # geraete 0.1.5 (G33 neu): ein getrenntes Geschwister zählt die Stunde über weiter mit.
+                self.db.add(AppGoneSibling(account_id=zeile.benutzer_id, created_at=zeile.angelegt))
             self.db.delete(zeile)
             self.db.flush()
+
+    def sibling_times(self, account_id: Any, since: datetime) -> list[datetime]:
+        """geraete 0.1.5 (G33 neu): wann jedes Gerät des Kontos, das ab ``since`` über iCloud kam, angelegt wurde, die
+        seither getrennten mitgezählt (``app_gone_siblings``)."""
+        lebend = [
+            geraet.created_at
+            for geraet in self.devices_of(account_id)
+            if geraet.via == "icloud" and geraet.created_at is not None and geraet.created_at >= since
+        ]
+        getrennt = self.db.scalars(
+            select(AppGoneSibling.created_at).where(
+                AppGoneSibling.account_id == str(account_id), AppGoneSibling.created_at >= since
+            )
+        )
+        return lebend + [moment for wert in getrennt if (moment := _bewusst(wert)) is not None]
 
     def _orm(self, device_id: Any) -> Sitzung | None:
         zeile = self.db.get(Sitzung, str(device_id))
@@ -446,9 +472,13 @@ def store_der_anfrage(db: Annotated[Session, Depends(get_db)]) -> GeraeteStore:
 
 
 def aufraeumen(db: Session) -> int:
-    """Einmalcodes, die seit einem Tag abgelaufen sind (die Kopplungen räumt ``app_kopplung.aufraeumen``)."""
+    """Einmalcodes, die seit einem Tag abgelaufen sind (die Kopplungen räumt ``app_kopplung.aufraeumen``), und
+    getrennte Geschwister, die älter als einen Tag sind (geraete 0.1.5: sie zählen nur eine Stunde)."""
     stichtag = utcnow() - timedelta(days=1)
-    alte = list(db.scalars(select(AppCode).where(or_(AppCode.expires_at < stichtag, AppCode.used_at < stichtag))))
+    alte: list[Any] = list(
+        db.scalars(select(AppCode).where(or_(AppCode.expires_at < stichtag, AppCode.used_at < stichtag)))
+    )
+    alte += list(db.scalars(select(AppGoneSibling).where(AppGoneSibling.created_at < stichtag)))
     for zeile in alte:
         db.delete(zeile)
     if alte:

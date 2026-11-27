@@ -60,7 +60,8 @@ test('Schlüssel anlegen, damit lesen, widerrufen', async ({ page }, info) => {
     await expect(marken).toBeChecked()
     await fenster.getByTestId('key-submit').click()
 
-    const feld = page.getByTestId('key-secret').locator('input')
+    // schluessel 1.2.0 (B23): der neue Schlüssel steht im Fenster, das ihn angelegt hat.
+    const feld = fenster.getByTestId('key-secret').locator('input')
     await expect(feld, 'Nach dem Anlegen steht kein Schlüssel da.').toBeVisible({ timeout: 10_000 })
     const schluessel = await feld.inputValue()
     expect(schluessel).toMatch(/^nxm_[A-Za-z0-9_-]{40,}$/)
@@ -82,7 +83,8 @@ test('Schlüssel anlegen, damit lesen, widerrufen', async ({ page }, info) => {
     expect(ich.key, 'Das Häkchen kam nicht beim Schlüssel an.').toMatchObject({ tags: true, tasks: false })
     expect((await page.request.get('/api/v1/tags', { headers: mit })).status()).toBe(200)
 
-    await page.getByTestId('key-done').click()
+    await fenster.getByTestId('key-done').click()
+    await expect(fenster).toHaveCount(0)
     await expect(page.getByTestId('key-secret')).toHaveCount(0)
 
     // In der Liste: der Name; widerrufen wirkt sofort.

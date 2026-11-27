@@ -143,6 +143,31 @@ class Adapter(StandardAdapter):
             db.commit()
         self._sitzung.expire_all()
 
+    def lock(self, role: str, locked: bool = True) -> None:
+        """verbinden 0.2.1 (BS5): die Sperre nach Fehlversuchen (``gesperrt_bis``); ``account_may`` lässt die
+        Verbindungen solange ruhen."""
+        from datetime import UTC, datetime, timedelta
+
+        from app.db import SessionLocal
+        from app.models import Benutzer
+
+        with SessionLocal() as db:
+            bis = datetime.now(UTC) + timedelta(minutes=15) if locked else None
+            db.get(Benutzer, self.ids[role]).gesperrt_bis = bis
+            db.commit()
+        self._sitzung.expire_all()
+
+    def require_second_factor(self, role: str, required: bool = True) -> None:
+        """verbinden 0.2.1 (BS5): der Betreiber verlangt einen zweiten Faktor, das Konto hat keinen (die Testkonten
+        haben nie einen); ``account_may`` lässt die Verbindungen ruhen, bis er eingerichtet ist."""
+        from app.db import SessionLocal, einstellung_schreiben
+        from app.services.konten_store import SCHALTER_FAKTOR_FUER_ALLE
+
+        with SessionLocal() as db:
+            einstellung_schreiben(db, SCHALTER_FAKTOR_FUER_ALLE, "1" if required else "0")
+            db.commit()
+        self._sitzung.expire_all()
+
     def probe(self, purpose: str) -> str | None:
         # verbinden 0.1.13: der einzige Zweck, den nexmail gewährt, hat seinen festen Ort im Modul.
         return f"/api/connect/about/{purpose}?name=Pat" if purpose == "mails.about" else None
