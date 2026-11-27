@@ -399,6 +399,8 @@ von Hand bleiben dem Konto, `/api/aufgabenziele/…/nextasks` und `/api/nextime`
 „Verbindungen ins eigene Netz“ hat nexmail nicht (der Riegel unter Funktionen für alle Konten gilt Kalendern,
 Adressbüchern und Webhooks). Vorlage `nexverbinden.test.tsx` neu genommen.
 
+Nachzug verbinden 0.1.14 (`caafd08`): nur ein Vertragsfall, die Verbindung von nexfolk (nur `mails.about`) öffnet keinen anderen Zweck (nexmail gewährt keinen anderen; der eigene `test_verbindung_oeffnet_nur_about.py` prüft alle Lesewege).
+
 Nachzug verbinden 0.1.12 (nur Beispieladressen der Modultests) und 0.1.13 (nexfolks Karte „In den anderen Apps“,
 V49 bis V53): nexmail gewährt damit erstmals einen Zweck, `mails.about` an nexfolk. `VerbindenStore.areas` nennt die
 Postfächer des Kontos (`id`, Anzeigename), die Zustimmung fragt, in welchen gezählt werden darf; der Haken
