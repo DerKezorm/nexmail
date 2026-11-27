@@ -4,8 +4,9 @@ Nur über eine per „Verbinden“ gemachte Verbindung (Modul verbinden 0.1.2): 
 Verbindung (``verbinden_store.zugriff``) und lädt die Datei mit eigenem Klient hoch, weil ``nexverbinden.call`` nur JSON
 schickt. nexpaper legt das Dokument in den Tresor, den es ab Werk nimmt (bzw. den einzigen, den die Verbindung darf).
 
-⚠️ **Dieselbe Netzprüfung wie beim Verbinden mit nextasks von Hand** (``nextasks._pruefen``): das eigene Netz nur mit der
-Freigabe des Betreibers, keine Weiterleitung.
+⚠️ **Netzprüfung wie die Verbindung selbst** (``_pruefen``): das eigene Netz mit dem Haken „Verbindungen ins eigene
+Netz“, mit dem auch das Verbinden ging, oder mit der Freigabe für Kalender und Webhooks; keine Weiterleitung. Bis
+0.35.0 galt nur die zweite, dann klappte das Verbinden und das Ablegen meldete „nicht erreichbar“.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import httpx
 
 from ..meldung import Meldung
 from . import nextasks, verbinden_store
+from .bildvermittler import Abgelehnt, adresse_pruefen
 
 logger = logging.getLogger("nexmail.nexpaper")
 
@@ -36,6 +38,21 @@ def _gelaufen(konto_id: str, problem: str | None = None) -> None:
         logger.warning("Telling the connection card how nexpaper answered failed", exc_info=True)
 
 
+def _pruefen(url: str) -> None:
+    """Darf nexmail diese Adresse von nexpaper erreichen? Wie beim Verbinden von Hand (``nextasks._pruefen``), und
+    zusätzlich das eigene Netz, wenn der Betreiber „Verbindungen ins eigene Netz“ erlaubt hat."""
+    try:
+        nextasks._pruefen(url)  # noqa: SLF001
+        return
+    except nextasks.NextasksFehler as fehler:
+        if str(fehler) != "nextasks_adresse_im_eigenen_netz" or not verbinden_store.eigenes_netz_erlaubt():
+            raise NexpaperFehler("nexpaper_nicht_erreichbar") from fehler
+    try:
+        adresse_pruefen(url, eigenes_netz=True)
+    except Abgelehnt as fehler:
+        raise NexpaperFehler("nexpaper_nicht_erreichbar") from fehler
+
+
 def _anfrage(konto_id: str, methode: str, pfad: str, **mit: Any) -> httpx.Response:
     """Eine Anfrage an ``<nexpaper>/api/v1/<pfad>`` mit dem Token der Klick-Verbindung; nach einem 401 einmal mit
     frischem Token. Sagt der Karte der Verbindung, wie es ausging."""
@@ -48,9 +65,9 @@ def _anfrage(konto_id: str, methode: str, pfad: str, **mit: Any) -> httpx.Respon
             raise NexpaperFehler("nexpaper_nicht_verbunden") from fehler
         try:
             if TRANSPORT is None:
-                nextasks._pruefen(zugang.base.rstrip("/"))  # noqa: SLF001
-        except nextasks.NextasksFehler as fehler:
-            raise NexpaperFehler("nexpaper_nicht_erreichbar") from fehler
+                _pruefen(zugang.base.rstrip("/"))
+        except NexpaperFehler:
+            raise
         try:
             with httpx.Client(timeout=ZEITGRENZE, follow_redirects=False, transport=TRANSPORT) as klient:
                 antwort = klient.request(

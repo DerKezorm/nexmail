@@ -359,6 +359,16 @@ def zugriff(partner: str, konto_id: str, *, neu: bool = False) -> nexverbinden.A
     return zugang
 
 
+def eigenes_netz_erlaubt() -> bool:
+    """Der Haken „Verbindungen ins eigene Netz“ der Betreiberkarte (verbinden 0.1.4), für nexmails eigene Anfragen über
+    eine Klick-Verbindung (eine Datei an nexpaper): dieselbe Freigabe, mit der die Verbindung selbst ins eigene Netz
+    darf, nicht die für Kalender und Webhooks (``netzfreigabe``)."""
+    from ..db import SessionLocal
+
+    with SessionLocal() as db:
+        return store_fuer(db).local_allowed()
+
+
 def gelaufen(partner: str, konto_id: str, problem: str | None = None) -> None:
     """Wie nexmails eigene Anfrage über die Klick-Verbindung ausging, für die Karte (``nexverbinden.reached``):
     ``None`` beantwortet, ``unreachable``, oder die Absage des Partners (``token_invalid`` nach dem zweiten 401)."""

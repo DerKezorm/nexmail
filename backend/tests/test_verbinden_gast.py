@@ -436,3 +436,23 @@ def test_die_zustimmung_zeigt_das_konto_wie_die_profilzeile(welt, monkeypatch):
         zeile.profilbild, zeile.profilbild_am = None, None
         db.commit()
     assert karte()["picture"] is None
+
+
+def test_nexpaper_im_eigenen_netz_mit_dem_haken_der_verbindung(nexpaper_welt, monkeypatch):
+    """Ist nur „Verbindungen ins eigene Netz“ an (nicht die Freigabe für Kalender und Webhooks), geht das Ablegen wie
+    das Verbinden; ohne den Haken bleibt eine Adresse im eigenen Netz zu (Fund vor 0.35.0)."""
+    from app.services import netzfreigabe, verbinden_store
+
+    monkeypatch.setattr(netzfreigabe, "erlaubt_jetzt", lambda: False)
+    adresse = "http://" + ".".join(("172", "16", "0", "20")) + ":8560"
+    with SessionLocal() as db:
+        verbinden_store.store_fuer(db).set_local_allowed(False)
+        db.commit()
+    with pytest.raises(nexpaper.NexpaperFehler):
+        nexpaper._pruefen(adresse)
+    with SessionLocal() as db:
+        verbinden_store.store_fuer(db).set_local_allowed(True)
+        db.commit()
+    nexpaper._pruefen(adresse)
+    with pytest.raises(nexpaper.NexpaperFehler):
+        nexpaper._pruefen("http://127.0.0.1:8560")
