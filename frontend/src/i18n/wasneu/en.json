@@ -1,4 +1,64 @@
 {
+  "0.35.0": {
+    "lead": "nexmail now connects with nextasks, nextime and nexpaper in one click, and attachments go straight into nexpaper. Also new: AI tools (MCP), one AI provider for everybody, backups in one list, and settings that look like those of every nex app.",
+    "sections": [
+      {
+        "title": "Connect other nex apps in one click",
+        "where": "My account › Connections › Other nex apps",
+        "body": "Instead of making an API key in the other app and typing it in here, you click Connect. The other app opens and shows who you are signed in as and what each app gets from the other, in plain words such as “Create and change tasks”. Agree once and you are back here. Each connection may do only what it needs: in nextasks you pick the spaces, in nexpaper the vaults. The card shows since when you are connected, when the connection was last used and what it may do, with Check now and Disconnect, which ends both sides. If something goes wrong, the reason is in the card."
+      },
+      {
+        "title": "nextasks and nextime: now connected in one click",
+        "where": "Tasks, calendar and reading pane",
+        "body": "What you know from nextasks and nextime now works without a key. Turn into task makes a task in a nextasks list from a mail. The lists stand in the sidebar of the tasks, where you tick off, change date and priority and pick who is responsible. The calendars of nextime show in nexmail's calendar: you create, change and delete events there, accept an invitation straight into a nextime calendar, and Turn into event makes an event from any mail. Connections made with a key keep working, and the card lets you renew them the new way."
+      },
+      {
+        "title": "Attachments straight to nexpaper",
+        "where": "Reading pane, next to each attachment",
+        "body": "New: with nexpaper connected, every attachment of a message has Send to nexpaper as a document next to it. One click puts the file into nexpaper's inbox, a bill or a contract for example. If nexmail may store into more than one vault, a small window asks which one; the one you used last is chosen."
+      },
+      {
+        "title": "For the operator: set up the other nex apps",
+        "where": "Server › General › Other nex apps",
+        "body": "You enter the address of nextasks, nextime and nexpaper once, and from then on every account connects in one click. If an app is not set up yet, the card says so, and shows you a link to this place. If one of the apps runs in your own network (LAN, VPN), allow it with Connections into the local network. The switch at the top turns connections off altogether; existing ones then rest, and nothing is deleted."
+      },
+      {
+        "title": "AI tools (MCP)",
+        "where": "My account › Connections › AI tools (MCP)",
+        "body": "An AI program such as Claude Code can now work with your mail: count unread messages, search and read mail, draft replies, set tags, move messages and tick off tasks. It sees only the mailboxes you give it and never sends anything; drafts land in the Drafts folder. It reads the text of a mail only with the extra Read mail text. For each tool you choose Allow, Ask or Deny; a question shows up in your browser. Off by default: the operator switches it on under Server › General › Interfaces."
+      },
+      {
+        "title": "One AI provider for everybody",
+        "where": "Server › AI provider; My account › AI",
+        "body": "As the operator you can now set up one AI service for all accounts instead of everybody entering their own, and set how often it may be asked. Besides the OpenAI form, nexmail now also speaks Anthropic's Messages form. Own accesses reach computers in your own network only once you list them; a computer already in use is on the list by itself after the update. Under My account › AI everybody sees where their texts go, can switch the AI off for themselves and finds word for word what went out. An existing installation stays with Each account itself."
+      },
+      {
+        "title": "Backups in one list",
+        "where": "Server › Storage and backups",
+        "body": "All backups now stand in one list, whether scheduled, made by hand or made before an update. The schedule runs at a time of day you pick, monthly too if you like. Back up now asks for a note. A download is an encrypted file with a password of its own; after the password it tells when it was made, what kind it is and its note. Before a restore nexmail makes a copy, and the window asks whether the public address from the backup should apply."
+      },
+      {
+        "title": "Managing accounts",
+        "where": "Server › Accounts",
+        "body": "There can now be several operators. You block an account and unblock it; while it is blocked, nexmail fetches no mail for it and sends it no notifications. A deleted account can be brought back for 30 days, and deleting asks for your own password. Whether an account may use the AI you set under Manage."
+      },
+      {
+        "title": "Settings like in every nex app",
+        "where": "Bottom of the sidebar: name · Settings",
+        "body": "The settings now have the same layout, buttons and windows as the other nex apps. Dates and times look the same everywhere and follow your account's time zone. Light, Dark or As the system now belongs to your account and applies on every device; new accounts start with As the system. Older links to a settings page still lead to the right place."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "Languages of your own: under Server › General › Languages the operator adds more languages as a JSON file. A template to translate can be downloaded there, and missing texts fall back to English.",
+      "The log under Server › Log looks like in the other nex apps and can be downloaded as text.",
+      "Only the operator looks for new versions; members see their version and nothing of the check. The setup asks once whether nexmail may look.",
+      "A context menu is never taller than the window, and a submenu stays wholly visible.",
+      "Without a public https address, the Passkeys box says what is missing instead of showing a button that cannot work.",
+      "After the update everything keeps working: connections made with a key, API keys, paired iPhones and your AI settings. New tables are added on start, and nexmail makes a backup first; nothing is renamed or removed.",
+      "The interface's addresses of before (/api/v1, /api/protokoll, /api/sicherung, /api/ueber) answer as they did."
+    ]
+  },
   "0.34.0": {
     "lead": "Signing in, your profile and security are rebuilt: sign in with your username or email, passkeys, two ways back from a forgotten password, and system mails that try again after an error. The way you sign in today keeps working.",
     "sections": [

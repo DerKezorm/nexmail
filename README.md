@@ -26,13 +26,15 @@ Roundcube is webmail bolted onto one mailbox. Thunderbird does not run in a
 browser. Commercial clients want to pull your mail onto their servers. nexmail
 is the third option — and if you can use Outlook, you should feel at home.
 
-> **Version 0.34.0.** It reads, writes, searches, sorts, labels, sends,
+> **Version 0.35.0.** It reads, writes, searches, sorts, labels, sends,
 > schedules, prints, answers for you while you are away, keeps a calendar and
 > your address books in sync with iCloud or Google, invites people to your own
-> appointments, rephrases a draft with an AI service of your choice, backs
-> itself up and reaches you when the browser is closed, on the desktop and on
-> the phone. It is used daily by its author against real iCloud and IMAP
-> mailboxes, and more than 2,000 automated tests watch over it, including more
+> appointments, rephrases a draft with an AI service of your choice, connects
+> with nextasks, nextime and nexpaper in one click, lets an AI program work
+> with your mail over MCP if you allow it, backs itself up and reaches you when
+> the browser is closed, on the desktop and on the phone. It is used daily by
+> its author against real iCloud and IMAP mailboxes, and more than 2,000
+> automated tests watch over it, including more
 > than 190 that drive a real browser against a real mailbox. It is still young: try
 > it on a mailbox you can afford to have trouble with before you point it at
 > the one that matters.
@@ -111,15 +113,18 @@ and send tasks to a Todoist list instead. Only the title, the due date, the
 sender and a link back to the mail go there, never the text of the mail. Ticking
 a task in nexmail closes it in Todoist, and what you complete, reschedule or
 delete in Todoist comes back within a few minutes. The same works with a
-self-hosted nextasks: enter its address
-and an API key that may read and write (made in nextasks under *Settings › My account ›
-Connections › API keys*), then pick a list, with its space and
-section. nexmail checks the key against `/api/v1/me` before it saves anything,
-sends each message at most once (nextasks' `external_ref`), and sees completed,
-reopened, rescheduled and binned tasks within a few minutes; when the key is
-replaced, *Change key* keeps your tasks connected. A nextasks on your local network
-needs the operator's permission under *Settings › Server › General › Features for every account*, as webhooks and
-calendars do. With nextasks connected, the task view goes further: its spaces and
+self-hosted nextasks, connected in one click (see
+[Connecting other nex apps](#connecting-other-nex-apps)); then pick a list, with
+its space and section. nexmail sends each message at most once (nextasks'
+`external_ref`), and sees completed, reopened, rescheduled and binned tasks within
+a few minutes. A nextasks that cannot connect by click yet is connected by the
+operator by hand, with its address and an API key that may read and write (made
+in nextasks under *Settings › My account › Connections › API keys*); nexmail
+checks the key against `/api/v1/me` before it saves anything, and *Change key*
+keeps your tasks connected when the key is replaced. Such a nextasks on your
+local network needs the operator's permission under *Settings › Server › General ›
+Features for every account*, as webhooks and calendars do. With nextasks
+connected, the task view goes further: its spaces and
 lists appear in the sidebar with their symbols, read live from nextasks (nothing is
 copied), and you can tick off, edit, move and add tasks there, also without a mail;
 you choose in the nextasks card which lists nexmail shows. nexmail's own task list
@@ -187,11 +192,13 @@ would stay in their calendars and they would turn up.
 
 **Calendar.** Month, week and day, with your own calendars in nexmail or
 connected over CalDAV to iCloud, Nextcloud or anything else that speaks it.
-With a self-hosted [nextime](https://github.com/DerKezorm/nextime) (0.2.0 or
-later) one connection under *Settings › My account › Connections* brings all its calendars,
-in its groups and colours, read live; invitations are accepted into a nextime
-calendar in one step, and *Turn into event* makes an event from any mail.
-A server on your own network or VPN is refused until the operator allows it
+With a self-hosted nextime, one click under *Settings › My account › Connections*
+brings all its calendars, in its groups and colours, read live (see
+[Connecting other nex apps](#connecting-other-nex-apps)); invitations are accepted
+into a nextime calendar in one step, and *Turn into event* makes an event from any
+mail. A nextime from 0.2.0 that cannot connect by click yet is connected by the
+operator by hand, with its address and an API key.
+A calendar server on your own network or VPN is refused until the operator allows it
 under *Settings › Server › General › Features for every account*; the same switch covers address books and
 subscribed calendars.
 Google works too, through the same consent you gave for the mailbox. Recurring
@@ -229,10 +236,18 @@ repository is public, and both providers revoke a key they find in one, so
 each operator registers their own. The Server section of the settings says so plainly
 rather than letting you guess why nothing works.
 
-**Rephrasing with AI, if you want it.** Every user can connect their own AI
-service under *Settings › My account › AI*: an address, a key and a model. nexmail knows no
-provider; anything that speaks the common chat completions interface works,
-from Claude, Gemini or OpenAI to Ollama on a machine in your own network. A
+**Rephrasing with AI, if you want it.** The operator decides under
+*Settings › Server › AI provider* who sets the AI service up: one service for
+everybody, entered there, or each account its own under *Settings › My account ›
+AI* (an address, a key and a model). An installation from before 0.35 stays with
+the second. nexmail knows no provider; anything that speaks the common chat
+completions interface (the OpenAI form) or Anthropic's Messages form works,
+from Claude, Gemini or OpenAI to Ollama on a machine in your own network. The
+operator's service may lie in your own network; an account's own access reaches
+a computer there only when the operator lists it (one already in use before 0.35
+is listed by itself), never a link-local or cloud metadata address, and no
+redirect is followed. Limits per person and minute, per person and day and for
+the whole server keep the bill in check. A
 service in your own network is asked not to think (`reasoning_effort: "none"`),
 so a thinking model such as Qwen3 or DeepSeek-R1 does not spend a short answer
 on its thoughts; a server that does not know the field is asked once more
@@ -397,6 +412,8 @@ server, and nexmail fetches them back after a restore. Measured on a real
 database: 1890 messages turn 0.36 MB into 2.79 MB, and the part that cannot be
 fetched again does not grow with the mailbox. An archive that grows with your
 mail is one nobody downloads. Upload it on another server and it joins the list.
+*Back up now* takes an optional note, and a downloaded archive tells its date,
+kind and note once its password is entered.
 
 Restoring checks first: it reports the version, whether the key is included, and
 whether the public address in the archive differs from the one you are using.
@@ -534,15 +551,67 @@ A forgotten password has two ways back: a link by mail to the account's own
 address (one hour, with a mail server), or a link the operator makes under
 *Accounts* (1, 7 or 30 days), sent by mail or shown to pass on. A new password
 signs out every browser; the iPhone app and API keys keep working, and the next
-sign-in lists them with *Disconnect all*. The operator role can be handed on to
-another user, after confirming with your own password, so an installation never
-ends up without someone who can administer it.
+sign-in lists them with *Disconnect all*.
+
+Under *Accounts* each row has *Manage*. Any account can be made an operator, so
+there can be several; nexmail always keeps at least one who can sign in.
+*Block* keeps somebody out without deleting anything: while an account is
+blocked, nexmail syncs none of its mailboxes, calendars, address books or to-do
+apps and sends it no notifications, and AI programs connected over MCP are
+disconnected. *Unblock* and everything goes on. Deleting an account asks for
+your own password and leaves 30 days to bring it back; it gets no mail in that
+time. Whether an account may use the AI is set there too.
+
+**Languages.** German and English are built in. The operator adds more under
+*Settings › Server › General › Languages* as a JSON file of texts (at most
+512 KB); a template with the English texts can be downloaded there, and whatever
+a file leaves out falls back to English. A language added this way can be picked
+in the profile and on the sign-in page.
 
 ![Server settings with users and open invitations](docs/screenshots/verwaltung-en.webp)
 
 Every user has their own mailboxes, contacts, rules and signatures. A guard test
 walks the entire route table and checks that no address answers without
 authentication and none hands out another user's data.
+
+## Connecting other nex apps
+
+nexmail works together with three other self-hosted nex apps: **nextasks** for
+tasks, **nextime** for calendars and **nexpaper** for documents. Connecting one
+takes a click, not an API key.
+
+**For everybody.** Under *Settings › My account › Connections › Other nex apps*,
+click *Connect with nextasks* (or nextime, or nexpaper). The other app opens,
+shows who you are signed in as there and says in plain words what each app gets
+from the other. Agree once, and you are back in nexmail. A connection gets only
+what it needs, never "read everything": in nextasks you choose which spaces
+nexmail sees, in nexpaper which vaults it may store into. The card then shows
+since when you are connected, when the connection was last used and what it may
+do, with *Check now* and *Disconnect*, which ends both directions; what you
+created stays in both apps. If something goes wrong in the other app, you land
+back in the card and read there what happened.
+
+| App | nexmail may there | What you do with it in nexmail |
+|---|---|---|
+| nextasks | read tasks, create and change them, tick them off, see the members of your spaces | *Turn into task* puts a mail into a nextasks list; its spaces and lists stand in the sidebar of the tasks, where you tick off, edit and add tasks and pick who is responsible |
+| nextime | read your calendars and events, create, change and delete events, answer invitations | its calendars in nexmail's calendar, events created, changed and deleted there, invitations accepted straight into a nextime calendar, *Turn into event* from any mail |
+| nexpaper | put documents into its inbox | *Send to nexpaper as a document* next to every attachment; if nexmail may store into more than one vault, a small window asks which, the one used last chosen |
+
+nextasks and nextime worked with nexmail before, over an API key typed in by
+hand. Those connections keep working as they are, and the card lets you renew
+them the new way; after that the connection keeps itself fresh, and nobody types
+a key again.
+
+**For the operator.** Under *Settings › Server › General › Other nex apps*, enter
+the address of each app once; from then on every account only clicks *Connect*.
+Until then the card tells people the app is not set up here, and shows you a
+link to that place. An app at an address in your own network (LAN, VPN) needs
+*Connections into the local network* ticked there; without it the error says
+exactly that. The switch *Connections with other nex apps* turns it all off:
+nobody connects anew, existing connections rest, nothing is deleted. The other
+app needs a release that can connect this way; if it cannot yet, the card says
+so, and you can still connect nextasks and nextime by hand with an address and
+an API key.
 
 ## Dashboards: read-only API keys
 

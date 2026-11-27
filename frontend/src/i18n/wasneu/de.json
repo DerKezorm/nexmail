@@ -1,4 +1,64 @@
 {
+  "0.35.0": {
+    "lead": "nexmail verbindet sich jetzt mit einem Klick mit nextasks, nextime und nexpaper, und Anhänge legst du direkt in nexpaper ab. Dazu kommen KI-Werkzeuge (MCP), ein KI-Anbieter für alle, Sicherungen in einer Liste und Einstellungen, die aussehen wie in allen nex-Apps.",
+    "sections": [
+      {
+        "title": "Andere nex-Apps mit einem Klick verbinden",
+        "where": "Mein Konto › Verbindungen › Andere nex-Apps",
+        "body": "Statt in der anderen App einen API-Schlüssel anzulegen und hier abzutippen, klickst du auf „Verbinden“. Die andere App öffnet sich und zeigt, als wer du angemeldet bist und was beide Apps voneinander bekommen, in Worten wie „Aufgaben anlegen und ändern“. Einmal zustimmen, und du bist wieder hier. Jede Verbindung darf nur, was sie braucht: In nextasks wählst du die Bereiche, in nexpaper die Tresore. Die Karte zeigt, seit wann du verbunden bist, wann die Verbindung zuletzt genutzt wurde und was sie darf, dazu „Jetzt prüfen“ und „Trennen“, das beide Seiten trennt. Klappt etwas nicht, steht der Grund in der Karte."
+      },
+      {
+        "title": "nextasks und nextime: jetzt mit einem Klick verbunden",
+        "where": "Aufgaben, Kalender und Lesebereich",
+        "body": "Was du mit nextasks und nextime kennst, geht jetzt ohne Schlüssel. Mit „Zu Aufgabe machen“ wird aus einer Mail eine Aufgabe in einer nextasks-Liste. Die Listen stehen in der Seitenleiste der Aufgaben; dort hakst du ab, änderst Datum und Priorität und wählst, wer zuständig ist. Die Kalender von nextime stehen im Kalender von nexmail: Termine legst du dort an, änderst und löschst sie, eine Einladung sagst du direkt in einen nextime-Kalender zu, und „Termin daraus machen“ macht aus jeder Mail einen Termin. Verbindungen mit Schlüssel laufen weiter und lassen sich in der Karte auf die neue Art erneuern."
+      },
+      {
+        "title": "Anhänge direkt an nexpaper",
+        "where": "Lesebereich, neben jedem Anhang",
+        "body": "Neu: Ist nexpaper verbunden, steht neben jedem Anhang einer Mail „Als Dokument an nexpaper“. Ein Klick legt die Datei in den Eingang von nexpaper, etwa eine Rechnung oder einen Vertrag. Darf nexmail in mehrere Tresore ablegen, fragt ein kleines Fenster, in welchen; der zuletzt genutzte ist vorgewählt."
+      },
+      {
+        "title": "Für den Betreiber: andere nex-Apps einrichten",
+        "where": "Server › Allgemein › Andere nex-Apps",
+        "body": "Du trägst die Adresse von nextasks, nextime und nexpaper einmal ein, danach verbindet jedes Konto mit einem Klick. Ist eine App noch nicht eingerichtet, sagt die Karte das, dir mit einem Link hierher. Läuft eine der Apps im eigenen Netz (LAN, VPN), erlaubst du das mit „Verbindungen ins eigene Netz“. Mit dem Schalter oben schaltest du Verbindungen ganz ab; bestehende ruhen dann, gelöscht wird nichts."
+      },
+      {
+        "title": "KI-Werkzeuge (MCP)",
+        "where": "Mein Konto › Verbindungen › KI-Werkzeuge (MCP)",
+        "body": "Ein KI-Programm wie Claude Code kann jetzt mit deiner Post arbeiten: Ungelesenes zählen, Mails suchen und lesen, Antworten entwerfen, Schlagworte setzen, Mails verschieben und Aufgaben abhaken. Es sieht nur die Postfächer, die du ihm gibst, und sendet nie etwas; Entwürfe landen bei den Entwürfen. Den Text einer Mail liest es nur mit dem Extra „Mailtext lesen“. Je Werkzeug wählst du „Erlauben“, „Fragen“ oder „Verweigern“; eine Rückfrage erscheint in deinem Browser. Ab Werk aus: Der Betreiber schaltet es unter Server › Allgemein › Schnittstellen frei."
+      },
+      {
+        "title": "Ein KI-Anbieter für alle",
+        "where": "Server › KI-Anbieter; Mein Konto › KI",
+        "body": "Als Betreiber richtest du auf Wunsch einen KI-Dienst für alle Konten ein, statt dass jeder seinen eigenen einträgt, und legst fest, wie oft er gefragt werden darf. Neben der OpenAI-Form spricht nexmail jetzt auch die Messages-Form von Anthropic. Eigene Zugänge erreichen Rechner im eigenen Netz nur, wenn du sie einträgst; ein Rechner, den schon jemand nutzte, steht nach dem Update von selbst darauf. Unter Mein Konto › KI sieht jeder, wohin seine Texte gehen, schaltet die KI für sich ab und findet wörtlich, was hinausging. Eine bestehende Installation bleibt bei „Jedes Konto selbst“."
+      },
+      {
+        "title": "Sicherungen in einer Liste",
+        "where": "Server › Speicher und Sicherung",
+        "body": "Alle Sicherungen stehen jetzt in einer Liste, ob nach Zeitplan, von Hand oder vor einem Update. Der Zeitplan läuft zu einer Uhrzeit deiner Wahl, auf Wunsch auch monatlich. „Jetzt sichern“ fragt nach einer Notiz. Herunterladen gibt eine verschlüsselte Datei mit eigenem Passwort; nach dem Passwort sagt sie, von wann sie ist, welcher Art und mit welcher Notiz. Vor dem Wiederherstellen legt nexmail eine Kopie an, und das Fenster fragt, ob die öffentliche Adresse aus der Sicherung gelten soll."
+      },
+      {
+        "title": "Konten verwalten",
+        "where": "Server › Konten",
+        "body": "Es kann jetzt mehrere Betreiber geben. Ein Konto sperrst du und gibst es wieder frei; solange es gesperrt ist, holt nexmail keine Post dafür ab und schickt keine Mitteilungen. Ein gelöschtes Konto lässt sich 30 Tage lang zurückholen, und zum Löschen fragt nexmail nach deinem Passwort. Ob ein Konto die KI nutzen darf, stellst du unter „Verwalten“ ein."
+      },
+      {
+        "title": "Einstellungen wie in allen nex-Apps",
+        "where": "Unten in der Seitenleiste: Name · Einstellungen",
+        "body": "Die Einstellungen haben jetzt denselben Aufbau, dieselben Knöpfe und dieselben Fenster wie die anderen nex-Apps. Datum und Uhrzeit stehen überall in einer Form und in der Zeitzone deines Kontos. Hell, Dunkel oder „Wie das System“ gehört jetzt zu deinem Konto und gilt auf jedem Gerät; neue Konten beginnen mit „Wie das System“. Ältere Links auf eine Einstellungsseite führen weiter an die richtige Stelle."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Eigene Sprachen: Unter Server › Allgemein › Sprachen fügt der Betreiber weitere Sprachen als JSON-Datei hinzu. Eine Vorlage zum Übersetzen liegt dort zum Herunterladen, fehlende Texte fallen auf Englisch zurück.",
+      "Das Log unter Server › Log sieht aus wie in den anderen nex-Apps und lässt sich als Text herunterladen.",
+      "Nach neuen Versionen sieht nur der Betreiber; Mitglieder sehen ihre Version und sonst nichts davon. Die Einrichtung fragt einmal, ob nexmail nachsehen darf.",
+      "Ein Kontextmenü wird nie höher als das Fenster, und ein Untermenü bleibt ganz sichtbar.",
+      "Ohne öffentliche https-Adresse sagt der Kasten „Passkeys“, was fehlt, statt einen Knopf zu zeigen, der scheitern muss.",
+      "Nach dem Update läuft alles weiter: Verbindungen mit Schlüssel, API-Schlüssel, gekoppelte iPhones und deine KI-Einstellungen. Neue Tabellen kommen beim Start dazu, vorher legt nexmail eine Sicherung an; umbenannt oder gelöscht wird nichts.",
+      "Die bisherigen Wege der Schnittstelle (/api/v1, /api/protokoll, /api/sicherung, /api/ueber) antworten wie bisher."
+    ]
+  },
   "0.34.0": {
     "lead": "Anmelden, Profil und Sicherheit sind neu aufgebaut: Anmelden mit Benutzername oder E-Mail, Passkeys, zwei Wege zurück bei einem vergessenen Passwort und Systemmails, die es bei einem Fehler noch einmal versuchen. Deine bisherige Anmeldung gilt weiter.",
     "sections": [
