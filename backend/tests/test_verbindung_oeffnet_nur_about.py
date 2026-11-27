@@ -75,7 +75,8 @@ def _get_wege() -> list[str]:
 def test_das_token_oeffnet_nur_den_weg_des_zwecks(db):
     token, _konto = _verbindung(db)
     mit = {"Authorization": f"Bearer {token}"}
-    with TestClient(app, base_url="https://mail.example.com") as programm:
+    # Ein Fehler hinter der Tür (500) zählt als offen, nicht als Absturz des Tests.
+    with TestClient(app, base_url="https://mail.example.com", raise_server_exceptions=False) as programm:
         # Der Weg des Zwecks antwortet, mit der Mail von Pat.
         gefunden = programm.get("/api/connect/about/mails.about", params={"mail": PAT}, headers=mit)
         assert gefunden.status_code == 200, gefunden.text
