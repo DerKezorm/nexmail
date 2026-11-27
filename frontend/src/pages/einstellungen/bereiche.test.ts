@@ -27,7 +27,7 @@ function ich(teil: Partial<Ich>): Ich {
 }
 
 const ids = (i: Ich) => bereicheFuer(i).map((b) => b.id)
-const SERVER = ['general', 'sign-in', 'mail', 'storage', 'ai-provider', 'accounts', 'log']
+const SERVER = ['general', 'server-connections', 'sign-in', 'mail', 'storage', 'ai-provider', 'accounts', 'log']
 
 describe('Sichtbarkeit der Bereiche', () => {
   it('der Betreiber sieht alles', () => {
@@ -76,7 +76,7 @@ describe('Reihenfolge nach dem Bauplan', () => {
     ])
   })
 
-  it('Server: Allgemein, Anmeldung, Mail, Speicher, eigene (KI-Anbieter), Konten, Log', () => {
+  it('Server: Allgemein, Verbindungen, Anmeldung, Mail, Speicher, eigene (KI-Anbieter), Konten, Log', () => {
     expect(BEREICHE.filter((b) => b.gruppe === 'server').map((b) => b.id)).toEqual(SERVER)
   })
 })
@@ -108,6 +108,20 @@ describe('Adressen', () => {
     expect(bereichAusPfad('/settingsfoo')).toBeNull()
     expect(bereichAusPfad('/settings/gibt-es-nicht')).toEqual({ bereich: 'profile', ersetzen: true })
   })
+
+  it('E67: Allgemein mit dem Anker einer umgezogenen Karte führt nach Server › Verbindungen', () => {
+    for (const anker of ['#nex-apps', '#interfaces']) {
+      expect(bereichAusPfad('/settings/general', anker)).toEqual({ bereich: 'server-connections', ersetzen: true })
+      expect(bereichAusPfad('/settings/allgemein', anker)).toEqual({ bereich: 'server-connections', ersetzen: true })
+      expect(bereichAusPfad('/einstellungen/allgemein', anker)).toEqual({ bereich: 'server-connections', ersetzen: true })
+    }
+    expect(bereichAusPfad('/settings/general', '#features')).toEqual({ bereich: 'general', ersetzen: false })
+    expect(bereichAusPfad('/settings/general')).toEqual({ bereich: 'general', ersetzen: false })
+    expect(bereichAusPfad('/settings/connections', '#nex-apps')).toEqual({ bereich: 'connections', ersetzen: false })
+    // Nur für den Betreiber: wer keiner ist, landet wie bei Allgemein auf dem Profil.
+    expect(erlaubterBereich('server-connections', ich({}))).toBe('profile')
+    expect(erlaubterBereich('server-connections', ich({ ist_betreiber: true }))).toBe('server-connections')
+  })
 })
 
 describe('Server › Allgemein (ui 1.1.3, U-3)', () => {
@@ -124,6 +138,10 @@ describe('Server › Allgemein (ui 1.1.3, U-3)', () => {
     }
     expect(de).not.toContain(teile.limits)
     expect(de).not.toContain(teile.webPush)
+    // E67: „Andere nex-Apps“ und „Schnittstellen“ stehen unter Server › Verbindungen.
+    expect(ALLGEMEIN_TEILE).toEqual(['features', 'languages'])
+    expect(de).not.toContain(teile.interfaces)
+    expect(de).not.toContain(teile.nexApps)
     const en = areaText(NEXUI_TEXTS.en, 'general', { app: 'nexmail', parts: ALLGEMEIN_TEILE })?.text ?? ''
     expect(en).not.toContain(NEXUI_TEXTS.en.generalParts.limits)
   })

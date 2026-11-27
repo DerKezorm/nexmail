@@ -141,8 +141,8 @@ import { lesemodusAus } from './lib/lesemodus'
 import type { Lesemodus } from './lib/lesemodus'
 import { danachAus, danachWaehlen } from './lib/danach'
 import { absenderbildQuelle } from './lib/absenderbild'
-import { appPfad, ohneBasis } from './lib/basis'
-import { bereichAusPfad, pfadVon } from './pages/einstellungen/bereiche'
+import { appPfad } from './lib/basis'
+import { bereichDerAdresse, useEinstellungsAdresse } from './pages/einstellungen/adresse'
 import type { Danach } from './lib/danach'
 import { ZUWEISBARE_ROLLEN } from './lib/ordnerrollen'
 import { WISCH_LINKS_VORGABE, WISCH_RECHTS_VORGABE } from './lib/wischen'
@@ -182,9 +182,9 @@ interface AppProps {
 /** Vorgabe, bis jemand etwas anderes einstellt: zwei Sekunden. */
 const GELESEN_NACH_VORGABE = 2
 
-/** Kam die App mit einer Adresse der Einstellungen (`/settings/<slug>`, auch ein alter Name)? Einmal beim Laden. */
-const START_EINSTELLUNGEN =
-  typeof window === 'undefined' ? null : bereichAusPfad(ohneBasis(window.location.pathname) ?? '')
+/** Kam die App mit einer Adresse der Einstellungen (`/settings/<slug>`, auch ein alter Name)? Einmal beim Laden. Der
+ *  Anker zählt mit: `/settings/general#nex-apps` ist seit E67 Server › Verbindungen. */
+const START_EINSTELLUNGEN = typeof window === 'undefined' ? null : bereichDerAdresse()
 
 /** Kam die App mit einer Suche in der Adresse (`?suche=`, aus nexfolk)? Einmal beim Laden. */
 const START_SUCHE =
@@ -563,24 +563,11 @@ export default function App({ modus, aufModus, darstellung, aufDarstellung, ich,
         : 'mailboxes',
   )
 
-  /* ⚠️ **Jeder Bereich hat seine Adresse** (`/settings/<slug>`, Bauplan „Einstellungen"): Lesezeichen, Neuladen und
-     der Zurück-Knopf des Browsers führen dorthin. Ein alter deutscher Name in der Adresse wird ersetzt, nicht
-     angehängt. Wer die Einstellungen verlässt, bekommt wieder die Adresse der App. */
-  useEffect(() => {
-    const jetzt = ohneBasis(window.location.pathname) ?? ''
-    const dort = bereichAusPfad(jetzt)
-    if (ansicht === 'einstellungen') {
-      const soll = pfadVon(reiter)
-      if (jetzt === soll) return
-      if (dort && 'ersetzen' in dort && dort.ersetzen) window.history.replaceState(null, '', appPfad(soll))
-      else window.history.pushState(null, '', appPfad(soll))
-    } else if (dort) {
-      window.history.pushState(null, '', appPfad('/'))
-    }
-  }, [ansicht, reiter])
+  /* ⚠️ **Jeder Bereich hat seine Adresse** (`/settings/<slug>`, Bauplan „Einstellungen", `einstellungen/adresse.ts`). */
+  useEinstellungsAdresse(ansicht === 'einstellungen', reiter)
   useEffect(() => {
     const zurueck = () => {
-      const dort = bereichAusPfad(ohneBasis(window.location.pathname) ?? '')
+      const dort = bereichDerAdresse()
       if (dort) {
         setReiter('bereich' in dort ? dort.bereich : null)
         setAnsicht('einstellungen')

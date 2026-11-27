@@ -602,7 +602,7 @@ hand. Those connections keep working as they are, and the card lets you renew
 them the new way; after that the connection keeps itself fresh, and nobody types
 a key again.
 
-**For the operator.** Under *Settings › Server › General › Other nex apps*, enter
+**For the operator.** Under *Settings › Server › Connections › Other nex apps*, enter
 the address of each app once; from then on every account only clicks *Connect*.
 Until then the card tells people the app is not set up here, and shows you a
 link to that place. An app at an address in your own network (LAN, VPN) needs
@@ -622,7 +622,7 @@ API key that each user creates for their own mailboxes under
 
 **Off by default.** API keys are a way out of nexmail, so the operator decides
 whether they exist on an installation at all, with a switch under
-*Settings › Server › General › Interfaces*.
+*Settings › Server › Connections › Interfaces*.
 Turning it off stops every key immediately; no key is deleted.
 
 **Each key has two limits, set when it is created.** It sees only the
@@ -662,7 +662,7 @@ nexmail's last sync with the mail server.
 
 An AI program such as Claude Code works with a person's mail through MCP at
 `POST /api/mcp`. **Off by default**: the operator switches *MCP access* on
-under *Settings › Server › General › Interfaces*, and decides there whether
+under *Settings › Server › Connections › Interfaces*, and decides there whether
 programs may connect themselves, the highest level and which tools are blocked.
 An account the operator does not allow AI makes no MCP key, and its keys and
 programs rest until AI is allowed again.

@@ -4,8 +4,11 @@
  * ⚠️ **Wer eine nex-App kennt, findet sich in der anderen zurecht.** Deshalb dieselben Gruppen und Adressen wie überall
  * (`/settings/<slug>`, englische Slugs): „Mein Konto" (Profil, Sicherheit, Darstellung, nexmails eigene Bereiche
  * Kalender und Adressbücher und KI, Benachrichtigungen, Verbindungen), nexmails eigene Gruppe „Mail" (Postfächer,
- * Regeln, Signaturen, Abwesenheit, Schlagworte), „Server" nur für Betreiber (Allgemein, Anmeldung, Mail, Speicher und
- * Sicherung, KI-Anbieter, Konten, Log) und abgesetzt „Über nexmail" für jeden.
+ * Regeln, Signaturen, Abwesenheit, Schlagworte), „Server" nur für Betreiber (Allgemein, Verbindungen, Anmeldung, Mail,
+ * Speicher und Sicherung, KI-Anbieter, Konten, Log) und abgesetzt „Über nexmail" für jeden.
+ *
+ * Server › Verbindungen (`server-connections`, E67, ui 1.2.1) hält „Andere nex-Apps“ und „Schnittstellen“, die vorher
+ * unter Allgemein standen: `/settings/general#nex-apps` und `#interfaces` führen mit ihrem Anker dorthin.
  *
  * ⚠️ **Die deutschen Namen von vorher bleiben gültig** (`ALTE_NAMEN`): `/settings/postfaecher`,
  * `/einstellungen/regeln` und jeder Aufruf mit einem alten Namen führt dauerhaft auf den englischen. Die Antwort des
@@ -30,6 +33,7 @@ export type Bereich =
   | 'out-of-office'
   | 'tags'
   | 'general'
+  | 'server-connections'
   | 'sign-in'
   | 'mail'
   | 'storage'
@@ -63,6 +67,7 @@ export const BEREICHE: BereichDef[] = [
   { id: 'out-of-office', gruppe: 'mail', symbol: Plane, eigen: true },
   { id: 'tags', gruppe: 'mail', symbol: Tag, eigen: true },
   { id: 'general', gruppe: 'server', symbol: 'SlidersHorizontal' },
+  { id: 'server-connections', gruppe: 'server', symbol: 'Plug' },
   { id: 'sign-in', gruppe: 'server', symbol: 'KeyRound' },
   { id: 'mail', gruppe: 'server', symbol: 'Mail' },
   { id: 'storage', gruppe: 'server', symbol: 'HardDrive' },
@@ -74,8 +79,12 @@ export const BEREICHE: BereichDef[] = [
 export const GRUPPEN: Gruppe[] = ['account', 'mail', 'server']
 
 /** ui 1.1.3 (U-3): die Karten, die nexmail unter Server › Allgemein zeigt, in ihrer Reihenfolge (`ServerAllgemein`);
- *  der Untertitel nennt nur sie. Die Karte „Zeitzone des Servers“ ist nexmails eigene und hat kein Wort im Satz. */
-export const ALLGEMEIN_TEILE: readonly GeneralPart[] = ['features', 'interfaces', 'nexApps', 'languages']
+ *  der Untertitel nennt nur sie. Die Karte „Zeitzone des Servers“ ist nexmails eigene und hat kein Wort im Satz.
+ *  „Andere nex-Apps“ und „Schnittstellen“ stehen seit E67 unter Server › Verbindungen. */
+export const ALLGEMEIN_TEILE: readonly GeneralPart[] = ['features', 'languages']
+
+/** Die Karten, die Server › Allgemein für Server › Verbindungen verlassen haben (E67), nach ihrem Anker. */
+const AUS_ALLGEMEIN = new Set(['#nex-apps', '#interfaces'])
 
 /** „Über nexmail" steht unter den Gruppen, getrennt durch eine Linie. */
 export const UEBER: BereichDef = { id: 'about', gruppe: 'account', symbol: 'Info' }
@@ -148,15 +157,20 @@ export function pfadVon(bereich: Bereich | null): string {
 /**
  * Was eine Adresse über die Einstellungen sagt: `null` (keine Adresse der Einstellungen), `{ liste: true }`
  * (`/settings` allein: die Liste auf dem Handy, das Profil daneben auf breiter Seite) oder `{ bereich, ersetzen }`,
- * wobei `ersetzen` heißt, dass die Adresse ein alter Name war und auf den neuen umgeschrieben wird. `/einstellungen`
- * und `/einstellungen/<alter Name>` führen ebenso hierher.
+ * wobei `ersetzen` heißt, dass die Adresse ein alter Name war und auf den neuen umgeschrieben wird (Suche und Anker
+ * bleiben). `/einstellungen` und `/einstellungen/<alter Name>` führen ebenso hierher.
+ *
+ * E67: Allgemein mit dem Anker einer umgezogenen Karte (`#nex-apps`, `#interfaces`: das „Einrichten“ der Karten von
+ * vorher, gespeicherte Links, der Link aus einer Partner-App) führt nach Server › Verbindungen. Beides sind Bereiche
+ * nur des Betreibers; wer keiner ist, landet wie bei Allgemein auf dem Profil (`erlaubterBereich`).
  */
-export function bereichAusPfad(pfad: string): { liste: true } | { bereich: Bereich; ersetzen: boolean } | null {
+export function bereichAusPfad(pfad: string, anker = ''): { liste: true } | { bereich: Bereich; ersetzen: boolean } | null {
   const treffer = /^\/(settings|einstellungen)(?:\/([^/?#]+))?\/?$/.exec(pfad)
   if (!treffer) return null
   const [, wurzel, name] = treffer
   if (!name) return wurzel === 'settings' ? { liste: true } : { bereich: 'profile', ersetzen: true }
   const bereich = bereichVon(decodeURIComponent(name))
   if (!bereich) return { bereich: 'profile', ersetzen: true }
+  if (bereich === 'general' && AUS_ALLGEMEIN.has(anker)) return { bereich: 'server-connections', ersetzen: true }
   return { bereich, ersetzen: wurzel !== 'settings' || name !== bereich }
 }

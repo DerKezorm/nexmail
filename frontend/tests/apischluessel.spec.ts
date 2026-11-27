@@ -34,7 +34,7 @@ test('Schlüssel anlegen, damit lesen, widerrufen', async ({ page }, info) => {
       await page.request.delete(`/api/apischluessel/${s.id}`)
     }
 
-    // Der Riegel steht seit dem Bauplan „Einstellungen“ unter Server › Allgemein › Schnittstellen (Modul schluessel).
+    // Der Riegel steht seit dem Bauplan „Einstellungen“ unter Server › Verbindungen › Schnittstellen (Modul schluessel).
     await zuEinstellungen(page, 'Allgemein')
     const riegel = page.getByTestId('interfaces-api')
     await expect(riegel, 'Der Betreiber sieht den Riegel nicht.').toBeVisible()

@@ -1,7 +1,7 @@
 /* Mein Konto › Verbindungen, erste Karte „Geräte" (Bauplan „Einstellungen", Verbindungen 1, E4): die gekoppelten
  * iPhones und iPads mit „zuletzt …", ob sie Mitteilungen bekommen, `sm` „Trennen"; unten „iPhone oder iPad verbinden"
  * mit QR-Code und kurzem Code im Fenster. Ersetzt nexmails Karte „iPhone verbinden"; der Schalter des Betreibers
- * („iPhone-App erlauben") steht seitdem unter Server › Allgemein › Schnittstellen.
+ * („iPhone-App erlauben") steht seitdem unter Server › Verbindungen › Schnittstellen.
  *
  * ⚠️ **Der Code lebt nur in diesem Fenster.** Geheimnis und Code kommen einmal vom Server und stehen dort nur als Hash;
  * wer neu lädt, holt einen neuen. Getrennt wird über denselben Weg wie unter Sicherheit (`DELETE /api/sitzungen/{id}`),

@@ -19,13 +19,13 @@
       },
       {
         "title": "Für den Betreiber: andere nex-Apps einrichten",
-        "where": "Server › Allgemein › Andere nex-Apps",
+        "where": "Server › Verbindungen › Andere nex-Apps",
         "body": "Du trägst die Adresse von nextasks, nextime und nexpaper einmal ein, danach verbindet jedes Konto mit einem Klick. Ist eine App noch nicht eingerichtet, sagt die Karte das, dir mit einem Link hierher. Läuft eine der Apps im eigenen Netz (LAN, VPN), erlaubst du das mit „Verbindungen ins eigene Netz“. Mit dem Schalter oben schaltest du Verbindungen ganz ab; bestehende ruhen dann, gelöscht wird nichts."
       },
       {
         "title": "KI-Werkzeuge (MCP)",
         "where": "Mein Konto › Verbindungen › KI-Werkzeuge (MCP)",
-        "body": "Ein KI-Programm wie Claude Code kann jetzt mit deiner Post arbeiten: Ungelesenes zählen, Mails suchen und lesen, Antworten entwerfen, Schlagworte setzen, Mails verschieben und Aufgaben abhaken. Es sieht nur die Postfächer, die du ihm gibst, und sendet nie etwas; Entwürfe landen bei den Entwürfen. Den Text einer Mail liest es nur mit dem Extra „Mailtext lesen“. Je Werkzeug wählst du „Erlauben“, „Fragen“ oder „Verweigern“; eine Rückfrage erscheint in deinem Browser. Ab Werk aus: Der Betreiber schaltet es unter Server › Allgemein › Schnittstellen frei."
+        "body": "Ein KI-Programm wie Claude Code kann jetzt mit deiner Post arbeiten: Ungelesenes zählen, Mails suchen und lesen, Antworten entwerfen, Schlagworte setzen, Mails verschieben und Aufgaben abhaken. Es sieht nur die Postfächer, die du ihm gibst, und sendet nie etwas; Entwürfe landen bei den Entwürfen. Den Text einer Mail liest es nur mit dem Extra „Mailtext lesen“. Je Werkzeug wählst du „Erlauben“, „Fragen“ oder „Verweigern“; eine Rückfrage erscheint in deinem Browser. Ab Werk aus: Der Betreiber schaltet es unter Server › Verbindungen › Schnittstellen frei."
       },
       {
         "title": "Ein KI-Anbieter für alle",
@@ -45,7 +45,7 @@
       {
         "title": "Einstellungen wie in allen nex-Apps",
         "where": "Unten in der Seitenleiste: Name · Einstellungen",
-        "body": "Die Einstellungen haben jetzt denselben Aufbau, dieselben Knöpfe und dieselben Fenster wie die anderen nex-Apps. Datum und Uhrzeit stehen überall in einer Form und in der Zeitzone deines Kontos. Hell, Dunkel oder „Wie das System“ gehört jetzt zu deinem Konto und gilt auf jedem Gerät; neue Konten beginnen mit „Wie das System“. Ältere Links auf eine Einstellungsseite führen weiter an die richtige Stelle."
+        "body": "Die Einstellungen haben jetzt denselben Aufbau, dieselben Knöpfe und dieselben Fenster wie die anderen nex-Apps. Datum und Uhrzeit stehen überall in einer Form und in der Zeitzone deines Kontos. Hell, Dunkel oder „Wie das System“ gehört jetzt zu deinem Konto und gilt auf jedem Gerät; neue Konten beginnen mit „Wie das System“. Unter Server › Verbindungen stehen für den Betreiber „Andere nex-Apps“ und „Schnittstellen“. Ältere Links auf eine Einstellungsseite führen weiter an die richtige Stelle."
       }
     ],
     "smallTitle": "Außerdem",

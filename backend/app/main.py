@@ -746,7 +746,7 @@ def _adresse_fuer_programme(request: Request) -> str:
         return kontenpost.oeffentliche_adresse(db) or (str(request.base_url).rstrip("/") + einstellungen_.url_base)
 
 
-# Mein Konto › Verbindungen „API-Schluessel", Server › Allgemein „Schnittstellen", Server › Konten „API-Schluessel aller
+# Mein Konto › Verbindungen „API-Schluessel", Server › Verbindungen „Schnittstellen", Server › Konten „API-Schluessel aller
 # Konten" (Modul schluessel 1.0.0) unter ``/api/connections``. Nur Browser-Sitzungen (``deps._sitzung`` laesst ausserhalb
 # von ``/api/app/`` kein Geraetetoken herein). Die alten Wege ``/api/apischluessel`` bleiben.
 from .services.schluessel_store import KONFIGURATION as _SCHLUESSEL  # noqa: E402

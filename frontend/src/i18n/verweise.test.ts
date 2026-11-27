@@ -1,6 +1,6 @@
 /* Verweise auf Orte in nexmail und in den anderen nex-Apps (Bauplan „Einstellungen“, E39): Was nexmail über einen Ort
  * sagt, nennt ihn so, wie die Navigation heute heißt; was es über nextasks und nextime sagt, passt zu deren Stand
- * (Mein Konto → Verbindungen → API-Schlüssel, Server → Allgemein → Schnittstellen). Todoist behält sein eigenes Wort
+ * (Mein Konto → Verbindungen → API-Schlüssel, Server → Verbindungen → Schnittstellen). Todoist behält sein eigenes Wort
  * „API-Token“, weil Todoist es so nennt. */
 import { describe, expect, it } from 'vitest'
 
@@ -14,8 +14,8 @@ function blaetter(baum: Baum, vor = ''): [string, string][] {
 }
 
 const ALT: Record<'de' | 'en', RegExp[]> = {
-  de: [/Schlüssel für Programme/, /Server → API\b/, /Einstellungen → Signaturen/, /siehe Protokoll/, /Rücksetzpunkt/, /in den Einstellungen unter Aufgaben/, /Token erneuern/],
-  en: [/Keys for programs/, /Server → API\b/, /Settings → Signatures/, /restore point/i, /Settings, Tasks/, /Renew token/],
+  de: [/Schlüssel für Programme/, /Server → API\b/, /Einstellungen → Signaturen/, /siehe Protokoll/, /Rücksetzpunkt/, /in den Einstellungen unter Aufgaben/, /Token erneuern/, /Allgemein › (Schnittstellen|Andere nex-Apps)/],
+  en: [/Keys for programs/, /Server → API\b/, /Settings → Signatures/, /restore point/i, /Settings, Tasks/, /Renew token/, /General › (Interfaces|Other nex apps)/],
 }
 
 describe('Verweise auf Orte (E39)', () => {
@@ -33,13 +33,13 @@ describe('Verweise auf Orte (E39)', () => {
   }
 
   it('nennt die neuen Orte in nextasks, nextime und nexmail', () => {
-    expect(de.serverfehler.nextasks_api_aus).toContain('Server › Allgemein › Schnittstellen')
+    expect(de.serverfehler.nextasks_api_aus).toContain('Server › Verbindungen › Schnittstellen')
     expect(de.serverfehler.nextasks_zugang_ungueltig).toContain('Mein Konto › Verbindungen › API-Schlüssel')
     expect(de.nextime.hinweis).toContain('Mein Konto › Verbindungen › API-Schlüssel')
-    expect(de.serverfehler.api_schluessel_abgeschaltet).toContain('Server › Allgemein › Schnittstellen')
+    expect(de.serverfehler.api_schluessel_abgeschaltet).toContain('Server › Verbindungen › Schnittstellen')
     expect(de.serverfehler.app_adresse_fehlt).toContain('Server › Anmeldung')
     expect(de.regeln.schlagwort_keins).toContain('Mail › Schlagworte')
-    expect(en.serverfehler.nextime_api_aus).toContain('Server › General › Interfaces')
+    expect(en.serverfehler.nextime_api_aus).toContain('Server › Connections › Interfaces')
     expect(en.todoapps.nextasks_hinweis).toContain('My account › Connections › API keys')
     expect(en.verfassen.vorlagen_leer).toContain('Mail › Signatures')
   })

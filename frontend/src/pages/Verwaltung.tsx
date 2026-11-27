@@ -2,9 +2,14 @@
  *
  * 1. „Funktionen für alle Konten" (SlidersHorizontal): Kalender- und Adressbuchserver im eigenen Netz, Text der Mail
  *    an Webhooks. Beide wirken beim Anhaken, nicht über „Speichern".
+ * 2. „Sprachen" (Modul sprachen).
+ * 3. nexmails eigene Karte „Zeitzone des Servers".
+ *
+ * Server › Verbindungen (E67, `ServerVerbindungen`), das Gegenstück zu Mein Konto › Verbindungen:
+ *
+ * 1. „Andere nex-Apps" (Modul verbinden).
  * 2. „Schnittstellen" (Modul schluessel): API für Mitglieder, MCP-Zugang mit den Einstellungen des Moduls mcp
  *    (Programme erlauben, Höchste Stufe, Gesperrte Werkzeuge), iPhone-App erlauben.
- * 3. nexmails eigene Karte „Zeitzone des Servers".
  *
  * Die öffentliche Adresse steht seit dem Bauplan nur noch unter Server › Anmeldung.
  *
@@ -23,11 +28,26 @@ import { BASIS } from '../lib/basis'
 import { servermeldung } from '../lib/servermeldung'
 import { Button, Card, CheckboxRow, Field, Notice } from '../vendor/nexui'
 
-export function ServerAllgemein({ dokuHref }: { dokuHref?: string }) {
-  const { t } = useTranslation()
+export function ServerAllgemein() {
   return (
     <>
       <FunktionenFuerAlle />
+      {/* Bauplan Allgemein (E48): keine Karte „Grenzen“ (nexmail hat nichts zu begrenzen), kein „Web Push“ (nichts
+          einzustellen, E33); „Sprachen“ aus dem Modul sprachen (E51); danach nexmails eigene Karte. „Andere nex-Apps“
+          und „Schnittstellen“ stehen seit E67 unter Server › Verbindungen. */}
+      <Sprachen />
+      <ZeitzoneDesServers />
+    </>
+  )
+}
+
+/** Server › Verbindungen (E67): die anderen nex-Apps, dann die Schnittstellen, dieselben Karten wie vorher unter
+ *  Allgemein. */
+export function ServerVerbindungen({ dokuHref }: { dokuHref?: string }) {
+  const { t } = useTranslation()
+  return (
+    <>
+      <ConnectionsOperatorCard app="nexmail" request={modulAnfrage} />
       {/* Modul schluessel: „Programmschnittstelle (API) für Mitglieder" und „iPhone-App erlauben" (ersetzt den Schalter
           in der alten Karte „API-Schlüssel" und den in „iPhone verbinden"). */}
       <InterfacesCard
@@ -35,12 +55,6 @@ export function ServerAllgemein({ dokuHref }: { dokuHref?: string }) {
         docsHref={dokuHref}
         after={{ mcp: <McpOperatorSettings request={modulAnfrage} words={mcpWorte(t)} /> }}
       />
-      {/* Bauplan Allgemein (E48): keine Karte „Grenzen“ (nexmail hat nichts zu begrenzen), kein „Web Push“ (nichts
-          einzustellen, E33); „Sprachen“ aus dem Modul sprachen (E51); danach nexmails eigene Karte. */}
-      {/* V22: „Andere nex-Apps“ (Modul verbinden) nach „Schnittstellen“, vor „Sprachen“. */}
-      <ConnectionsOperatorCard app="nexmail" request={modulAnfrage} />
-      <Sprachen />
-      <ZeitzoneDesServers />
     </>
   )
 }

@@ -19,13 +19,13 @@
       },
       {
         "title": "For the operator: set up the other nex apps",
-        "where": "Server › General › Other nex apps",
+        "where": "Server › Connections › Other nex apps",
         "body": "You enter the address of nextasks, nextime and nexpaper once, and from then on every account connects in one click. If an app is not set up yet, the card says so, and shows you a link to this place. If one of the apps runs in your own network (LAN, VPN), allow it with Connections into the local network. The switch at the top turns connections off altogether; existing ones then rest, and nothing is deleted."
       },
       {
         "title": "AI tools (MCP)",
         "where": "My account › Connections › AI tools (MCP)",
-        "body": "An AI program such as Claude Code can now work with your mail: count unread messages, search and read mail, draft replies, set tags, move messages and tick off tasks. It sees only the mailboxes you give it and never sends anything; drafts land in the Drafts folder. It reads the text of a mail only with the extra Read mail text. For each tool you choose Allow, Ask or Deny; a question shows up in your browser. Off by default: the operator switches it on under Server › General › Interfaces."
+        "body": "An AI program such as Claude Code can now work with your mail: count unread messages, search and read mail, draft replies, set tags, move messages and tick off tasks. It sees only the mailboxes you give it and never sends anything; drafts land in the Drafts folder. It reads the text of a mail only with the extra Read mail text. For each tool you choose Allow, Ask or Deny; a question shows up in your browser. Off by default: the operator switches it on under Server › Connections › Interfaces."
       },
       {
         "title": "One AI provider for everybody",
@@ -45,7 +45,7 @@
       {
         "title": "Settings like in every nex app",
         "where": "Bottom of the sidebar: name · Settings",
-        "body": "The settings now have the same layout, buttons and windows as the other nex apps. Dates and times look the same everywhere and follow your account's time zone. Light, Dark or As the system now belongs to your account and applies on every device; new accounts start with As the system. Older links to a settings page still lead to the right place."
+        "body": "The settings now have the same layout, buttons and windows as the other nex apps. Dates and times look the same everywhere and follow your account's time zone. Light, Dark or As the system now belongs to your account and applies on every device; new accounts start with As the system. Under Server › Connections the operator finds “Other nex apps” and “Interfaces”. Older links to a settings page still lead to the right place."
       }
     ],
     "smallTitle": "Also",

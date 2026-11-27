@@ -227,7 +227,8 @@ Kopfzeile `// Vorlage <Paket> <Fassung der letzten Änderung>` und den Änderung
 | Benachrichtigungen (`notifications`) | ui `NotifyWays` | „Worüber“ und „Ruhezeit“ als nexmails Karten; keine Server-Karte für Web Push (nichts einzustellen, E33) |
 | Verbindungen (`connections`) | schluessel `ApiKeysCard`, ui `Collapsible` | Karte „Geräte“ statt „iPhone verbinden“ (`GET /api/app-kopplung/geraete`, Koppeln im Fenster), „Auf diesem Gerät installieren“, nextime und nextasks, „Aufgaben“ (Todoist, Webhook) als app-eigene Karten; keine MCP-Karte (E27) |
 | Mail › Postfächer, Regeln, Signaturen, Abwesenheit, Schlagworte | nexmail | nur Karten; Knöpfe, Felder, Auswahl, Haken aus dem Bausatz; „Postfach bearbeiten“ im Fenster des Bausatzes |
-| Server › Allgemein (`general`) | schluessel `InterfacesCard` | „Funktionen für alle Konten“, „Zeitzone des Servers“ (app-eigen); die öffentliche Adresse steht nur noch unter Anmeldung |
+| Server › Allgemein (`general`) | sprachen `LanguagesCard` | „Funktionen für alle Konten“, „Zeitzone des Servers“ (app-eigen); die öffentliche Adresse steht nur noch unter Anmeldung |
+| Server › Verbindungen (`server-connections`, E67) | verbinden `ConnectionsOperatorCard`, schluessel `InterfacesCard` (mit mcp `McpOperatorSettings`) | „Andere nex-Apps“, dann „Schnittstellen“, vorher unter Allgemein; `/settings/general#nex-apps` und `#interfaces` führen mit dem Anker hierher (`pages/einstellungen/adresse.ts`) |
 | Server › Anmeldung (`sign-in`) | konten `SignInPage` (`GET/PUT /api/server/sign-in`, `…/readiness`), oidc `SignInProviders` | Reihenfolge des Bauplans; die Schalter `anmeldung_passwort`, `zwei_faktor_fuer_alle`, `passkeys_erlaubt` unter ihren Namen |
 | Server › Mail (`mail`) | post `MailCard` unter `/api/server/mail` | zweite Karte „Google und Microsoft“; `systempost.senden` ist leer (nur noch die Testbrücke des Tests „Bestand“), die Post der Postfächer bleibt, wie sie war |
 | Server › Speicher und Sicherung (`storage`) | sicherung 1.0.1 `StorageArea` unter `/api/server/storage` | alte `.db`-Rücksetzpunkte und neue ZIPs in einer Liste, Uhrzeit (`sicherung_uhrzeit`, 03:00), monatlich, schlankes verschlüsseltes Herunterladen (E22); die alten Wege `/api/sicherung/*` über das Modul |
@@ -282,7 +283,7 @@ behalten nexmails Dunkel, außer ihr Browser hielt wirklich einen Wert (`theme_d
 `lib/browserwahl.ts`); Kasten „Passkeys“ immer, wenn der Betreiber sie erlaubt; Server › Allgemein in der Reihenfolge
 des Bauplans: „Funktionen für alle Konten“ (`features`), „Schnittstellen“, neu „Sprachen“ (wie nexnotes, `/api/locales`,
 `services/sprachen.py`), „Zeitzone des Servers“; „Postfach hinzufügen“ als Bausatz-Knopf; Abwesenheit aus Karten;
-Ortsangaben nach E46 (Mein Konto › Verbindungen › API-Schlüssel, Server › Allgemein › Schnittstellen), Test
+Ortsangaben nach E46 (Mein Konto › Verbindungen › API-Schlüssel, Server › Verbindungen › Schnittstellen), Test
 `src/i18n/verweise.test.ts` mit der Regel; E49: jedes „wo“ in „Was ist neu“ zeigt auf den heutigen Ort.
 
 **Nacharbeit (1ce1a8f, c0b07ab):** Kasten „Passkeys“ mit `PasskeyAddition` aus konten: `GET /api/auth/passkeys` trägt

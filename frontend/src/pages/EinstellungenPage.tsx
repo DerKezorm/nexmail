@@ -1,6 +1,6 @@
 /* Die Einstellungen nach dem Bauplan „Einstellungen" (nexlore, Development/nexapps/Baupläne), im Gerüst des Bausatzes
  * ui 1.1.0: `SettingsLayout` mit `SettingsNav` (oben das Konto, „Mein Konto", nexmails eigene Gruppe „Mail", „Server"
- * nur für Betreiber, abgesetzt „Über nexmail") und je Bereich eine `SettingsPage`: Titel, eine Zeile, darunter nur
+ * nur für Betreiber mit Allgemein und Verbindungen vorn, abgesetzt „Über nexmail") und je Bereich eine `SettingsPage`: Titel, eine Zeile, darunter nur
  * Karten. Jeder Bereich hat seine Adresse (`/settings/<slug>`, `einstellungen/bereiche.ts`); die deutschen Namen von
  * vorher führen dorthin. `/settings` allein ist auf dem Handy die Liste, auf breiter Seite das Profil neben der
  * Navigation.
@@ -55,7 +55,7 @@ import { Benutzerverwaltung } from './Benutzerverwaltung'
 import { OauthVerwaltung } from './OauthVerwaltung'
 import { Protokoll } from './Protokoll'
 import { Sicherungen } from './Sicherungen'
-import { ServerAllgemein } from './Verwaltung'
+import { ServerAllgemein, ServerVerbindungen } from './Verwaltung'
 import { MailCard } from '../vendor/nexpost/MailCard'
 import { Profil } from './einstellungen/Profil'
 import { Anmeldung } from './einstellungen/Anmeldung'
@@ -374,7 +374,10 @@ export function EinstellungenPage({
       case 'ai-provider':
         return <KiAnbieter ichNeuLaden={ichNeuLaden} />
       case 'general':
-        return <ServerAllgemein dokuHref={API_DOKU} />
+        return <ServerAllgemein />
+      case 'server-connections':
+        /* E67: das Gegenstück des Betreibers zu Mein Konto › Verbindungen: „Andere nex-Apps“, dann „Schnittstellen“. */
+        return <ServerVerbindungen dokuHref={API_DOKU} />
       case 'sign-in':
         return <Anmeldung ich={ich} />
       case 'mail':
