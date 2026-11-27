@@ -73,6 +73,7 @@ import {
 } from '../vendor/nexui'
 import { WhatYouSeeCard } from '../vendor/nexkonten/AccountCards'
 import { AllKeysCard } from '../vendor/nexschluessel/AllKeysCard'
+import { AccountDevicesPart } from '../vendor/nexgeraete'
 import { alsEinladung, alsKonto, APP_CAPS, eigenes, type BenutzerZeile, type EinladungsZeile } from './kontenliste'
 
 interface Bestand {
@@ -382,6 +383,16 @@ function Verwalten({
             <Row lead={<Bild konto={konto} groesse={48} />} name={name} badge={<Marken marken={accountBadges(konto)} />} sub={accountLine(konto)} />
           </Rows>
           <Facts items={angaben} label={t(MANAGE_DIALOG.title, { name })} testId="verwalten-angaben" />
+          {/* geraete 0.1.0 (G28): wie viele Geräte das Konto gekoppelt hat, welche Art, zuletzt gesehen, nie ihre Namen;
+              „Geräte trennen“. Gesperrt oder gelöscht ruhen sie (G26). */}
+          <AccountDevicesPart
+            request={modulAnfrage}
+            accountId={zeile.id}
+            name={name}
+            blocked={Boolean(konto.blocked || konto.deletedAt)}
+            language={sprache}
+            when={zeitpunkt}
+          />
           {gruppen.map((gruppe) => (
             <ButtonGroup key={gruppe.group} title={t(gruppe.title)} layout={gruppe.layout} testId={`verwalten-${gruppe.group}`}>
               {gruppe.actions.map((handlung) =>

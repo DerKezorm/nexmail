@@ -682,6 +682,13 @@ app.include_router(app1_router.router, dependencies=[Depends(nur_geraet)])
 # Ohne Wache: Wer hier ankommt, hat noch keinen Schlüssel (OEFFENTLICHE_PFADE).
 app.include_router(app_kopplung_router.public_router)
 app.include_router(app_kopplung_router.router, dependencies=NUR_ANGEMELDET)
+# geraete 0.1.0: die Browser-Wege des Gerätemoduls (``/api/app-pairing``, ``/api/app-connect``, ``/api/app-devices``,
+# ``/api/server/accounts/{id}/devices``). Angemeldet über ihre eigene Abhängigkeit ``angemeldet``; davor hört ein
+# Geräteschlüssel ohne ``X-Nex-App`` wie überall außerhalb der Fläche ``401 nicht_angemeldet``.
+from .routers import geraete as geraete_router  # noqa: E402
+from .services import geraete_store as _geraete_store  # noqa: E402
+
+app.include_router(geraete_router.browser_router, dependencies=[Depends(_geraete_store.alte_form_aussen)])
 # ⚠️ **Nicht als Ganzes geschuetzt.** Der Rueckweg vom Anbieter ist eine
 # Navigation von fremder Seite; er traegt seinen eigenen Nachweis (Anlauf-
 # Cookie plus signierter Zustand) und darf deshalb ohne Sitzung ankommen.

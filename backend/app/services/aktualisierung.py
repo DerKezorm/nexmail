@@ -9,9 +9,11 @@ nexmail bleibt bei seinem Schalter ``update_pruefen`` (``"0"`` aus, ``"1"`` an, 
 also an) und bei seinen alten Wegen ``/api/ueber`` (dünne Hülle in ``routers/ueber.py``). Die Wege des Moduls liegen
 unter ``/api/about``.
 
-⚠️ **Keine Glocke, also kein Blick im Hintergrund** (U19): nexmail hat keine Glocke, der tägliche Blick diente nur dem
-Bescheid dort. Gefragt wird, wenn ein Betreiber „Über nexmail“ öffnet (höchstens einmal am Tag) oder „Jetzt
-nachsehen“ klickt. Ein Mitglied löst nie eine Frage aus und erfährt nichts über den Stand (U2, U15).
+⚠️ **Keine Glocke, aber Geräte** (U19, geraete 0.1.0 G18): nexmail hat keine Glocke; seit 0.35.0 geht eine neue
+Version als Mitteilung „Neue Version“ an die gekoppelten Geräte der Betreiber, die sie an haben und verstehen
+(``geraete_store.neue_version``). Dafür sieht der Aufräumfaden höchstens einmal am Tag nach (``im_hintergrund``), nur
+solange „Einmal am Tag nachsehen“ an ist. Gefragt wird außerdem, wenn ein Betreiber „Über nexmail“ öffnet oder
+„Jetzt nachsehen“ klickt. Ein Mitglied löst nie eine Frage aus und erfährt nichts über den Stand (U2, U15).
 
 ⚠️ **Die Prüfung ist Beiwerk.** Fällt GitHub aus, fehlt das Netz oder antwortet die Schnittstelle mit einem Fehler,
 geht davon nichts in der Oberfläche kaputt; dann steht dort einfach kein Stand.
@@ -25,6 +27,8 @@ from ..vendor import nexupdates
 
 #: Der Schalter, wo er immer lag (Tabelle ``einstellung``).
 SCHLUESSEL_UPDATE_PRUEFEN = "update_pruefen"
+#: Die Version, von der die Geräte der Betreiber zuletzt hörten (G18): niemand hört zweimal von derselben.
+SCHLUESSEL_UPDATE_GEMELDET = "update_gemeldet"
 
 REPO = "DerKezorm/nexmail"
 REPO_URL = f"https://github.com/{REPO}"
@@ -50,6 +54,33 @@ def _schreiben(an: bool) -> None:
         einstellung_schreiben(db, SCHLUESSEL_UPDATE_PRUEFEN, "1" if an else "0")
 
 
+def _gemeldet_lesen() -> str | None:
+    from ..db import SessionLocal, einstellung_lesen
+
+    with SessionLocal() as db:
+        return einstellung_lesen(db, SCHLUESSEL_UPDATE_GEMELDET) or None
+
+
+def _gemeldet_schreiben(fassung: str) -> None:
+    from ..db import SessionLocal, einstellung_schreiben
+
+    with SessionLocal() as db:
+        einstellung_schreiben(db, SCHLUESSEL_UPDATE_GEMELDET, fassung)
+
+
+def _neue_version(fassung: str) -> None:
+    """``on_newer``: die Version ohne das ``v`` des Tags an die Geräte der Betreiber."""
+    from . import geraete_store
+
+    geraete_store.neue_version(fassung.removeprefix("v"))
+
+
+def im_hintergrund() -> str | None:
+    """Ein Blick im Hintergrund (``look_once``): fragt das Netz höchstens einmal am Tag und nur bei „an“; findet er
+    eine neuere Version, geht sie einmal an die Geräte der Betreiber."""
+    return nexupdates.check.look_once()
+
+
 def konfigurieren() -> None:
     """Beim Laden der App (``main``), vor der ersten Anfrage; der Vertragsadapter startet so neu."""
     nexupdates.configure(
@@ -61,8 +92,10 @@ def konfigurieren() -> None:
             update_url=lambda: get_settings().update_url,
             read_switch=_lesen,
             write_switch=_schreiben,
-            # U19: ohne Glocke kein ``on_newer``, also kein Blick im Hintergrund.
-            on_newer=None,
+            # G18: statt einer Glocke die Geräte der Betreiber (einmal je Version).
+            on_newer=_neue_version,
+            read_told=_gemeldet_lesen,
+            write_told=_gemeldet_schreiben,
         )
     )
 

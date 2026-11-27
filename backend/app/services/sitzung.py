@@ -201,7 +201,10 @@ GERAET_TAGE = 3650
 
 
 def geraet_anlegen(db: Session, benutzer: Benutzer, name: str, adresse: str) -> str:
-    """Ein Gerät anlegen. Der Rückgabewert steht nur hier im Klartext."""
+    """Ein Gerät so anlegen, wie nexmail bis 0.34 koppelte (ohne die Spalten des Gerätemoduls). Gekoppelt wird seit
+    0.35.0 über das Modul (``routers/geraete.py``); das hier schreibt noch die Tests und der Vertragsadapter
+    (``tests/nexgeraete_adapter.make_legacy``), damit der Bestand geprüft bleibt. Der Rückgabewert steht nur hier im
+    Klartext. Geprüft wird ein Gerät vom Modul (``deps._geraet``)."""
     token = GERAET_VORSILBE + secrets.token_urlsafe(48)
     db.add(
         Sitzung(
@@ -216,31 +219,6 @@ def geraet_anlegen(db: Session, benutzer: Benutzer, name: str, adresse: str) -> 
     )
     db.commit()
     return token
-
-
-def geraet_holen(db: Session, request: Request) -> Sitzung | None:
-    """Die Sitzung zur Kopfzeile ``Authorization: Bearer nxa_…`` - oder nichts.
-
-    ⚠️ **Nur die Kopfzeile, nie das Cookie.** Dieselbe Trennung wie in
-    ``holen``, andersherum. ``isascii`` steht davor, weil ``_hash`` sonst an
-    einer fremden Kopfzeile mit einem 500 umfiele.
-    """
-    art, _, wert = request.headers.get("authorization", "").partition(" ")
-    wert = wert.strip()
-    if art.lower() != "bearer" or not wert.startswith(GERAET_VORSILBE) or not wert.isascii():
-        return None
-
-    sitzung = db.execute(
-        select(Sitzung).where(Sitzung.token_hash == _hash(wert), Sitzung.art == "geraet")
-    ).scalar_one_or_none()
-    if sitzung is None or sitzung.gueltig_bis <= utcnow():
-        return None
-
-    if (utcnow() - sitzung.zuletzt_gesehen) > timedelta(hours=1):
-        sitzung.zuletzt_gesehen = utcnow()
-        sitzung.adresse = anmeldebremse.adresse_von(request)
-        db.commit()
-    return sitzung
 
 
 def beenden(db: Session, sitzung: Sitzung, response: Response) -> None:

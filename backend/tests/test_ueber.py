@@ -254,17 +254,29 @@ def test_ein_mitglied_erfaehrt_nichts_und_fragt_nie(klient, db, monkeypatch):
     assert gerufen == []
 
 
-def test_ohne_glocke_fragt_der_hintergrund_nie(klient, monkeypatch):
-    """U19: nexmail hat keine Glocke, also kein Blick im Hintergrund, auch nicht mit eingeschaltetem Schalter."""
+def test_der_hintergrund_fragt_hoechstens_einmal_am_tag_und_sagt_es_den_geraeten(klient, monkeypatch):
+    """U19 seit geraete 0.1.0 (G18): nexmail hat keine Glocke, aber gekoppelte Geräte. Eine neue Version geht als
+    „Neue Version“ an die Geräte der Betreiber (``on_newer``), einmal je Version; gefragt wird im Hintergrund höchstens
+    einmal am Tag und nur mit eingeschaltetem Schalter."""
+    from app.services import geraete_store
+
+    gemeldet: list[str] = []
+    monkeypatch.setattr(geraete_store, "neue_version", gemeldet.append)
     gerufen = _zaehler(monkeypatch)
     einrichten(klient)
+    klient.put("/api/ueber/pruefen", json={"update_pruefen": False})
+    gerufen.clear()
+    nexupdates.forget()
+    assert nexupdates.current().on_newer is not None
+    assert nexupdates.look_once() is None
+    assert gerufen == [], "Aus heißt: nie nach außen"
     klient.put("/api/ueber/pruefen", json={"update_pruefen": True})
     gerufen.clear()
     nexupdates.forget()
-    assert nexupdates.current().on_newer is None
     for _ in range(3):
-        assert nexupdates.look_once() is None
-    assert gerufen == []
+        nexupdates.look_once()
+    assert len(gerufen) == 1, "höchstens einmal am Tag"
+    assert gemeldet == ["v99.0.0"] or gemeldet == ["99.0.0"], "einmal je Version an die Geräte"
 
 
 def test_alte_und_neue_wege_teilen_den_schalter(klient, db, monkeypatch):

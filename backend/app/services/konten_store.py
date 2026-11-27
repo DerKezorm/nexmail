@@ -174,6 +174,14 @@ SPERRE_MINUTEN = 15
 #: Ob das Bild vom Anbieter in einem eigenen Faden geholt wird. Tests schalten das ab und warten nicht.
 BILD_IM_FADEN = True
 
+def _geraetename(zeile: Sitzung) -> str:
+    """Ein gekoppeltes Geraet in „Angemeldete Geraete“ (konten ``device_label``): Name, dazu das Modell, wo es mehr
+    sagt (``nexgeraete.describe``)."""
+    from .geraete_store import beschreiben
+
+    return beschreiben(zeile)
+
+
 
 class KontenStore:
     """``nexkonten.Store`` ueber nexmails Tabellen, innerhalb einer Sitzung."""
@@ -404,7 +412,9 @@ class KontenStore:
             )
         )
         schluessel = self.db.scalars(select(ApiSchluessel).where(ApiSchluessel.benutzer_id == str(account_id)))
-        return [Access(g.id, "device", g.geraet or "", g.zuletzt_gesehen) for g in geraete] + [
+        from .geraete_store import beschreiben
+
+        return [Access(g.id, "device", beschreiben(g), g.zuletzt_gesehen) for g in geraete] + [
             Access(s.id, "api_key", s.name, s.zuletzt_benutzt) for s in schluessel
         ]
 
@@ -776,7 +786,8 @@ class KontenStore:
             remember=bool(z.merken),
             stage=z.stufe or STAGE_FULL,
             provider_checked=bool(z.anbieter_geprueft),
-            label=z.geraet or "",
+            # geraete 0.1.0: ein Gerät mit Modell, wo es mehr sagt (``nexgeraete.describe``).
+            label=_geraetename(z) if z.art == "geraet" else z.geraet or "",
             address=z.adresse or "",
         )
 
@@ -918,12 +929,18 @@ class KontenStore:
         logger.info("Account is back: pushes and syncs go on account=%s", account.id)
 
     def shut_out(self, account_id: AccountId) -> None:
-        """Nach Sperren oder Loeschen: kein Weg mehr hinein. Browser, wartende Anmeldungen und gekoppelte iPhones
-        enden, ein QR-Code, den noch niemand gescannt hat, verfaellt, die Kennung bekannter Browser wird neu.
-        API-Schluessel bleiben stehen, werden aber abgewiesen, solange das Konto gesperrt oder geloescht ist
-        (``deps.api_zugriff``); Anbieter und Passkeys weist das Modul ab (``Account.blocked``). Verbundene KI-Programme
-        enden (E42), MCP-Schluessel von Hand ruhen wie API-Schluessel."""
-        self.db.execute(delete(Sitzung).where(Sitzung.benutzer_id == str(account_id)))
+        """Nach Sperren oder Loeschen: kein Weg mehr hinein. Browser und wartende Anmeldungen enden, ein QR-Code, den
+        noch niemand gescannt hat, verfaellt, die Kennung bekannter Browser wird neu. API-Schluessel bleiben stehen,
+        werden aber abgewiesen, solange das Konto gesperrt oder geloescht ist (``deps.api_zugriff``); Anbieter und
+        Passkeys weist das Modul ab (``Account.blocked``). Verbundene KI-Programme enden (E42), MCP-Schluessel von
+        Hand ruhen wie API-Schluessel.
+
+        ⚠️ **Gekoppelte Geraete ruhen** (konten 1.1.5, G26): ihre Zeilen (``art = geraet``) bleiben, das Geraetemodul
+        weist sie ab, solange das Konto draussen ist (``401 account_blocked``, keine Mitteilung), und nach dem
+        Entsperren oder Zurueckholen gehen sie wieder, ohne neu zu koppeln. Endgueltiges Loeschen nimmt sie mit
+        (``purge_account``, Fremdschluessel mit ``ON DELETE CASCADE``); „Ueberall sonst abmelden“ und der Reset des
+        Betreibers trennen sie weiter (``end_everywhere``, ``revoke_access``)."""
+        self.db.execute(delete(Sitzung).where(Sitzung.benutzer_id == str(account_id), Sitzung.art == "browser"))
         self.db.execute(delete(AppKopplung).where(AppKopplung.benutzer_id == str(account_id)))
         self.renew_device_key(account_id)
         # E42: verbundene KI-Programme (OAuth) enden wie Sitzungen und Geraete; MCP-Schluessel von Hand ruhen nur.
@@ -940,7 +957,8 @@ class KontenStore:
 
     def purge_account(self, account_id: AccountId) -> None:
         """Endgueltig weg, wie bisher das Entfernen (``benutzerdienst.entfernen``: Postfaecher, Nachrichten, Kontakte,
-        Regeln, Signaturen …; auf dem Mailserver bleibt alles). Der Benutzername bleibt fuer immer belegt."""
+        Regeln, Signaturen …; auf dem Mailserver bleibt alles). Der Benutzername bleibt fuer immer belegt. Die
+        gekoppelten Geraete gehen mit (``sitzung`` haengt mit ``ON DELETE CASCADE`` am Konto, konten 1.1.5)."""
         from . import benutzer as benutzerdienst
 
         zeile = self.db.get(Benutzer, str(account_id))

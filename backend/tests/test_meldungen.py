@@ -117,6 +117,14 @@ def _ueber_das_kimodul() -> set[str]:
     return set(kidienst.ALTE_KENNUNGEN.values())
 
 
+def _ueber_das_geraetemodul() -> set[str]:
+    """Die Kennungen von vorher, unter denen die App-Wege des Geraetemoduls ohne ``X-Nex-App`` antworten (geraete
+    0.1.0, Form ``mail``; ``geraete_store.ALTE_KENNUNGEN``), und die Huellen unter ``/api/app-kopplung``."""
+    from app.services.geraete_store import ALTE_KENNUNGEN
+
+    return set(ALTE_KENNUNGEN)
+
+
 def test_kein_satz_fuer_menschen_im_server():
     """⚠️ **Der eigentliche Wächter.** Was hier steht, steht in der Oberfläche.
 
@@ -159,7 +167,7 @@ def test_jede_kennung_steht_im_katalog():
     ⚠️ **In beiden Sprachen.** Nur eine zu pflegen heisst: In der anderen steht
     ``ordner_name_fehlt`` auf dem Bildschirm.
     """
-    genannt = {text for _, _, text in _stellen() if KENNUNG.match(text)} | _ueber_das_kontenmodul() | _ueber_das_mailmodul() | _ueber_das_schluesselmodul() | _ueber_das_kimodul()
+    genannt = {text for _, _, text in _stellen() if KENNUNG.match(text)} | _ueber_das_kontenmodul() | _ueber_das_mailmodul() | _ueber_das_schluesselmodul() | _ueber_das_kimodul() | _ueber_das_geraetemodul()
     de, en = _katalog("de"), _katalog("en")
 
     fehlt_de = sorted(genannt - set(de))
@@ -174,7 +182,7 @@ def test_der_katalog_traegt_keine_leichen():
     ⚠️ **Sonst traut sich niemand mehr, etwas zu löschen.** Ein Katalog, in dem
     die Hälfte tot ist, wird nur noch ergänzt.
     """
-    genannt = {text for _, _, text in _stellen() if KENNUNG.match(text)} | _ueber_das_kontenmodul() | _ueber_das_mailmodul() | _ueber_das_schluesselmodul() | _ueber_das_kimodul()
+    genannt = {text for _, _, text in _stellen() if KENNUNG.match(text)} | _ueber_das_kontenmodul() | _ueber_das_mailmodul() | _ueber_das_schluesselmodul() | _ueber_das_kimodul() | _ueber_das_geraetemodul()
     uebrig = sorted(set(_katalog("de")) - genannt)
     assert not uebrig, f"Im Katalog, aber im Server nirgends genannt: {uebrig}"
 

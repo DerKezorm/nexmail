@@ -1395,18 +1395,6 @@
     "schlagworte": "Darf Schlagworte setzen",
     "schlagworte_hinweis": "Für den Empfänger eines Webhooks: Schlagworte an die Mail einer Aufgabe hängen und wieder abnehmen, über /api/v1/tasks/…/tags. Das schreibt auf den Mailserver."
   },
-  "iphone": {
-    "code_abtippen": "Oder in der App von Hand eintragen:",
-    "adresse": "Adresse",
-    "code": "Code",
-    "abgelaufen": "Dieser Code ist abgelaufen.",
-    "verbunden": "{{geraet}} ist verbunden.",
-    "wartet": "Wartet auf die App. Der Code gilt bis {{zeit}} für ein Gerät.",
-    "hinweis": "Scanne den Code mit der Kamera des iPhones. Ein Gerät hat dieselben Rechte wie dein Browser.",
-    "neu": "Neuen Code anzeigen",
-    "riegel": "iPhone-App erlauben",
-    "riegel_zu": "Der Betreiber hat die iPhone-App abgeschaltet."
-  },
   "serverfehler": {
     "app_abgeschaltet": "Der Betreiber hat die iPhone-App für diese Installation abgeschaltet.",
     "app_adresse_fehlt": "Für den QR-Code fehlt die Adresse, unter der nexmail erreichbar ist. Trag sie unter Server › Anmeldung ein.",
@@ -1599,6 +1587,7 @@
     "nachricht_unbekannt": "Diese Nachricht gibt es nicht.",
     "nachricht_weg": "Der Server kennt diese Nachricht nicht mehr.",
     "name_unbekannt": "Diesen Namen gibt es hier nicht.",
+    "nicht_gefunden": "Das gibt es nicht oder nicht mehr.",
     "nicht_angemeldet": "Du bist nicht angemeldet.",
     "nichts_ausgewaehlt": "Nichts ausgewählt.",
     "nichts_zu_holen": "Keine der Nachrichten ließ sich holen.",
@@ -2124,16 +2113,6 @@
       "firefox": "Firefox kann Web-Apps nicht installieren. Öffne nexmail dafür in einem anderen Browser, etwa Chrome, Edge oder Safari.",
       "other": "Bietet dein Browser hier keinen Knopf an, findest du das Installieren in seinem Menü, etwa unter „App installieren“ oder „Zum Startbildschirm hinzufügen“."
     }
-  },
-  "geraete": {
-    "titel": "Geräte",
-    "ohne_namen": "Gerät ohne Namen",
-    "mitteilungen_an": "Mitteilungen an",
-    "mitteilungen_aus": "Mitteilungen aus",
-    "zuletzt": "zuletzt {{wann}}",
-    "trennen": "Trennen",
-    "keine": "Noch kein iPhone oder iPad verbunden.",
-    "verbinden": "iPhone oder iPad verbinden"
   },
   "mcp": {
     "stufe_read": "Lesen",

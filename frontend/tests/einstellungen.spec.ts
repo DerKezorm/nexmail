@@ -115,37 +115,22 @@ test('iPhone oder iPad verbinden zeigt QR-Code, kurzen Code und Stand', async ({
   await anmelden(page)
   await zuEinstellungen(page, 'Verbindungen')
 
-  // Bauplan „Einstellungen", Verbindungen 1: die Karte „Geräte", der Code in einem Fenster.
-  await page.getByTestId('geraet-verbinden').click()
-  const fenster = page.getByTestId('koppeln-fenster')
+  // Bauplan „Einstellungen", Verbindungen 1: die Karte „Geräte" (Modul geraete 0.1.0), der Code in einem Fenster.
+  // Wie der QR-Code gezeichnet ist (Ruhezone, viewBox), prüfen die Tests des Moduls; hier: er steht da.
+  await page.getByTestId('devices-connect').click()
+  const fenster = page.getByTestId('pair-body')
 
-  /* ⚠️ Gemessen, nicht nur gesucht: Ohne `viewBox` schnitt die Fläche den Code
-     rechts und unten ab. Er war sichtbar, und kein Telefon konnte ihn lesen. */
-  const code = fenster.getByRole('img', { name: 'iPhone oder iPad verbinden' })
+  const code = fenster.getByTestId('pair-qr')
   await expect(code).toBeVisible()
-  const m = await code.evaluate((rahmen) => {
-    const flaeche = rahmen.getBoundingClientRect()
-    const muster = rahmen.querySelector('svg path.qrline')!.getBoundingClientRect()
-    return {
-      breite: flaeche.width,
-      links: muster.left - flaeche.left,
-      rechts: flaeche.right - muster.right,
-      oben: muster.top - flaeche.top,
-      unten: flaeche.bottom - muster.bottom,
-    }
-  })
-  expect(m.breite).toBe(200)
-  // Vier Module Ruhezone auf jeder Seite, also etwas Weiß ringsum.
-  for (const seite of [m.links, m.rechts, m.oben, m.unten]) expect(seite).toBeGreaterThan(5)
   await expect(fenster.getByText(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/)).toBeVisible()
-  await expect(fenster.getByText(/Wartet auf die App/)).toBeVisible()
+  await expect(fenster.getByTestId('pair-valid')).toBeVisible()
   await keineRohenSchluessel(page)
   await jederKnopfHatEinenNamen(page)
 
-  // Schließen zieht den Code zurück; der Knopf steht wieder da.
-  await fenster.getByRole('button', { name: 'Schließen' }).click()
+  // Abbrechen zieht den Code zurück; der Knopf steht wieder da.
+  await page.getByTestId('pair-cancel').click()
   await expect(fenster).toHaveCount(0)
-  await expect(page.getByTestId('geraet-verbinden')).toBeVisible()
+  await expect(page.getByTestId('devices-connect')).toBeVisible()
 })
 
 test('Jeder Bereich geht auf, mit Inhalt und ohne Fehler', async ({ page }, info) => {

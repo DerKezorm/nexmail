@@ -526,6 +526,18 @@ class Sitzung(Base):
     push_ticket: Mapped[str] = mapped_column(String(1024), default="", server_default="")
     push_schluessel: Mapped[str] = mapped_column(String(64), default="", server_default="")
 
+    #: Gerätemodul geraete 0.1.0 (``services/geraete_store.py``), nur an Zeilen ``art = geraet`` und ergänzend: eine
+    #: Zeile der Vorfassung behält überall ``NULL`` (Art ``ios``, Weg unbekannt, versteht die veröffentlichten Arten,
+    #: alle Arten ab Werk). ``geraet_art`` ``ios``/``ipados``/``mac``; Modell, System, App-Version aus ``X-Nex-App``;
+    #: ``weg`` ``qr``/``code``/``browser``/``icloud``; ``versteht`` und ``mitteilungen`` als JSON.
+    geraet_art: Mapped[str | None] = mapped_column(String(16), default=None, nullable=True)
+    modell: Mapped[str | None] = mapped_column(String(64), default=None, nullable=True)
+    system: Mapped[str | None] = mapped_column(String(64), default=None, nullable=True)
+    app_version: Mapped[str | None] = mapped_column(String(32), default=None, nullable=True)
+    weg: Mapped[str | None] = mapped_column(String(16), default=None, nullable=True)
+    versteht: Mapped[str | None] = mapped_column(Text, default=None, nullable=True)
+    mitteilungen: Mapped[str | None] = mapped_column(Text, default=None, nullable=True)
+
     angelegt: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     zuletzt_gesehen: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     gueltig_bis: Mapped[datetime] = mapped_column(UtcDateTime)
@@ -553,6 +565,25 @@ class AppKopplung(Base):
     #: Gesetzt heißt: abgeholt. Eine Kopplung gilt für ein Gerät.
     abgeholt: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
     geraet: Mapped[str] = mapped_column(String(200), default="")
+    #: geraete 0.1.0: die Tabelle der Kopplungen des Moduls (``Store.pairing``, G34 in nexmails Form). ``geraet_id``
+    #: ist die Sitzung, die die Kopplung abholte, ``angelegt`` ihr Beginn; Zeilen der Vorfassung behalten ``NULL``.
+    geraet_id: Mapped[str | None] = mapped_column(String(32), default=None, nullable=True)
+    angelegt: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None, nullable=True)
+
+
+class AppCode(Base):
+    """geraete 0.1.0 (G8, G34): der Einmalcode der Anmeldung im Browser (``/app-connect``), fünf Minuten, einmal, in
+    nexnotes' Form (``app_codes``). Nur sein Hash steht hier; ``challenge`` ist die PKCE-Probe der App (S256)."""
+
+    __tablename__ = "app_codes"
+
+    code_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(32), ForeignKey("benutzer.id", ondelete="CASCADE"), index=True)
+    state: Mapped[str] = mapped_column(String(200), default="")
+    challenge: Mapped[str | None] = mapped_column(String(200), default=None, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    used_at: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None, nullable=True)
 
 
 class Aenderung(Base):

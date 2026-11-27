@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 
 from .db import get_db
 from .models import ApiSchluessel, Benutzer, Sitzung
-from .services import app_kopplung
 from .services import sitzung as sitzungsdienst
 from .vendor import nexlog
 
@@ -40,18 +39,44 @@ def _sitzung(request: Request, db: Session) -> Sitzung:
     (``BasisPfadMiddleware``).
     """
     if request.scope.get("path", "").startswith(APP_FLAECHE):
-        if not app_kopplung.erlaubt(db):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="app_abgeschaltet"
-            )
-        lage = sitzungsdienst.geraet_holen(db, request)
-    else:
-        lage = sitzungsdienst.holen(db, request)
+        return _geraet(request, db)
+    lage = sitzungsdienst.holen(db, request)
     if lage is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="nicht_angemeldet",
         )
+    return lage
+
+
+def _geraet(request: Request, db: Session) -> Sitzung:
+    """Das Gerät zur Kopfzeile ``Authorization: Bearer nxa_…`` unter ``/api/app/1``: entscheidet das Gerätemodul
+    (``nexgeraete.authenticate``, G12, G38). Ruht das Konto (gesperrt oder gelöscht, G26), verlangt der Betreiber einen
+    zweiten Faktor, den es nicht hat, oder ist der Riegel zu, bleibt das Gerät gespeichert und wird abgewiesen.
+
+    ⚠️ **Die Antwort in der Form der Anfrage** (G32): ohne ``X-Nex-App`` wie seit jeher (``401 nicht_angemeldet``,
+    ``403 app_abgeschaltet``), mit ihr in der neuen Form (``device_disconnected``, ``account_blocked`` …). Der Aufrufer
+    steht danach in ``request.state.geraet`` (``me_fields``)."""
+    from .services import geraete_store
+    from .vendor.nexgeraete import DeviceRefused, authenticate, client_of, forms, tokens
+
+    config = geraete_store.KONFIGURATION
+    store = geraete_store.store_fuer(db)
+    try:
+        aufrufer = authenticate(
+            store,
+            config,
+            tokens.bearer(request.headers.get("authorization")),
+            client=client_of(request.headers.get("x-nex-app")),
+            now=geraete_store.jetzt(),
+        )
+    except DeviceRefused as abgewiesen:
+        db.rollback()
+        raise geraete_store.als_http(forms.form_of(config, request.headers), abgewiesen) from None
+    lage = db.get(Sitzung, str(aufrufer.device.id))
+    if lage is None:  # zwischen Prüfen und Lesen getrennt
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="nicht_angemeldet")
+    request.state.geraet = aufrufer
     return lage
 
 
@@ -68,7 +93,8 @@ def angemeldete_sitzung(request: Request, db: DbSession) -> Sitzung:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="zweiter_faktor_noetig",
         )
-    # konten 1.1.0: Sperren und Loeschen beenden alle Sitzungen (``shut_out``); stuende doch noch eine, gilt sie nicht.
+    # konten 1.1.0: Sperren und Loeschen beenden alle Browser-Sitzungen (``shut_out``); stuende doch noch eine, gilt sie
+    # nicht. Geraete ruhen seit konten 1.1.5 (G26); sie weist schon ``_geraet`` ab.
     if lage.benutzer.gesperrt_seit is not None or lage.benutzer.geloescht_am is not None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="nicht_angemeldet")
     # Wer handelt, steht ab hier in jeder Zeile dieser Anfrage (Modul log): ``[vorgang u:benutzername]``.

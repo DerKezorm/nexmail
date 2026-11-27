@@ -24,7 +24,10 @@ Zwei Normen, und beide sind Pflicht, nicht Kuer:
 Die iPhone-App nimmt denselben Weg bis ``an_benutzer`` und biegt dort zum
 Push-Relay ab: Apples Schluessel kann nicht in einem oeffentlichen Abbild liegen.
 Das Verfahren steht im Vertrag ``nexmail-ios/docs/vertrag-push.md``, und ein
-Pruefwert in ``test_push_relay.py`` haelt es gegen die Swift-Seite.
+Pruefwert in ``test_push_relay.py`` haelt es gegen die Swift-Seite. Seit 0.35.0
+schickt das Geraetemodul (``nexgeraete.push.tell``, Arten ``mail`` und ``event``
+je Geraet, G16, G25); versiegelt wird Byte fuer Byte wie hier (``_versiegeln``),
+der Klartext ist weiter ``_klartext``.
 
 ⚠️ **Der private VAPID-Schluessel ist das einzige echte Geheimnis hier.** Er
 liegt verschluesselt in den Einstellungen (Kontext ``push-vapid``). Wer ihn
@@ -59,7 +62,7 @@ from sqlalchemy.orm import Session
 from .. import crypto
 from ..config import get_settings
 from ..db import SessionLocal, einstellung_lesen, einstellung_schreiben
-from ..models import Benutzer, Konto, Nachricht, Ordner, PushAnmeldung, Sitzung, konto_drin, utcnow
+from ..models import Benutzer, Konto, Nachricht, Ordner, PushAnmeldung, konto_drin, utcnow
 from .zeit import zone_der_anwendung
 
 logger = logging.getLogger("nexmail.push")
@@ -136,6 +139,8 @@ class Meldung:
     kennung: int | None = None
     #: Der Anfang der Mail, die dritte Zeile in der App. Der Browser zeigt ihn nicht.
     vorschau: str = ""
+    #: Die Art an der App (geraete 0.1.0): ``mail`` oder ``event``; je Geraet abschaltbar.
+    art: str = "mail"
 
 
 # --------------------------------------------------------------------------- #
@@ -319,49 +324,32 @@ def schluessel_gueltig(wert: str) -> bool:
     return True
 
 
-def geraet_merken(db: Session, sitzung: Sitzung, ticket: str, schluessel: str) -> None:
-    """Ticket und Schluessel am Geraet ablegen. Die App ruft das bei jedem Start.
+def _geraete(db: Session, person: Benutzer, art: str = "") -> list:
+    """Die Geraete, die gerade Meldungen bekommen koennen (``Store.devices_of`` mit Ticket), mit ``art`` nur die, die
+    diese Art verstehen und an haben. Ohne Relay oder mit zugesperrter App: keines.
 
-    ⚠️ **Dasselbe Ticket gehoert genau einem Geraet dieser Person.** Wer die App
-    neu installiert und neu koppelt, bringt sein Ticket mit, die alte Sitzung
-    steht noch da, und jede Mail kaeme doppelt. Nur innerhalb der Person: Ein
-    fremdes Geraet soll mit einem erratenen Ticket niemandem etwas abstellen.
-    """
-    doppelte = db.scalars(
-        select(Sitzung).where(
-            Sitzung.benutzer_id == sitzung.benutzer_id,
-            Sitzung.id != sitzung.id,
-            Sitzung.push_ticket == ticket,
-        )
-    )
-    for andere in doppelte:
-        andere.push_ticket = ""
-        andere.push_schluessel = ""
-    sitzung.push_ticket = ticket
-    sitzung.push_schluessel = schluessel
-    db.commit()
+    ⚠️ **Dasselbe Ticket gehoert genau einem Geraet dieser Person** (``nexgeraete.push.register``): Wer die App neu
+    installiert und neu koppelt, bringt sein Ticket mit, und jede Mail kaeme sonst doppelt."""
+    from ..vendor.nexgeraete import push as geraetepush
+    from . import geraete_store
 
-
-def geraet_vergessen(db: Session, sitzung: Sitzung) -> None:
-    sitzung.push_ticket = ""
-    sitzung.push_schluessel = ""
-    db.commit()
-
-
-def _geraete(db: Session, person: Benutzer) -> list[Sitzung]:
-    """Die Geraete, die gerade Meldungen bekommen koennen."""
     if not relay_adresse():
         return []
-    return list(
-        db.scalars(
-            select(Sitzung).where(
-                Sitzung.benutzer_id == person.id,
-                Sitzung.art == "geraet",
-                Sitzung.push_ticket != "",
-                Sitzung.gueltig_bis > utcnow(),
-            )
-        )
-    )
+    store = geraete_store.store_fuer(db)
+    if not store.switch("app"):
+        return []
+    geraete = [g for g in store.devices_of(person.id) if g.push is not None]
+    if not art or not geraete:
+        return geraete
+    inhaber = store.holder(person.id)
+    if inhaber is None:
+        return []
+    konfiguration = geraete_store.KONFIGURATION
+    return [
+        g
+        for g in geraete
+        if geraetepush.understood(konfiguration, g, art) and geraetepush.wanted(konfiguration, g, inhaber, art)
+    ]
 
 
 def draussen(person: Benutzer) -> bool:
@@ -370,11 +358,12 @@ def draussen(person: Benutzer) -> bool:
     return person.gesperrt_seit is not None or person.geloescht_am is not None
 
 
-def hat_empfaenger(db: Session, person: Benutzer) -> bool:
-    """Gibt es irgendwo jemanden, der eine Meldung annimmt? Fuer ein Konto, das draussen ist: nein."""
+def hat_empfaenger(db: Session, person: Benutzer, art: str = "") -> bool:
+    """Gibt es irgendwo jemanden, der eine Meldung (der Art ``art`` an der App) annimmt? Fuer ein Konto, das draussen
+    ist: nein."""
     if draussen(person):
         return False
-    return bool(person.push_anmeldungen) or bool(_geraete(db, person))
+    return bool(person.push_anmeldungen) or bool(_geraete(db, person, art))
 
 
 def _kompakt(daten: dict[str, object]) -> bytes:
@@ -441,39 +430,6 @@ def _ungelesen_im_posteingang(db: Session, person: Benutzer) -> int | None:
         return None
 
 
-def an_geraet(db: Session, sitzung: Sitzung, meldung: Meldung, badge: int | None) -> bool:
-    """Eine Meldung an genau ein Geraet. Wahr, wenn der Relay sie nahm.
-
-    ⚠️ **Nur 410 loescht.** Dann ist das Ticket erloschen, und die App bringt beim
-    naechsten Start ein neues. 429, 502 und ein Netzfehler sagen nichts ueber das
-    Ticket: Es bleibt, und diese Meldung wird nicht wiederholt.
-
-    ⚠️ **Im Fehlertext steht nur die Art des Fehlers.** Er landet im Protokoll,
-    das Ticket darf es nicht, und was der Relay antwortet, kennen wir nicht.
-    """
-    rumpf: dict[str, object] = {
-        "ticket": sitzung.push_ticket,
-        "enc": _versiegeln(_klartext(meldung), sitzung.push_schluessel),
-        "collapse": meldung.marke[:MARKE_GRENZE],
-    }
-    if badge is not None:
-        rumpf["badge"] = badge
-
-    try:
-        with httpx.Client(timeout=RELAY_SEKUNDEN) as klient:
-            antwort = klient.post(f"{relay_adresse()}/v1/send", json=rumpf)
-    except httpx.HTTPError as fehler:
-        raise Zustellfehler(type(fehler).__name__) from fehler
-
-    if antwort.status_code == 410:
-        logger.info("A push ticket is gone; removing it.")
-        geraet_vergessen(db, sitzung)
-        return False
-    if antwort.status_code != 200:
-        raise Zustellfehler(f"HTTP {antwort.status_code}")
-    return True
-
-
 def an_benutzer(db: Session, person: Benutzer, meldung: Meldung) -> bool:
     """An alle Geraete dieses Benutzers. Wahr, wenn mindestens eines es nahm.
 
@@ -493,17 +449,50 @@ def an_benutzer(db: Session, person: Benutzer, meldung: Meldung) -> bool:
             db.rollback()
             logger.info("Push delivery failed for one device: %s", fehler)
 
-    geraete = _geraete(db, person)
-    badge = _ungelesen_im_posteingang(db, person) if geraete else None
-    for sitzung in geraete:
-        # ⚠️ **``ValueError`` gehoert dazu.** Ein Schluessel, den eine eingespielte
-        # Datenbank oder ein Eingriff von Hand verbogen hat, trifft nur sein Geraet.
-        try:
-            angekommen = an_geraet(db, sitzung, meldung, badge) or angekommen
-        except (Zustellfehler, ValueError) as fehler:
-            db.rollback()
-            logger.info("Push delivery failed for one app device: %s", fehler)
-    return angekommen
+    return _an_die_app(db, person, meldung) or angekommen
+
+
+def _an_die_app(db: Session, person: Benutzer, meldung: Meldung) -> bool:
+    """An die gekoppelten Geraete ueber den Relay, durch das Geraetemodul (``push.tell``): nur Geraete, die die Art
+    verstehen und an haben, nichts bei zugesperrter App. Wahr, wenn der Relay sie fuer mindestens eines nahm.
+
+    ⚠️ **Nur 410 loescht** Ticket und Schluessel; 429, 502 und ein Netzfehler lassen das Ticket, und diese Meldung
+    wird nicht wiederholt. ⚠️ **Ein verbogener Schluessel trifft nur sein Geraet**, ein stummes Geraet haelt das
+    naechste nicht auf. Im Protokoll steht nur die Art des Fehlers, nie das Ticket."""
+    from ..vendor.nexgeraete import push as geraetepush
+    from . import geraete_store
+
+    if not _geraete(db, person, meldung.art):
+        return False
+    badge = _ungelesen_im_posteingang(db, person)
+    erzaehlt = geraetepush.tell(
+        geraete_store.store_fuer(db),
+        geraete_store.KONFIGURATION,
+        person.id,
+        meldung.art,
+        _klartext(meldung),
+        collapse=meldung.marke[:MARKE_GRENZE],
+        badge=badge,
+        send=_relay_senden,
+    )
+    return erzaehlt.sent > 0
+
+
+def _relay_senden(url: str, rumpf: dict) -> int:
+    """Der Versand (``geraete_store.senden``), und ein Fehlschlag genau einmal im Protokoll von ``nexmail.push``: nur
+    die Art des Fehlers oder die Nummer, nie das Ticket."""
+    from . import geraete_store
+
+    try:
+        stand = geraete_store.senden(url, rumpf)
+    except OSError as fehler:
+        logger.info("Push delivery failed for one app device: %s", fehler)
+        raise
+    if stand == 410:
+        logger.info("A push ticket is gone; removing it.")
+    elif stand != 200:
+        logger.info("Push delivery failed for one app device: HTTP %s", stand)
+    return stand
 
 
 # --------------------------------------------------------------------------- #
@@ -584,7 +573,7 @@ def _erinnerungen_fuer(db: Session, person: Benutzer) -> int:
     # beim Ermitteln, nicht beim Senden. Wer ohne angemeldetes Geraet fragt,
     # verbraucht damit Erinnerungen, die nie irgendwo ankamen — und wer sich
     # eine Minute spaeter anmeldet, bekommt sie nie.
-    if not hat_empfaenger(db, person):
+    if not hat_empfaenger(db, person, "event"):
         return 0
 
     faellig = erinnerungsdienst.faellige(db, person, kanal=KANAL, nur_einmal=True)
@@ -612,6 +601,7 @@ def _erinnerungen_fuer(db: Session, person: Benutzer) -> int:
                 text=" · ".join(teile) or eintrag.kalender,
                 ziel="/kalender",
                 marke=f"termin-{eintrag.termin_id}-{int(eintrag.beginn.timestamp())}",
+                art="event",
             ),
         )
         if angekommen:
@@ -637,7 +627,7 @@ def _buchung_zuruecknehmen(db: Session, person: Benutzer, zustellung_id: int) ->
     """
     from ..models import Erinnerungszustellung
 
-    if not hat_empfaenger(db, person):
+    if not hat_empfaenger(db, person, "event"):
         return
     zeile = db.get(Erinnerungszustellung, zustellung_id)
     if zeile is not None:
@@ -673,7 +663,7 @@ def neue_mail_melden(
     daneben.
     """
     person = db.get(Benutzer, konto.benutzer_id)
-    if person is None or not person.push_mail or not hat_empfaenger(db, person):
+    if person is None or not person.push_mail or not hat_empfaenger(db, person, "mail"):
         return
     if ruhezeit_jetzt(db, person):
         return

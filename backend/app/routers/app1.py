@@ -23,10 +23,9 @@ Schloss eines Postfachs und den ersten Abruf einer Mail; danach kommt 503 samt
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Query, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -36,10 +35,12 @@ from ..deps import AktiveSitzung, AngemeldeterBenutzer, DbSession
 from ..meldung import MeldungHttp
 from ..models import Nachricht
 from ..services import abgleich, aenderungen, aliase as aliasdienst
-from ..services import anmeldebremse, kidienst
-from ..services import app_kopplung as kopplungsdienst
+from ..services import geraete_store, kidienst
 from ..services import konten as kontendienst
 from ..services import push as pushdienst
+from ..vendor.nexgeraete import Caller, DeviceRefused, api, forms
+from ..vendor.nexgeraete import push as geraetepush
+from . import geraete as geraetewege
 from . import (
     absenderbild,
     app_kopplung,
@@ -124,6 +125,11 @@ class AppSelbstauskunft(BaseModel):
     #: die App den Knopf nicht. Ein älterer Server kennt es nicht und nennt es
     #: nicht; das bricht nichts.
     faehigkeiten: list[str]
+    #: geraete 0.1.0 (``api.me_fields``), neu dazu: das Konto (Name, Benutzername, Mail, Bild, Betreiber), dieses
+    #: Gerät in der Form der Liste und ob Mitteilungen hinausgehen können. Die Felder von vorher bleiben.
+    account: dict[str, Any] | None = None
+    device: dict[str, Any] | None = None
+    offers: dict[str, Any] | None = None
 
 
 def _faehigkeiten(db: DbSession, person) -> list[str]:
@@ -152,9 +158,10 @@ def _faehigkeiten(db: DbSession, person) -> list[str]:
 
 @router.get("/me", response_model=AppSelbstauskunft, summary="Who am I, and what can this server do")
 def selbstauskunft(
-    person: AngemeldeterBenutzer, sitzung: AktiveSitzung, db: DbSession
+    person: AngemeldeterBenutzer, sitzung: AktiveSitzung, db: DbSession, request: Request
 ) -> AppSelbstauskunft:
     """Der erste Aufruf der App. Ein nexmail ohne diese Fläche antwortet 404."""
+    neu = api.me_fields(geraete_store.KONFIGURATION, geraete_store.aufrufer(request))
     return AppSelbstauskunft(
         version=__version__,
         konto=AppKonto(
@@ -179,51 +186,87 @@ def selbstauskunft(
         ],
         geraet=AppGeraet(id=sitzung.id, name=sitzung.geraet),
         faehigkeiten=_faehigkeiten(db, person),
+        **neu,
     )
 
 
-@router.delete(
-    "/device", status_code=status.HTTP_204_NO_CONTENT, summary="Disconnect this device"
-)
-def selbst_trennen(sitzung: AktiveSitzung, db: DbSession) -> None:
-    """Die App trennt sich selbst; ihr Schlüssel gilt ab sofort nicht mehr."""
-    db.delete(sitzung)
-    db.commit()
+# --- Geräte (Modul geraete 0.1.0) ---------------------------------------------- #
+#
+# ⚠️ **Die Handler sind die des Moduls** (``routers/geraete.app_router``), hier eingetragen, damit ``nur_geraet`` an
+# ihnen hängt und die Wege der veröffentlichten App ihre Antwortform und ihre Namen (``operationId``) in der
+# Beschreibung behalten. Ohne ``X-Nex-App``
+# antwortet das Modul in nexmails alter Form (``{key, account}``, ``detail`` als Text, ``werte``), mit ihr in der
+# neuen. ``POST /devices`` steht vor ``GET /devices``: die Zusage nennt beim Pfad zuerst die Antwort einer Kopplung.
 
 
-@router.post(
+class GeraetEintrag(BaseModel):
+    """Ein Gerät, wie das Modul es zeigt (``devices.entry``): nie Schlüssel oder Hash."""
+
+    id: str
+    name: str
+    kind: str
+    model: str | None = None
+    system: str | None = None
+    app_version: str | None = None
+    via: str | None = None
+    created_at: str | None = None
+    last_seen_at: str | None = None
+    push: bool
+    this: bool
+
+
+class Mitteilungsart(BaseModel):
+    id: str
+    title: str
+    hint: str | None = None
+    on: bool
+    operator_only: bool
+
+
+class Mitteilungsarten(BaseModel):
+    kinds: list[Mitteilungsart]
+
+
+def _modul(pfad: str, methode: str, **rest: Any) -> None:
+    """Ohne eigene Antwortform keine: die Handler des Moduls sind mit ``-> Any`` beschrieben."""
+    rest.setdefault("response_model", None)
+    router.add_api_route(pfad, geraetewege.modulweg(pfad, methode).endpoint, methods=[methode], **rest)
+
+
+_modul(
     "/devices",
+    "POST",
     response_model=app_kopplung.AbgeholterSchluessel,
+    operation_id="weiteres_geraet_api_app_1_devices_post",
     summary="A key of its own for another device of this account",
-    responses={
-        429: {"description": "`app_zu_viele_geraete`: too many in an hour, see `Retry-After`"}
-    },
+    description="Another device of the same account (iCloud) gets a key of its own; at most five an hour, counted "
+    "in the database.",
+    responses={429: {"description": "`app_zu_viele_geraete`: too many in an hour, see `Retry-After`"}},
 )
-def weiteres_geraet(
-    request: Request,
-    person: AngemeldeterBenutzer,
-    db: DbSession,
-    eingabe: app_kopplung.SchluesselAbholen | None = None,
-) -> JSONResponse:
-    """Ein gekoppeltes Gerät holt einem weiteren Gerät desselben Kontos einen
-    eigenen Schlüssel, etwa das iPad, das die Verbindung des iPhones im
-    iCloud-Schlüsselbund findet.
-
-    ⚠️ **Dieselbe Antwort wie eine Kopplung** (``app_kopplung.antwort``), damit
-    die App beide Wege gleich liest. Das neue Gerät steht danach unter eigenem
-    Namen in der Geräteliste; das bittende bleibt unverändert. Die Regeln stehen
-    in ``app_kopplung.weiteres_geraet``.
-    """
-    try:
-        token = kopplungsdienst.weiteres_geraet(
-            db, person, eingabe.device if eingabe else "", anmeldebremse.adresse_von(request)
-        )
-    except kopplungsdienst.KopplungFehler as fehler:
-        kopf = None
-        if isinstance(fehler, kopplungsdienst.GrenzeFehler):
-            kopf = {"Retry-After": str(fehler.nochmal_in)}
-        raise MeldungHttp.aus(fehler, app_kopplung._status(fehler), kopf) from fehler
-    return app_kopplung.antwort(token, person)
+_modul("/devices", "GET", response_model=list[GeraetEintrag], summary="The account's devices, this one marked")
+# ⚠️ Ohne Eintrag in der Beschreibung: eine Antwort ohne Körper (204) hätte dort keine Form, die die Zusage festhält.
+_modul(
+    "/devices/{device_id}",
+    "DELETE",
+    status_code=status.HTTP_204_NO_CONTENT,
+    include_in_schema=False,
+    summary="Disconnect one of the account's devices",
+)
+_modul("/device", "PATCH", response_model=GeraetEintrag, summary="Rename this device")
+_modul(
+    "/device",
+    "DELETE",
+    status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="selbst_trennen_api_app_1_device_delete",
+    summary="Disconnect this device",
+)
+_modul("/push/kinds", "GET", response_model=Mitteilungsarten, summary="The kinds of notification of this device")
+_modul(
+    "/push/kinds",
+    "PUT",
+    response_model=Mitteilungsarten,
+    summary="Switch kinds of notification on or off on this device",
+)
 
 
 # --- Lesen ----------------------------------------------------------------- #
@@ -558,28 +601,46 @@ class Pushziel(BaseModel):
     ticket: str = Field(min_length=1, max_length=1024)
     #: Der öffentliche X25519-Schlüssel des Geräts, base64 von 32 Byte. Bewusst
     #: ohne Längengrenze hier: Ein falscher Schlüssel soll ``kein_gueltiger_schluessel``
-    #: geben, kein 422.
-    schluessel: str
+    #: geben, kein 422. ``key`` ist der Name der neuen Apps (geraete 0.1.0).
+    schluessel: str | None = None
+    key: str | None = None
+    #: Die Arten, die das Gerät versteht (G16); ohne: die veröffentlichten (``mail``, ``event``).
+    understands: list[str] | None = Field(default=None, max_length=100)
 
 
 class Pushstand(BaseModel):
     status: str = "ok"
 
 
+Aufrufer = Annotated[Caller, Depends(geraete_store.aufrufer)]
+GeraeteDaten = Annotated[geraete_store.GeraeteStore, Depends(geraete_store.store_der_anfrage)]
+
+
 @router.put("/push", response_model=Pushstand, summary="Where notifications for this device go")
-def push_merken(ziel: Pushziel, sitzung: AktiveSitzung, db: DbSession) -> Pushstand:
-    """Ticket und Geräteschlüssel merken. Die App ruft das bei jedem Start."""
-    if not pushdienst.schluessel_gueltig(ziel.schluessel):
-        raise MeldungHttp(status.HTTP_400_BAD_REQUEST, "kein_gueltiger_schluessel")
-    pushdienst.geraet_merken(db, sitzung, ziel.ticket, ziel.schluessel)
-    return Pushstand()
+def push_merken(ziel: Pushziel, request: Request, gefunden: Aufrufer, daten: GeraeteDaten) -> Any:
+    """Ticket und Geräteschlüssel merken (``push.register``). Die App ruft das bei jedem Start. Ein Ticket gehört
+    genau einem Gerät des Kontos. Alte Form: 200 ``{"status": "ok"}``; mit ``X-Nex-App`` 204."""
+    form = forms.form_of(geraete_store.KONFIGURATION, request.headers)
+    try:
+        geraetepush.register(
+            daten,
+            geraete_store.KONFIGURATION,
+            gefunden,
+            ziel.ticket,
+            ziel.key or ziel.schluessel or "",
+            ziel.understands,
+        )
+    except DeviceRefused as abgewiesen:
+        daten.rollback()
+        return geraete_store.antwort(forms.refusal(form, abgewiesen))
+    return geraete_store.antwort(forms.done(form))
 
 
 @router.delete("/push", response_model=Pushstand, summary="Stop notifications for this device")
-def push_vergessen(sitzung: AktiveSitzung, db: DbSession) -> Pushstand:
+def push_vergessen(request: Request, gefunden: Aufrufer, daten: GeraeteDaten) -> Any:
     """Ticket und Geräteschlüssel vergessen; das Gerät bleibt gekoppelt."""
-    pushdienst.geraet_vergessen(db, sitzung)
-    return Pushstand()
+    geraetepush.unregister(daten, geraete_store.KONFIGURATION, gefunden)
+    return geraete_store.antwort(forms.done(forms.form_of(geraete_store.KONFIGURATION, request.headers)))
 
 
 #: ⚠️ **Die Liste ist das Versprechen.** ``test_app_zusage.py`` hält sie gegen
@@ -596,6 +657,7 @@ ZUGESAGT = (
     "/api/app/1/contacts/suggest",
     "/api/app/1/device",
     "/api/app/1/devices",
+    "/api/app/1/devices/{device_id}",
     "/api/app/1/drafts",
     "/api/app/1/drafts/{uid}",
     "/api/app/1/events",
@@ -625,6 +687,7 @@ ZUGESAGT = (
     "/api/app/1/pairing/code",
     "/api/app/1/pairing/{pairing_id}/key",
     "/api/app/1/push",
+    "/api/app/1/push/kinds",
     "/api/app/1/search",
     "/api/app/1/sender-image",
     "/api/app/1/snoozes",

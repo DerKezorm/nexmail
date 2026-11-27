@@ -1,34 +1,35 @@
-"""Die iPhone-App koppeln: im Browser der Code, in der App das Abholen.
+"""Die iPhone-App koppeln: im Browser der Code, in der App das Abholen, in nexmails alter Form.
 
-Zwei Seiten:
+Seit 0.35.0 koppelt das Gerätemodul ``geraete`` (``routers/geraete.py``). Zwei Seiten bleiben hier als Hüllen:
 
-* ``router`` gehört zur Oberfläche und steht unter keiner Zusage.
-* ``public_router`` liegt unter ``/api/app/1`` und ist dort der einzige Teil ohne
-  Schlüssel: Wer noch keinen hat, holt ihn hier. Er steht unter der Zusage
-  (``app1.ZUGESAGT``).
-
-Die Regeln stehen in ``services/app_kopplung.py``.
+* ``router`` (``/api/app-kopplung``) gehört zur Oberfläche von vorher und steht unter keiner Zusage; die neue
+  Oberfläche nimmt ``/api/app-pairing`` und ``/api/app-devices`` des Moduls. Die Antworten bleiben, wie sie waren
+  (``kennung``, ``stand`` ``wartet``/``verbunden``/``abgelaufen``, deutsche Kennungen).
+* ``public_router`` liegt unter ``/api/app/1`` und ist dort der einzige Teil ohne Schlüssel: Wer noch keinen hat, holt
+  ihn hier. Die Handler sind die des Moduls, eingetragen mit der Antwortform der veröffentlichten App
+  (``AbgeholterSchluessel``); sie stehen unter der Zusage (``app1.ZUGESAGT``).
 """
 
 from __future__ import annotations
 
 import io
 from datetime import datetime
-from typing import Annotated
 from urllib.parse import quote, urlsplit
 
 import segno
-from fastapi import APIRouter, Header, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from ..config import get_settings
 from ..db import einstellung_lesen
 from ..deps import AngemeldeterBenutzer, Betreiber, DbSession
 from ..meldung import MeldungHttp
+from ..models import Sitzung, utcnow
 from ..services import adresse as adressdienst
-from ..services import anmeldebremse, app_kopplung
+from ..services import app_kopplung
 from ..services.app_kopplung import KopplungFehler
+from . import geraete as geraetewege
 
 #: Das Schema, auf das die App hört. Die Kamera des iPhones öffnet den Link
 #: aus dem QR-Code direkt in nexmail.
@@ -44,7 +45,7 @@ def _status(fehler: KopplungFehler) -> int:
         "app_abgeschaltet": status.HTTP_403_FORBIDDEN,
         "app_zu_viele_kopplungen": status.HTTP_409_CONFLICT,
         "app_zu_viele_geraete": status.HTTP_429_TOO_MANY_REQUESTS,
-    }[fehler.kennung]
+    }.get(fehler.kennung, status.HTTP_400_BAD_REQUEST)
 
 
 # --- Oberfläche ------------------------------------------------------------ #
@@ -121,7 +122,7 @@ def anlegen(
     # Erst die Adresse: Ohne sie entstünde ein Code, den keine App benutzen kann.
     adresse = _adresse(db, eingabe.adresse if eingabe else "")
     try:
-        v = app_kopplung.vorbereiten(db, person)
+        v = app_kopplung.vorbereiten(db, person, adresse)
     except KopplungFehler as fehler:
         raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
     link = (
@@ -159,12 +160,8 @@ class GekoppeltesGeraet(BaseModel):
 
 @router.get("/geraete", response_model=list[GekoppeltesGeraet])
 def geraete(person: AngemeldeterBenutzer, db: DbSession) -> list[GekoppeltesGeraet]:
-    """Die gekoppelten iPhones und iPads dieses Kontos (Mein Konto › Verbindungen, Karte „Geraete"). Trennen geht
-    ueber ``DELETE /api/sitzungen/{id}`` wie bisher."""
-    from sqlalchemy import select
-
-    from ..models import Sitzung, utcnow
-
+    """Die gekoppelten iPhones und iPads dieses Kontos in der Form von vorher (die neue Karte nimmt
+    ``GET /api/app-devices``). Trennen geht ueber ``DELETE /api/sitzungen/{id}`` wie bisher."""
     zeilen = db.scalars(
         select(Sitzung)
         .where(Sitzung.benutzer_id == person.id, Sitzung.art == "geraet", Sitzung.gueltig_bis > utcnow())
@@ -197,88 +194,36 @@ def zurueckziehen(kennung: str, person: AngemeldeterBenutzer, db: DbSession) -> 
 # --- App ------------------------------------------------------------------- #
 
 
-class SchluesselAbholen(BaseModel):
-    device: str = Field(default="", max_length=app_kopplung.GERAET_HOECHSTENS)
-
-
-class CodeAbholen(SchluesselAbholen):
-    code: str = Field(max_length=20)
-
-
 class AbgeholtesKonto(BaseModel):
     id: str
     name: str
 
 
 class AbgeholterSchluessel(BaseModel):
+    """Die Antwort jedes neuen Geräteschlüssels in nexmails alter Form: QR-Code, kurzer Code und
+    ``POST /api/app/1/devices`` antworten gleich. Mit ``X-Nex-App`` antwortet das Modul in der neuen Form
+    (``token``, ``account`` mit Benutzername und Bild, ``device``)."""
+
     key: str
     account: AbgeholtesKonto
 
 
-def antwort(token: str, person) -> JSONResponse:
-    """⚠️ **Eine Form für jeden neuen Geräteschlüssel**: QR-Code, kurzer Code und
-    ``POST /api/app/1/devices`` antworten gleich."""
-    inhalt = AbgeholterSchluessel(
-        key=token,
-        account=AbgeholtesKonto(id=person.id, name=person.anzeigename or person.benutzername),
-    )
-    # ⚠️ Ein Schlüssel darf in keinem Zwischenspeicher liegen bleiben.
-    return JSONResponse(content=inhalt.model_dump(), headers={"Cache-Control": "no-store"})
-
-
-def _wege_offen(db: DbSession) -> None:
-    if not app_kopplung.erlaubt(db):
-        raise MeldungHttp(status.HTTP_403_FORBIDDEN, "app_abgeschaltet")
-
-
-@public_router.post(
+public_router.add_api_route(
     "/pairing/code",
+    geraetewege.modulweg("/pairing/code", "POST").endpoint,
+    methods=["POST"],
     response_model=AbgeholterSchluessel,
+    operation_id="mit_code_api_app_1_pairing_code_post",
     summary="Fetch the key with the short code",
+    description="The code to type under the QR code, or the one-time code of the sign-in in the browser. "
+    "The brake counts per sender.",
 )
-def mit_code(eingabe: CodeAbholen, request: Request, db: DbSession) -> JSONResponse:
-    """⚠️ **Die Bremse zählt je Adresse.** Hier gibt es keine Kennung, an der man
-    zählen könnte, und 40 Bit tragen nur mit ihr."""
-    _wege_offen(db)
-    wache = anmeldebremse.torwaechter(request, "app-kopplung", "code")
-    try:
-        token, person = app_kopplung.mit_code(
-            db, eingabe.code, eingabe.device, anmeldebremse.adresse_von(request)
-        )
-    except KopplungFehler as fehler:
-        wache.fehlgeschlagen()
-        raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
-    wache.geschafft()
-    return antwort(token, person)
-
-
-@public_router.post(
+public_router.add_api_route(
     "/pairing/{pairing_id}/key",
+    geraetewege.modulweg("/pairing/{pairing_id}/key", "POST").endpoint,
+    methods=["POST"],
     response_model=AbgeholterSchluessel,
+    operation_id="abholen_api_app_1_pairing__pairing_id__key_post",
     summary="Fetch the key from a QR code",
+    description="Unknown, wrong, expired and used answer alike (`app_kopplung_unbekannt`).",
 )
-def abholen(
-    pairing_id: str,
-    request: Request,
-    db: DbSession,
-    eingabe: SchluesselAbholen | None = None,
-    secret: Annotated[str | None, Header(alias="X-Pairing-Secret", max_length=100)] = None,
-) -> JSONResponse:
-    """⚠️ **Unbekannt, falsch, abgelaufen und verbraucht antworten gleich**
-    (404 ``app_kopplung_unbekannt``). Ein Unterschied wäre nur für jemanden
-    nützlich, der Geheimnisse durchprobiert."""
-    _wege_offen(db)
-    wache = anmeldebremse.torwaechter(request, "app-kopplung", pairing_id[:32])
-    try:
-        token, person = app_kopplung.abholen(
-            db,
-            pairing_id,
-            secret,
-            eingabe.device if eingabe else "",
-            anmeldebremse.adresse_von(request),
-        )
-    except KopplungFehler as fehler:
-        wache.fehlgeschlagen()
-        raise MeldungHttp.aus(fehler, _status(fehler)) from fehler
-    wache.geschafft()
-    return antwort(token, person)

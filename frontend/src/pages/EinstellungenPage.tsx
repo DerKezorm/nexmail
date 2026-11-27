@@ -42,7 +42,7 @@ import { ToolsCard } from '../vendor/nexschluessel/ToolsCard'
 import { PendingRequests, ToolRights } from '../vendor/nexmcp'
 import { mcpSchluesselWorte, mcpWorte } from '../lib/mcpWorte'
 import { Installieren } from './einstellungen/Installieren'
-import { IphoneVerbinden } from './IphoneVerbinden'
+import { DevicesCard } from '../vendor/nexgeraete'
 import { Sicherheit } from './Sicherheit'
 import { Regeln, type RegelVorlage } from './Regeln'
 import { Abwesenheit } from './Abwesenheit'
@@ -270,10 +270,19 @@ export function EinstellungenPage({
       case 'connections':
         /* Bauplan „Einstellungen", Verbindungen: Geräte, Auf diesem Gerät installieren, die anderen nex-Apps, nexmails
            eigene Karte „Aufgaben" (Todoist, Webhook), API-Schlüssel (Modul schluessel), seit dem Modul mcp 1.1.0 die
-           Karte „KI-Werkzeuge (MCP)" mit „Rechte je Werkzeug" an jedem Schlüssel und den wartenden Rückfragen. */
+           Karte „KI-Werkzeuge (MCP)" mit „Rechte je Werkzeug" an jedem Schlüssel und den wartenden Rückfragen. Die
+           Geräte seit geraete 0.1.0 aus dem Modul (Platz 1): Liste, Koppeln, Umbenennen, Trennen; der Betreiber kommt
+           von dort zum Schalter „iPhone-App erlauben“ unter Server › Verbindungen. */
         return (
           <>
-            <IphoneVerbinden />
+            <DevicesCard
+              request={modulAnfrage}
+              app="nexmail"
+              language={i18n.language}
+              when={zeitpunkt}
+              operator={Boolean(ich?.ist_betreiber)}
+              serverHref={appPfad(pfadVon('server-connections'))}
+            />
             <Installieren />
             {/* Andere nex-Apps (Modul verbinden): seit 0.1.8 „Einrichten“ und „Von Hand verbinden“ nur für den Betreiber. */}
             <AndereNexApps betreiber={Boolean(ich?.ist_betreiber)} />

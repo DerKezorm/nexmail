@@ -13,7 +13,8 @@ import { useTranslation } from 'react-i18next'
 import { appPfad } from '../lib/basis'
 import { pfadVon } from './einstellungen/bereiche'
 import { Box, Card, CheckboxRow, Notice, NotifyWays, SelectField } from '../vendor/nexui'
-import { api } from '../api/client'
+import { DevicePushCard, useDevicesWay } from '../vendor/nexgeraete'
+import { api, modulAnfrage } from '../api/client'
 import * as push from '../lib/push'
 import { PushSchrittFehler } from '../lib/pushlage'
 import { servermeldung } from '../lib/servermeldung'
@@ -47,6 +48,9 @@ const UHRZEITEN = Array.from({ length: 48 }, (_, i) => {
 
 export function Benachrichtigungen() {
   const { t, i18n } = useTranslation()
+  /* geraete 0.1.0: die Zeile „iPhone und iPad“ sagt, wie viele Geräte gekoppelt sind und auf wie vielen Mitteilungen
+     ankommen; bis die Liste da ist, nur der Weg zu Verbindungen. */
+  const geraeteWeg = useDevicesWay(modulAnfrage, { href: appPfad(pfadVon('connections')), language: i18n.language })
   /* ⚠️ Die Lage steht erst nach einer Rückfrage beim Service Worker fest,
      deshalb nicht als Anfangswert. Bis dahin gilt „noch nicht erlaubt" —
      das ist der harmlose Irrtum von beiden. */
@@ -218,7 +222,16 @@ export function Benachrichtigungen() {
             if (zeile) void geraetWeg(zeile)
           },
         }}
-        devices={{ href: appPfad(pfadVon('connections')) }}
+        devices={geraeteWeg ?? { href: appPfad(pfadVon('connections')) }}
+      />
+
+      {/* geraete 0.1.0: welche Mitteilungen jedes gekoppelte iPhone, iPad oder jeder Mac bekommt (neue Mail,
+          Terminerinnerungen, neues Gerät verbunden, für Betreiber neue Version); nach „Auf welchem Weg“. */}
+      <DevicePushCard
+        request={modulAnfrage}
+        app="nexmail"
+        language={i18n.language}
+        connectionsHref={appPfad(pfadVon('connections'))}
       />
 
       {/* nexmails eigene Karte: worüber du hörst. */}

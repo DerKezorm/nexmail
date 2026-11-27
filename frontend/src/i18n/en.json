@@ -1395,18 +1395,6 @@
     "schlagworte": "May tag messages",
     "schlagworte_hinweis": "For the receiver of a webhook: add tags to the message of a task and remove them, through /api/v1/tasks/…/tags. This writes to the mail server."
   },
-  "iphone": {
-    "code_abtippen": "Or enter this in the app by hand:",
-    "adresse": "Address",
-    "code": "Code",
-    "abgelaufen": "This code has expired.",
-    "verbunden": "{{geraet}} is connected.",
-    "wartet": "Waiting for the app. The code is good until {{zeit}}, for one device.",
-    "hinweis": "Scan the code with the iPhone's camera. A device has the same rights as your browser.",
-    "neu": "Show a new code",
-    "riegel": "Allow the iPhone app",
-    "riegel_zu": "The operator has turned the iPhone app off."
-  },
   "serverfehler": {
     "app_abgeschaltet": "The operator has turned the iPhone app off for this installation.",
     "app_adresse_fehlt": "The QR code needs the address nexmail is reachable at. Enter it under Server › Sign-in.",
@@ -1599,6 +1587,7 @@
     "nachricht_unbekannt": "There is no such message.",
     "nachricht_weg": "The server no longer knows that message.",
     "name_unbekannt": "There is no such name here.",
+    "nicht_gefunden": "This does not exist or no longer exists.",
     "nicht_angemeldet": "You are not signed in.",
     "nichts_ausgewaehlt": "Nothing selected.",
     "nichts_zu_holen": "None of the messages could be fetched.",
@@ -2124,16 +2113,6 @@
       "firefox": "Firefox cannot install web apps. Open nexmail in another browser for it, such as Chrome, Edge or Safari.",
       "other": "If your browser offers no button here, installing is in its menu, such as “Install app” or “Add to Home screen”."
     }
-  },
-  "geraete": {
-    "titel": "Devices",
-    "ohne_namen": "Unnamed device",
-    "mitteilungen_an": "Notifications on",
-    "mitteilungen_aus": "Notifications off",
-    "zuletzt": "last {{wann}}",
-    "trennen": "Disconnect",
-    "keine": "No iPhone or iPad connected yet.",
-    "verbinden": "Connect an iPhone or iPad"
   },
   "mcp": {
     "stufe_read": "Read",

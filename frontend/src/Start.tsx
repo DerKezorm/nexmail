@@ -20,6 +20,7 @@ import { KennwortNeuPage, VergessenPage } from './pages/KennwortPage'
 import { EinrichtungPage } from './pages/EinrichtungPage'
 import { AdressePage } from './pages/AdressePage'
 import { McpSeite, mcpSeiteVon } from './pages/McpSeite'
+import { AppVerbinden, istAppVerbinden } from './pages/AppVerbinden'
 import { NeuesPasswort } from './components/NeuesPasswort'
 import { kontoSprache } from './i18n'
 import { api } from './api/client'
@@ -267,6 +268,11 @@ export default function Start() {
   const mcpSeite = mcpSeiteVon(window.location.pathname)
   if (mcpSeite) {
     return <McpSeite seite={mcpSeite} />
+  }
+
+  /* Modul geraete: die Anmeldung einer App im Browser (/app-connect), nur angemeldet (davor kam die Anmeldung). */
+  if (istAppVerbinden(window.location.pathname)) {
+    return <AppVerbinden ich={ich} />
   }
 
   return (

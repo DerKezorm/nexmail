@@ -504,6 +504,44 @@ class Adapter(StandardAdapter):
         assert antwort.status_code == 200, antwort.text
         return antwort.json()
 
+    # --- konten 1.1.5 (G26): gekoppelte Geraete ruhen -----------------------------------------------------------------
+
+    def pair_device(self, account_id: Any) -> Any:
+        """Ein Geraet, gekoppelt wie das Geraetemodul es tut (``nexgeraete.devices.add`` ueber nexmails Store, eine
+        Zeile ``sitzung`` mit ``art = geraet``); zurueck kommt sein Schluessel."""
+        from app.db import SessionLocal
+        from app.services import geraete_store
+        from app.vendor.nexgeraete import VIA_QR, devices
+
+        with SessionLocal() as db:
+            store = geraete_store.store_fuer(db)
+            inhaber = store.holder(account_id)
+            assert inhaber is not None
+            _, schluessel = devices.add(
+                store, geraete_store.KONFIGURATION, inhaber, name="Probe", kind="ios", via=VIA_QR
+            )
+            db.commit()
+        return schluessel
+
+    def device_works(self, handle: Any) -> bool:
+        """Ueber nexmails eigenen Geraeteweg ``GET /api/app/1/me``: 200 heisst hinein."""
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        # Ohne ``with``: kein Start der Hintergrundfaeden.
+        klient = TestClient(app, base_url="https://mail.example.com")
+        return klient.get("/api/app/1/me", headers={"Authorization": f"Bearer {handle}"}).status_code == 200
+
+    def device_kept(self, handle: Any) -> bool:
+        """Ob die Zeile des Geraets noch da ist (``Store.device_by_hash``), abgewiesen oder nicht."""
+        from app.db import SessionLocal
+        from app.services import geraete_store
+        from app.vendor.nexgeraete import tokens
+
+        with SessionLocal() as db:
+            return geraete_store.store_fuer(db).device_by_hash(tokens.digest(handle)) is not None
+
     @staticmethod
     def _anmelden_als(klient: Any, account_id: Any) -> None:
         """Eine bestaetigte Browser-Sitzung fuer das Konto, als Cookie dieses Klienten (wie nach dem Anmelden)."""

@@ -165,6 +165,24 @@ def _aufraeumschleife() -> None:
             # Der Faden darf nie sterben - sonst hoert das Aufraeumen still
             # auf, und der Papierkorb waechst, obwohl eine Zahl eingestellt ist.
             logger.warning("The auto-clean check failed a round: %s", fehler)
+        geraete_runde()
+
+
+def geraete_runde() -> None:
+    """geraete 0.1.0: Geräte, die 365 Tage nicht genutzt wurden, trennen (G27), und höchstens einmal am Tag nach
+    einer neuen Version sehen, die an die Geräte der Betreiber geht (G18). Jedes für sich abgesichert."""
+    from . import aktualisierung, geraete_store
+
+    try:
+        weg = geraete_store.taeglich()
+        if weg:
+            logger.info("%s unused device(s) were disconnected.", weg)
+    except Exception as fehler:  # noqa: BLE001
+        logger.warning("The device sweep failed a round: %s", type(fehler).__name__)
+    try:
+        aktualisierung.im_hintergrund()
+    except Exception as fehler:  # noqa: BLE001
+        logger.warning("The update look failed a round: %s", type(fehler).__name__)
 
 
 def konten_endgueltig_loeschen() -> list[str]:

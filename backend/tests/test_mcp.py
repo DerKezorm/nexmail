@@ -304,7 +304,7 @@ def test_eine_wartende_rueckfrage_kommt_als_mitteilung_in_den_browser(app, monke
         db.commit()
     gesendet: list[Any] = []
     monkeypatch.setattr(push, "zustellen", lambda db, anmeldung, meldung: gesendet.append(meldung))
-    monkeypatch.setattr(push, "an_geraet", lambda *a, **k: pytest.fail("an die iPhone-App"))
+    monkeypatch.setattr(push, "_an_die_app", lambda *a, **k: pytest.fail("an die iPhone-App"))
     made = mcp_key(app, right="write")
     name, args = app.change_call()
     app.client("owner").put(f"{app.prefix}/keys/{made['key']['id']}/rights", json={"rights": {name: "ask"}})
