@@ -26,6 +26,8 @@ class Adapter(StandardAdapter):
     older_link = True
     #: verbinden 0.1.8 (B1): die Anzeigenamen der Testkonten (``anzeigename`` unten), die ``account_card`` nennt.
     shown_names = {rolle: NAME[rolle].title() for rolle in ("owner", "other")}  # noqa: RUF012 (nur gelesen)
+    #: verbinden 0.1.13: nexmail sagt nexfolk, wie viele Mails es mit einer Person gibt (``post_mit_person``).
+    about_purpose = "mails.about"
 
     def start(self, folder: Path, *, older: bool = False) -> None:
         from app import crypto
@@ -67,6 +69,17 @@ class Adapter(StandardAdapter):
                 zugang = nextasks.Zugang(url="https://nextasks.example.com", token="ntk_AbCdEfGh" + "x" * 30)
                 v.zugang = crypto.verschluesseln(nextasks.zugang_schreiben(zugang), f"aufgabenverbindung:{v.id}:zugang")
                 db.commit()
+            # verbinden 0.1.13: zwei Postfächer des Eigentümers, damit die Vertragsfälle zu ``mails.about`` prüfen
+            # können, dass nur das gegebene zählt (``areas_choice``).
+            for name in ("Privat", "Arbeit"):
+                db.add(
+                    Konto(
+                        benutzer_id=self.ids["owner"], anzeigename=name, adresse=f"{name.lower()}@example.com",
+                        imap_server="imap.example.com", imap_benutzer=name.lower(), smtp_server="smtp.example.com",
+                        smtp_benutzer=name.lower(),
+                    )
+                )  # fmt: skip
+            db.commit()
         self._sitzung = SessionLocal()
         self.store = store_fuer(self._sitzung)
         # verbinden 0.1.4: jeder Ruf von ``on_disconnected``, mitgehört und weitergegeben.
@@ -131,7 +144,30 @@ class Adapter(StandardAdapter):
         self._sitzung.expire_all()
 
     def probe(self, purpose: str) -> str | None:
-        return None
+        # verbinden 0.1.13: der einzige Zweck, den nexmail gewährt, hat seinen festen Ort im Modul.
+        return f"/api/connect/about/{purpose}?name=Pat" if purpose == "mails.about" else None
+
+    def about_seed(self, purpose: str, area: Any, person: Any) -> None:
+        """Eine Mail im Posteingang des Postfachs ``area`` von ``owner``, von der ersten Adresse der Person."""
+        import json
+
+        from app.db import SessionLocal
+        from app.models import Konto, Nachricht, Ordner
+
+        with SessionLocal() as db:
+            konto = db.get(Konto, str(area))
+            assert konto is not None and konto.benutzer_id == self.ids["owner"], area
+            ordner = Ordner(konto_id=konto.id, pfad="INBOX", name="INBOX", rolle="posteingang")
+            db.add(ordner)
+            db.flush()
+            db.add(
+                Nachricht(
+                    benutzer_id=konto.benutzer_id, konto_id=konto.id, ordner_id=ordner.id, uid=1,
+                    message_id=f"<seed-{konto.id}@example.com>", von_adresse=person.mails[0],
+                    an_json=json.dumps([{"n": "", "a": konto.adresse}]), betreff="Geheimer Betreff",
+                )
+            )  # fmt: skip
+            db.commit()
 
     def areas_seen(self, purpose: str, answer: Any) -> set[str]:
         return set()

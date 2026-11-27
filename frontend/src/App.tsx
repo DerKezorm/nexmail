@@ -186,6 +186,10 @@ const GELESEN_NACH_VORGABE = 2
 const START_EINSTELLUNGEN =
   typeof window === 'undefined' ? null : bereichAusPfad(ohneBasis(window.location.pathname) ?? '')
 
+/** Kam die App mit einer Suche in der Adresse (`?suche=`, aus nexfolk)? Einmal beim Laden. */
+const START_SUCHE =
+  typeof window === 'undefined' ? '' : (new URLSearchParams(window.location.search).get('suche') ?? '').trim()
+
 /** Ordner gibt es Dutzende; sie erscheinen in der Palette erst beim Suchen. */
 const NUR_GESUCHT = new Set(['ordner'])
 
@@ -338,8 +342,10 @@ export default function App({ modus, aufModus, darstellung, aufDarstellung, ich,
      nächsten Zeichnen; der Beobachter am Fuß feuert schneller und schöbe
      dieselbe Seite zweimal an. */
   const mehrLaedtRef = useRef(false)
-  const [suche, setSuche] = useState('')
-  const [bereich, setBereich] = useState<Suchbereich>('ordner')
+  /* „öffnen“ aus nexfolks Karte „In den anderen Apps“ (verbinden 0.1.13): `/?suche=<adresse>` sucht die Adresse in
+     allen Postfächern (der Server findet bei einer Adresse auch An und Cc). */
+  const [suche, setSuche] = useState(START_SUCHE)
+  const [bereich, setBereich] = useState<Suchbereich>(START_SUCHE ? 'alle' : 'ordner')
   const [befund, setBefund] = useState<Suchbefund | null>(null)
   const [suchtLaeuft, setSuchtLaeuft] = useState(false)
   const suchUhr = useRef<number | undefined>(undefined)

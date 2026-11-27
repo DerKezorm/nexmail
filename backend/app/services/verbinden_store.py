@@ -7,8 +7,9 @@ sind; das Modul zeigt sie nur (``legacy``). Eine Klick-Verbindung legt dieselbe 
 nur steht im Zugang statt eines Schlüssels ``ueber`` (das Konto der Verbindung): Listen- und Kalenderwahl, Abgleich,
 Abhaken und Fehlerzustände laufen damit unverändert (V18), nur die einzelne Anfrage geht über ``nexverbinden.call``.
 
-⚠️ **nexmail ist nur Gast.** Es gewährt keinem Partner einen Zweck (Katalog: ``"nexmail": {}``); ein Partner hält ein
-Token, das nur ``hello`` und ``revoke`` öffnet. V20: Karten nur für Partner, die nexmail wirklich nutzt
+⚠️ **nexmail ist fast nur Gast.** Es gewährt genau einen Zweck (seit verbinden 0.1.13): ``mails.about`` an nexfolk,
+wie viele Mails es mit einer Person gibt und wann die letzte kam (``post_mit_person``, Bereiche = Postfächer); sonst
+hält ein Partner ein Token, das nur ``hello`` und ``revoke`` öffnet. V20: Karten nur für Partner, die nexmail wirklich nutzt
 (``AppConfig.in_use`` = ``GENUTZT``); die übrigen Partner des Katalogs zeigt nexmail erst, wenn ihre Nutzung gebaut ist.
 """
 
@@ -213,8 +214,12 @@ class VerbindenStore:
         return {"name": person.anzeigename, "username": person.benutzername, "picture": bild, "color": None}
 
     def areas(self, account_id: Any) -> list[dict[str, Any]]:
-        # nexmail gewährt keinem Partner etwas, also gibt es keine Bereiche zu wählen.
-        return []
+        """Die Postfächer des Kontos (verbinden 0.1.13): Für ``mails.about`` wählt die Zustimmung, in welchen nexfolk
+        Mails mit einer Person zählen darf (``post_mit_person``)."""
+        from ..models import Konto
+
+        frage = select(Konto).where(Konto.benutzer_id == str(account_id)).order_by(Konto.reihenfolge, Konto.angelegt)
+        return [{"id": k.id, "name": k.anzeigename or k.adresse} for k in self.db.scalars(frage)]
 
     def legacy(self, account_id: Any) -> list[Any]:
         """Die von Hand eingetragenen Verbindungen (Adresse plus API-Schlüssel), wie sie sind."""

@@ -399,6 +399,17 @@ von Hand bleiben dem Konto, `/api/aufgabenziele/…/nextasks` und `/api/nextime`
 „Verbindungen ins eigene Netz“ hat nexmail nicht (der Riegel unter Funktionen für alle Konten gilt Kalendern,
 Adressbüchern und Webhooks). Vorlage `nexverbinden.test.tsx` neu genommen.
 
+Nachzug verbinden 0.1.12 (nur Beispieladressen der Modultests) und 0.1.13 (nexfolks Karte „In den anderen Apps“,
+V49 bis V53): nexmail gewährt damit erstmals einen Zweck, `mails.about` an nexfolk. `VerbindenStore.areas` nennt die
+Postfächer des Kontos (`id`, Anzeigename), die Zustimmung fragt, in welchen gezählt werden darf; der Haken
+`router(about=post_mit_person.ueber_person)` antwortet mit Zahl, Datum der neuesten Mail und `open` =
+`/?suche=<adresse>` (die Oberfläche liest `?suche=` beim Laden und sucht in allen Postfächern, die Suche findet bei
+einer einzelnen Adresse auch An und Cc). **Die Regel:** Gezählt wird jede Mail des Kontos in den gegebenen
+Postfächern, deren Absender, An oder Cc eine der Mailadressen der Person ist (ohne Groß/klein), außer in Papierkorb,
+Entwürfen und Werbung, dieselbe Message-ID einmal; der Name allein zählt nicht, nie ein Betreff, gelesen wird nur
+nexmails eigener Stand. Adapter: `about_purpose`, `about_seed`, zwei Postfächer des Eigentümers, `probe` für
+`mails.about`; eigene Tests `test_post_mit_person.py`. Vorlage `nexverbinden.test.tsx` neu genommen.
+
 ## 1. Bestand heute (0.33.0)
 
 ### Datenmodell

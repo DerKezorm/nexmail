@@ -184,10 +184,15 @@ OEFFENTLICHE_PFADE: dict[str, str] = {
     ),
     "/api/connect/retire": (
         "Ein alter API-Schlüssel beendet sich selbst, nachdem eine App neu verbunden hat (Modul verbinden); nexmail "
-        "gewährt keinem Partner etwas, der Weg antwortet nur."
+        "beendet dabei höchstens genau diesen alten Schlüssel."
     ),
     "/api/connect/hello": (
         "Eine verbundene nex-App prüft ihre Verbindung mit ihrem Token (Modul verbinden), ohne Sitzung."
+    ),
+    "/api/connect/about/{purpose}": (
+        "nexfolk fragt mit dem Token seiner Verbindung, wie viele Mails es mit einer Person gibt (Modul verbinden "
+        "0.1.13, Zweck mails.about), ohne Sitzung: das Modul prüft Token, Zweck, Bremse und Frage, gezählt wird nur in "
+        "den gegebenen Postfächern, die Antwort nennt keinen Betreff; mit Origin abgewiesen."
     ),
     "/api/health": (
         "Der Docker-Healthcheck läuft ohne Anmeldung — er soll ja gerade dann "
@@ -811,6 +816,7 @@ app.include_router(
 # ``/connect/app`` und ``/connect/return`` macht die Oberfläche. Die alten Wege (``/api/aufgabenziele/…/nextasks``,
 # ``/api/nextime``) bleiben.
 from .services import verbinden_store as _verbinden  # noqa: E402
+from .services import post_mit_person as _post_mit_person  # noqa: E402
 from .vendor.nexverbinden import api as nexverbinden_api  # noqa: E402
 
 
@@ -843,6 +849,8 @@ app.include_router(
         # Über den Namen gerufen, damit die Vertragstests mithören können (``disconnected``).
         on_disconnected=lambda store, konto_id, partner: _verbinden.ueber_getrennt(partner, store, konto_id),
         old_key=_alter_schluessel,
+        # verbinden 0.1.13: nexfolk fragt, wie viele Mails es mit einer Person gibt (``mails.about``).
+        about=_post_mit_person.ueber_person,
     )
 )
 # Die Wege des Moduls sicherung (``/api/server/storage``), nur für Betreiber.

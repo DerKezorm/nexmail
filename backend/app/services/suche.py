@@ -31,7 +31,7 @@ from __future__ import annotations
 import logging
 import re
 
-from sqlalchemy import Engine, func, select, text
+from sqlalchemy import Engine, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from ..models import Benutzer, Konto, Nachricht, Ordner
@@ -174,6 +174,8 @@ def index_verdichten(db: Session) -> None:
 #: Zeichen, die FTS5 als Syntax liest. Ein Betreff mit einem davon darf die
 #: Suche nicht zum Fehler machen.
 _SYNTAX = re.compile(r'[":^*(){}\[\]-]')
+#: Eine einzelne Mailadresse ohne Leerraum (dann sucht die Suche auch in An und Cc).
+_ADRESSE = re.compile(r"[^\s@]+@[^\s@]+")
 
 
 def begriff_bauen(eingabe: str) -> str:
@@ -224,11 +226,20 @@ def suchen(
         ),
         {"b": begriff, "n": grenze * 4},
     ).scalars().all()
-    if not treffer:
+    # Eine einzelne Mailadresse findet auch die Mails AN sie (An, Cc), die der Volltextindex nicht kennt: So führt
+    # „öffnen“ aus nexfolks Karte (``post_mit_person``, ``/?suche=<adresse>``) zu dem, was die Karte gezählt hat.
+    adresse = eingabe.strip().lower()
+    nur_adresse = _ADRESSE.fullmatch(adresse) is not None
+    if not treffer and not nur_adresse:
         return []
 
+    passt = Nachricht.id.in_(treffer)
+    if nur_adresse:
+        from .post_mit_person import mit_adresse
+
+        passt = or_(passt, mit_adresse([adresse]))
     frage = select(Nachricht).where(
-        Nachricht.id.in_(treffer),
+        passt,
         # ⚠️ Nie ohne das. Der Volltextindex kennt keine Benutzer.
         Nachricht.benutzer_id == person.id,
     )
