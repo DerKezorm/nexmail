@@ -1,4 +1,4 @@
-"""Die Anbindung des Moduls verbinden 0.1.4 (``app.vendor.nexverbinden``) an nexmail: ``AppConfig``, der Store über
+"""Die Anbindung des Moduls verbinden 0.1.8 (``app.vendor.nexverbinden``) an nexmail: ``AppConfig``, der Store über
 die Tabellen des Moduls (``models.Vb…``, Vorlage ``verbinden_partner.SCHEMA``) und ``anfragen``, mit dem nexmails
 Gast-Code (nextasks, nextime) über eine per Klick gemachte Verbindung fragt.
 
@@ -18,12 +18,14 @@ import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import __version__, crypto
+from ..config import get_settings
 from ..db import einstellung_lesen, einstellung_schreiben
 from ..models import Aufgabenverbindung, Benutzer, NextimeVerbindung
 from ..vendor import nexverbinden
@@ -193,6 +195,22 @@ class VerbindenStore:
     def account_name(self, account_id: Any) -> str:
         person = self.db.get(Benutzer, str(account_id))
         return person.benutzername if person else "?"
+
+    def account_card(self, account_id: Any) -> dict[str, Any]:
+        """verbinden 0.1.8 (B1): wer auf der Zustimmungsseite angemeldet ist, so wie die Profilzeile es zeigt.
+
+        Anzeigename, Benutzername und die Adresse des eigenen Profilbilds genau wie ``profilbildAdresse`` in
+        ``components/Profilbild.tsx`` (Vorbau, ``/api/auth/profilbild/<id>?v=<Stand>``); ohne Bild ``None``, dann
+        zeigt das Modul den Buchstaben nach derselben Regel wie nexmail. nexmail hat keine Farbe der Person
+        (der Platzhalter rechnet seinen Ton aus dem Namen), also ``None``."""
+        person = self.db.get(Benutzer, str(account_id))
+        if person is None:
+            return {"name": "", "username": "?", "picture": None, "color": None}
+        bild = None
+        if person.profilbild_am is not None:
+            stand = quote(person.profilbild_am.isoformat(), safe="")
+            bild = f"{get_settings().url_base}/api/auth/profilbild/{quote(person.id, safe='')}?v={stand}"
+        return {"name": person.anzeigename, "username": person.benutzername, "picture": bild, "color": None}
 
     def areas(self, account_id: Any) -> list[dict[str, Any]]:
         # nexmail gewährt keinem Partner etwas, also gibt es keine Bereiche zu wählen.

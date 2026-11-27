@@ -1,4 +1,4 @@
-"""nexverbinden contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of verbinden 0.1.4).
+"""nexverbinden contract tests: nexmail's adapter (from ``tests-fuer-apps/adapter_template.py`` of verbinden 0.1.4, since 0.1.8 with ``shown_names``).
 
 nexmail is only a guest (catalog: it grants nothing), so ``probe`` is ``None``. Its partner in the tests is nextasks,
 the pair nexmail had before the module: the older version kept a connection typed in by hand
@@ -24,6 +24,8 @@ class Adapter(StandardAdapter):
     partner = "nextasks"
     base = "https://mail.example.com"
     older_link = True
+    #: verbinden 0.1.8 (B1): die Anzeigenamen der Testkonten (``anzeigename`` unten), die ``account_card`` nennt.
+    shown_names = {rolle: NAME[rolle].title() for rolle in ("owner", "other")}  # noqa: RUF012 (nur gelesen)
 
     def start(self, folder: Path, *, older: bool = False) -> None:
         from app import crypto

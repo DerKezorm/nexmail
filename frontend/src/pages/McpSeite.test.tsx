@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** Modul mcp 1.1.0 in nexmail: welche Adresse welche Seite meint (Zustimmung, Rückfrage), dass die Seite der Zustimmung
+/** Modul mcp 1.1.0 in nexmail: welche Adresse welche Seite meint (Zustimmung, Rückfrage, die Seiten von verbinden), dass die Seite der Zustimmung
  * die Postfächer und das Extra „Mailtext lesen“ nennt, und dass jedes Werkzeug des Servers ein Wort in DE und EN hat. */
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -68,6 +68,25 @@ describe('Seiten des Moduls mcp', () => {
     expect(text).toContain('Lesen und Entwürfe')
     const extra = box.querySelector<HTMLInputElement>('[data-testid="consent-extra-mailtext"] input') ?? box.querySelector<HTMLInputElement>('input[data-testid="consent-extra-mailtext"]')
     expect(extra?.checked ?? false).toBe(false)
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('die Seiten des Moduls verbinden stehen ohne nexmails Rahmen, in ihrem eigenen (verbinden 0.1.8, B5)', async () => {
+    expect(mcpSeiteVon('/connect/app')).toEqual({ art: 'verbinden' })
+    expect(mcpSeiteVon('/connect/return')).toEqual({ art: 'zurueck' })
+    // Der Server antwortet nicht: die Seiten stehen im Laden und gehen nirgends hin.
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)))
+    window.history.replaceState(null, '', '/connect/app?client_id=x')
+    await act(async () => root.render(<McpSeite seite={{ art: 'verbinden' }} />))
+    expect(box.querySelector('[data-testid="mcp-seite"]')).toBeNull()
+    const seite = box.querySelector('[data-testid="connect-consent"]')
+    expect(seite?.parentElement?.getAttribute('data-testid')).toBe('verbinden-seite')
+    expect(seite?.parentElement?.className).toBe('h-full overflow-auto')
+    expect(seite?.className.split(' ')).toEqual(expect.arrayContaining(['min-h-dvh', 'items-center', 'justify-center']))
+    window.history.replaceState(null, '', '/connect/return?code=c&state=s')
+    await act(async () => root.render(<McpSeite key="zurueck" seite={{ art: 'zurueck' }} />))
+    expect(box.querySelector('[data-testid="mcp-seite"]')).toBeNull()
+    expect(box.querySelector('[data-testid="connect-return"]')?.parentElement?.getAttribute('data-testid')).toBe('verbinden-seite')
     window.history.replaceState(null, '', '/')
   })
 

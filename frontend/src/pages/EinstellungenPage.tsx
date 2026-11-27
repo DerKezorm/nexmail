@@ -41,7 +41,6 @@ import { ApiKeysCard } from '../vendor/nexschluessel/ApiKeysCard'
 import { ToolsCard } from '../vendor/nexschluessel/ToolsCard'
 import { PendingRequests, ToolRights } from '../vendor/nexmcp'
 import { mcpSchluesselWorte, mcpWorte } from '../lib/mcpWorte'
-import { ConnectionsArea } from '../vendor/nexverbinden'
 import { Installieren } from './einstellungen/Installieren'
 import { IphoneVerbinden } from './IphoneVerbinden'
 import { Sicherheit } from './Sicherheit'
@@ -60,7 +59,7 @@ import { ServerAllgemein } from './Verwaltung'
 import { MailCard } from '../vendor/nexpost/MailCard'
 import { Profil } from './einstellungen/Profil'
 import { Anmeldung } from './einstellungen/Anmeldung'
-import { NexApps } from './einstellungen/NexApps'
+import { AndereNexApps } from './einstellungen/AndereNexApps'
 import { KalenderUndBuecher } from './einstellungen/KalenderUndBuecher'
 import { Karte } from './einstellungen/Karte'
 import {
@@ -276,23 +275,8 @@ export function EinstellungenPage({
           <>
             <IphoneVerbinden />
             <Installieren />
-            {/* Andere nex-Apps (Modul verbinden 0.1.2): je Partner eine Karte mit dem Zeichen des Moduls, „Mit …
-                verbinden“ oder von Hand; nur Partner, die nexmail nutzt (V20, `in_use` auf dem Server: nextime,
-                nextasks, nexfolk, nexpaper). Kalender- und Listenwahl offen in der Karte, in jedem Zustand (V23). */}
-            <ConnectionsArea
-              app="nexmail"
-              request={modulAnfrage}
-              manual={{ nextime: <NexApps nur="nextime" teil="hand" />, nextasks: <NexApps nur="nextasks" teil="hand" /> }}
-              extra={(view) =>
-                view.partner === 'nextime' || view.partner === 'nextasks' ? (
-                  <NexApps nur={view.partner} teil="wahl" />
-                ) : view.partner === 'nexfolk' || view.partner === 'nexpaper' ? (
-                  <p className="m-0 text-sm text-fg-3">{t(`einstellungen.${view.partner}_nutzung`)}</p>
-                ) : null
-              }
-              language={i18n.language}
-              when={zeitpunkt}
-            />
+            {/* Andere nex-Apps (Modul verbinden): seit 0.1.8 „Einrichten“ und „Von Hand verbinden“ nur für den Betreiber. */}
+            <AndereNexApps betreiber={Boolean(ich?.ist_betreiber)} />
             <Karte id="tasks" symbol={ListChecks} titel={t('einstellungen.aufgaben')}>
               {/* nextasks steht in seiner Karte oben (Befund 1 vom 24.11.2026). */}
               <TodoApps teil="ohne-nextasks" />

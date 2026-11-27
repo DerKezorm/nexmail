@@ -402,3 +402,37 @@ def test_trennen_nimmt_die_buecher_von_nexfolk_mit(nexfolk_welt, monkeypatch):
     with SessionLocal() as db:
         assert db.query(Adressbuch).filter_by(herkunft="nexfolk").count() == 0
         assert db.get(Adressbuch, hand_id) is not None
+
+
+def test_die_zustimmung_zeigt_das_konto_wie_die_profilzeile(welt, monkeypatch):
+    """verbinden 0.1.8 (B1, V43): „Angemeldet als Kim (kim)“ mit dem eigenen Profilbild, unter derselben Adresse wie
+    ``profilbildAdresse`` in der Oberfläche (Vorbau, ``?v=`` mit dem Stand), und die lässt sich auch laden."""
+    from datetime import UTC, datetime
+    from urllib.parse import quote
+
+    gefunden, _ = welt
+    kim = _person()
+    stand = datetime(2026, 11, 27, 9, 30, tzinfo=UTC)
+    with SessionLocal() as db:
+        zeile = db.get(Benutzer, kim.id)
+        zeile.profilbild, zeile.profilbild_am = b"RIFF-bild", stand
+        db.commit()
+        stand_text = db.get(Benutzer, kim.id).profilbild_am.isoformat()
+
+    def karte() -> dict:
+        params = gefunden.consent_params(gefunden.start("partner").json()["go"])
+        gefunden.pkg.connect.BRAKE.forget()
+        return gefunden.app.client("owner").get(f"{gefunden.pkg.PREFIX}/consent", params=params).json()["account_card"]
+
+    adresse = f"/api/auth/profilbild/{kim.id}?v={quote(stand_text, safe='')}"
+    assert karte() == {"name": "Kim", "username": "kim", "picture": adresse, "color": None}
+    assert gefunden.app.client("owner").get(adresse).content == b"RIFF-bild"
+    # Unter einem Unterpfad trägt die Adresse den Vorbau, wie in der Oberfläche.
+    monkeypatch.setattr(get_settings(), "url_base", "/nexmail")
+    assert karte()["picture"] == f"/nexmail{adresse}"
+    # Ohne Bild: kein Bild, das Modul zeigt den Buchstaben.
+    with SessionLocal() as db:
+        zeile = db.get(Benutzer, kim.id)
+        zeile.profilbild, zeile.profilbild_am = None, None
+        db.commit()
+    assert karte()["picture"] is None

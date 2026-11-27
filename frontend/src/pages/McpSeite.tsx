@@ -6,6 +6,9 @@
  *   Browser („Ein Programm wartet auf dein Ja“) und „Ansehen“ in „Wartende Rückfragen“.
  *
  * Beide nur aus den Bausteinen des Moduls; der Rahmen ist der der Seiten vor der Anmeldung, ohne deren Formular.
+ *
+ * Dazu die zwei Seiten des Moduls verbinden (`/connect/app`, `/connect/return`). Die bringen seit verbinden 0.1.8 ihren
+ * Rahmen selbst mit (`PAGE_FRAME`: ganze Höhe, Karte in der Mitte, in jeder App gleich); nexmail legt keinen darum.
  */
 import { useTranslation } from 'react-i18next'
 
@@ -33,14 +36,22 @@ export function mcpSeiteVon(
 export function McpSeite({ seite }: { seite: NonNullable<ReturnType<typeof mcpSeiteVon>> }) {
   const { t, i18n } = useTranslation()
   const worte = mcpWorte(t)
+  if (seite.art === 'verbinden' || seite.art === 'zurueck') {
+    // Nur der Ort zum Rollen: nexmail rollt nie als Ganzes (`body { overflow: hidden }`), eine lange Zustimmung muss es.
+    return (
+      <div className="h-full overflow-auto" data-testid="verbinden-seite">
+        {seite.art === 'verbinden' ? (
+          <VerbindenZustimmung request={modulAnfrage} language={i18n.language} />
+        ) : (
+          <VerbindenZurueck app="nexmail" request={modulAnfrage} done={appPfad('/settings/connections')} language={i18n.language} />
+        )}
+      </div>
+    )
+  }
   return (
     <div className="flex min-h-full items-start justify-center overflow-auto bg-canvas px-4 py-10" data-testid="mcp-seite">
       <div className="flex w-full max-w-[620px] flex-col gap-4">
-        {seite.art === 'verbinden' ? (
-          <VerbindenZustimmung request={modulAnfrage} language={i18n.language} />
-        ) : seite.art === 'zurueck' ? (
-          <VerbindenZurueck app="nexmail" request={modulAnfrage} done={appPfad('/settings/connections')} language={i18n.language} />
-        ) : seite.art === 'zustimmung' ? (
+        {seite.art === 'zustimmung' ? (
           <ConsentPage request={modulAnfrage} areaWord={t('mcp.postfaecher')} words={worte} language={i18n.language} />
         ) : (
           <>
