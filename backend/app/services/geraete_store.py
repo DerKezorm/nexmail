@@ -1,4 +1,4 @@
-"""Die Anbindung des gemeinsamen Gerätemoduls ``geraete`` 0.1.1 (``app.vendor.nexgeraete``) an nexmails Tabellen.
+"""Die Anbindung des gemeinsamen Gerätemoduls ``geraete`` 0.1.4 (``app.vendor.nexgeraete``) an nexmails Tabellen.
 
 ⚠️ **Keine Zeile wandert, kein Schlüssel wird neu gehasht.** Ein gekoppeltes iPhone, iPad oder ein Mac ist wie seit
 jeher eine Zeile von ``sitzung`` mit ``art = 'geraet'`` (Vorsilbe ``nxa_``, 48 Zufallsbyte, ``sha256`` als Hex); das

@@ -163,34 +163,13 @@ class Adapter(StandardAdapter):
 
     # --- Konten, über nexmails Kontenmodul ---------------------------------------------------------------------
 
-    def _zweiter_betreiber(self) -> str:
-        """Ein zweiter Betreiber, der den ersten sperrt (G56): niemand sperrt sich selbst, und der letzte Betreiber
-        bleibt (konten ``_not_self``, ``_keep_an_operator``)."""
-        from app.db import SessionLocal
-        from app.models import Benutzer
-        from app.services import benutzer as benutzerdienst
-
-        if "zweiter" not in self.ids:
-            with SessionLocal() as db:
-                person = Benutzer(
-                    benutzername="ria",
-                    anzeigename="Ria Example",
-                    passwort_hash=benutzerdienst.hashen(self.passwort),
-                    ist_betreiber=True,
-                    kontaktadresse="ria@example.com",
-                    sprache="de",
-                )
-                db.add(person)
-                db.commit()
-                self.ids["zweiter"] = person.id
-        return self.ids["zweiter"]
-
     def _manage(self, aktion: str, account: str) -> None:
         from app.db import SessionLocal
         from app.services import konten_store
         from app.vendor import nexkonten
 
-        handelnd = self._zweiter_betreiber() if account == "operator" else self.ids["operator"]
+        # geraete 0.1.3 (G63): der Vertrag sperrt keinen Betreiber mehr, es handelt immer der Betreiber.
+        handelnd = self.ids["operator"]
         with SessionLocal() as db:
             getattr(nexkonten.manage, aktion)(
                 konten_store.store_fuer(db), self.ids[account], actor_id=handelnd, password=self.passwort

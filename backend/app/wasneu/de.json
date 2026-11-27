@@ -10,7 +10,7 @@
       {
         "title": "nextasks und nextime: jetzt mit einem Klick verbunden",
         "where": "Aufgaben, Kalender und Lesebereich",
-        "body": "Was du mit nextasks und nextime kennst, geht jetzt ohne Schlüssel. Mit „Zu Aufgabe machen“ wird aus einer Mail eine Aufgabe in einer nextasks-Liste. Die Listen stehen in der Seitenleiste der Aufgaben; dort hakst du ab, änderst Datum und Priorität und wählst, wer zuständig ist. Die Kalender von nextime stehen im Kalender von nexmail: Termine legst du dort an, änderst und löschst sie, eine Einladung sagst du direkt in einen nextime-Kalender zu, und „Termin daraus machen“ macht aus jeder Mail einen Termin. Verbindungen mit Schlüssel laufen weiter und lassen sich in der Karte auf die neue Art erneuern."
+        "body": "Was du mit nextasks und nextime kennst, geht jetzt ohne Schlüssel. Mit „Zu Aufgabe machen“ wird aus einer Mail eine Aufgabe in einer nextasks-Liste. Die Listen stehen in der Seitenleiste der Aufgaben; dort hakst du ab, änderst Datum und Priorität und wählst, wer zuständig ist. Die Kalender von nextime stehen im Kalender von nexmail: Termine legst du dort an, änderst und löschst sie, eine Einladung sagst du direkt in einen nextime-Kalender zu, und „Termin daraus machen“ macht aus jeder Mail einen Termin. Verbindungen mit Schlüssel laufen weiter, bis du per Klick verbindest; dann löst die neue Verbindung die alte ab. „Trennen“ beendet auch eine Verbindung mit Schlüssel."
       },
       {
         "title": "Anhänge direkt an nexpaper",
@@ -30,7 +30,7 @@
       {
         "title": "Für den Betreiber: Server › Verbindungen",
         "where": "Server › Verbindungen",
-        "body": "Alles, was nexmail mit anderen Programmen verbindet, hat jetzt eine eigene Seite, das Gegenstück zu Mein Konto › Verbindungen. In „Andere nex-Apps“ trägst du die Adresse von nextasks, nextime und nexpaper einmal ein, danach verbindet jedes Konto mit einem Klick. Ist eine App noch nicht eingerichtet, sagt die Karte das, dir mit einem Link hierher. Läuft eine der Apps im eigenen Netz (LAN, VPN), erlaubst du das mit „Verbindungen ins eigene Netz“; mit dem Schalter oben schaltest du Verbindungen ganz ab, bestehende ruhen dann, gelöscht wird nichts. In „Schnittstellen“ schaltest du die API für Mitglieder, die KI-Werkzeuge (MCP) und die iPhone-App ein oder aus.",
+        "body": "Alles, was nexmail mit anderen Programmen verbindet, hat jetzt eine eigene Seite, das Gegenstück zu Mein Konto › Verbindungen. In „Andere nex-Apps“ trägst du die Adresse von nextasks, nextime und nexpaper einmal ein, danach verbindet jedes Konto mit einem Klick. Beim Speichern prüft nexmail jede neue Adresse. Kennt eine verbundene App schon Adressen anderer nex-Apps, schlägt sie sie dir hier vor, und du übernimmst sie mit einem Klick. Ist eine App noch nicht eingerichtet, sagt die Karte das, dir mit einem Link hierher. Läuft eine der Apps im eigenen Netz (LAN, VPN), erlaubst du das mit „Verbindungen ins eigene Netz“; mit dem Schalter oben schaltest du Verbindungen ganz ab, bestehende ruhen dann, gelöscht wird nichts. In „Schnittstellen“ schaltest du die API für Mitglieder, die KI-Werkzeuge (MCP) und die iPhone-App ein oder aus.",
         "operator": true
       },
       {

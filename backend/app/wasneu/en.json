@@ -10,7 +10,7 @@
       {
         "title": "nextasks and nextime: now connected in one click",
         "where": "Tasks, calendar and reading pane",
-        "body": "What you know from nextasks and nextime now works without a key. Turn into task makes a task in a nextasks list from a mail. The lists stand in the sidebar of the tasks, where you tick off, change date and priority and pick who is responsible. The calendars of nextime show in nexmail's calendar: you create, change and delete events there, accept an invitation straight into a nextime calendar, and Turn into event makes an event from any mail. Connections made with a key keep working, and the card lets you renew them the new way."
+        "body": "What you know from nextasks and nextime now works without a key. Turn into task makes a task in a nextasks list from a mail. The lists stand in the sidebar of the tasks, where you tick off, change date and priority and pick who is responsible. The calendars of nextime show in nexmail's calendar: you create, change and delete events there, accept an invitation straight into a nextime calendar, and Turn into event makes an event from any mail. Connections made with a key keep working until you connect in one click; the new connection then takes the place of the old one. Disconnect ends a connection made with a key too."
       },
       {
         "title": "Attachments straight to nexpaper",
@@ -30,7 +30,7 @@
       {
         "title": "For the operator: Server › Connections",
         "where": "Server › Connections",
-        "body": "Everything that connects nexmail with other programs now has a page of its own, the counterpart of My account › Connections. In Other nex apps you enter the address of nextasks, nextime and nexpaper once, and from then on every account connects in one click. If an app is not set up yet, the card says so, and shows you a link to this place. If one of the apps runs in your own network (LAN, VPN), allow it with Connections into the local network; the switch at the top turns connections off altogether, existing ones then rest, and nothing is deleted. In Interfaces you switch the API for members, the AI tools (MCP) and the iPhone app on or off.",
+        "body": "Everything that connects nexmail with other programs now has a page of its own, the counterpart of My account › Connections. In Other nex apps you enter the address of nextasks, nextime and nexpaper once, and from then on every account connects in one click. When you save, nexmail checks each new address. If a connected app already knows addresses of other nex apps, it suggests them to you here, and you take them over in one click. If an app is not set up yet, the card says so, and shows you a link to this place. If one of the apps runs in your own network (LAN, VPN), allow it with Connections into the local network; the switch at the top turns connections off altogether, existing ones then rest, and nothing is deleted. In Interfaces you switch the API for members, the AI tools (MCP) and the iPhone app on or off.",
         "operator": true
       },
       {

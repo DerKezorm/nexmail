@@ -41,7 +41,7 @@ export function McpSeite({ seite }: { seite: NonNullable<ReturnType<typeof mcpSe
     return (
       <div className="h-full overflow-auto" data-testid="verbinden-seite">
         {seite.art === 'verbinden' ? (
-          <VerbindenZustimmung request={modulAnfrage} language={i18n.language} />
+          <VerbindenZustimmung app="nexmail" request={modulAnfrage} language={i18n.language} />
         ) : (
           <VerbindenZurueck app="nexmail" request={modulAnfrage} done={appPfad('/settings/connections')} language={i18n.language} />
         )}

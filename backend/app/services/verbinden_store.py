@@ -2,8 +2,9 @@
 die Tabellen des Moduls (``models.Vb…``, Vorlage ``verbinden_partner.SCHEMA``) und ``anfragen``, mit dem nexmails
 Gast-Code (nextasks, nextime) über eine per Klick gemachte Verbindung fragt.
 
-⚠️ **Alte Verbindungen merken nichts.** ``aufgabenverbindung`` (nextasks) und ``nextime_verbindung`` bleiben, wie sie
-sind; das Modul zeigt sie nur (``legacy``). Eine Klick-Verbindung legt dieselbe Zeile an wie das Verbinden von Hand,
+⚠️ **Alte Verbindungen merken nichts**, bis das Konto per Klick verbindet, trennt oder ablehnt (verbinden 0.2.0, B9):
+``aufgabenverbindung`` (nextasks) und ``nextime_verbindung`` bleiben bis dahin, wie sie sind; das Modul zeigt sie
+(``legacy``), danach endet die von Hand eingetragene (``forget_legacy``). Eine Klick-Verbindung legt dieselbe Zeile an wie das Verbinden von Hand,
 nur steht im Zugang statt eines Schlüssels ``ueber`` (das Konto der Verbindung): Listen- und Kalenderwahl, Abgleich,
 Abhaken und Fehlerzustände laufen damit unverändert (V18), nur die einzelne Anfrage geht über ``nexverbinden.call``.
 
@@ -247,6 +248,73 @@ class VerbindenStore:
             if zugang is not None and zugang.token and not zugang.ueber:
                 alte.append(nexverbinden.Legacy("nextime", zugang.url, zugang.token[:8], problem=_problem(nt.letzter_fehler)))
         return [a for a in alte if a.partner in GENUTZT]
+
+    def forget_legacy(self, account_id: Any, partner: str) -> None:
+        """verbinden 0.2.0 (B9, V56): die von Hand eingetragene Verbindung mit ``partner`` endet (nach einer
+        Klick-Verbindung, nach „Trennen“, nach „Ablehnen“), so dass ``legacy`` sie nicht mehr nennt.
+
+        Steht eine Klick-Verbindung, über die nexmail den Partner nutzt, geht die Zeile auf sie über (``ueber`` statt
+        Schlüssel, wie ``ueber_klick``): Listen, Kalenderwahl und Aufgaben mit Abzug bleiben. Sonst löst nexmail sie
+        wie beim Trennen von Hand. Zeilen, die schon über die Klick-Verbindung laufen, bleiben. Nie committen (das
+        Modul committet), nie die eigenen API-Schlüssel anfassen (``retire_key``)."""
+        from ..models import Aufgabe
+        from . import aufgabenziele, nextasks, nextime, nextimeverbindung
+
+        person = self.db.get(Benutzer, str(account_id))
+        if person is None or partner not in ("nextasks", "nextime"):
+            return
+        klick = self.connection(account_id, partner)
+        uebernehmen = klick is not None and bool(klick.uses)
+        if partner == "nextasks":
+            for v in self.db.scalars(
+                select(Aufgabenverbindung).where(
+                    Aufgabenverbindung.benutzer_id == person.id, Aufgabenverbindung.art == "nextasks"
+                )
+            ).all():
+                try:
+                    alt = aufgabenziele._nextasks_zugang(v)  # noqa: SLF001
+                except Exception:  # noqa: BLE001 - unlesbar zählt wie von Hand
+                    alt = None
+                if alt is not None and alt.ueber:
+                    continue
+                if uebernehmen:
+                    zugang = nextasks.Zugang(url=klick.partner_base.rstrip("/"), token="", ueber=person.id)
+                    v.zugang = crypto.verschluesseln(
+                        nextasks.zugang_schreiben(zugang), aufgabenziele._kontext(v.id)  # noqa: SLF001
+                    )
+                    v.letzter_fehler = ""
+                    continue
+                for aufgabe in self.db.scalars(select(Aufgabe).where(Aufgabe.verbindung_id == v.id)):
+                    aufgabe.verbindung_id = None
+                if person.aufgaben_standard.split(":", 1)[0] == v.id:
+                    person.aufgaben_standard = ""
+                self.db.delete(v)
+                self.db.flush()
+                if not aufgabenziele.verbindungen(self.db, person):
+                    person.aufgaben_eigene = True  # wie ``aufgabenziele.trennen`` (MAIL-2 EC-18)
+        else:
+            nt = nextimeverbindung.verbindung(self.db, person)
+            if nt is None:
+                return
+            try:
+                alt = nextimeverbindung.zugang(nt)
+            except Exception:  # noqa: BLE001 - unlesbar zählt wie von Hand
+                alt = None
+            if alt is not None and alt.ueber:
+                return
+            if uebernehmen:
+                url = klick.partner_base.rstrip("/")
+                if alt is None or alt.url != url:
+                    nt.sichtbar = "{}"
+                zugang = nextime.Zugang(url=url, token="", ueber=person.id)
+                nt.zugang = crypto.verschluesseln(
+                    nextime.zugang_schreiben(zugang), nextimeverbindung._kontext(nt.id)  # noqa: SLF001
+                )
+                nt.letzter_fehler = ""
+            else:
+                self.db.delete(nt)
+        self.db.flush()
+        logger.info("The older connection with %s typed in by hand ended.", partner)
 
     def retire_key(self, token: str) -> bool:
         """Ein alter API-Schlüssel nexmails (``nxm_``), den eine andere App von Hand eingetragen hatte, endet von

@@ -361,9 +361,9 @@ def test_trennen_loest_die_nextasks_verbindung_per_klick_die_von_hand_bleibt(wel
         assert db.get(Aufgabenverbindung, hand_id) is not None
 
 
-def test_ein_spaeter_von_hand_eingetragener_schluessel_bleibt_nach_dem_trennen(welt):
-    """Wer nach dem Klick unter „Von Hand verbinden“ wieder einen Schlüssel eingetragen hat, verbindet von Hand: das
-    Trennen der Klick-Verbindung lässt diese Zeile stehen."""
+def test_ein_spaeter_von_hand_eingetragener_schluessel_endet_mit_dem_trennen(welt):
+    """verbinden 0.2.0 (B9, V56): wer nach dem Klick unter „Von Hand verbinden“ wieder einen Schlüssel eingetragen hat,
+    hat eine alte Verbindung neben der Klick-Verbindung; „Trennen“ beendet beide (bis 0.1.18 blieb die von Hand)."""
     from app import crypto
 
     gefunden, _ = welt
@@ -374,10 +374,120 @@ def test_ein_spaeter_von_hand_eingetragener_schluessel_bleibt_nach_dem_trennen(w
         v.zugang = crypto.verschluesseln(nextasks.zugang_schreiben(zugang), f"aufgabenverbindung:{v.id}:zugang")
         db.commit()
         hand_id = v.id
+    assert [a.partner for a in gefunden.app.store.legacy(gefunden.app.account_id("owner"))] == ["nextasks"]
+    weg = gefunden.app.client("owner").delete(f"{gefunden.pkg.PREFIX}/partners/{gefunden.partner.name}")
+    assert weg.status_code == 200, weg.text
+    assert weg.json()["state"] == "none" and weg.json()["legacy"] is None
+    with SessionLocal() as db:
+        assert db.get(Aufgabenverbindung, hand_id) is None
+
+
+# --- verbinden 0.2.0 (B9, V56): ``forget_legacy`` beendet die Verbindung von Hand ------------------------------------- #
+
+
+def _von_hand_nextasks(benutzer: str = "kim") -> tuple[str, int]:
+    """Eine nextasks-Verbindung von Hand mit abgewählter Liste, Standard und einer verknüpften Aufgabe."""
+    from app import crypto
+    from app.models import Aufgabe
+
+    with SessionLocal() as db:
+        person = db.query(Benutzer).filter_by(benutzername=benutzer).one()
+        v = Aufgabenverbindung(benutzer_id=person.id, art="nextasks", name="nextasks", ohne='["l9"]')
+        db.add(v)
+        db.flush()
+        zugang = nextasks.Zugang(url="https://nextasks.example.com", token="ntk_" + "h" * 40)
+        v.zugang = crypto.verschluesseln(nextasks.zugang_schreiben(zugang), f"aufgabenverbindung:{v.id}:zugang")
+        aufgabe = Aufgabe(benutzer_id=person.id, betreff="Rechnung zahlen", verbindung_id=v.id, fern_art="nextasks")
+        db.add(aufgabe)
+        person.aufgaben_standard = f"{v.id}:l1"
+        person.aufgaben_eigene = False
+        db.commit()
+        return v.id, aufgabe.id
+
+
+def test_per_klick_geht_die_verbindung_von_hand_mit_listen_und_aufgaben_ueber(welt):
+    """Gegenprobe ``forget_legacy`` nach dem Klick: dieselbe Zeile läuft jetzt über die Klick-Verbindung, Listenwahl,
+    Standard und verknüpfte Aufgaben bleiben; die Karte nennt keine alte Verbindung mehr."""
+    from app.models import Aufgabe
+
+    gefunden, _ = welt
+    hand_id, aufgabe_id = _von_hand_nextasks()
+    konto = gefunden.app.account_id("owner")
+    assert [a.partner for a in gefunden.app.store.legacy(konto)] == ["nextasks"]
+    assert gefunden.connect("app").status_code == 200
+    assert gefunden.app.store.legacy(konto) == []
+    with SessionLocal() as db:
+        v = db.query(Aufgabenverbindung).filter_by(art="nextasks").one()
+        assert v.id == hand_id and v.ohne == '["l9"]'
+        zugang = aufgabenziele._nextasks_zugang(v)  # noqa: SLF001
+        assert zugang.ueber == konto and zugang.token == ""
+        assert db.get(Aufgabe, aufgabe_id).verbindung_id == hand_id
+        assert db.get(Benutzer, konto).aufgaben_standard == f"{hand_id}:l1"
+
+
+def test_trennen_ohne_klick_loest_die_verbindung_von_hand_wie_von_hand(welt):
+    """Gegenprobe ``forget_legacy`` ohne Klick-Verbindung: wie „Trennen“ unter Aufgaben-Apps, die Aufgabe behält ihren
+    Abzug ohne Verbindung, der Standard fällt, die eigene Liste geht wieder an."""
+    from app.models import Aufgabe
+
+    gefunden, _ = welt
+    hand_id, aufgabe_id = _von_hand_nextasks()
     weg = gefunden.app.client("owner").delete(f"{gefunden.pkg.PREFIX}/partners/{gefunden.partner.name}")
     assert weg.status_code == 200, weg.text
     with SessionLocal() as db:
-        assert db.get(Aufgabenverbindung, hand_id) is not None
+        assert db.get(Aufgabenverbindung, hand_id) is None
+        aufgabe = db.get(Aufgabe, aufgabe_id)
+        assert aufgabe is not None and aufgabe.verbindung_id is None
+        person = db.query(Benutzer).filter_by(benutzername="kim").one()
+        assert person.aufgaben_standard == "" and person.aufgaben_eigene is True
+
+
+def test_forget_legacy_nimmt_nur_das_eigene_konto_und_nur_von_hand(welt):
+    """Ein anderes Konto behält seine Verbindung von Hand; eine Zeile, die schon über die Klick-Verbindung läuft, bleibt;
+    nextime von Hand endet ohne Klick-Verbindung ganz."""
+    from app import crypto
+
+    gefunden, _ = welt
+    eigen_id, _a = _von_hand_nextasks("kim")
+    fremd_id, _b = _von_hand_nextasks("sam")
+    with SessionLocal() as db:
+        kim = db.query(Benutzer).filter_by(benutzername="kim").one()
+        nt = NextimeVerbindung(benutzer_id=kim.id, sichtbar="{}")
+        db.add(nt)
+        db.flush()
+        zugang = nextime.Zugang(url="https://kalender.example.com", token="nt_api_" + "k" * 40)
+        nt.zugang = crypto.verschluesseln(nextime.zugang_schreiben(zugang), f"nextime_verbindung:{nt.id}:zugang")
+        db.commit()
+        nt_id = nt.id
+    store = gefunden.app.store
+    konto = gefunden.app.account_id("owner")
+    assert sorted(a.partner for a in store.legacy(konto)) == ["nextasks", "nextime"]
+    store.forget_legacy(konto, "nextime")
+    store.forget_legacy(konto, "nexfolk")
+    store.commit()
+    assert [a.partner for a in store.legacy(konto)] == ["nextasks"]
+    with SessionLocal() as db:
+        assert db.get(NextimeVerbindung, nt_id) is None
+        assert db.get(Aufgabenverbindung, eigen_id) is not None
+    store.forget_legacy(konto, "nextasks")
+    store.commit()
+    assert store.legacy(konto) == []
+    with SessionLocal() as db:
+        assert db.get(Aufgabenverbindung, eigen_id) is None
+        assert db.get(Aufgabenverbindung, fremd_id) is not None
+        # Über die Klick-Verbindung (``ueber``) bleibt eine Zeile stehen.
+        kim = db.query(Benutzer).filter_by(benutzername="kim").one()
+        klick = Aufgabenverbindung(benutzer_id=kim.id, art="nextasks", name="nextasks")
+        db.add(klick)
+        db.flush()
+        ueber = nextasks.Zugang(url="https://nextasks.example.com", token="", ueber=kim.id)
+        klick.zugang = crypto.verschluesseln(nextasks.zugang_schreiben(ueber), f"aufgabenverbindung:{klick.id}:zugang")
+        db.commit()
+        klick_id = klick.id
+    store.forget_legacy(konto, "nextasks")
+    store.commit()
+    with SessionLocal() as db:
+        assert db.get(Aufgabenverbindung, klick_id) is not None
 
 
 def test_beendet_nextasks_die_verbindung_loest_nexmail_sie_auch(welt):
