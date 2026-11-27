@@ -67,7 +67,7 @@ TABU_DATEI = WURZEL / ".veroeffentlichung-tabu"
 FORMEN = {
     # Eine Netzangabe mit Praefix (``192.168.0.0/16``) ist kein Rechner, sondern eine Regel (das Modul verbinden nennt
     # die Netze, die als eigenes Netz gelten); nur sie ist ausgenommen (entschieden 27.11.2026).
-    "ein Rechner aus dem Heimnetz": re.compile(r"\b(10\.10\.10|192\.168)\.\d{1,3}\.\d{1,3}\b(?!/\d)"),
+    "ein Rechner aus dem Heimnetz": re.compile(r"\b(?:10\.10\.10\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b(?!/\d)"),
     "ein Pfad vom Rechner des Betreibers": re.compile(r"[Cc]:[\\/]Users[\\/]", re.IGNORECASE),
     "ein OneDrive-Pfad": re.compile(r"OneDrive[\\/]", re.IGNORECASE),
 }
@@ -177,7 +177,9 @@ def test_das_heimnetz_muster_laesst_nur_netzangaben_mit_praefix_aus():
     entstehen erst hier, damit keine Adresse dieser Form im Repo steht (der Waechter liest diese Datei mit)."""
     muster = FORMEN["ein Rechner aus dem Heimnetz"]
     heim = ".".join(("192", "168"))
-    for rechner in (f"{heim}.7.7", f"http://{heim}.7.7:8080/", f"{heim}.0.0 und mehr", f"{heim}.0.0/x"):
+    haus = ".".join(("10", "10", "10"))  # das Netz dieses Hauses: drei Teile fest, der vierte ist der Rechner
+    for rechner in (f"{heim}.7.7", f"http://{heim}.7.7:8080/", f"{heim}.0.0 und mehr", f"{heim}.0.0/x",
+                    f"{haus}.65", f"http://{haus}.65:8470/"):
         assert muster.search(rechner), rechner
-    for netz in (f"{heim}.0.0/16", f'"{heim}.7.0/24"', "172.16.0.20", "10.0.0.5"):
+    for netz in (f"{heim}.0.0/16", f'"{heim}.7.0/24"', f"{haus}.0/24", "172.16.0.20", "10.0.0.5"):
         assert not muster.search(netz), netz
