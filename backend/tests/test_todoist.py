@@ -25,6 +25,11 @@ from test_aufgaben import ohne_netz, welt  # noqa: F401
 #: Bewusst kein echt aussehender Schlüssel: Die Scanner vor dem Push sollen
 #: hier nicht anschlagen.
 TOKEN = "probe-token-nur-fuer-tests"
+#: Der Tag, an dem die Attrappe Aufgaben abhakt: gestern, kein fester Tag.
+#: nexmail sieht Erledigtes nur 30 Tage lang nach (``NACHSEHEN_ERLEDIGTE``);
+#: ein fester Tag fiele nach einem Monat heraus.
+GESTERN = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+VORGESTERN = GESTERN - timedelta(days=1)
 
 
 class Todoist:
@@ -92,7 +97,7 @@ class Todoist:
             if anfrage.method == "GET" and len(teile) == 2:
                 return httpx.Response(200, json=a)
             if anfrage.method == "POST" and teile[2:] == ["close"]:
-                a["checked"], a["completed_at"] = True, "2026-11-02T10:00:00.000000Z"
+                a["checked"], a["completed_at"] = True, f"{VORGESTERN}T10:00:00.000000Z"
                 return httpx.Response(204)
             if anfrage.method == "POST" and teile[2:] == ["reopen"]:
                 a["checked"], a["completed_at"] = False, None
@@ -112,7 +117,7 @@ class Todoist:
 
     def erledigen(self, kennung: str) -> None:
         self.aufgaben[kennung]["checked"] = True
-        self.aufgaben[kennung]["completed_at"] = "2026-11-03T08:30:00Z"
+        self.aufgaben[kennung]["completed_at"] = f"{GESTERN}T08:30:00Z"
 
 
 @pytest.fixture
@@ -363,7 +368,7 @@ def test_in_todoist_abgehakt_ist_hier_erledigt(klient, verbunden, welt, fern):  
     fern.erledigen("t1")
     assert klient.post("/api/aufgaben/abgleichen").status_code == 204
     zeile = klient.get("/api/aufgaben").json()[0]
-    assert zeile["erledigt"].startswith("2026-11-03T08:30")
+    assert zeile["erledigt"].startswith(f"{GESTERN}T08:30")
 
 
 def test_in_todoist_wieder_geoeffnet_ist_hier_wieder_offen(klient, verbunden, welt, fern, db):  # noqa: F811
@@ -733,7 +738,7 @@ def test_der_abgleich_aus_der_app_holt_den_haken_ohne_fehler_nach_aussen(
     fern.erledigen("t1")
 
     assert geraet.post("/api/app/1/tasks/sync").status_code == 204
-    assert geraet.get("/api/app/1/tasks").json()[0]["erledigt"].startswith("2026-11-03T08:30")
+    assert geraet.get("/api/app/1/tasks").json()[0]["erledigt"].startswith(f"{GESTERN}T08:30")
     # Dieselbe Bremse wie im Browser: Der nächste Zug fragt nicht noch einmal.
     vorher = len(fern.anfragen)
     assert geraet.post("/api/app/1/tasks/sync").status_code == 204

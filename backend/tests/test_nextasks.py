@@ -28,6 +28,10 @@ from test_aufgaben import ohne_netz, welt  # noqa: F401
 #: nicht anschlagen.
 TOKEN = "probe-token-nur-fuer-tests"
 ADRESSE = "https://tasks.example.com"
+#: Der Tag, an dem die Attrappe Aufgaben abhakt: gestern, kein fester Tag.
+#: nexmail sieht Erledigtes nur 30 Tage lang nach (``NACHSEHEN_ERLEDIGTE``);
+#: ein fester Tag fiele nach einem Monat heraus.
+GESTERN = (datetime.now(timezone.utc) - timedelta(days=1)).date()
 
 
 def _uuid() -> str:
@@ -150,7 +154,7 @@ class Nextasks:
                 for i in ids
                 if i not in self.verschweigen
             ]
-            return httpx.Response(200, json={"tasks": zeilen, "next_cursor": None, "as_of": "2026-11-07T08:00:00.000Z"})
+            return httpx.Response(200, json={"tasks": zeilen, "next_cursor": None, "as_of": f"{GESTERN}T08:00:00.000Z"})
         if pfad.startswith("tasks/") and anfrage.method == "PATCH":
             kennung = pfad.split("/")[1]
             a = self.aufgaben.get(kennung)
@@ -176,7 +180,7 @@ class Nextasks:
                 return self._fehler(422, "invalid_input", felder=["list_id"])
             if "completed" in rumpf:
                 a["completed"] = rumpf["completed"]
-                a["completed_at"] = "2026-11-07T09:00:00.000Z" if rumpf["completed"] else None
+                a["completed_at"] = f"{GESTERN}T09:00:00.000Z" if rumpf["completed"] else None
             for feld in ("title", "url", "due_date", "due_time", "priority", "flagged", "list_id",
                          "section_id"):
                 if feld in rumpf:
@@ -294,7 +298,7 @@ class Nextasks:
 
     # Was ein Mensch in nextasks tut.
     def erledigen(self, kennung: str) -> None:
-        self.aufgaben[kennung].update(completed=True, completed_at="2026-11-07T08:30:00.000Z")
+        self.aufgaben[kennung].update(completed=True, completed_at=f"{GESTERN}T08:30:00.000Z")
 
     def oeffnen(self, kennung: str) -> None:
         self.aufgaben[kennung].update(completed=False, completed_at=None)
@@ -786,7 +790,7 @@ def test_in_nextasks_abgehakt_ist_hier_erledigt_und_wieder_offen(klient, verbund
     aufgabe_id, kennung = _eine(klient, verbunden, fern, ids[0])
     fern.erledigen(kennung)
     _abgleichen(db, klient)
-    assert _zeile(klient, aufgabe_id)["erledigt"].startswith("2026-11-07T08:30")
+    assert _zeile(klient, aufgabe_id)["erledigt"].startswith(f"{GESTERN}T08:30")
 
     fern.oeffnen(kennung)
     fern.aufgaben[kennung]["due_date"] = "2026-11-20"
